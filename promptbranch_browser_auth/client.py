@@ -5452,6 +5452,16 @@ class ChatGPTBrowserClient:
                         if recovery_attempted
                         else "persistence_not_verified"
                     )
+                    recovery_diagnostics = getattr(
+                        self,
+                        "_last_project_source_post_commit_recovery_diagnostics",
+                        None,
+                    )
+                    source_surface_empty_after_recovery = bool(
+                        recovery_attempted
+                        and isinstance(recovery_diagnostics, dict)
+                        and recovery_diagnostics.get("surface_empty_or_unreadable")
+                    )
                     result = {
                     "ok": False,
                     "action": "add",
@@ -5463,6 +5473,8 @@ class ChatGPTBrowserClient:
                     "source_match_candidates": persistence_candidates,
                     "post_commit_visible_match_found": post_commit_visible_match_found,
                     "post_commit_source_absent_after_recovery": post_commit_source_absent_after_recovery,
+                    "source_surface_empty_after_recovery": source_surface_empty_after_recovery,
+                    "post_commit_recovery_diagnostics": recovery_diagnostics,
                     "persistence_verified": False,
                     "persistence_error": str(exc),
                     "persistence_false_negative_possible": persistence_false_negative_possible,
@@ -16668,6 +16680,136 @@ class ChatGPTBrowserClient:
         normalized = " ".join(candidates).lower()
         return ".zip" in normalized or "zip archive" in normalized
 
+    async def _probe_project_source_surface_after_commit(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        source_match_candidates: list[str],
+        source_kind: str,
+        value: Optional[str] = None,
+        display_name: Optional[str] = None,
+        attempt: Optional[int] = None,
+        label: str = "post_commit_surface_probe",
+        wait_ms: int = 6_000,
+        poll_interval_ms: int = 500,
+    ) -> dict[str, Any]:
+        """Re-open and inspect Project Sources after a commit-but-stale state.
+
+        The stale-inflight failure mode can leave the browser on a route where
+        ``?tab=sources`` has not actually rendered the Sources surface.  Recovery
+        must therefore re-open the Project home/source tab explicitly and record
+        enough diagnostics to distinguish an empty/unreadable surface from a
+        visible but non-matching source list.  Text recovery still accepts only
+        exact identity/content proof; diagnostics never make an ambiguous source
+        mutation successful.
+        """
+
+        sources_url = self._project_sources_url(project_url)
+        diagnostics: dict[str, Any] = {
+            "label": label,
+            "attempt": attempt,
+            "project_url": project_url,
+            "sources_url": sources_url,
+            "source_kind": source_kind,
+            "source_match_candidates": list(source_match_candidates or []),
+            "goto_ok": False,
+            "sources_tab_open_attempted": False,
+            "sources_tab_opened": False,
+            "sources_tab_open_error": None,
+            "samples": [],
+        }
+
+        try:
+            await self._goto(
+                page,
+                sources_url,
+                label=f"{label}-goto",
+                respect_history_rate_limit_cooldown=False,
+            )
+            diagnostics["goto_ok"] = True
+        except Exception as exc:
+            diagnostics["goto_error"] = repr(exc)
+
+        try:
+            diagnostics["sources_tab_open_attempted"] = True
+            await self._open_project_sources_tab(page)
+            diagnostics["sources_tab_opened"] = True
+        except Exception as exc:
+            diagnostics["sources_tab_open_error"] = repr(exc)
+
+        deadline = asyncio.get_running_loop().time() + max(wait_ms, 0) / 1000
+        last_source_cards: list[dict[str, str]] = []
+        last_empty_state = False
+        last_url = ""
+        matched_source: Optional[dict[str, str]] = None
+
+        max_samples = max(1, int(max(wait_ms, 0) / max(int(poll_interval_ms), 1)) + 1)
+        sample_index = 0
+        while True:
+            sample_index += 1
+            source_cards = await self._snapshot_project_source_cards(page)
+            empty_state_visible = await self._project_sources_empty_state_visible(page)
+            current_url = await self._safe_page_url(page)
+            if source_kind == "text":
+                matched_source = self._find_text_source_post_commit_reconciliation_match(
+                    source_cards,
+                    value=value,
+                    display_name=display_name,
+                    source_match_candidates=source_match_candidates,
+                    verification_mode="post_commit_text_source_list_reconciled",
+                    post_refresh_attempt=attempt,
+                )
+            else:
+                matched_source = self._match_source_card(source_cards, source_match_candidates)
+
+            sample = {
+                "source_card_count": len(source_cards),
+                "empty_state_visible": bool(empty_state_visible),
+                "current_url": current_url,
+                "matched": matched_source is not None,
+                "source_identities": [
+                    self._preferred_source_card_identity(source) or source.get("text")
+                    for source in source_cards[:10]
+                ],
+            }
+            diagnostics["samples"].append(sample)
+            last_source_cards = source_cards
+            last_empty_state = bool(empty_state_visible)
+            last_url = current_url
+
+            if matched_source is not None or source_cards or empty_state_visible:
+                break
+            if sample_index >= max_samples or asyncio.get_running_loop().time() >= deadline:
+                break
+            try:
+                await page.wait_for_timeout(max(int(poll_interval_ms), 1))
+            except Exception:
+                break
+
+        diagnostics.update({
+            "source_card_count": len(last_source_cards),
+            "empty_state_visible": bool(last_empty_state),
+            "current_url": last_url,
+            "matched": matched_source is not None,
+            "source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text")
+                for source in last_source_cards[:10]
+            ],
+            "surface_empty_or_unreadable": bool(not last_source_cards and not last_empty_state),
+        })
+        self._log(
+            "project-source-add",
+            "post-commit Project Sources surface probe completed",
+            **{key: value for key, value in diagnostics.items() if key != "samples"},
+            sample_count=len(diagnostics.get("samples") or []),
+        )
+        return {
+            "source_cards": last_source_cards,
+            "matched_source": matched_source,
+            "diagnostics": diagnostics,
+        }
+
     def _text_source_post_commit_reconciliation_proof(
         self,
         card: Optional[dict[str, str]],
@@ -16787,8 +16929,18 @@ class ChatGPTBrowserClient:
             return None
         sources_url = self._project_sources_url(project_url)
         last_error: Optional[str] = None
+        last_surface_probe: Optional[dict[str, Any]] = None
+        self._last_project_source_post_commit_recovery_diagnostics = None
         effective_attempts = max(int(attempts), 1)
         effective_timeout_ms = max(int(timeout_ms), 5_000)
+        if source_kind == "text":
+            # Text-source saves are the live failure mode that can leave the
+            # source surface unreadable even after a commit request is seen.
+            # Give the source index/surface a few bounded re-open probes, but
+            # still fail closed unless exact text proof appears.
+            effective_attempts = max(effective_attempts, 5)
+            effective_timeout_ms = max(effective_timeout_ms, 35_000)
+            backoff_ms = (2_000, 4_000, 8_000, 12_000, 16_000)
         self._log(
             "project-source-add",
             "starting post-commit project source persistence recovery",
@@ -16815,20 +16967,25 @@ class ChatGPTBrowserClient:
                 )
                 if source_kind == "text":
                     # Spikkies-site-style reconciliation principle, adapted for text
-                    # sources: after the commit is observed, re-read the Sources
-                    # surface and accept recovery only when the expected text
-                    # identity/content proof is visible.  A release ZIP card or a
-                    # nearby/generic source card is not enough.
-                    source_cards = await self._snapshot_project_source_cards(page)
-                    reconciled = self._find_text_source_post_commit_reconciliation_match(
-                        source_cards,
+                    # sources: after the commit is observed, explicitly re-open and
+                    # re-read the Sources surface and accept recovery only when the
+                    # expected text identity/content proof is visible.  A release ZIP
+                    # card, nearby/generic source card, or unreadable empty surface is
+                    # diagnostics only and remains release-blocking.
+                    surface_probe = await self._probe_project_source_surface_after_commit(
+                        page,
+                        project_url=project_url,
+                        source_match_candidates=source_match_candidates,
+                        source_kind=source_kind,
                         value=value,
                         display_name=display_name,
-                        source_match_candidates=source_match_candidates,
-                        verification_mode="post_commit_text_source_list_reconciled",
-                        post_refresh_attempt=attempt + 1,
+                        attempt=attempt + 1,
+                        label=f"project-source-add-post-commit-recovery-surface-{attempt + 1}",
                     )
-                    if reconciled is not None:
+                    last_surface_probe = dict(surface_probe.get("diagnostics") or {})
+                    self._last_project_source_post_commit_recovery_diagnostics = last_surface_probe
+                    reconciled = surface_probe.get("matched_source")
+                    if isinstance(reconciled, dict):
                         recovery_payload = dict(reconciled.get("_promptbranch_post_commit_recovery") or {})
                         recovery_payload.update({
                             "attempt": attempt + 1,
@@ -16836,6 +16993,7 @@ class ChatGPTBrowserClient:
                             "timeout_ms": effective_timeout_ms,
                             "original_error": original_error,
                             "save_watch_summary": self._project_source_save_watch_summary(save_watch),
+                            "surface_probe": last_surface_probe,
                         })
                         reconciled["_promptbranch_post_commit_recovery"] = recovery_payload
                         self._log(
@@ -16845,6 +17003,7 @@ class ChatGPTBrowserClient:
                             source_match_candidates=source_match_candidates,
                             recovered_source=self._preferred_source_card_identity(reconciled) or reconciled.get("text"),
                             proof=reconciled.get("_promptbranch_text_source_reconciliation_proof"),
+                            surface_probe=last_surface_probe,
                         )
                         return reconciled
                 recovered = await self._wait_for_source_presence(
@@ -16915,6 +17074,30 @@ class ChatGPTBrowserClient:
                     error=last_error,
                     save_watch_summary=self._project_source_save_watch_summary(save_watch),
                 )
+        diagnostics = {
+            "status": "not_recovered",
+            "source_kind": source_kind,
+            "attempts": effective_attempts,
+            "timeout_ms": effective_timeout_ms,
+            "last_error": last_error,
+            "original_error": original_error,
+            "last_surface_probe": last_surface_probe,
+            "surface_empty_or_unreadable": bool(
+                isinstance(last_surface_probe, dict)
+                and last_surface_probe.get("surface_empty_or_unreadable")
+            ),
+            "source_card_count": (
+                int(last_surface_probe.get("source_card_count") or 0)
+                if isinstance(last_surface_probe, dict)
+                else None
+            ),
+            "empty_state_visible": (
+                bool(last_surface_probe.get("empty_state_visible"))
+                if isinstance(last_surface_probe, dict)
+                else None
+            ),
+        }
+        self._last_project_source_post_commit_recovery_diagnostics = diagnostics
         self._log(
             "project-source-add",
             "post-commit project source persistence recovery exhausted",
@@ -16922,6 +17105,7 @@ class ChatGPTBrowserClient:
             attempts=effective_attempts,
             last_error=last_error,
             original_error=original_error,
+            diagnostics=diagnostics,
         )
         return None
 

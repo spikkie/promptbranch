@@ -2847,6 +2847,134 @@ def test_text_source_post_commit_reconciliation_rejects_visible_zip_source(
     assert recovered is None
 
 
+
+
+def test_text_post_commit_recovery_reopens_sources_surface_before_accepting_exact_text_proof(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    page = Page()
+    calls = {"goto": 0, "open_tab": 0, "snapshot": 0}
+
+    async def fake_goto(*_args, **_kwargs):
+        calls["goto"] += 1
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs):
+        calls["open_tab"] += 1
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        calls["snapshot"] += 1
+        if calls["snapshot"] >= 2:
+            return [
+                {
+                    "identity": "itest-text-v1001-recovery Document",
+                    "title": "itest-text-v1001-recovery Document",
+                    "text": "itest-text-v1001-recovery Document",
+                }
+            ]
+        return []
+
+    async def fake_empty_state(*_args, **_kwargs):
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("generic presence wait should not be needed once exact text proof appears")
+
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+
+    recovered = asyncio.run(
+        browser_client._recover_project_source_after_post_commit_timeout(
+            page,
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            source_match_candidates=["itest-text-v1001-recovery"],
+            source_kind="text",
+            value="itest-text-v1001-recovery\nbody",
+            display_name="itest-text-v1001-recovery",
+            original_error="commit seen but source surface did not refresh",
+            attempts=1,
+            timeout_ms=5_000,
+            backoff_ms=(),
+        )
+    )
+
+    assert recovered is not None
+    assert calls["open_tab"] >= 1
+    assert recovered["_promptbranch_verification_mode"] == "post_commit_text_source_list_reconciled"
+    assert recovered["_promptbranch_post_commit_recovery"]["surface_probe"]["sources_tab_opened"] is True
+    assert recovered["_promptbranch_post_commit_recovery"]["surface_probe"]["matched"] is True
+
+
+def test_text_post_commit_recovery_records_empty_surface_diagnostics_when_not_recovered(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    page = Page()
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_empty_state(*_args, **_kwargs):
+        return False
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("source list stayed empty")
+
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty_state  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+
+    recovered = asyncio.run(
+        browser_client._recover_project_source_after_post_commit_timeout(
+            page,
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            source_match_candidates=["itest-text-v1001-missing"],
+            source_kind="text",
+            value="itest-text-v1001-missing\nbody",
+            display_name="itest-text-v1001-missing",
+            original_error="commit seen but source surface stayed empty",
+            attempts=1,
+            timeout_ms=5_000,
+            backoff_ms=(),
+        )
+    )
+
+    diagnostics = getattr(browser_client, "_last_project_source_post_commit_recovery_diagnostics")
+    assert recovered is None
+    assert diagnostics["status"] == "not_recovered"
+    assert diagnostics["surface_empty_or_unreadable"] is True
+    assert diagnostics["source_card_count"] == 0
+    assert diagnostics["last_surface_probe"]["sources_tab_opened"] is True
+    assert diagnostics["last_surface_probe"]["surface_empty_or_unreadable"] is True
+
+
 def test_text_source_document_conversion_candidates_use_first_line_and_display_name(
     browser_client: ChatGPTBrowserClient,
 ) -> None:

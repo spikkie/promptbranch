@@ -7,9 +7,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.99.1
 last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
 last completed repair: v0.1.99.1 — Docker build-context freshness repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
-active candidate version: v0.1.100
-next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
+active candidate version: v0.1.100.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
 next normal slice: v0.1.100 — First controlled read-only validation command execution
 next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```

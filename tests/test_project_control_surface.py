@@ -131,15 +131,15 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.99.1"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.99.1.zip"
-    assert data["active_candidate_version"] == "v0.1.100"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.100.zip"
+    assert data["active_candidate_version"] == "v0.1.100.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.100.1.zip"
     assert data["next_normal_version"] == "v0.1.100"
     assert data["active_slice"] == "First controlled read-only validation command execution"
     assert data["next_planned_version_after_acceptance"] == "v0.1.101"
     assert data["next_planned_slice_after_acceptance"] == "Read-only command result diagnosis and blocked/failed classification"
     assert data["repair_must_not_advance_scope"] is True
-    assert data["release_mode"] == "normal"
-    assert data["scope_advance_allowed"] is True
+    assert data["release_mode"] == "repair"
+    assert data["scope_advance_allowed"] is False
     assert data["architecture_goal"] == "controlled problem-solving loop"
     assert len(data["rolling_slice_horizon"]) == 5
 
@@ -148,7 +148,7 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.99.1"
-    assert payload["active_candidate_version"] == "v0.1.100"
+    assert payload["active_candidate_version"] == "v0.1.100.1"
     assert payload["next_normal_slice"] == "First controlled read-only validation command execution"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
@@ -166,7 +166,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.100.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.100.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:

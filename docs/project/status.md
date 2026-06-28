@@ -7,9 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.99.1
 last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
 last completed repair: v0.1.99.1 — Docker build-context freshness repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
-active candidate version: v0.1.100
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
+active candidate version: v0.1.100.1
 next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
+active repair candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
 next normal slice: v0.1.100 — First controlled read-only validation command execution
 next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```
@@ -22,16 +23,16 @@ active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
 last accepted/current slice: v0.1.99.1 — Docker build-context freshness repair
 active plan slice: v0.1.100 — First controlled read-only validation command execution
-repair mode: false
-scope advance allowed: true
+repair mode: true
+scope advance allowed: false
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.100.zip candidate once packaged
-release status: v0.1.100 is a normal candidate until full release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.100.1.zip candidate once packaged
+release status: v0.1.100.1 is a repair candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,22 +66,26 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.100 as the first controlled read-only validation command execution slice from accepted/current chatgpt_claudecode_workflow-2_v0.1.99.1.zip.
+Validate and package v0.1.100.1 as the text-source add stale-inflight recovery diagnostics/verification repair from failed v0.1.100, with no scope advancement and v0.1.101 still deferred.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.100.zip
-ver=v0.1.100
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.100.1.zip
+ver=v0.1.100.1
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
 
+## v0.1.100.1 repair status
+
+`v0.1.100.1` is a repair-only candidate for the failed `v0.1.100` normal slice. It preserves the first controlled read-only validation command execution behavior and changes only Project Source text-add stale-inflight recovery diagnostics/verification. It re-opens and re-reads the Project Sources surface during post-commit recovery, records empty/unreadable surface diagnostics, and still requires exact text identity/content proof before recovery can pass. No scope advances; `v0.1.101` remains deferred.
+
 ## Last updated
 
 ```text
-v0.1.100 First controlled read-only validation command execution candidate build
+v0.1.100.1 text-source add stale-inflight recovery diagnostics/verification repair candidate build
 ```
 
 

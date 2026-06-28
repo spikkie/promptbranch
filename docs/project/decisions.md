@@ -374,3 +374,12 @@ This decision was added for `v0.1.94.1` after a `v0.1.94` run targeted old sourc
 | ADR-PROJ-102 | 2026-06-28 | Repair Docker build-context freshness before accepting v0.1.99 | Docker copied stale v0.1.98 version surfaces after deterministic ZIP install left same-size files with fixed mtimes, and release-control degraded the root cause to service unavailable. | `v0.1.99.1` refreshes build-context mtimes, passes/verifies a source fingerprint, uses explicit build then `up --no-build`, and keeps `v0.1.100` deferred. |
 
 | ADR-PROJ-103 | 2026-06-28 | Limit first command execution to one JSON syntax validation command | v0.1.100 is the first slice that may run a local command, so broad shell execution would create avoidable mutation and security risk. | Only `python3 -m json.tool <repo-relative-json-file>` is allowlisted; the existing evidence gate must pass first; v0.1.101 will diagnose results later without correction or mutation. |
+
+
+## ADR-PROJ-105 — v0.1.100.1 text-source stale-inflight recovery diagnostics repair
+
+Decision: create `v0.1.100.1` as a repair-only release after `v0.1.100` failed full release-control in `project_source_add_text` with `commit_seen_with_stale_inflight_not_verified_present` and `current_source_count=0`.
+
+Rationale: the normal `v0.1.100` loop-command slice did not fail; the blocker was Project Source text-add verification. Recovery must re-open/re-read Project Sources and collect diagnostics, while preserving fail-closed behavior unless exact text identity/content proof is visible.
+
+Scope rule: no normal-slice advancement; `v0.1.101` remains deferred.

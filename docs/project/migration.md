@@ -663,3 +663,8 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 ## v0.1.100 migration note
 
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a repo-local read-only command execution fixture and command evidence schema only. `v0.1.101` remains the next planned slice for read-only command result diagnosis; correction planning and file mutation remain out of scope.
+
+
+## v0.1.100.1 migration note
+
+Migrates the failed `v0.1.100` release-control evidence into a repair-only Project Source text-add recovery diagnostic improvement. Existing rolling-horizon authority is preserved: active normal slice remains `v0.1.100`, the repair candidate is `v0.1.100.1`, and `v0.1.101` remains the next planned normal slice after acceptance.
