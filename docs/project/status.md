@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-accepted/current version: v0.1.100.3
-last completed normal slice: v0.1.100 — First controlled read-only validation command execution
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
+accepted/current version: v0.1.101
+last completed normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
-active candidate version: v0.1.101
-next normal target: chatgpt_claudecode_workflow-2_v0.1.101.zip
-next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
-next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
+active candidate version: v0.1.102
+next normal target: chatgpt_claudecode_workflow-2_v0.1.102.zip
+next normal slice: v0.1.102 — Correction-plan generation without file mutation
+next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.102 — Correction-plan generation wit
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.100.3 — First controlled read-only validation command execution accepted via ZIP hygiene repair
-active plan slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+last accepted/current slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+active plan slice: v0.1.102 — Correction-plan generation without file mutation
 repair mode: false
 scope advance allowed: true
 ```
@@ -29,9 +29,9 @@ scope advance allowed: true
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.101.zip candidate once packaged
-release status: v0.1.101 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.101.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip candidate once packaged
+release status: v0.1.102 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -50,32 +50,47 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.101` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- `v0.1.102` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
 - Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.101` may diagnose read-only command results but must not generate correction plans, mutate files, deploy, change Project Sources, or adopt artifacts.
-- File mutation, correction planning, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
+- `v0.1.102` may generate bounded correction-plan evidence but must not mutate files, retry commands, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
+- File mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
 
 - What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
 - Whether live ChatGPT file-source indexing will become visible within the extended post-commit readback window in release-control.
 - Whether future lifecycle scripts should delegate their install ZIP checks to `pb artifact guard` in AG-005 or an earlier slice.
-- Which bounded correction-plan evidence fields should be introduced in `v0.1.102` after diagnosis is accepted/current.
+- Which sandbox fixture boundaries should be used for `v0.1.103` first controlled file mutation after correction-plan evidence is accepted/current.
 
 ## Next safe action
 
 ```text
-Validate and package v0.1.101 as the first read-only command result diagnosis/classification slice from accepted/current v0.1.100.3.
+Validate and package v0.1.102 as the correction-plan generation without file mutation slice from accepted/current v0.1.101.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.101.zip
-ver=v0.1.101
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.102.zip
+ver=v0.1.102
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
+
+## v0.1.102 candidate status
+
+`v0.1.102` is the next normal slice after accepted/current `v0.1.101`. It generates bounded, proposal-only correction-plan evidence from `v0.1.101` diagnosis results while performing no file mutation, retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.
+
+## Last updated
+
+```text
+v0.1.102 correction-plan generation candidate build
+```
+
+
+## v0.1.101 accepted/current status
+
+`v0.1.101` was accepted/current after full release-control and adoption alignment. It remains the baseline for `v0.1.102`.
 
 ## v0.1.101 candidate status
 

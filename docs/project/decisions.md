@@ -410,3 +410,13 @@ Decision: add a diagnostic layer over `promptbranch.loop.read_only_command_execu
 Rationale: `v0.1.100` proved that one allowlisted read-only JSON validation command can execute safely. The next safe capability is not correction; it is stable diagnosis of outcomes, with blocked vs failed reason codes that later slices can consume.
 
 Consequence: `v0.1.101` may read existing command evidence and emit diagnosis metadata, but it must not generate correction plans, retry commands, mutate files, deploy, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.102` remains the first planned correction-plan slice.
+
+## ADR-PROJ-109 — v0.1.102 correction plans are proposal-only
+
+Status: accepted for v0.1.102 candidate.
+
+Context: `v0.1.101` can classify read-only command evidence as passed, blocked, or failed. The next architectural layer needs a structured plan for operator review, but applying fixes or retrying commands would cross into mutation before sandbox gates exist.
+
+Decision: `v0.1.102` may generate bounded correction-plan evidence from diagnosis results, but the generated plan must contain no file changes, no write actions, no immediate command retries, no Project Source mutation, no artifact adoption, no deployment, no ChatGPT Project deletion, and no patch/diff artifacts.
+
+Consequence: file mutation remains explicitly deferred to `v0.1.103`, where it must occur only inside a sandbox fixture with before/after evidence.

@@ -413,3 +413,19 @@ Done when `pb loop run --read-only-execution --evidence-gate --execute-read-only
 Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.101.md`.
 
 Last release: v0.1.101
+
+## DOD-140 — v0.1.102 correction-plan generation without file mutation
+
+Status: done for focused v0.1.102 candidate validation; adoption remains pending full release-control.
+
+Acceptance criteria:
+
+- A machine-readable correction-plan schema is generated from read-only command diagnosis evidence.
+- Blocked and failed diagnosis results produce bounded operator-review plan entries.
+- Passed diagnosis results produce `no_correction_required` evidence.
+- Generated plans include no file changes, no write actions, no immediate command retries, no Project Source mutation, no artifact adoption, no deployment, and no ChatGPT Project deletion.
+- File mutation remains deferred to `v0.1.103` sandbox-only execution.
+
+Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.102.md`.
+
+Last release: v0.1.102

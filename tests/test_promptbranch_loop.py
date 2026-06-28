@@ -413,3 +413,118 @@ def test_loop_read_only_command_diagnosis_classifies_failed_result(tmp_path: Pat
     assert diagnosis["failed_reasons"] == ["read_only_validation_command_failed"]
     assert diagnosis["correction_plan"] is None
     assert diagnosis["safety"]["files_mutated"] is False
+
+
+def test_loop_read_only_correction_plan_generates_failed_result_plan_without_mutation(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    (tmp_path / "bad.json").write_text("{not-json\n", encoding="utf-8")
+    target = tmp_path / "failed-command.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "failed-command-plan",
+                "goal": "Generate a non-mutating correction plan for a failed read-only command.",
+                "allowed_paths": ["bad.json"],
+                "validation": {"commands": ["python3 -m json.tool bad.json"]},
+                "human_required_when": ["validation_failed"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+
+    assert correction["ok"] is True
+    assert correction["schema"] == "promptbranch.loop.read_only_correction_plan"
+    assert correction["status"] == "correction_plan_generated_failed_result"
+    assert correction["source_result_classification"] == "failed"
+    assert correction["summary"]["correction_plan_generated"] is True
+    assert correction["summary"]["commands_executed"] == 0
+    assert correction["summary"]["files_mutated"] is False
+    assert correction["safety"]["correction_plan_only"] is True
+    assert correction["safety"]["files_mutated"] is False
+    assert correction["safety"]["project_source_mutation_performed"] is False
+    assert correction["correction_plan"]["file_changes"] == []
+    assert correction["correction_plan"]["write_actions"] == []
+    assert correction["correction_plan"]["commands_to_execute_now"] == []
+    assert correction["correction_plan"]["future_slice_required_for_file_mutation"] is True
+    assert correction["correction_plan"]["entries"][0]["plan_type"] == "bounded_operator_correction_plan"
+
+
+def test_loop_read_only_correction_plan_generates_blocked_result_plan_without_mutation(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    target = tmp_path / "blocked-command.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "blocked-command-plan",
+                "goal": "Generate a non-mutating correction plan for a blocked command.",
+                "allowed_paths": ["sample.json"],
+                "validation": {"commands": ["pytest -q tests/test_promptbranch_loop.py"]},
+                "human_required_when": ["command_not_allowlisted"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+
+    assert correction["ok"] is True
+    assert correction["status"] == "correction_plan_generated_blocked_result"
+    assert correction["source_result_classification"] == "blocked"
+    assert correction["summary"]["correction_required_count"] == 1
+    assert correction["side_effects_performed"] is False
+    entry = correction["correction_plan"]["entries"][0]
+    assert entry["source_reason"] == "blocked_not_allowlisted"
+    assert all(step["mutation_allowed"] is False for step in entry["steps"])
+
+
+def test_loop_read_only_correction_plan_for_passed_result_requires_no_correction():
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_execution_payload,
+    )
+
+    plan = plan_loop_target_file("examples/loop-targets/read-only-validation-command-target.json", execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=Path.cwd())
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+
+    assert correction["ok"] is True
+    assert correction["status"] == "correction_plan_not_required"
+    assert correction["source_result_classification"] == "passed"
+    assert correction["summary"]["correction_plan_generated"] is False
+    assert correction["summary"]["no_correction_required_count"] == 1
+    assert correction["safety"]["files_mutated"] is False

@@ -685,3 +685,9 @@ No user data, Project Source state, artifact-current state, deployment, Kubernet
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds an evidence-only read-only command diagnosis schema and CLI flag. Existing `v0.1.100` command execution evidence is preserved as the source payload; `v0.1.101` only classifies it as `passed`, `blocked`, or `failed`. Correction planning and file mutation remain deferred to later slices.
 
 The next planned normal slice after `v0.1.101` acceptance is `v0.1.102` — Correction-plan generation without file mutation.
+
+## v0.1.102 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a proposal-only correction-plan schema and CLI flag that consume read-only command diagnosis evidence. Generated correction plans are evidence only; they contain no file changes, write actions, immediate command retries, patch/diff artifacts, Project Source mutation, artifact adoption, deployment, or ChatGPT Project deletion.
+
+The next planned normal slice after `v0.1.102` acceptance is `v0.1.103` — First controlled file mutation in sandboxed fixture only.

@@ -85,6 +85,7 @@ from promptbranch_loop import (
     build_loop_action_walkthrough_payload,
     build_loop_read_only_command_diagnosis_payload,
     build_loop_read_only_command_execution_payload,
+    build_loop_read_only_correction_plan_payload,
     build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
     build_loop_read_only_execution_payload,
@@ -93,6 +94,7 @@ from promptbranch_loop import (
     render_loop_action_walkthrough_text,
     render_loop_read_only_command_diagnosis_text,
     render_loop_read_only_command_execution_text,
+    render_loop_read_only_correction_plan_text,
     render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
     render_loop_plan_text,
@@ -7577,7 +7579,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json", "--proof"],
-        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation"],
+        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation", "--diagnose-read-only-result", "--generate-correction-plan"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8064,7 +8066,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         # The loop runner remains gated. Presentation modes remain dry-run;
         # v0.1.100 adds exactly one explicit allowlisted read-only validation
         # command execution path behind --read-only-execution --evidence-gate
-        # --execute-read-only-validation.
+        # --execute-read-only-validation. v0.1.101 diagnoses the result, and
+        # v0.1.102 may generate a proposal-only correction plan with no file mutation.
         payload = plan_loop_target_file(target, execute_stubbed=True)
         payload["dry_run"] = True
         selected_modes = [
@@ -8093,6 +8096,9 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if getattr(args, "diagnose_read_only_result", False) and not getattr(args, "execute_read_only_validation", False):
             print("error: --diagnose-read-only-result requires --execute-read-only-validation", file=sys.stderr)
             return 2
+        if getattr(args, "generate_correction_plan", False) and not getattr(args, "diagnose_read_only_result", False):
+            print("error: --generate-correction-plan requires --diagnose-read-only-result", file=sys.stderr)
+            return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
@@ -8107,6 +8113,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
                     payload = build_loop_read_only_command_execution_payload(payload, gate, repo_root=Path.cwd())
                     if getattr(args, "diagnose_read_only_result", False):
                         payload = build_loop_read_only_command_diagnosis_payload(payload)
+                        if getattr(args, "generate_correction_plan", False):
+                            payload = build_loop_read_only_correction_plan_payload(payload)
                 else:
                     payload = gate
         if getattr(args, "json", False):
@@ -8118,6 +8126,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         elif getattr(args, "read_only_execution", False):
             if getattr(args, "evidence_report", False):
                 print(render_loop_read_only_evidence_report_text(payload), end="")
+            elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False) and getattr(args, "generate_correction_plan", False):
+                print(render_loop_read_only_correction_plan_text(payload), end="")
             elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False):
                 print(render_loop_read_only_command_diagnosis_text(payload), end="")
             elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False):
@@ -23993,6 +24003,7 @@ def make_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--evidence-gate", action="store_true", help="With --read-only-execution, emit a pass/block gate over the compact read-only evidence report.")
     loop_run.add_argument("--execute-read-only-validation", action="store_true", help="With --read-only-execution --evidence-gate, execute exactly one allowlisted read-only validation command and capture command evidence.")
     loop_run.add_argument("--diagnose-read-only-result", action="store_true", help="With --execute-read-only-validation, classify the read-only command result as passed, blocked, or failed without generating corrections or mutating files.")
+    loop_run.add_argument("--generate-correction-plan", action="store_true", help="With --diagnose-read-only-result, generate a bounded proposal-only correction plan without writing files, retrying commands, or mutating state.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

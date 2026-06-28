@@ -409,3 +409,44 @@ def test_loop_run_diagnose_read_only_result_requires_execution_flag(capsys):
     captured = capsys.readouterr()
     assert rc == 2
     assert "--diagnose-read-only-result requires --execute-read-only-validation" in captured.err
+
+
+def test_loop_run_generate_correction_plan_cli_json_from_passed_result(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/read-only-validation-command-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--diagnose-read-only-result",
+        "--generate-correction-plan",
+        "--json",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err + captured.out
+    payload = json.loads(captured.out)
+    assert payload["schema"] == "promptbranch.loop.read_only_correction_plan"
+    assert payload["status"] == "correction_plan_not_required"
+    assert payload["source_result_classification"] == "passed"
+    assert payload["summary"]["correction_plan_generated"] is False
+    assert payload["summary"]["commands_executed"] == 0
+    assert payload["summary"]["files_mutated"] is False
+    assert payload["safety"]["correction_plan_only"] is True
+
+
+def test_loop_run_generate_correction_plan_requires_diagnosis_flag(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/read-only-validation-command-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--generate-correction-plan",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "--generate-correction-plan requires --diagnose-read-only-result" in captured.err
