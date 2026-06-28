@@ -1,5 +1,16 @@
 # Release Status
 
+## Current baseline
+
+```text
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+accepted/current version: v0.1.99.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
+active candidate version: v0.1.100
+next normal slice: v0.1.100 — First controlled read-only validation command execution
+next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+```
+
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
 | v0.1.66 | normal | Release doctor config-aware candidate ZIP precheck | accepted_current | adoption evidence supplied earlier | DOD-010 done at the time; later superseded by v0.1.68 baseline evidence | 2b05556677346aa2f9e1d7449bb1c70fc0c54b8d7cd130f22b6e7083960ec8a3 |
@@ -286,7 +297,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.97.1 | repair | Text-source add post-commit reconciliation repair | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-131 done; no normal slice advanced | accepted/current `chatgpt_claudecode_workflow-2_v0.1.97.1.zip` |
 
 | v0.1.98 | normal | Plan authority and anti-drift control-surface gate | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-132 done; control-surface gate active | accepted/current `chatgpt_claudecode_workflow-2_v0.1.98.zip` |
-| v0.1.99 | normal | Rolling slice horizon and architecture-decision protocol | candidate | focused control-surface/next-slice/CLI validation pending full release-control/adoption | DOD-133 focused; first command execution deferred to v0.1.100 | pending adoption evidence for `chatgpt_claudecode_workflow-2_v0.1.99.1.zip` |
-| v0.1.99.1 | repair | Docker build-context freshness repair for v0.1.99 | candidate | focused validation pending full release-control/adoption | preserves v0.1.99 rolling horizon; v0.1.100 remains deferred | repairs deterministic ZIP mtime / Docker context freshness and fail-fast classification |
+| v0.1.99 | normal | Rolling slice horizon and architecture-decision protocol | accepted/current via repair | full release-control/adoption completed through v0.1.99.1 | DOD-133 done; first command execution deferred to v0.1.100 | accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip` |
+| v0.1.99.1 | repair | Docker build-context freshness repair for v0.1.99 | accepted/current | full release-control/adoption completed with all_tests_final_verdict=GO and artifact-current alignment | DOD-134 done; no normal slice advanced | accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip` |
+| v0.1.100 | normal | First controlled read-only validation command execution | candidate | focused loop/CLI/control-surface validation pending full release-control/adoption | DOD-135 focused; first allowlisted JSON validation command execution | pending adoption evidence |
 
 Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip

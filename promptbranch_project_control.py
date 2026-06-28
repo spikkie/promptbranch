@@ -270,15 +270,17 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         if active_candidate_version and active_candidate_version not in text:
             errors.append(f"{label} must include active_candidate_version {active_candidate_version}")
 
+    horizon_versions = [str(item.get("version")) for item in horizon if isinstance(item, dict) and item.get("version")]
+    planned_after_version = str(state.get("next_planned_version_after_acceptance") or "")
     docs_required_tokens = {
-        "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action", "v0.1.100"],
-        "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, str(state.get("next_planned_version_after_acceptance") or ""), "Rolling horizon authority"],
-        "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "v0.1.100"],
-        "docs/project/definition-of-done.md": ["DOD-133", "slice-horizon.md", "project next-slice"],
-        "docs/project/decisions.md": ["ADR-PROJ-101", "slice-horizon", "v0.1.100"],
-        "docs/project/migration.md": ["v0.1.99", "slice-horizon.md", "v0.1.100"],
+        "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action", planned_after_version],
+        "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version, "Rolling horizon authority"],
+        "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version],
+        "docs/project/definition-of-done.md": ["DOD-133", "DOD-135", "project next-slice", "read-only validation command"],
+        "docs/project/decisions.md": ["ADR-PROJ-101", next_normal_version, planned_after_version],
+        "docs/project/migration.md": [next_normal_version, planned_after_version],
         "docs/project/architecture.md": ["controlled problem-solving loop", "Fixed architecture invariants", "Repair releases must not advance scope"],
-        "docs/project/slice-horizon.md": ["v0.1.99", "v0.1.100", "v0.1.101", "v0.1.102", "v0.1.103", "Repair horizon rule"],
+        "docs/project/slice-horizon.md": horizon_versions + ["Repair horizon rule"],
     }
     for rel, tokens in docs_required_tokens.items():
         text = docs.get(rel, "")

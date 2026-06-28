@@ -1,6 +1,11 @@
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import promptbranch_cli
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_loop_validate_cli_json_reports_target_valid(capsys):
@@ -318,3 +323,45 @@ def test_loop_run_evidence_report_and_gate_are_mutually_exclusive(capsys):
     assert rc == 2
     captured = capsys.readouterr()
     assert "--evidence-report and --evidence-gate are mutually exclusive" in captured.err
+
+
+def test_loop_run_execute_read_only_validation_cli_json_executes_one_allowlisted_command():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "promptbranch_cli.py",
+            "loop",
+            "run",
+            "--target",
+            "examples/loop-targets/read-only-validation-command-target.json",
+            "--read-only-execution",
+            "--evidence-gate",
+            "--execute-read-only-validation",
+            "--json",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.read_only_command_execution"
+    assert payload["summary"]["commands_executed"] == 1
+    assert payload["summary"]["mutation_detected"] is False
+    assert payload["command_evidence"][0]["execution_status"] == "executed_read_only_validation_passed"
+
+
+def test_loop_run_execute_read_only_validation_requires_evidence_gate(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/read-only-validation-command-target.json",
+        "--read-only-execution",
+        "--execute-read-only-validation",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "--execute-read-only-validation requires --read-only-execution --evidence-gate" in captured.err

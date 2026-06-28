@@ -3,19 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.98.zip
-accepted/current version: v0.1.98
-last completed normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
-last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-active candidate version: v0.1.99.1
-repair base candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
-repair base version: v0.1.99
-next normal target: chatgpt_claudecode_workflow-2_v0.1.99.zip
-next normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
-next planned target after acceptance: chatgpt_claudecode_workflow-2_v0.1.100.zip
-next planned slice after acceptance: v0.1.100 — First controlled read-only validation command execution
-release line: v0.1.x MVP-1 loop-based problem-solving engine
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+accepted/current version: v0.1.99.1
+last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
+last completed repair: v0.1.99.1 — Docker build-context freshness repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
+active candidate version: v0.1.100
+next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
+next normal slice: v0.1.100 — First controlled read-only validation command execution
+next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```
 
 ## Plan summary
@@ -37,11 +33,12 @@ v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 
-## Active repair — v0.1.99.1 Docker build-context freshness repair
+## Active normal slice — v0.1.100 First controlled read-only validation command execution
 
-`v0.1.99.1` repairs the failed `v0.1.99` release-control pre-source-add service bootstrap. Docker copied stale `v0.1.98` version surfaces into `/app` after a deterministic ZIP install left same-size version files with fixed 1980 mtimes. The repair refreshes safe repo-local build-context mtimes before service builds, passes a source fingerprint into Docker, verifies the fingerprint after `COPY . .`, uses `up --no-build` after an explicit successful build, and fails fast/classifies Docker build-context mismatch instead of continuing to a generic service health failure.
+`v0.1.100` introduces the first real loop command execution, limited to exactly one allowlisted read-only validation command class: `python3 -m json.tool <repo-relative-json-file>`. The command may run only after the existing read-only evidence gate passes, must target a repo-relative JSON file covered by `target.allowed_paths`, must capture stdout/stderr/exit code/duration, and must prove the command input file was not modified.
 
-Scope advancement is forbidden: the active normal slice remains `v0.1.99 — Rolling slice horizon and architecture-decision protocol`, and `v0.1.100 — First controlled read-only validation command execution` remains deferred.
+Out of scope remains correction planning, file mutation, broad shell execution, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
+
 
 ## Release / slice plan
 
@@ -1582,7 +1579,24 @@ Expected validation:
 
 ## v0.1.100 — First controlled read-only validation command execution
 
-Planned after acceptance of v0.1.99. This slice introduces the first real command execution only for an explicit, allowlisted, read-only validation fixture such as `python3 -m json.tool examples/loop-targets/static-game-dry-run-target.json`. It remains out of scope for v0.1.99.
+Release: v0.1.100
+Type: normal
+Baseline: accepted/current `chatgpt_claudecode_workflow-2_v0.1.99.1.zip`
+
+Scope:
+- Execute exactly one allowlisted read-only validation command after the read-only evidence gate passes.
+- The first allowed command class is `python3 -m json.tool <repo-relative-json-file>`.
+- The command target must be a literal repo-relative `.json` file covered by `target.allowed_paths`.
+- Capture command evidence: argv, stdout, stderr, exit code, duration, before/after hash, and mutation status.
+- Block all non-allowlisted commands before execution.
+
+Out of scope:
+- no correction planning
+- no file writes or generated patches
+- no deployment or Kubernetes mutation
+- no Project Source mutation/adoption behavior changes
+- no ChatGPT Project deletion
+
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 

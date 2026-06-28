@@ -222,3 +222,90 @@ def test_loop_read_only_evidence_gate_blocks_unsafe_report():
     assert "no_unsafe_paths" in gate["blocked_reasons"]
     assert gate["gate_summary"]["unsafe_path_count"] == 1
     assert gate["safety_assertions"]["commands_executed"] is False
+
+
+def test_loop_read_only_command_execution_runs_allowlisted_json_tool_without_mutation():
+    from promptbranch_loop import build_loop_read_only_command_execution_payload, build_loop_read_only_execution_payload
+
+    plan = plan_loop_target_file("examples/loop-targets/read-only-validation-command-target.json", execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    payload = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=Path.cwd())
+
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.read_only_command_execution"
+    assert payload["status"] == "read_only_validation_executed"
+    assert payload["summary"]["commands_executed"] == 1
+    assert payload["summary"]["passed_command_count"] == 1
+    assert payload["summary"]["mutation_detected"] is False
+    assert payload["side_effects_performed"] is False
+    command = payload["command_evidence"][0]
+    assert command["execution_status"] == "executed_read_only_validation_passed"
+    assert command["exit_code"] == 0
+    assert command["before"] == command["after"]
+    assert payload["safety"]["project_source_mutation_performed"] is False
+    assert payload["safety"]["artifact_adoption_performed"] is False
+
+
+def test_loop_read_only_command_execution_blocks_non_allowlisted_command(tmp_path: Path):
+    from promptbranch_loop import build_loop_read_only_command_execution_payload, build_loop_read_only_execution_payload
+
+    target = tmp_path / "unsafe-command.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "unsafe-command",
+                "goal": "Block broad shell commands.",
+                "allowed_paths": ["examples/loop-targets/read-only-validation-command-target.json"],
+                "validation": {"commands": ["pytest -q tests/test_promptbranch_loop.py"]},
+                "human_required_when": ["command_not_allowlisted"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    payload = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=Path.cwd())
+
+    assert payload["ok"] is False
+    assert payload["summary"]["commands_executed"] == 0
+    assert payload["summary"]["blocked_command_count"] == 1
+    assert "blocked_not_allowlisted" in payload["blocked_reasons"]
+    assert payload["command_evidence"][0]["executed"] is False
+    assert payload["side_effects_performed"] is False
+
+
+def test_loop_read_only_command_execution_blocks_json_tool_outside_allowed_paths(tmp_path: Path):
+    from promptbranch_loop import build_loop_read_only_command_execution_payload, build_loop_read_only_execution_payload
+
+    target = tmp_path / "outside-allowed.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "outside-allowed",
+                "goal": "Block JSON tool against a path not covered by allowed_paths.",
+                "allowed_paths": ["examples/k8s-game/**"],
+                "validation": {"commands": ["python3 -m json.tool examples/loop-targets/read-only-validation-command-target.json"]},
+                "human_required_when": ["outside_allowed_paths"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=Path.cwd())
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    payload = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=Path.cwd())
+
+    assert payload["ok"] is False
+    assert payload["summary"]["commands_executed"] == 0
+    assert "blocked_outside_allowed_paths" in payload["blocked_reasons"]
+    assert payload["command_evidence"][0]["executed"] is False

@@ -658,3 +658,8 @@ No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatG
 ## v0.1.99.1 repair migration note
 
 `v0.1.99.1` does not migrate user data, Project Sources, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects. It preserves the `v0.1.99` rolling slice horizon and repairs only release-control/Docker build-context freshness after deterministic ZIP-installed files retained fixed mtimes. `v0.1.100` remains deferred until the repaired `v0.1.99` line is accepted/current.
+
+
+## v0.1.100 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a repo-local read-only command execution fixture and command evidence schema only. `v0.1.101` remains the next planned slice for read-only command result diagnosis; correction planning and file mutation remain out of scope.

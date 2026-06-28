@@ -3,17 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.98.zip
-accepted/current version: v0.1.98
-last completed normal slice: v0.1.98 — Plan authority and anti-drift control-surface gate
-last completed repair: v0.1.97.1 — text-source add post-commit reconciliation repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-active candidate version: v0.1.99.1
-repair base candidate: chatgpt_claudecode_workflow-2_v0.1.99.zip
-repair base version: v0.1.99
-next normal target: chatgpt_claudecode_workflow-2_v0.1.99.zip
-next normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
-next planned slice after acceptance: v0.1.100 — First controlled read-only validation command execution
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+accepted/current version: v0.1.99.1
+last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
+last completed repair: v0.1.99.1 — Docker build-context freshness repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
+active candidate version: v0.1.100
+next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
+next normal slice: v0.1.100 — First controlled read-only validation command execution
+next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```
 
 ## Current MVP state
@@ -22,18 +20,18 @@ next planned slice after acceptance: v0.1.100 — First controlled read-only val
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.98 — Plan authority and anti-drift control-surface gate
-active plan slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
-repair mode: true
-scope advance allowed: false
+last accepted/current slice: v0.1.99.1 — Docker build-context freshness repair
+active plan slice: v0.1.100 — First controlled read-only validation command execution
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.98.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.99.1.zip repair candidate once packaged
-release status: v0.1.99.1 is a repair candidate for v0.1.99 until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.100.zip candidate once packaged
+release status: v0.1.100 is a normal candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -52,11 +50,10 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.99.1` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
-- Any normal or repair release must validate `docs/project/plan-state.json` against `docs/project/status.md`, `docs/project/release-status.md`, `docs/project/plan.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md`, `docs/project/migration.md`, `docs/project/architecture.md`, and `docs/project/slice-horizon.md`.
-- Repair releases must not advance the active normal slice unless an explicit decision records the scope change for the next normal release.
-- First controlled read-only validation command execution is deferred to `v0.1.100` and remains out of scope for `v0.1.99.1`.
-- `v0.1.99.1` must preserve the `v0.1.99` rolling horizon scope and may only repair Docker build-context freshness/fail-fast behavior.
+- `v0.1.100` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
+- `v0.1.100` may execute only the single allowlisted read-only validation command class: `python3 -m json.tool <repo-relative-json-file>`.
+- File mutation, correction planning, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
 
@@ -68,14 +65,14 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.99.1 as a repair-only Docker build-context freshness fix for failed candidate v0.1.99 from accepted/current chatgpt_claudecode_workflow-2_v0.1.98.zip.
+Validate and package v0.1.100 as the first controlled read-only validation command execution slice from accepted/current chatgpt_claudecode_workflow-2_v0.1.99.1.zip.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-ver=v0.1.99.1
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.100.zip
+ver=v0.1.100
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
@@ -83,7 +80,7 @@ timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --
 ## Last updated
 
 ```text
-v0.1.99.1 Docker build-context freshness repair candidate build
+v0.1.100 First controlled read-only validation command execution candidate build
 ```
 
 
