@@ -83,6 +83,7 @@ from promptbranch_orchestration import (
 )
 from promptbranch_loop import (
     build_loop_action_walkthrough_payload,
+    build_loop_read_only_command_diagnosis_payload,
     build_loop_read_only_command_execution_payload,
     build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
@@ -90,6 +91,7 @@ from promptbranch_loop import (
     build_loop_state_only_payload,
     plan_loop_target_file,
     render_loop_action_walkthrough_text,
+    render_loop_read_only_command_diagnosis_text,
     render_loop_read_only_command_execution_text,
     render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
@@ -8088,6 +8090,9 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if getattr(args, "execute_read_only_validation", False) and getattr(args, "evidence_report", False):
             print("error: --execute-read-only-validation cannot be combined with --evidence-report", file=sys.stderr)
             return 2
+        if getattr(args, "diagnose_read_only_result", False) and not getattr(args, "execute_read_only_validation", False):
+            print("error: --diagnose-read-only-result requires --execute-read-only-validation", file=sys.stderr)
+            return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
@@ -8100,6 +8105,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
                 gate = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(payload))
                 if getattr(args, "execute_read_only_validation", False):
                     payload = build_loop_read_only_command_execution_payload(payload, gate, repo_root=Path.cwd())
+                    if getattr(args, "diagnose_read_only_result", False):
+                        payload = build_loop_read_only_command_diagnosis_payload(payload)
                 else:
                     payload = gate
         if getattr(args, "json", False):
@@ -8111,6 +8118,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         elif getattr(args, "read_only_execution", False):
             if getattr(args, "evidence_report", False):
                 print(render_loop_read_only_evidence_report_text(payload), end="")
+            elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False):
+                print(render_loop_read_only_command_diagnosis_text(payload), end="")
             elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False):
                 print(render_loop_read_only_command_execution_text(payload), end="")
             elif getattr(args, "evidence_gate", False):
@@ -23983,6 +23992,7 @@ def make_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--evidence-report", action="store_true", help="With --read-only-execution, emit the compact read-only execution evidence report only.")
     loop_run.add_argument("--evidence-gate", action="store_true", help="With --read-only-execution, emit a pass/block gate over the compact read-only evidence report.")
     loop_run.add_argument("--execute-read-only-validation", action="store_true", help="With --read-only-execution --evidence-gate, execute exactly one allowlisted read-only validation command and capture command evidence.")
+    loop_run.add_argument("--diagnose-read-only-result", action="store_true", help="With --execute-read-only-validation, classify the read-only command result as passed, blocked, or failed without generating corrections or mutating files.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

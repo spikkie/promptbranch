@@ -3,16 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-accepted/current version: v0.1.99.1
-last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
-last completed repair: v0.1.99.1 — Docker build-context freshness repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-active candidate version: v0.1.100.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-next normal slice: v0.1.100 — First controlled read-only validation command execution
-next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+accepted/current version: v0.1.100.3
+last completed normal slice: v0.1.100 — First controlled read-only validation command execution
+last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
+active candidate: chatgpt_claudecode_workflow-2_v0.1.101.zip
+active candidate version: v0.1.101
+next normal target: chatgpt_claudecode_workflow-2_v0.1.101.zip
+next normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+next planned slice after acceptance: v0.1.102 — Correction-plan generation without file mutation
 ```
 
 ## Current MVP state
@@ -21,18 +20,18 @@ next planned slice after acceptance: v0.1.101 — Read-only command result diagn
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.99.1 — Docker build-context freshness repair
-active plan slice: v0.1.100 — First controlled read-only validation command execution
-repair mode: true
-scope advance allowed: false
+last accepted/current slice: v0.1.100.3 — First controlled read-only validation command execution accepted via ZIP hygiene repair
+active plan slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.100.3.zip candidate once packaged
-release status: v0.1.100.3 is a repair candidate until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.101.zip candidate once packaged
+release status: v0.1.101 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -51,9 +50,9 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.100` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- `v0.1.101` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
 - Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.100` may execute only the single allowlisted read-only validation command class: `python3 -m json.tool <repo-relative-json-file>`.
+- `v0.1.101` may diagnose read-only command results but must not generate correction plans, mutate files, deploy, change Project Sources, or adopt artifacts.
 - File mutation, correction planning, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
@@ -61,31 +60,31 @@ architecture file: docs/project/architecture.md
 - What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
 - Whether live ChatGPT file-source indexing will become visible within the extended post-commit readback window in release-control.
 - Whether future lifecycle scripts should delegate their install ZIP checks to `pb artifact guard` in AG-005 or an earlier slice.
-- Whether the first read-only command fixture in `v0.1.100` should be `python3 -m json.tool` only, or also include a minimal `test -f` path proof.
+- Which bounded correction-plan evidence fields should be introduced in `v0.1.102` after diagnosis is accepted/current.
 
 ## Next safe action
 
 ```text
-Validate and package v0.1.100.3 as the browser scheduler source-lifecycle timeout repair from failed v0.1.100, with no scope advancement and v0.1.101 still deferred.
+Validate and package v0.1.101 as the first read-only command result diagnosis/classification slice from accepted/current v0.1.100.3.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.100.3.zip
-ver=v0.1.100.3
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.101.zip
+ver=v0.1.101
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
 
-## v0.1.100.3 repair status
+## v0.1.101 candidate status
 
-`v0.1.100.3` is a repair-only candidate after `v0.1.100.1` passed the Project Source text-add path but failed full release-control in the required offline `browser_scheduler_source_lifecycle` validation group. It preserves the first controlled read-only validation command execution behavior from `v0.1.100` and the text-source stale-inflight diagnostics from `v0.1.100.1`, and changes only the same-profile source-remove scheduler test so it uses an explicit bounded start signal instead of an unbounded `browser_status()` polling loop. No scope advances; `v0.1.101` remains deferred.
+`v0.1.101` is the next normal slice after accepted/current `v0.1.100.3`. It classifies the `v0.1.100` read-only command execution payload as `passed`, `blocked`, or `failed`, while generating no correction plan and performing no file mutation, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.
 
 ## Last updated
 
 ```text
-v0.1.100.3 browser scheduler source-lifecycle timeout repair candidate build
+v0.1.101 read-only command result diagnosis candidate build
 ```
 
 

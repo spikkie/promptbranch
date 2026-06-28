@@ -678,3 +678,10 @@ No user data, Project Source state, artifact-current state, deployment, Kubernet
 
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This repair removes generated `debug_artifacts/` from the release payload and aligns Artifact Guardian with release-control protected ZIP entry policy. Existing rolling-horizon authority is preserved: active normal slice remains `v0.1.100`, the repair candidate is `v0.1.100.3`, and `v0.1.101` remains the next planned normal slice after acceptance.
 
+
+
+## v0.1.101 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds an evidence-only read-only command diagnosis schema and CLI flag. Existing `v0.1.100` command execution evidence is preserved as the source payload; `v0.1.101` only classifies it as `passed`, `blocked`, or `failed`. Correction planning and file mutation remain deferred to later slices.
+
+The next planned normal slice after `v0.1.101` acceptance is `v0.1.102` — Correction-plan generation without file mutation.
