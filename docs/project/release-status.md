@@ -5,8 +5,8 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
 accepted/current version: v0.1.99.1
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.zip
-active candidate version: v0.1.100
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
+active candidate version: v0.1.100.1
 next normal slice: v0.1.100 — First controlled read-only validation command execution
 next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```

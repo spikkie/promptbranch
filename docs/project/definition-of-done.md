@@ -367,3 +367,16 @@ Done when `project_source_add_text` can recover a committed-but-stale-inflight t
 
 
 | DOD-135 | First controlled read-only validation command execution runs exactly one allowlisted JSON syntax command after evidence gate approval and proves no file mutation | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `examples/loop-targets/read-only-validation-command-target.json`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.100.md` | v0.1.100 |
+
+
+## DOD-136 — v0.1.100.1 text-source stale-inflight recovery diagnostics repair
+
+Status: focused candidate done; full release-control pending.
+
+Criteria:
+- `v0.1.100` read-only validation command execution behavior is preserved.
+- Repair release does not advance scope or move `v0.1.101` forward.
+- Text-source post-commit recovery explicitly re-opens/re-reads the Project Sources surface.
+- Empty or unreadable source surfaces are recorded as diagnostics and remain release-blocking unless exact text proof appears.
+- Exact text identity/content proof remains mandatory; ZIP/source-card visibility alone cannot satisfy text-source recovery.
+- Focused regression tests cover recovery with re-opened source surface and not-recovered empty-surface diagnostics.
