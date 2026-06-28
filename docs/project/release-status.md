@@ -5,8 +5,8 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
 accepted/current version: v0.1.99.1
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
-active candidate version: v0.1.100.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+active candidate version: v0.1.100.3
 next normal slice: v0.1.100 — First controlled read-only validation command execution
 next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```
@@ -302,3 +302,8 @@ The v0.1.84.4 full all-tests/adoption gate returned `FIX` because `visual_artifa
 | v0.1.100 | normal | First controlled read-only validation command execution | candidate | focused loop/CLI/control-surface validation pending full release-control/adoption | DOD-135 focused; first allowlisted JSON validation command execution | pending adoption evidence |
 
 Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
+
+## v0.1.100.3 release-control expectation
+
+`v0.1.100.3` must install from a ZIP that contains no `debug_artifacts/` entries and must pass Artifact Guardian before any release-control adoption can occur. It remains a candidate until full release-control and `pb artifact current --json` prove accepted/current alignment.
+

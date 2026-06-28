@@ -383,3 +383,21 @@ Decision: create `v0.1.100.1` as a repair-only release after `v0.1.100` failed f
 Rationale: the normal `v0.1.100` loop-command slice did not fail; the blocker was Project Source text-add verification. Recovery must re-open/re-read Project Sources and collect diagnostics, while preserving fail-closed behavior unless exact text identity/content proof is visible.
 
 Scope rule: no normal-slice advancement; `v0.1.101` remains deferred.
+
+
+## ADR-PROJ-106 — v0.1.100.2 browser scheduler source-lifecycle timeout repair
+
+Decision: create `v0.1.100.2` as a repair-only release after `v0.1.100.1` failed full release-control in the required `browser_scheduler_source_lifecycle` group while running `tests/test_promptbranch_automation_service.py::test_source_remove_waits_behind_source_list_with_same_profile`.
+
+Rationale: the normal `v0.1.100` loop-command slice did not fail, and the `v0.1.100.1` text-source repair path passed. The remaining blocker was an offline test fixture with an unbounded wait for active-operation visibility. The repair keeps the same scheduler/source lifecycle semantics but uses an explicit bounded `asyncio.Event` start signal and cleanup path so the test fails fast with diagnostics instead of consuming the whole group timeout.
+
+Scope rule: no normal-slice advancement; `v0.1.101` remains deferred.
+
+## ADR-PROJ-107 — v0.1.100.3 generated debug artifacts are release-blocking ZIP entries
+
+Decision: create `v0.1.100.3` as a repair-only release after `v0.1.100.2` failed release-control ZIP install verification because generated `debug_artifacts/` files were present in the candidate archive.
+
+Rationale: `debug_artifacts/` is operator/runtime diagnostic state, not repository source. It must be preserved during install but never shipped inside release ZIPs. Artifact Guardian must reject this class before a candidate is handed to the operator.
+
+Scope control: preserve `v0.1.100`, `v0.1.100.1`, and `v0.1.100.2` behavior; do not advance to `v0.1.101`.
+

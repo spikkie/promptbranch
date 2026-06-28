@@ -380,3 +380,25 @@ Criteria:
 - Empty or unreadable source surfaces are recorded as diagnostics and remain release-blocking unless exact text proof appears.
 - Exact text identity/content proof remains mandatory; ZIP/source-card visibility alone cannot satisfy text-source recovery.
 - Focused regression tests cover recovery with re-opened source surface and not-recovered empty-surface diagnostics.
+
+
+## DOD-137 — v0.1.100.2 browser scheduler source-lifecycle timeout repair
+
+Status: focused candidate done; full release-control pending.
+
+Criteria:
+- `v0.1.100` read-only validation command execution behavior is preserved.
+- `v0.1.100.1` text-source stale-inflight diagnostics are preserved.
+- Repair release does not advance scope or move `v0.1.101` forward.
+- `tests/test_promptbranch_automation_service.py::test_source_remove_waits_behind_source_list_with_same_profile` uses a bounded explicit start signal instead of an unbounded active-operation polling loop.
+- The same-profile source-remove test still proves source remove waits until source list releases the shared profile lock.
+- Focused validation includes the hanging nodeid and the release-validation group manifest.
+
+## DOD-138 — v0.1.100.3 ZIP hygiene repair for packaged debug artifacts
+
+Status: candidate
+
+Evidence required: `chatgpt_claudecode_workflow-2_v0.1.100.3.zip` contains no `debug_artifacts/` entries; Artifact Guardian policy forbids `debug_artifacts/`; focused artifact guardian test proves packaged debug artifacts fail before handoff; release-control install verification accepts the cleaned ZIP.
+
+Last release: v0.1.100.3
+

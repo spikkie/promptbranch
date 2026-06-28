@@ -7,9 +7,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.99.1
 last completed normal slice: v0.1.99 — Rolling slice horizon and architecture-decision protocol
 last completed repair: v0.1.99.1 — Docker build-context freshness repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
-active candidate version: v0.1.100.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.100.1.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.100.3.zip
+active candidate version: v0.1.100.3
+next normal target: chatgpt_claudecode_workflow-2_v0.1.100.zip
 next normal slice: v0.1.100 — First controlled read-only validation command execution
 next planned slice after acceptance: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 ```
@@ -1609,3 +1609,17 @@ Planned after v0.1.101. This slice produces a bounded correction plan from diagn
 ## v0.1.103 — First controlled file mutation in sandboxed fixture only
 
 Planned after v0.1.102. This slice performs the first file mutation only inside an explicit sandbox fixture with before/after evidence.
+
+## Repair definition — v0.1.100.3
+
+```text
+Release: v0.1.100.3
+Type: repair candidate
+Base candidate: chatgpt_claudecode_workflow-2_v0.1.100.2.zip
+Accepted/current baseline before repair: chatgpt_claudecode_workflow-2_v0.1.99.1.zip
+Reason: v0.1.100.2 failed release-control ZIP install verification because generated debug_artifacts/ entries were present in the release archive.
+Scope: remove generated debug_artifacts/ from the ZIP payload and strengthen Artifact Guardian policy/tests to reject debug_artifacts/ before publication.
+Preserved scope: v0.1.100 read-only command execution, v0.1.100.1 text-source stale-inflight recovery diagnostics, and v0.1.100.2 browser scheduler timeout repair.
+Out of scope: v0.1.101 diagnosis behavior, correction planning, file mutation, deployment, Kubernetes mutation, Project Source behavior change, artifact adoption behavior change, and ChatGPT Project deletion.
+```
+
