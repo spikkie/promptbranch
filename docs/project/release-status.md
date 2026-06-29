@@ -322,9 +322,3 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 v0.1.104.1 repair candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.1.zip`.
 Next planned slice after acceptance remains: v0.1.105 — Sandbox correction promotion readiness check.
-
-| v0.1.104.7 | repair | Roll back to v0.1.104.1 source line and discard v0.1.104.2-v0.1.104.6 Project Source/browser recovery experiments | candidate | focused version/control-surface, scheduler/source-lifecycle, sandbox verification, Artifact Guardian, ZIP hygiene | DOD-144 focused; no normal scope advancement; v0.1.105 deferred | pending adoption evidence |
-
-v0.1.104.7 repair candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.7.zip`.
-Repair base source line: `chatgpt_claudecode_workflow-2_v0.1.104.1.zip`.
-Discarded candidates for this line: `v0.1.104.2`, `v0.1.104.3`, `v0.1.104.4`, `v0.1.104.5`, `v0.1.104.6`.

@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.7.zip
-active candidate version: v0.1.104.7
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+active candidate version: v0.1.104.1
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
