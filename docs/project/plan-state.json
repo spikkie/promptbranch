@@ -2,27 +2,28 @@
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
   "repo_id": "chatgpt_claudecode_workflow-2",
-  "accepted_current_version": "v0.1.102",
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
+  "accepted_current_version": "v0.1.103",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.zip",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
   "architecture_goal": "controlled problem-solving loop",
-  "last_completed_normal_slice_version": "v0.1.102",
-  "last_completed_normal_slice": "Correction-plan generation without file mutation",
+  "last_completed_normal_slice_version": "v0.1.103",
+  "last_completed_normal_slice": "First controlled file mutation in sandboxed fixture only",
   "last_completed_repair_version": "v0.1.100.3",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "active_candidate_version": "v0.1.103",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.zip",
-  "active_slice": "First controlled file mutation in sandboxed fixture only",
-  "next_normal_version": "v0.1.103",
-  "next_normal_slice": "First controlled file mutation in sandboxed fixture only",
-  "next_planned_version_after_acceptance": "v0.1.104",
-  "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
-  "scope_advance_allowed": true,
+  "active_candidate_version": "v0.1.104.7",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.7.zip",
+  "active_slice": "Sandbox mutation verification and rollback evidence gate",
+  "next_normal_version": "v0.1.104",
+  "next_normal_slice": "Sandbox mutation verification and rollback evidence gate",
+  "next_planned_version_after_acceptance": "v0.1.105",
+  "next_planned_slice_after_acceptance": "Sandbox correction promotion readiness check",
+  "scope_advance_allowed": false,
   "repair_must_not_advance_scope": true,
-  "release_mode": "normal",
+  "release_mode": "repair",
   "out_of_scope": [
-    "sandbox mutation verification and rollback gate before v0.1.104",
-    "mutation of repository fixture files",
+    "sandbox correction promotion readiness before v0.1.105",
+    "promotion of sandbox changes into repository fixtures",
+    "repository-wide correction workflows",
     "deployment",
     "Kubernetes mutation",
     "Project Source behavior change",
@@ -54,23 +55,16 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.103",
-      "slice": "First controlled file mutation in sandboxed fixture only",
-      "status": "active",
-      "release_mode": "normal",
-      "scope": "perform the first mutation only inside an explicit temporary sandbox fixture with before/after evidence while repository fixtures remain unchanged"
-    },
-    {
       "version": "v0.1.104",
       "slice": "Sandbox mutation verification and rollback evidence gate",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "release_mode": "normal",
-      "scope": "verify sandbox mutation result evidence and define rollback/stop gates before broader correction workflows"
+      "scope": "verify sandbox mutation result evidence, confirm repository fixture immutability, and require rollback evidence via temporary sandbox workspace deletion"
     },
     {
       "version": "v0.1.105",
       "slice": "Sandbox correction promotion readiness check",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "release_mode": "normal",
       "scope": "decide whether sandbox-only correction evidence is ready for broader controlled correction workflows without deployment"
     },
@@ -87,6 +81,13 @@
       "status": "planned",
       "release_mode": "normal",
       "scope": "define the future execution envelope for controlled corrections without enabling repository-wide mutation"
+    },
+    {
+      "version": "v0.1.108",
+      "slice": "Repository mutation guard design for future correction execution",
+      "status": "planned",
+      "release_mode": "normal",
+      "scope": "design repository mutation guards and evidence requirements before any non-sandbox file change is allowed"
     }
   ],
   "replan_rules": [
@@ -106,5 +107,14 @@
     "docs/project/plan-state.json",
     "docs/project/architecture.md",
     "docs/project/slice-horizon.md"
+  ],
+  "active_repair": "Rollback to v0.1.104.1 source line after v0.1.104.2-v0.1.104.6 source-add/browser recovery experiments",
+  "repair_base_candidate": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
+  "discarded_repair_candidates": [
+    "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+    "chatgpt_claudecode_workflow-2_v0.1.104.3.zip",
+    "chatgpt_claudecode_workflow-2_v0.1.104.4.zip",
+    "chatgpt_claudecode_workflow-2_v0.1.104.5.zip",
+    "chatgpt_claudecode_workflow-2_v0.1.104.6.zip"
   ]
 }

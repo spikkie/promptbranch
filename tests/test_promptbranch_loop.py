@@ -618,3 +618,102 @@ def test_loop_sandbox_file_mutation_blocks_non_sandbox_path(tmp_path: Path):
     assert "blocked_non_sandbox_fixture_path" in mutation["blocked_reasons"]
     assert mutation["summary"]["sandbox_mutation_performed"] is False
     assert readme.read_text(encoding="utf-8") == "do not mutate\n"
+
+def test_loop_sandbox_mutation_verification_passes_with_rollback_evidence(tmp_path: Path):
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_execution_payload,
+        build_loop_sandbox_file_mutation_payload,
+        build_loop_sandbox_mutation_verification_payload,
+    )
+
+    fixture = tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text('{"status": "broken",\n', encoding="utf-8")
+    before_text = fixture.read_text(encoding="utf-8")
+    target = tmp_path / "target.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "sandbox-verification-test",
+                "goal": "Verify sandbox mutation evidence and rollback cleanup.",
+                "allowed_paths": ["examples/loop-sandbox/invalid-json-fixture.json"],
+                "validation": {"commands": ["python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"]},
+                "sandbox_mutation": {
+                    "operation": "replace_contents",
+                    "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
+                    "expected_before_sha256": __import__("hashlib").sha256(before_text.encode("utf-8")).hexdigest(),
+                    "replacement_contents": '{"status":"fixed_in_sandbox_only"}\n',
+                },
+                "human_required_when": ["sandbox_rollback_not_verified"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    read_only = build_loop_read_only_execution_payload(plan, repo_root=tmp_path)
+    gate = build_loop_read_only_evidence_gate(read_only["evidence_report"])
+    execution = build_loop_read_only_command_execution_payload(read_only, gate, repo_root=tmp_path)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+    mutation = build_loop_sandbox_file_mutation_payload(plan, correction, repo_root=tmp_path)
+
+    verification = build_loop_sandbox_mutation_verification_payload(mutation)
+
+    assert verification["ok"] is True
+    assert verification["schema"] == "promptbranch.loop.sandbox_mutation_verification"
+    assert verification["status"] == "sandbox_mutation_verification_passed"
+    assert verification["summary"]["sandbox_mutation_verified"] is True
+    assert verification["summary"]["rollback_verified"] is True
+    assert verification["summary"]["files_mutated"] is False
+    assert verification["safety"]["verification_only"] is True
+    assert verification["safety"]["rollback_gate_verified"] is True
+    assert verification["rollback_evidence"]["rollback_strategy"] == "delete_temporary_sandbox_workspace"
+    assert verification["evidence_summary"]["repository_fixture_unchanged"] is True
+    assert verification["evidence_summary"]["sandbox_fixture_changed"] is True
+    assert fixture.read_text(encoding="utf-8") == before_text
+
+
+def test_loop_sandbox_mutation_verification_blocks_missing_rollback_cleanup():
+    from promptbranch_loop import build_loop_sandbox_mutation_verification_payload
+
+    mutation = {
+        "ok": True,
+        "schema": "promptbranch.loop.sandbox_file_mutation",
+        "status": "sandbox_file_mutation_applied",
+        "target_id": "rollback-missing-test",
+        "summary": {
+            "sandbox_mutation_performed": True,
+            "repository_file_mutated": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "deployment_performed": False,
+        },
+        "safety": {
+            "sandbox_file_mutation_performed": True,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+        },
+        "evidence": {
+            "repository_fixture_before": {"sha256": "repo"},
+            "repository_fixture_after": {"sha256": "repo"},
+            "sandbox_fixture_before": {"sha256": "before"},
+            "sandbox_fixture_after": {"sha256": "after"},
+            "sandbox_workspace_deleted_after_evidence": False,
+        },
+    }
+
+    verification = build_loop_sandbox_mutation_verification_payload(mutation)
+
+    assert verification["ok"] is False
+    assert verification["status"] == "sandbox_mutation_verification_blocked"
+    assert "temporary_sandbox_workspace_deleted" in verification["blocked_reasons"]
+    assert verification["summary"]["rollback_verified"] is False
+    assert verification["side_effects_performed"] is False
+
