@@ -451,3 +451,13 @@ Last release: v0.1.102
 | Evidence | Version/control-surface tests, scheduler source-lifecycle focused tests, sandbox verification CLI smoke, Artifact Guardian, ZIP hygiene |
 | Last release | v0.1.104.7 |
 | Scope | Repair-only rollback candidate; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; drops v0.1.104.2-v0.1.104.6 experiments; no normal scope advancement |
+
+
+## DOD-145 — v0.1.104.8 auth readiness and browser challenge debug repair
+
+| Field | Value |
+|---|---|
+| Status | focused_candidate |
+| Evidence | Auth-readiness snapshot tests, Project Sources preflight challenge classification tests, CLI structured error propagation, Artifact Guardian, ZIP hygiene |
+| Last release | v0.1.104.8 |
+| Scope | Repair-only diagnostics; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; no normal scope advancement |

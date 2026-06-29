@@ -714,3 +714,8 @@ No user data, Project Source, artifact-current, or ChatGPT Project migration is 
 No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project migration is performed. This repair intentionally returns to the `v0.1.104.1` source line, preserving only the project-remove frozen scheduler timeout repair on top of the `v0.1.104` sandbox mutation verification target. The `v0.1.104.2` through `v0.1.104.6` Project ensure, isolated release-test, Project Sources direct-route, route-hydration, and challenge/interstitial experiments are not carried forward.
 
 The next planned normal slice after `v0.1.104` acceptance remains `v0.1.105` — Sandbox correction promotion readiness check.
+
+
+## v0.1.104.8 repair candidate status
+
+`v0.1.104.8` is a repair-only candidate built from `v0.1.104.7`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate and adds auth-readiness/browser-challenge diagnostics before Project Source mutation. It fails closed with `auth_challenge_blocking_before_project_sources` when ChatGPT/Cloudflare/auth state blocks the Sources UI. No normal scope advances and `v0.1.105` remains deferred.

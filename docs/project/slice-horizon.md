@@ -15,3 +15,8 @@
 ## Repair horizon rule
 
 Repair releases must keep the active normal slice fixed, set `scope_advance_allowed=false`, and must not move the rolling horizon forward.
+
+
+## v0.1.104.8 repair candidate status
+
+`v0.1.104.8` is a repair-only candidate built from `v0.1.104.7`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate and adds auth-readiness/browser-challenge diagnostics before Project Source mutation. It fails closed with `auth_challenge_blocking_before_project_sources` when ChatGPT/Cloudflare/auth state blocks the Sources UI. No normal scope advances and `v0.1.105` remains deferred.

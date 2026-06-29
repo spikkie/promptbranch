@@ -328,3 +328,11 @@ Next planned slice after acceptance remains: v0.1.105 — Sandbox correction pro
 v0.1.104.7 repair candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.7.zip`.
 Repair base source line: `chatgpt_claudecode_workflow-2_v0.1.104.1.zip`.
 Discarded candidates for this line: `v0.1.104.2`, `v0.1.104.3`, `v0.1.104.4`, `v0.1.104.5`, `v0.1.104.6`.
+
+
+## v0.1.104.8 repair candidate status
+
+`v0.1.104.8` is a repair-only candidate built from `v0.1.104.7`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate and adds auth-readiness/browser-challenge diagnostics before Project Source mutation. It fails closed with `auth_challenge_blocking_before_project_sources` when ChatGPT/Cloudflare/auth state blocks the Sources UI. No normal scope advances and `v0.1.105` remains deferred.
+
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.8.zip`.

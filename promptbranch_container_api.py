@@ -390,7 +390,8 @@ def _raise_http_error(exc: Exception) -> None:
     if isinstance(exc, ManualLoginRequiredError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if isinstance(exc, BotChallengeError):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+        detail = exc.to_payload() if hasattr(exc, "to_payload") else str(exc)
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail) from exc
     if isinstance(exc, UnsupportedOperationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, ResponseTimeoutError):

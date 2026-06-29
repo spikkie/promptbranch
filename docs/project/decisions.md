@@ -461,3 +461,14 @@ Context: Repair candidates `v0.1.104.2` through `v0.1.104.6` attempted Project e
 Decision: Build v0.1.104.7 from the `v0.1.104.1` source line, preserving the `v0.1.104` sandbox mutation verification target and the `v0.1.104.1` project-remove frozen scheduler timeout repair. Do not carry forward the `v0.1.104.2`-`v0.1.104.6` Project Source/browser recovery experiments or isolated release-test mode.
 
 Consequence: The release line returns to one full release-control adoption gate. `v0.1.105` remains deferred until `v0.1.104` is accepted/current through a repair candidate.
+
+
+## ADR-PROJ-114 — v0.1.104.8 classifies auth readiness before Project Sources
+
+Status: accepted for v0.1.104.8 repair candidate.
+
+Context: Live runs showed Project Source add timing out because the automation browser can be blocked by ChatGPT/Cloudflare/auth readiness before the Project Sources surface renders. Repeated Project Sources route repairs obscured the first failing layer.
+
+Decision: Add an explicit `promptbranch.auth_readiness_snapshot` and fail closed with `auth_challenge_blocking_before_project_sources` when URL/title/visible text indicates Cloudflare, Turnstile, `/api/auth/error`, or human-verification state before Project Sources can be opened. Do not bypass challenges. Do not claim Project Source mutation.
+
+Consequence: Release-control diagnostics distinguish auth/challenge readiness from Project Sources selector failures, stale service failures, and profile lock failures. `v0.1.105` remains deferred.

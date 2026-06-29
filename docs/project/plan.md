@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.7.zip
-active candidate version: v0.1.104.7
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.8.zip
+active candidate version: v0.1.104.8
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -1719,3 +1719,11 @@ Out of scope:
 `v0.1.104.1` repairs the failed release-control validation for `v0.1.104` without advancing the normal slice. The repair replaces the unbounded scheduler-status polling in `test_project_remove_is_frozen_before_profile_scheduler` with a bounded explicit start signal and task cleanup.
 
 The active normal slice remains `v0.1.104 — Sandbox mutation verification and rollback evidence gate`. `v0.1.105 — Sandbox correction promotion readiness check` remains planned only after acceptance.
+
+
+## v0.1.104.8 repair candidate status
+
+`v0.1.104.8` is a repair-only candidate built from `v0.1.104.8`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate and adds auth-readiness/browser-challenge diagnostics before Project Source mutation. It fails closed with `auth_challenge_blocking_before_project_sources` when ChatGPT/Cloudflare/auth state blocks the Sources UI. No normal scope advances and `v0.1.105` remains deferred.
+
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.8.zip`.

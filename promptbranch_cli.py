@@ -5403,12 +5403,25 @@ def _project_source_add_exception_payload(
     overwrite_existing: bool,
 ) -> dict[str, Any]:
     error_text = str(exc)
+    structured_detail: dict[str, Any] = {}
+    detail_start = error_text.find(": {")
+    if detail_start >= 0:
+        try:
+            parsed = json.loads(error_text[detail_start + 2 :])
+            if isinstance(parsed, dict):
+                structured_detail = parsed
+        except Exception:
+            structured_detail = {}
     status = "source_add_failed"
-    if "remove/delete action" in error_text:
+    if structured_detail.get("status"):
+        status = str(structured_detail.get("status"))
+    elif "remove/delete action" in error_text:
         status = "overwrite_remove_failed"
     elif "already exists" in error_text.lower():
         status = "source_already_exists"
-    return {
+    elif "auth_challenge_blocking_before_project_sources" in error_text:
+        status = "auth_challenge_blocking_before_project_sources"
+    payload = {
         "ok": False,
         "action": "source_add",
         "status": status,
@@ -5418,9 +5431,16 @@ def _project_source_add_exception_payload(
         "overwrite_existing": overwrite_existing,
         "project_source_mutated": False,
         "persistence_verified": False,
-        "operator_review_required": status == "overwrite_remove_failed",
+        "operator_review_required": bool(structured_detail.get("operator_review_required")) or status == "overwrite_remove_failed",
+        "manual_action_required": bool(structured_detail.get("manual_action_required")),
+        "release_blocking": bool(structured_detail.get("release_blocking", True)),
         "error": error_text,
     }
+    if structured_detail:
+        payload["service_error_detail"] = structured_detail
+        if isinstance(structured_detail.get("auth_readiness"), dict):
+            payload["auth_readiness"] = structured_detail.get("auth_readiness")
+    return payload
 
 
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
