@@ -90,24 +90,6 @@ class RateLimitDetectedError(RuntimeError):
 class BotChallengeError(AuthenticationError):
     """Raised when ChatGPT/Cloudflare challenge blocks the browser before app load."""
 
-    def __init__(self, message: str, *, payload: dict | None = None) -> None:
-        super().__init__(message)
-        self.payload = payload or {}
-
-    def to_payload(self) -> dict:
-        payload = dict(self.payload)
-        payload.setdefault("ok", False)
-        payload.setdefault("status", "auth_challenge_blocking_before_project_sources")
-        payload.setdefault("error", str(self))
-        payload.setdefault("error_type", type(self).__name__)
-        payload.setdefault("timeout_layer", "auth_readiness")
-        payload.setdefault("manual_action_required", True)
-        payload.setdefault("operator_review_required", True)
-        payload.setdefault("project_source_mutated", False)
-        payload.setdefault("persistence_verified", False)
-        payload.setdefault("release_blocking", True)
-        return payload
-
 
 class UnsupportedOperationError(RuntimeError):
     """Raised when the current ChatGPT UI does not expose the requested action."""

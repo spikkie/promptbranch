@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.zip
-accepted/current version: v0.1.103
-last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
+accepted/current version: v0.1.101
+last completed normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.8.zip
-active candidate version: v0.1.104.8
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
-next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
+active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
+active candidate version: v0.1.102
+next normal target: chatgpt_claudecode_workflow-2_v0.1.102.zip
+next normal slice: v0.1.102 — Correction-plan generation without file mutation
+next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
 ```
 
 ## Plan summary
@@ -25,36 +25,13 @@ Keep release slices narrow and KISS-first. v0.1.98 is accepted/current and made 
 The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
 
 ```text
+v0.1.102 — Correction-plan generation without file mutation
+v0.1.103 — First controlled file mutation in sandboxed fixture only
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
-v0.1.107 — Controlled correction execution envelope design
-v0.1.108 — Repository mutation guard design for future correction execution
 ```
 
-
-
-## Active normal slice — v0.1.104 Sandbox mutation verification and rollback evidence gate
-
-`v0.1.104` verifies the sandbox-only mutation evidence emitted by `v0.1.103`. It confirms that the temporary sandbox fixture changed, the repository fixture did not change, and rollback/cleanup evidence exists through deletion of the temporary sandbox workspace.
-
-Acceptance scope:
-
-- Add a machine-readable `promptbranch.loop.sandbox_mutation_verification` schema.
-- Add `pb loop run --verify-sandbox-mutation` after `--execute-sandbox-mutation`.
-- Gate success on repository before/after hashes matching, sandbox before/after hashes differing, and temporary workspace deletion being recorded.
-- Emit rollback evidence without promoting sandbox changes into repository files.
-- Preserve no Project Source mutation, no artifact adoption, no deployment, no Kubernetes mutation, and no ChatGPT Project deletion.
-
-Out of scope:
-
-- Promoting sandbox changes into repository fixtures.
-- Repository-wide correction workflows.
-- Automatic retries after mutation.
-- Patch/diff artifact generation.
-- Deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion.
-
-Planned after v0.1.104 acceptance: v0.1.105 — Sandbox correction promotion readiness check.
 
 ## Active normal slice — v0.1.102 Correction-plan generation without file mutation
 
@@ -1713,17 +1690,3 @@ Out of scope:
 - deployment or Kubernetes mutation
 - Project Source mutation/adoption behavior changes
 - ChatGPT Project deletion
-
-## Repair slice — v0.1.104.1 project-remove frozen scheduler timeout repair
-
-`v0.1.104.1` repairs the failed release-control validation for `v0.1.104` without advancing the normal slice. The repair replaces the unbounded scheduler-status polling in `test_project_remove_is_frozen_before_profile_scheduler` with a bounded explicit start signal and task cleanup.
-
-The active normal slice remains `v0.1.104 — Sandbox mutation verification and rollback evidence gate`. `v0.1.105 — Sandbox correction promotion readiness check` remains planned only after acceptance.
-
-
-## v0.1.104.8 repair candidate status
-
-`v0.1.104.8` is a repair-only candidate built from `v0.1.104.8`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate and adds auth-readiness/browser-challenge diagnostics before Project Source mutation. It fails closed with `auth_challenge_blocking_before_project_sources` when ChatGPT/Cloudflare/auth state blocks the Sources UI. No normal scope advances and `v0.1.105` remains deferred.
-
-
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.8.zip`.

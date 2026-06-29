@@ -600,18 +600,6 @@ CLOUDFLARE_CHALLENGE_HINTS = [
     'Checking your browser',
     'cf-challenge',
 ]
-AUTH_CHALLENGE_TEXT_HINTS = [
-    'verify you are human',
-    'enable javascript and cookies to continue',
-    'verification successful',
-    'waiting for chatgpt.com to respond',
-    'cloudflare',
-    'turnstile',
-    'private access token',
-    'api/auth/error',
-    'challenge-error-text',
-    'window._cf_chl_opt',
-]
 
 
 class ChatGPTBrowserClient:
@@ -1950,10 +1938,8 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
     ) -> dict[str, Any]:
         logged_in = await self.ensure_logged_in(page, context)
-        auth_readiness = await self._auth_readiness_snapshot(page, label="login-check-final")
         result = {
             "logged_in": logged_in,
-            "auth_readiness": auth_readiness,
             "profile_dir": self.config.profile_dir,
             "headless": self.config.headless,
             "url": self.config.project_url,
@@ -6338,46 +6324,6 @@ class ChatGPTBrowserClient:
             self._log("auth", "visible text preview extraction failed", error=str(exc))
             return ""
         return re.sub(r"\s+", " ", str(text or "")).strip()[:limit]
-
-    async def _auth_readiness_snapshot(self, page: Any, *, label: str) -> dict[str, Any]:
-        current_url = await self._safe_page_url(page)
-        title = await self._safe_page_title(page)
-        text_preview = await self._visible_text_preview(page, limit=900)
-        normalized = " ".join(str(value or "").lower() for value in (current_url, title, text_preview))
-        matched_hints = [hint for hint in AUTH_CHALLENGE_TEXT_HINTS if hint.lower() in normalized]
-        api_auth_error_detected = "/api/auth/error" in (current_url or "").lower() or "api/auth/error" in normalized
-        challenge_detected = bool(matched_hints or self._looks_like_challenge(current_url, title))
-        snapshot = {
-            "schema": "promptbranch.auth_readiness_snapshot",
-            "schema_version": "1.0",
-            "label": label,
-            "current_url": current_url,
-            "title": title,
-            "text_preview": text_preview,
-            "challenge_detected": challenge_detected,
-            "matched_challenge_hints": matched_hints,
-            "api_auth_error_detected": api_auth_error_detected,
-            "cloudflare_turnstile_detected": any(
-                hint in normalized for hint in ("turnstile", "private access token", "cf-challenge")
-            ),
-            "driver": self.driver_name,
-            "profile_dir": self.config.profile_dir,
-            "headless": self.config.headless,
-            "headed": self.config.is_headed,
-            "fedcm_enabled": not self.config.disable_fedcm,
-            "disable_fedcm": self.config.disable_fedcm,
-            "browser_channel": self.config.browser_channel or "default",
-            "debug_artifact_dir": self.config.debug_artifact_dir,
-        }
-        self._log("auth-readiness", "captured auth readiness snapshot", **snapshot)
-        return snapshot
-
-    def _auth_readiness_is_blocked(self, snapshot: dict[str, Any]) -> bool:
-        return bool(
-            snapshot.get("challenge_detected")
-            or snapshot.get("api_auth_error_detected")
-            or snapshot.get("cloudflare_turnstile_detected")
-        )
 
     async def _is_chatgpt_auth_login_page(self, page: Any) -> bool:
         current_url = await self._safe_page_url(page)
@@ -15688,24 +15634,7 @@ class ChatGPTBrowserClient:
             total_timeout_ms=15_000,
         )
         if tab is None:
-            snapshot = await self._auth_readiness_snapshot(page, label="project-sources-tab-timeout")
-            if self._auth_readiness_is_blocked(snapshot):
-                raise BotChallengeError(
-                    "Project Sources blocked by ChatGPT auth/challenge readiness before source add.",
-                    payload={
-                        "status": "auth_challenge_blocking_before_project_sources",
-                        "auth_readiness": snapshot,
-                        "project_source_mutated": False,
-                        "persistence_verified": False,
-                        "operator_review_required": True,
-                        "manual_action_required": True,
-                        "release_blocking": True,
-                    },
-                )
-            raise ResponseTimeoutError(
-                "Project Sources tab did not become visible; "
-                f"auth_readiness={json.dumps(snapshot, sort_keys=True, ensure_ascii=False)}"
-            )
+            raise ResponseTimeoutError("Project Sources tab did not become visible")
         self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
         await tab.click(timeout=5_000)
         self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
@@ -21677,10 +21606,9 @@ class ChatGPTBrowserClient:
         }
 
     async def _wait_for_challenge_resolution(self, page: Any, *, label: str) -> None:
-        snapshot = await self._auth_readiness_snapshot(page, label=f"{label}-challenge-initial")
-        current_url = str(snapshot.get("current_url") or "")
-        current_title = str(snapshot.get("title") or "")
-        if not self._auth_readiness_is_blocked(snapshot) and not self._looks_like_challenge(current_url, current_title):
+        current_url = await self._safe_page_url(page)
+        current_title = await self._safe_page_title(page)
+        if not self._looks_like_challenge(current_url, current_title):
             return
 
         timeout_ms = self.config.challenge_wait_timeout_ms
@@ -21697,12 +21625,11 @@ class ChatGPTBrowserClient:
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
             await page.wait_for_timeout(1000)
-            snapshot = await self._auth_readiness_snapshot(page, label=f"{label}-challenge-attempt-{attempt}")
-            current_url = str(snapshot.get("current_url") or "")
-            current_title = str(snapshot.get("title") or "")
+            current_url = await self._safe_page_url(page)
+            current_title = await self._safe_page_title(page)
             has_input = await self._has_chat_input(page)
             login_visible = await self._find_visible_locator(page, LOGIN_BUTTON_SELECTORS, label="challenge-login-indicator") is not None
-            if has_input or login_visible or not self._auth_readiness_is_blocked(snapshot):
+            if has_input or login_visible or not self._looks_like_challenge(current_url, current_title):
                 self._log(
                     "challenge",
                     "challenge settle loop finished",

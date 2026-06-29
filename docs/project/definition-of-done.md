@@ -431,33 +431,3 @@ Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranc
 Last release: v0.1.102
 
 | DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103 |
-
-| DOD-142 | Sandbox mutation verification and rollback evidence gate validates temporary sandbox changes without repository promotion | focused_candidate | `pb loop run --verify-sandbox-mutation`, `promptbranch_loop.py`, `promptbranch_cli.py`, focused loop/CLI tests, `docs/release-v0.1.104.md` | v0.1.104 |
-
-## DOD-143 — v0.1.104.1 project-remove frozen scheduler timeout repair
-
-| Field | Value |
-|---|---|
-| Status | focused_candidate |
-| Evidence | `tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler`, browser scheduler source-lifecycle nodeid set, `docs/repair-v0.1.104.1.md` |
-| Last release | v0.1.104.1 |
-| Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
-
-## DOD-144 — v0.1.104.7 rollback to v0.1.104.1 source line
-
-| Field | Value |
-|---|---|
-| Status | focused_candidate |
-| Evidence | Version/control-surface tests, scheduler source-lifecycle focused tests, sandbox verification CLI smoke, Artifact Guardian, ZIP hygiene |
-| Last release | v0.1.104.7 |
-| Scope | Repair-only rollback candidate; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; drops v0.1.104.2-v0.1.104.6 experiments; no normal scope advancement |
-
-
-## DOD-145 — v0.1.104.8 auth readiness and browser challenge debug repair
-
-| Field | Value |
-|---|---|
-| Status | focused_candidate |
-| Evidence | Auth-readiness snapshot tests, Project Sources preflight challenge classification tests, CLI structured error propagation, Artifact Guardian, ZIP hygiene |
-| Last release | v0.1.104.8 |
-| Scope | Repair-only diagnostics; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; no normal scope advancement |
