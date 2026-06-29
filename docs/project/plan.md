@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-active candidate version: v0.1.104.3
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+active candidate version: v0.1.104.4
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -1733,4 +1733,20 @@ Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
 
 Repair-only scope: preserve `v0.1.104` sandbox mutation verification and rollback evidence, preserve `v0.1.104.1` scheduler repair, preserve `v0.1.104.2` Project ensure timeout handling, and remove the isolated release-test mode introduced in the failed `v0.1.104.2` candidate. Full release-control remains the only accepted/current gate. `v0.1.105` remains deferred.
 
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.3.zip`.
+Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.4.zip`.
+
+
+## v0.1.104.4 repair plan
+
+Repair: Project Sources direct-route visibility for pre-validation release ZIP source add.
+
+Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.4.zip`.
+
+Scope is repair-only. Preserve the `v0.1.104` sandbox mutation verification and rollback evidence gate and all prior repairs. Do not advance to `v0.1.105`.
+
+Validation focus:
+
+- open source add/remove/capability flows directly on `?tab=sources`;
+- accept a verified Project Sources surface without requiring the tab control itself;
+- fail closed if neither tab nor surface evidence is present;
+- keep full release-control as the only acceptance gate.

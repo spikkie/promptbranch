@@ -5,8 +5,8 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.zip
 accepted/current version: v0.1.103
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-active candidate version: v0.1.104.3
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+active candidate version: v0.1.104.4
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
@@ -336,4 +336,6 @@ Validation strategy: focused local repair tests plus isolated release-test mode 
 Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
 
 
-| v0.1.104.3 | repair | Remove isolated release-test mode while preserving v0.1.104 repairs | candidate `chatgpt_claudecode_workflow-2_v0.1.104.3.zip` | focused shell/Project ensure/control/version/artifact validation pending full release-control/adoption | DOD-145 focused; no normal scope advancement | pending adoption evidence |
+| v0.1.104.3 | repair | Remove isolated release-test mode while preserving v0.1.104 repairs | candidate `chatgpt_claudecode_workflow-2_v0.1.104.4.zip` | focused shell/Project ensure/control/version/artifact validation pending full release-control/adoption | DOD-145 focused; no normal scope advancement | pending adoption evidence |
+
+| v0.1.104.4 | repair | Project Sources direct-route visibility/source-add repair | candidate `chatgpt_claudecode_workflow-2_v0.1.104.4.zip` | focused Project Sources route/control/version/artifact validation pending full release-control/adoption | DOD-146 focused; no normal scope advancement | pending adoption evidence |

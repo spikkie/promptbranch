@@ -25,3 +25,8 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 ## v0.1.104.3 repair horizon note
 
 `v0.1.104.3` does not advance the rolling horizon. It removes the failed isolated release-test mode and keeps `v0.1.105 — Sandbox correction promotion readiness check` deferred until `v0.1.104` is accepted through the latest repair.
+
+
+## v0.1.104.4 repair horizon note
+
+`v0.1.104.4` does not advance the rolling horizon. It repairs Project Sources direct-route visibility for source add and keeps `v0.1.105 — Sandbox correction promotion readiness check` deferred until `v0.1.104` is accepted through the latest repair.

@@ -3553,3 +3553,156 @@ def test_capacity_prune_stops_without_loose_retry_when_exact_remove_reports_iden
     assert result["capacity_prune_retry_suppressed"] is True
     assert result["capacity_prune_remove_drift_detected"] is True
     assert result["capacity_prune_identity_verified"] is False
+
+
+def test_open_project_sources_tab_accepts_direct_sources_route_without_visible_tab(browser_client: ChatGPTBrowserClient) -> None:
+    page = object()
+    waits: list[str] = []
+    gotos: list[str] = []
+
+    async def fake_safe_page_url(_page) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_snapshot(_page):
+        return []
+
+    async def fake_empty(_page) -> bool:
+        return False
+
+    async def fake_wait(_page, _selectors, *, label: str, total_timeout_ms: int):
+        waits.append(label)
+        if label == "project-sources-surface-add-button-probe":
+            return object()
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        gotos.append(_args[1] if len(_args) > 1 else _kwargs.get("url", ""))
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+
+    asyncio.run(browser_client._open_project_sources_tab(page))
+
+    assert waits == ["project-sources-surface-add-button-probe"]
+    assert gotos == []
+
+
+def test_open_project_sources_tab_retries_direct_sources_route_when_tab_missing(browser_client: ChatGPTBrowserClient) -> None:
+    class Page:
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    page = Page()
+    state = {"url": "https://chatgpt.com/g/g-p-123/project"}
+    waits: list[str] = []
+    gotos: list[tuple[str, bool]] = []
+
+    async def fake_safe_page_url(_page) -> str:
+        return state["url"]
+
+    async def fake_snapshot(_page):
+        return []
+
+    async def fake_empty(_page) -> bool:
+        return False
+
+    async def fake_wait(_page, _selectors, *, label: str, total_timeout_ms: int):
+        waits.append(label)
+        if label.startswith("project-sources-tab"):
+            return None
+        if label == "project-sources-surface-add-button-probe" and "tab=sources" in state["url"]:
+            return object()
+        return None
+
+    async def fake_goto(_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        state["url"] = url
+        gotos.append((url, respect_history_rate_limit_cooldown))
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+
+    asyncio.run(browser_client._open_project_sources_tab(page))
+
+    assert gotos == [("https://chatgpt.com/g/g-p-123/project?tab=sources", False)]
+    assert "project-sources-tab" in waits
+    assert "project-sources-surface-add-button-probe" in waits
+
+
+def test_project_source_add_operation_opens_direct_sources_route_before_tab_probe(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    release_zip = tmp_path / "chatgpt_claudecode_workflow-2_v0.1.104.4.zip"
+    release_zip.write_text("fake zip fixture", encoding="utf-8")
+    gotos: list[str] = []
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(_page, url: str, *, label: str, **_kwargs) -> None:
+        assert label == "project-source-add-home"
+        gotos.append(url)
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_add_file(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        return {"identity": release_zip.name, "title": release_zip.name, "text": release_zip.name}
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_wait_for_save_quiet(*_args, **_kwargs):
+        return {"quiet": True}
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        return {"identity": release_zip.name, "title": release_zip.name, "text": release_zip.name}
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.config.project_url = "https://chatgpt.com/g/g-p-123/project"
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(release_zip),
+            display_name=None,
+            keep_open=False,
+        )
+    )
+
+    assert gotos == ["https://chatgpt.com/g/g-p-123/project?tab=sources"]
+    assert result["ok"] is True
