@@ -451,13 +451,3 @@ Context: `v0.1.104` full release-control failed because the `test_project_remove
 Decision: Replace unbounded `browser_status()` polling in that fixture with an explicit `asyncio.Event` start signal and bounded waits. Preserve the no-ChatGPT-Project-delete invariant: project removal remains blocked before browser/profile scheduler actuation and reports `project_delete_disabled`.
 
 Consequence: The release-validation group should fail fast with deterministic local diagnostics if scheduler state does not start as expected. No normal scope advances and v0.1.105 remains deferred.
-
-## ADR-PROJ-113 — v0.1.104.7 returns to the v0.1.104.1 source line
-
-Status: accepted for v0.1.104.7 repair candidate.
-
-Context: Repair candidates `v0.1.104.2` through `v0.1.104.6` attempted Project ensure, isolated validation, Project Sources direct-route, route-hydration, and challenge/interstitial diagnostics. Operator feedback identified that this branch added complexity without resolving the live Project Sources blockage.
-
-Decision: Build v0.1.104.7 from the `v0.1.104.1` source line, preserving the `v0.1.104` sandbox mutation verification target and the `v0.1.104.1` project-remove frozen scheduler timeout repair. Do not carry forward the `v0.1.104.2`-`v0.1.104.6` Project Source/browser recovery experiments or isolated release-test mode.
-
-Consequence: The release line returns to one full release-control adoption gate. `v0.1.105` remains deferred until `v0.1.104` is accepted/current through a repair candidate.

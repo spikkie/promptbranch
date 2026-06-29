@@ -442,12 +442,3 @@ Last release: v0.1.102
 | Evidence | `tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler`, browser scheduler source-lifecycle nodeid set, `docs/repair-v0.1.104.1.md` |
 | Last release | v0.1.104.1 |
 | Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
-
-## DOD-144 — v0.1.104.7 rollback to v0.1.104.1 source line
-
-| Field | Value |
-|---|---|
-| Status | focused_candidate |
-| Evidence | Version/control-surface tests, scheduler source-lifecycle focused tests, sandbox verification CLI smoke, Artifact Guardian, ZIP hygiene |
-| Last release | v0.1.104.7 |
-| Scope | Repair-only rollback candidate; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; drops v0.1.104.2-v0.1.104.6 experiments; no normal scope advancement |
