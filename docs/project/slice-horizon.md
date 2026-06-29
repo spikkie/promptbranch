@@ -15,3 +15,8 @@
 ## Repair horizon rule
 
 Repair releases must keep the active normal slice fixed, set `scope_advance_allowed=false`, and must not move the rolling horizon forward.
+
+
+## v0.1.104.2 repair horizon note
+
+`v0.1.104.2` does not advance the rolling horizon. `v0.1.105 — Sandbox correction promotion readiness check` remains deferred until `v0.1.104` is accepted through the latest repair.

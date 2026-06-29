@@ -708,3 +708,8 @@ The next planned normal slice after `v0.1.104` acceptance is `v0.1.105` — Sand
 ## v0.1.104.1 migration note
 
 No user data, Project Source, artifact-current, or ChatGPT Project migration is performed. This repair only makes the project-remove frozen scheduler fixture bounded and deterministic after the `v0.1.104` release-control timeout. `v0.1.104` sandbox mutation verification behavior is preserved; `v0.1.105` remains deferred until this repair is accepted/current.
+
+
+## v0.1.104.2 migration note
+
+No state migration is required. Operators may run isolated release tests before the full adoption run. Existing release/adoption/current state remains unchanged until full release-control passes.

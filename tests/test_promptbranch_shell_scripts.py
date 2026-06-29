@@ -3097,3 +3097,15 @@ def test_release_control_all_tests_progress_writer_uses_chr10_newline() -> None:
     assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")' in script
     assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")' not in script
     assert 'all_tests_progress: ' in script
+
+
+def test_release_control_declares_isolated_release_tests_as_pre_adoption_only():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "--run-isolated-release-tests" in script
+    assert "--run-slice-tests" in script
+    assert "schema\": \"promptbranch.release_control.isolated_release_tests\"" in script
+    assert "--adopt-after-validation requires full release validation" in script
+    assert "full_tests_run: false" in script
+    assert "adoption_gate: false" in script

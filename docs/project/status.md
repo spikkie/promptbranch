@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
-active candidate version: v0.1.104.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
+active candidate version: v0.1.104.2
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.1.zip repair candidate once packaged
-release status: v0.1.104.1 is a focused-validated repair candidate until full release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.2.zip repair candidate once packaged
+release status: v0.1.104.2 is a focused-validated repair candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -764,3 +764,13 @@ This slice does not promote sandbox changes into repository files, retry command
 ## v0.1.104.1 repair candidate status
 
 `v0.1.104.1` is a repair-only candidate built from failed `v0.1.104`. It preserves sandbox mutation verification and rollback evidence behavior and repairs only the project-remove frozen scheduler timeout fixture. The release remains not accepted/current until full release-control and artifact-current alignment pass.
+
+
+## v0.1.104.2 repair candidate status
+
+`v0.1.104.2` is a repair-only candidate built from failed `v0.1.104.1`. It preserves sandbox mutation verification and rollback evidence behavior and repairs only the Project ensure create/reuse browser timeout path by extending the request timeout and adding exact post-timeout Project resolve recovery.
+
+The candidate also adds isolated release tests for focused pre-adoption validation. Isolated tests do not replace full release-control/adoption evidence. The release remains not accepted/current until full release-control and artifact-current alignment pass.
+
+
+Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.

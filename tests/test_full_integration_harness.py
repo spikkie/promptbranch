@@ -762,3 +762,129 @@ def test_full_integration_cleanup_evidence_has_no_stale_ephemeral_policy_label()
     stale_policy = "_".join(["same", "run", "ephemeral", "cleanup"])
     assert stale_policy not in source
     assert "no_project_delete_until_secure_protocol" in source
+
+
+def test_docker_service_adapter_project_ensure_uses_extended_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            captured["client_timeout"] = kwargs.get("timeout")
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def ensure_project(self, name: str, **kwargs: Any) -> dict[str, Any]:
+            captured["name"] = name
+            captured["ensure_kwargs"] = kwargs
+            return {"ok": True, "action": "ensure_project", "project_url": "https://chatgpt.com/g/g-p-demo/project"}
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/",
+    )
+
+    result = adapter._ensure_project_sync("itest-demo", None, None, "project-only", True)
+
+    assert result["ok"] is True
+    assert captured["client_timeout"] == 300.0
+    assert captured["ensure_kwargs"]["request_timeout_seconds"] == adapter._project_ensure_timeout_seconds()
+    assert captured["ensure_kwargs"]["request_timeout_seconds"] > captured["client_timeout"]
+
+
+def test_docker_service_adapter_project_ensure_timeout_recovers_by_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
+    import promptbranch_full_integration_test as integration
+
+    class ReadTimeout(Exception):
+        pass
+
+    calls: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def ensure_project(self, name: str, **kwargs: Any) -> dict[str, Any]:
+            calls.append("ensure")
+            raise ReadTimeout("timed out")
+
+        def resolve_project(self, name: str, **kwargs: Any) -> dict[str, Any]:
+            calls.append("resolve")
+            return {
+                "ok": True,
+                "match_count": 1,
+                "project_url": "https://chatgpt.com/g/g-p-late/project",
+                "project_name": name,
+            }
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+    monkeypatch.setattr(integration, "PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS", 0.0)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/",
+    )
+
+    result = adapter._ensure_project_sync("itest-late", None, None, "project-only", True)
+
+    assert calls == ["ensure", "resolve"]
+    assert result["ok"] is True
+    assert result["status"] == "verified_after_request_timeout"
+    assert result["project_url"] == "https://chatgpt.com/g/g-p-late/project"
+    assert result["recovered_after_request_timeout"] is True
+    assert result["release_blocking"] is False
+
+
+def test_docker_service_adapter_project_ensure_timeout_fails_closed_without_exact_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
+    import promptbranch_full_integration_test as integration
+
+    class ReadTimeout(Exception):
+        pass
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def ensure_project(self, name: str, **kwargs: Any) -> dict[str, Any]:
+            raise ReadTimeout("timed out")
+
+        def resolve_project(self, name: str, **kwargs: Any) -> dict[str, Any]:
+            return {"ok": True, "match_count": 0, "project_name": name}
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+    monkeypatch.setattr(integration, "PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS", 0.0)
+
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/",
+    )
+
+    result = adapter._ensure_project_sync("itest-missing", None, None, "project-only", True)
+
+    assert result["ok"] is False
+    assert result["status"] == "project_ensure_request_timeout_not_recovered"
+    assert result["release_blocking"] is True
+    assert result["operator_review_required"] is True
