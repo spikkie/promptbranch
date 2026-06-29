@@ -466,3 +466,7 @@ The failed `v0.1.104.2` candidate introduced `--run-isolated-release-tests` as a
 ## Decision — v0.1.104.4 accepts verified Project Sources surface without visible tab control
 
 The live `v0.1.104.3` full release-control run failed before validation because Project Source ZIP add received a service 504: the Project Sources tab did not become visible. The source surface can be route-addressable via `?tab=sources`, so source add/remove/capability flows now navigate directly to that route and accept verified source-surface evidence even when the tab control itself is absent. Ambiguous or absent surface evidence remains release-blocking.
+
+## Decision — v0.1.104.5 treats `?tab=sources` URL as insufficient without hydrated Sources surface
+
+The live `v0.1.104.4` release-control run reached the `?tab=sources` route but still saw no Project Sources cards, empty state, or add/upload affordance. A bare route match is not proof that the Sources surface hydrated. `v0.1.104.5` strips transient Cloudflare challenge parameters, performs bounded route recovery through Project home and Sources, records richer surface diagnostics, and still fails closed when no concrete Sources surface evidence is visible.
