@@ -441,3 +441,13 @@ Context: `v0.1.103` proved a file can be mutated safely inside a temporary sandb
 Decision: `v0.1.104` adds `promptbranch.loop.sandbox_mutation_verification` and `pb loop run --verify-sandbox-mutation`. The gate verifies that the sandbox fixture changed, the repository fixture did not change, and rollback/cleanup evidence exists through deletion of the temporary sandbox workspace. It performs no new file mutation, no command retry, no Project Source mutation, no artifact adoption, no deployment, and no ChatGPT Project deletion.
 
 Consequence: promotion readiness remains deferred to `v0.1.105`. Repository-wide correction workflows remain out of scope.
+
+## ADR-PROJ-112 — v0.1.104.1 bounds project-remove frozen scheduler fixture
+
+Status: accepted for v0.1.104.1 repair candidate.
+
+Context: `v0.1.104` full release-control failed because the `test_project_remove_is_frozen_before_profile_scheduler` node could wait unbounded for an active browser scheduler operation and burn the full 300-second release-validation group timeout.
+
+Decision: Replace unbounded `browser_status()` polling in that fixture with an explicit `asyncio.Event` start signal and bounded waits. Preserve the no-ChatGPT-Project-delete invariant: project removal remains blocked before browser/profile scheduler actuation and reports `project_delete_disabled`.
+
+Consequence: The release-validation group should fail fast with deterministic local diagnostics if scheduler state does not start as expected. No normal scope advances and v0.1.105 remains deferred.

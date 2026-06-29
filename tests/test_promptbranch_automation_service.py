@@ -792,45 +792,59 @@ def test_project_remove_is_frozen_before_profile_scheduler(monkeypatch, tmp_path
     events: list[str] = []
     profile_dir = tmp_path / ".pb_profile"
 
-    async def fake_add_project_source(self, **kwargs):
-        events.append("add-start")
-        await asyncio.sleep(0.03)
-        events.append("add-end")
-        return {"ok": True, "persistence_verified": True}
-
-    async def fake_remove_project(self, **kwargs):
-        events.append("project-remove-start")
-        return {"ok": True, "removed": True}
-
-    monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
-    monkeypatch.setattr(ChatGPTAutomation, "remove_project", fake_remove_project)
-
-    svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-one/project",
-        email=None,
-        password=None,
-        profile_dir=str(profile_dir),
-        headless=True,
-        use_patchright=False,
-        profile_lock_wait_seconds=0.2,
-    ))
-    svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-two/project",
-        email=None,
-        password=None,
-        profile_dir=str(profile_dir),
-        headless=True,
-        use_patchright=False,
-        profile_lock_wait_seconds=0.2,
-    ))
-
     async def run_sequence():
-        add_task = asyncio.create_task(svc_a.add_project_source(source_kind="text", value="notes"))
-        while svc_a.browser_status().get("active_operation") != "add_project_source":
-            await asyncio.sleep(0)
-        remove_result = await svc_b.remove_project(profile_lock_wait_seconds=0.2)
-        add_result = await add_task
-        return add_result, remove_result
+        add_started = asyncio.Event()
+
+        async def fake_add_project_source(self, **kwargs):
+            events.append("add-start")
+            add_started.set()
+            await asyncio.sleep(0.03)
+            events.append("add-end")
+            return {"ok": True, "persistence_verified": True}
+
+        async def fake_remove_project(self, **kwargs):
+            events.append("project-remove-start")
+            return {"ok": True, "removed": True}
+
+        monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
+        monkeypatch.setattr(ChatGPTAutomation, "remove_project", fake_remove_project)
+
+        svc_a = ChatGPTAutomationService(ChatGPTAutomationSettings(
+            project_url="https://chatgpt.com/g/g-p-one/project",
+            email=None,
+            password=None,
+            profile_dir=str(profile_dir),
+            headless=True,
+            use_patchright=False,
+            profile_lock_wait_seconds=0.2,
+        ))
+        svc_b = ChatGPTAutomationService(ChatGPTAutomationSettings(
+            project_url="https://chatgpt.com/g/g-p-two/project",
+            email=None,
+            password=None,
+            profile_dir=str(profile_dir),
+            headless=True,
+            use_patchright=False,
+            profile_lock_wait_seconds=0.2,
+        ))
+
+        add_task = asyncio.create_task(svc_a.add_project_source(source_kind="text", value="notes"), name="add_project_source_fixture")
+        try:
+            await asyncio.wait_for(add_started.wait(), timeout=1.0)
+            assert svc_a.browser_status().get("active_operation") == "add_project_source"
+            remove_result = await asyncio.wait_for(
+                svc_b.remove_project(profile_lock_wait_seconds=0.2),
+                timeout=1.0,
+            )
+            assert remove_result["status"] == "project_delete_disabled"
+            add_result = await asyncio.wait_for(add_task, timeout=1.0)
+            return add_result, remove_result
+        except Exception:
+            if not add_task.done():
+                add_task.cancel()
+            with contextlib.suppress(BaseException):
+                await add_task
+            raise
 
     add_result, remove_result = asyncio.run(run_sequence())
 
