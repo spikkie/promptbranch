@@ -57,6 +57,8 @@ LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA = "promptbranch.loop.read_only_correction_
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION = "1.0"
 LOOP_SANDBOX_FILE_MUTATION_SCHEMA = "promptbranch.loop.sandbox_file_mutation"
 LOOP_SANDBOX_FILE_MUTATION_SCHEMA_VERSION = "1.0"
+LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA = "promptbranch.loop.sandbox_mutation_verification"
+LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -1416,6 +1418,157 @@ def build_loop_sandbox_file_mutation_payload(
         "operator_instruction": "First controlled file mutation in a temporary sandbox fixture only. The repository fixture is copied, the sandbox copy is mutated, before/after hashes are recorded, and the repository file must remain unchanged. No correction retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion is performed.",
     }
 
+
+def _sandbox_snapshot_sha(snapshot: dict[str, Any] | None) -> str | None:
+    if not isinstance(snapshot, dict):
+        return None
+    value = snapshot.get("sha256")
+    return str(value) if value else None
+
+
+def build_loop_sandbox_mutation_verification_payload(mutation_payload: dict[str, Any]) -> dict[str, Any]:
+    """Verify sandbox mutation evidence and rollback/cleanup gate.
+
+    v0.1.104 does not perform a second mutation and does not promote the
+    sandbox change to the repository.  It validates the evidence produced by
+    v0.1.103, confirms the temporary sandbox changed, confirms the repository
+    fixture did not change, and treats deletion of the temporary sandbox
+    workspace as the rollback evidence for this sandbox-only stage.
+    """
+    evidence = mutation_payload.get("evidence") if isinstance(mutation_payload.get("evidence"), dict) else {}
+    summary = mutation_payload.get("summary") if isinstance(mutation_payload.get("summary"), dict) else {}
+    safety = mutation_payload.get("safety") if isinstance(mutation_payload.get("safety"), dict) else {}
+
+    repo_before = evidence.get("repository_fixture_before") if isinstance(evidence.get("repository_fixture_before"), dict) else None
+    repo_after = evidence.get("repository_fixture_after") if isinstance(evidence.get("repository_fixture_after"), dict) else None
+    sandbox_before = evidence.get("sandbox_fixture_before") if isinstance(evidence.get("sandbox_fixture_before"), dict) else None
+    sandbox_after = evidence.get("sandbox_fixture_after") if isinstance(evidence.get("sandbox_fixture_after"), dict) else None
+    sandbox_deleted = bool(evidence.get("sandbox_workspace_deleted_after_evidence"))
+
+    repo_before_sha = _sandbox_snapshot_sha(repo_before)
+    repo_after_sha = _sandbox_snapshot_sha(repo_after)
+    sandbox_before_sha = _sandbox_snapshot_sha(sandbox_before)
+    sandbox_after_sha = _sandbox_snapshot_sha(sandbox_after)
+
+    gates = [
+        {
+            "name": "source_schema_is_sandbox_file_mutation",
+            "passed": mutation_payload.get("schema") == LOOP_SANDBOX_FILE_MUTATION_SCHEMA,
+            "detail": "source schema must be promptbranch.loop.sandbox_file_mutation",
+        },
+        {
+            "name": "source_mutation_payload_ok",
+            "passed": bool(mutation_payload.get("ok")) and mutation_payload.get("status") == "sandbox_file_mutation_applied",
+            "detail": "source mutation payload must be applied successfully",
+        },
+        {
+            "name": "sandbox_mutation_was_performed",
+            "passed": bool(summary.get("sandbox_mutation_performed")) and bool(safety.get("sandbox_file_mutation_performed")),
+            "detail": "sandbox mutation evidence must show a sandbox file was mutated",
+        },
+        {
+            "name": "repository_fixture_unchanged",
+            "passed": bool(repo_before and repo_after and repo_before == repo_after and repo_before_sha == repo_after_sha),
+            "detail": "repository fixture before/after snapshots and hashes must match",
+        },
+        {
+            "name": "sandbox_fixture_changed",
+            "passed": bool(sandbox_before and sandbox_after and sandbox_before != sandbox_after and sandbox_before_sha != sandbox_after_sha),
+            "detail": "temporary sandbox fixture before/after snapshots and hashes must differ",
+        },
+        {
+            "name": "temporary_sandbox_workspace_deleted",
+            "passed": sandbox_deleted,
+            "detail": "temporary sandbox workspace deletion is required rollback evidence",
+        },
+        {
+            "name": "no_project_source_mutation",
+            "passed": summary.get("project_source_mutation_performed") is False and safety.get("project_source_mutation_performed") is False,
+            "detail": "Project Source mutation must remain false",
+        },
+        {
+            "name": "no_artifact_adoption",
+            "passed": summary.get("artifact_adoption_performed") is False and safety.get("artifact_adoption_performed") is False,
+            "detail": "artifact adoption must remain false",
+        },
+        {
+            "name": "no_deployment_or_kubernetes_mutation",
+            "passed": summary.get("deployment_performed") is False and safety.get("deployment_performed") is False and safety.get("kubernetes_mutation_performed") is False,
+            "detail": "deployment and Kubernetes mutation must remain false",
+        },
+    ]
+    failed = [str(item["name"]) for item in gates if not item.get("passed")]
+    ok = not failed
+    return {
+        "ok": ok,
+        "schema": LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA,
+        "schema_version": LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION,
+        "action": "loop_sandbox_mutation_verification",
+        "status": "sandbox_mutation_verification_passed" if ok else "sandbox_mutation_verification_blocked",
+        "mode": "sandbox_mutation_verification",
+        "execution_mode": "local_sandbox_mutation_verification_and_rollback_gate",
+        "source_schema": mutation_payload.get("schema"),
+        "source_status": mutation_payload.get("status"),
+        "target_id": mutation_payload.get("target_id"),
+        "target_path": mutation_payload.get("target_path"),
+        "loop_id": mutation_payload.get("loop_id"),
+        "executed_state": "VERIFY_STUB",
+        "source_executed_state": mutation_payload.get("executed_state"),
+        "final_state": mutation_payload.get("final_state"),
+        "decision": "stop_after_sandbox_verification_evidence" if ok else "stop_for_operator_review",
+        "blocked_reasons": failed,
+        "verification_gates": gates,
+        "rollback_evidence": {
+            "rollback_required": True,
+            "rollback_strategy": "delete_temporary_sandbox_workspace",
+            "rollback_performed": sandbox_deleted,
+            "rollback_verified": sandbox_deleted,
+            "sandbox_workspace": evidence.get("sandbox_workspace"),
+            "sandbox_workspace_deleted_after_evidence": sandbox_deleted,
+            "repository_fixture_restored_by_design": bool(repo_before and repo_after and repo_before == repo_after),
+        },
+        "evidence_summary": {
+            "repository_fixture_before_sha256": repo_before_sha,
+            "repository_fixture_after_sha256": repo_after_sha,
+            "sandbox_fixture_before_sha256": sandbox_before_sha,
+            "sandbox_fixture_after_sha256": sandbox_after_sha,
+            "repository_fixture_unchanged": bool(repo_before and repo_after and repo_before == repo_after),
+            "sandbox_fixture_changed": bool(sandbox_before and sandbox_after and sandbox_before != sandbox_after),
+            "temporary_workspace_deleted": sandbox_deleted,
+        },
+        "summary": {
+            "verification_gate_count": len(gates),
+            "passed_gate_count": sum(1 for item in gates if item.get("passed")),
+            "failed_gate_count": len(failed),
+            "sandbox_mutation_verified": ok,
+            "rollback_verified": sandbox_deleted,
+            "repository_file_mutated": bool(summary.get("repository_file_mutated")),
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "deployment_performed": False,
+            "commands_executed": 0,
+            "files_mutated": False,
+        },
+        "dry_run": False,
+        "side_effects_performed": False,
+        "safety": {
+            "side_effects_performed": False,
+            "verification_only": True,
+            "mutation_allowed": False,
+            "sandbox_file_mutation_performed": False,
+            "repository_file_mutation_performed": False,
+            "commands_executed": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+            "rollback_gate_verified": sandbox_deleted,
+            "sandbox_only": True,
+        },
+        "operator_instruction": "Sandbox mutation verification and rollback evidence gate only. It verifies that the temporary sandbox fixture changed, the repository fixture did not change, and the temporary sandbox workspace was deleted as rollback evidence. It performs no new mutation, command retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.",
+    }
+
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
     allowed_paths = list(checks.get("allowed_paths") or [])
@@ -1717,6 +1870,30 @@ def render_loop_read_only_correction_plan_text(payload: dict[str, Any]) -> str:
                     mutation=str(bool(step.get("mutation_allowed"))).lower(),
                 )
             )
+    lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
+    return "\n".join(lines) + "\n"
+
+
+def render_loop_sandbox_mutation_verification_text(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    rollback = payload.get("rollback_evidence") if isinstance(payload.get("rollback_evidence"), dict) else {}
+    evidence = payload.get("evidence_summary") if isinstance(payload.get("evidence_summary"), dict) else {}
+    lines = [
+        f"status={payload.get('status')}",
+        f"schema={payload.get('schema')}",
+        f"source_status={payload.get('source_status')}",
+        f"target_id={payload.get('target_id') or 'none'}",
+        f"execution_mode={payload.get('execution_mode') or 'none'}",
+        f"sandbox_mutation_verified={str(bool(summary.get('sandbox_mutation_verified'))).lower()}",
+        f"rollback_verified={str(bool(summary.get('rollback_verified'))).lower()}",
+        f"repository_fixture_unchanged={str(bool(evidence.get('repository_fixture_unchanged'))).lower()}",
+        f"sandbox_fixture_changed={str(bool(evidence.get('sandbox_fixture_changed'))).lower()}",
+        f"temporary_workspace_deleted={str(bool(evidence.get('temporary_workspace_deleted'))).lower()}",
+        f"rollback_strategy={rollback.get('rollback_strategy') or 'none'}",
+        f"failed_gate_count={summary.get('failed_gate_count', 0)}",
+    ]
+    for reason in payload.get("blocked_reasons") or []:
+        lines.append(f"blocked_reason={reason}")
     lines.append(f"side_effects_performed={str(bool(payload.get('side_effects_performed'))).lower()}")
     return "\n".join(lines) + "\n"
 

@@ -494,3 +494,49 @@ def test_loop_run_execute_sandbox_mutation_requires_correction_plan(capsys):
     assert rc == 2
     captured = capsys.readouterr()
     assert "--execute-sandbox-mutation requires --generate-correction-plan" in captured.err
+
+def test_loop_run_verify_sandbox_mutation_cli_json_verifies_rollback_gate(capsys):
+    before = Path("examples/loop-sandbox/invalid-json-fixture.json").read_text(encoding="utf-8")
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--diagnose-read-only-result",
+        "--generate-correction-plan",
+        "--execute-sandbox-mutation",
+        "--verify-sandbox-mutation",
+        "--json",
+    ])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "promptbranch.loop.sandbox_mutation_verification"
+    assert payload["status"] == "sandbox_mutation_verification_passed"
+    assert payload["summary"]["sandbox_mutation_verified"] is True
+    assert payload["summary"]["rollback_verified"] is True
+    assert payload["summary"]["files_mutated"] is False
+    assert payload["safety"]["verification_only"] is True
+    assert payload["rollback_evidence"]["rollback_verified"] is True
+    assert Path("examples/loop-sandbox/invalid-json-fixture.json").read_text(encoding="utf-8") == before
+
+
+def test_loop_run_verify_sandbox_mutation_requires_sandbox_mutation(capsys):
+    rc = promptbranch_cli.main([
+        "loop",
+        "run",
+        "--target",
+        "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--read-only-execution",
+        "--evidence-gate",
+        "--execute-read-only-validation",
+        "--diagnose-read-only-result",
+        "--generate-correction-plan",
+        "--verify-sandbox-mutation",
+    ])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "--verify-sandbox-mutation requires --execute-sandbox-mutation" in captured.err
+
