@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.6.zip
-active candidate version: v0.1.104.6
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.7.zip
+active candidate version: v0.1.104.7
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.6.zip repair candidate once packaged
-release status: v0.1.104.3 is a focused-validated repair candidate until full release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.7.zip repair candidate once packaged
+release status: v0.1.104.7 is a rollback repair candidate that drops v0.1.104.2-v0.1.104.6 source-add/browser recovery experiments; it remains pending full release-control/adoption evidence
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -50,9 +50,9 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.104.1` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- `v0.1.104.7` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
 - Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.104.1` may repair only the project-remove frozen scheduler timeout path and must not alter the `v0.1.104` sandbox mutation verification scope.
+- `v0.1.104.7` intentionally returns to the `v0.1.104.1` source line, preserves only the project-remove frozen scheduler timeout repair, and must not alter the `v0.1.104` sandbox mutation verification scope.
 - Repository file mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
@@ -65,14 +65,14 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.104.1 as a repair-only candidate for the project-remove frozen scheduler timeout from failed v0.1.104, preserving accepted/current v0.1.103 as the baseline and keeping v0.1.105 deferred.
+Validate and package v0.1.104.7 as a repair-only rollback candidate based on the v0.1.104.1 source line, preserving accepted/current v0.1.103 as the baseline and keeping v0.1.105 deferred.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.104.1.zip
-ver=v0.1.104.1
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.104.7.zip
+ver=v0.1.104.7
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
@@ -764,36 +764,3 @@ This slice does not promote sandbox changes into repository files, retry command
 ## v0.1.104.1 repair candidate status
 
 `v0.1.104.1` is a repair-only candidate built from failed `v0.1.104`. It preserves sandbox mutation verification and rollback evidence behavior and repairs only the project-remove frozen scheduler timeout fixture. The release remains not accepted/current until full release-control and artifact-current alignment pass.
-
-
-## v0.1.104.2 repair candidate status
-
-`v0.1.104.2` is a repair-only candidate built from failed `v0.1.104.1`. It preserves sandbox mutation verification and rollback evidence behavior and repairs only the Project ensure create/reuse browser timeout path by extending the request timeout and adding exact post-timeout Project resolve recovery.
-
-The candidate also adds isolated release tests for focused pre-adoption validation. Isolated tests do not replace full release-control/adoption evidence. The release remains not accepted/current until full release-control and artifact-current alignment pass.
-
-
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
-
-
-## v0.1.104.3 repair candidate status
-
-`v0.1.104.3` is a repair-only candidate built from failed `v0.1.104.2`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate, the `v0.1.104.1` scheduler timeout repair, and the `v0.1.104.2` Project ensure timeout repair. It removes the isolated release-test mode and returns the release line to full release-control as the only accepted/current gate.
-
-The release remains not accepted/current until full release-control and artifact-current alignment pass.
-
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.6.zip`.
-
-
-## v0.1.104.4 repair candidate status
-
-`v0.1.104.4` is a repair-only candidate built from failed `v0.1.104.3`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate, prior scheduler/Project ensure repairs, and the removal of isolated release-test mode. It repairs Project Source ZIP add failures where the browser service returned `Project Sources tab did not become visible` by opening `?tab=sources` directly and accepting a verified Project Sources surface even if the tab control itself is hidden or not rendered.
-
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.6.zip`.
-
-`v0.1.105 — Sandbox correction promotion readiness check` remains deferred until this repair is accepted/current.
-
-
-## v0.1.104.6 repair candidate note
-
-`v0.1.104.6` is a repair-only candidate for the `v0.1.104` sandbox mutation verification slice. It preserves all prior `v0.1.104.x` repairs and adds bounded Project Sources route hydration recovery when `?tab=sources` is present but no Sources surface, add button, card, or empty state has rendered. It strips transient Cloudflare challenge query parameters, reloads/re-enters the Project home route before returning to Sources, and still fails closed without concrete Sources surface evidence. `v0.1.105` remains deferred.

@@ -709,14 +709,8 @@ The next planned normal slice after `v0.1.104` acceptance is `v0.1.105` — Sand
 
 No user data, Project Source, artifact-current, or ChatGPT Project migration is performed. This repair only makes the project-remove frozen scheduler fixture bounded and deterministic after the `v0.1.104` release-control timeout. `v0.1.104` sandbox mutation verification behavior is preserved; `v0.1.105` remains deferred until this repair is accepted/current.
 
+## v0.1.104.7 migration note
 
-## v0.1.104.2 migration note
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project migration is performed. This repair intentionally returns to the `v0.1.104.1` source line, preserving only the project-remove frozen scheduler timeout repair on top of the `v0.1.104` sandbox mutation verification target. The `v0.1.104.2` through `v0.1.104.6` Project ensure, isolated release-test, Project Sources direct-route, route-hydration, and challenge/interstitial experiments are not carried forward.
 
-No state migration is required. Operators may run isolated release tests before the full adoption run. Existing release/adoption/current state remains unchanged until full release-control passes.
-
-
-| `docs/repair-v0.1.104.3.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Removes failed isolated release-test mode while preserving v0.1.104/v0.1.104.1/v0.1.104.2 behavior and keeping v0.1.105 deferred. |
-
-| `docs/repair-v0.1.104.4.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Repairs Project Sources direct-route visibility for source add while preserving v0.1.104 scope and keeping v0.1.105 deferred. |
-
-| `docs/repair-v0.1.104.6.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Repairs Project Sources route hydration recovery while preserving v0.1.104 scope and keeping v0.1.105 deferred. |
+The next planned normal slice after `v0.1.104` acceptance remains `v0.1.105` — Sandbox correction promotion readiness check.

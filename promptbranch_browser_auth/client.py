@@ -184,21 +184,12 @@ PROJECT_SOURCES_PANEL_SELECTORS = [
 PROJECT_ADD_SOURCE_BUTTON_SELECTORS = [
     '[role="tabpanel"][data-state="active"] button:has-text("Add source")',
     '[role="tabpanel"][data-state="active"] button:has-text("Add Source")',
-    '[role="tabpanel"][data-state="active"] button:has-text("Add sources")',
-    '[role="tabpanel"][data-state="active"] button:has-text("Upload")',
-    '[role="tabpanel"][data-state="active"] button:has-text("Upload files")',
     '[role="tabpanel"][data-state="active"] [aria-label*="Add source" i]',
-    '[role="tabpanel"][data-state="active"] [aria-label*="Upload" i]',
     '[role="tabpanel"][data-state="active"] button:has-text("Add")',
     '[role="tabpanel"] button:has-text("Add")',
-    '[role="tabpanel"] button:has-text("Upload")',
     'button:has-text("Add source")',
     'button:has-text("Add Source")',
-    'button:has-text("Add sources")',
-    'button:has-text("Upload")',
-    'button:has-text("Upload files")',
     '[aria-label*="Add source" i]',
-    '[aria-label*="Upload" i]',
 ]
 PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
     '[role="dialog"]',
@@ -4691,7 +4682,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-capabilities-home")
+        await self._goto(page, project_home_url, label="project-source-capabilities-home")
         await self._open_project_sources_tab(page)
         await self._click_add_source_button(page)
         capabilities = await self._discover_project_source_capabilities(page)
@@ -4809,7 +4800,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-add-home")
+        await self._goto(page, project_home_url, label="project-source-add-home")
         await self._open_project_sources_tab(page)
 
         normalized_kind = (source_kind or "").strip().lower()
@@ -5659,7 +5650,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-remove-home")
+        await self._goto(page, project_home_url, label="project-source-remove-home")
         await self._open_project_sources_tab(page)
 
         source_cards = await self._snapshot_project_source_cards(page)
@@ -15635,363 +15626,20 @@ class ChatGPTBrowserClient:
         )
         return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
 
-    @staticmethod
-    def _url_has_sources_tab(url: str) -> bool:
-        try:
-            parsed = urlparse(url or "")
-        except Exception:
-            return False
-        return any(key == "tab" and value == "sources" for key, value in parse_qsl(parsed.query, keep_blank_values=True))
-
-    @staticmethod
-    def _looks_like_project_sources_challenge_text(text: str) -> bool:
-        normalized = re.sub(r"\s+", " ", text or "").strip().lower()
-        if not normalized:
-            return False
-        challenge_hints = (
-            "verify you are human",
-            "checking your browser",
-            "just a moment",
-            "cloudflare",
-            "enable javascript and cookies",
-            "enable javascript and cookies to continue",
-            "verification successful. waiting for chatgpt.com to respond",
-            "waiting for chatgpt.com to respond",
-            "challenge-error-text",
-            "window._cf_chl_opt",
-            "cf_chl_opt",
-        )
-        return any(hint in normalized for hint in challenge_hints)
-
-    @staticmethod
-    def _project_sources_challenge_error_message(*, probe: dict[str, Any], recovery_probes: list[dict[str, Any]] | None = None) -> str:
-        latest_probe = dict(probe or {})
-        probes = list(recovery_probes or [])
-        if probes:
-            candidate = probes[-1]
-            if isinstance(candidate, dict):
-                latest_probe = dict(candidate)
-        return (
-            "project_sources_challenge_interstitial_blocking: "
-            "Project Sources is blocked by a ChatGPT/Cloudflare challenge or interstitial; "
-            f"latest_probe={latest_probe}; recovery_probes={probes}"
-        )
-
-    async def _project_sources_challenge_settle_probe(
-        self,
-        page: Any,
-        *,
-        label: str,
-        probe: dict[str, Any],
-        timeout_ms: int = 20_000,
-    ) -> dict[str, Any]:
-        if not probe.get("likely_blocked_by_challenge"):
-            return probe
-        deadline = asyncio.get_running_loop().time() + (max(1, int(timeout_ms)) / 1000)
-        attempts: list[dict[str, Any]] = []
-        self._log(
-            "project-source",
-            "Project Sources challenge/interstitial detected; waiting for surface to settle",
-            label=label,
-            initial_probe=probe,
-            timeout_ms=timeout_ms,
-        )
-        attempt = 0
-        latest = dict(probe)
-        while asyncio.get_running_loop().time() < deadline:
-            attempt += 1
-            try:
-                await page.wait_for_timeout(1_000)
-            except Exception:
-                pass
-            latest = await self._project_sources_surface_probe(page, add_button_timeout_ms=750)
-            latest = dict(latest)
-            latest["challenge_settle_label"] = label
-            latest["challenge_settle_attempt"] = attempt
-            attempts.append(latest)
-            if latest.get("ready") or not latest.get("likely_blocked_by_challenge"):
-                self._log(
-                    "project-source",
-                    "Project Sources challenge/interstitial settle probe completed",
-                    label=label,
-                    final_probe=latest,
-                    attempts=attempts[-5:],
-                )
-                latest["challenge_settle_attempts"] = attempts[-5:]
-                return latest
-        latest["challenge_settle_attempts"] = attempts[-5:]
-        self._log(
-            "project-source",
-            "Project Sources challenge/interstitial still blocking after settle timeout",
-            label=label,
-            final_probe=latest,
-            attempts=attempts[-5:],
-        )
-        return latest
-
-    async def _project_sources_surface_probe(self, page: Any, *, add_button_timeout_ms: int = 750) -> dict[str, Any]:
-        current_url = await self._safe_page_url(page)
-        url_has_sources_tab = self._url_has_sources_tab(current_url)
-        source_cards: list[dict[str, str]] = []
-        source_card_error: Optional[str] = None
-        empty_state_visible = False
-        empty_state_error: Optional[str] = None
-        add_button_visible = False
-        add_button_error: Optional[str] = None
-        visible_text_preview = ""
-        visible_text_error: Optional[str] = None
-
-        try:
-            source_cards = await self._snapshot_project_source_cards(page)
-        except Exception as exc:
-            source_card_error = repr(exc)
-
-        try:
-            empty_state_visible = bool(await self._project_sources_empty_state_visible(page))
-        except Exception as exc:
-            empty_state_error = repr(exc)
-
-        try:
-            add_button = await self._wait_for_visible_locator(
-                page,
-                PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
-                label="project-sources-surface-add-button-probe",
-                total_timeout_ms=max(1, int(add_button_timeout_ms)),
-            )
-            add_button_visible = add_button is not None
-        except Exception as exc:
-            add_button_error = repr(exc)
-
-        try:
-            visible_text_preview = await self._visible_text_preview(page, limit=600)
-        except Exception as exc:
-            visible_text_error = repr(exc)
-
-        normalized_preview = re.sub(r"\s+", " ", visible_text_preview or "").strip().lower()
-        likely_blocked_by_challenge = bool(
-            "__cf_chl_rt_tk" in (current_url or "")
-            or self._looks_like_project_sources_challenge_text(normalized_preview)
-        )
-        # Some Project builds render the Sources route without the tab control.
-        # Treat the route as ready only when a concrete source affordance, card,
-        # or empty-state copy is visible; never accept a bare ?tab=sources URL.
-        route_text_indicates_sources_surface = bool(
-            url_has_sources_tab
-            and "sources" in normalized_preview
-            and (
-                "add source" in normalized_preview
-                or "add sources" in normalized_preview
-                or "upload" in normalized_preview
-                or "give chatgpt more context" in normalized_preview
-            )
-        )
-        ready = bool(source_cards or empty_state_visible or (url_has_sources_tab and add_button_visible) or route_text_indicates_sources_surface)
-        return {
-            "ready": ready,
-            "current_url": current_url,
-            "url_has_sources_tab": url_has_sources_tab,
-            "source_card_count": len(source_cards),
-            "source_identities": [
-                self._preferred_source_card_identity(source) or source.get("text")
-                for source in source_cards[:10]
-            ],
-            "empty_state_visible": empty_state_visible,
-            "add_button_visible": add_button_visible,
-            "route_text_indicates_sources_surface": route_text_indicates_sources_surface,
-            "likely_blocked_by_challenge": likely_blocked_by_challenge,
-            "visible_text_preview": visible_text_preview[:300],
-            "source_card_error": source_card_error,
-            "empty_state_error": empty_state_error,
-            "add_button_error": add_button_error,
-            "visible_text_error": visible_text_error,
-        }
-
     async def _open_project_sources_tab(self, page: Any) -> None:
-        initial_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=500)
-        if initial_probe.get("likely_blocked_by_challenge"):
-            initial_probe = await self._project_sources_challenge_settle_probe(
-                page,
-                label="initial-project-sources-probe",
-                probe=initial_probe,
-                timeout_ms=20_000,
-            )
-        if initial_probe.get("ready"):
-            self._log(
-                "project-source",
-                "sources surface already visible before tab click",
-                source_surface_probe=initial_probe,
-            )
-            return
-
         tab = await self._wait_for_visible_locator(
             page,
             PROJECT_SOURCES_TAB_SELECTORS,
             label="project-sources-tab",
             total_timeout_ms=15_000,
         )
-        if tab is not None:
-            self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
-            await tab.click(timeout=5_000)
-            self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
-            await page.wait_for_timeout(750)
-            clicked_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=1_000)
-            if clicked_probe.get("ready"):
-                self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page), source_surface_probe=clicked_probe)
-                return
-
-        current_url = await self._safe_page_url(page)
-        sources_url = self._project_sources_url(current_url or self._project_home_url())
-        self._log(
-            "project-source",
-            "sources tab not visible; retrying with direct project sources route",
-            current_url=current_url,
-            sources_url=sources_url,
-            initial_probe=initial_probe,
-        )
-        try:
-            await self._goto(
-                page,
-                sources_url,
-                label="project-sources-tab-direct-route",
-                respect_history_rate_limit_cooldown=False,
-            )
-        except Exception as exc:
-            self._log(
-                "project-source",
-                "direct project sources route navigation failed",
-                current_url=current_url,
-                sources_url=sources_url,
-                error=repr(exc),
-            )
-
+        if tab is None:
+            raise ResponseTimeoutError("Project Sources tab did not become visible")
+        self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
+        await tab.click(timeout=5_000)
+        self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
         await page.wait_for_timeout(750)
-        direct_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=5_000)
-        if direct_probe.get("likely_blocked_by_challenge"):
-            direct_probe = await self._project_sources_challenge_settle_probe(
-                page,
-                label="direct-project-sources-route",
-                probe=direct_probe,
-                timeout_ms=20_000,
-            )
-        if direct_probe.get("ready"):
-            self._log(
-                "project-source",
-                "sources surface opened via direct route",
-                source_surface_probe=direct_probe,
-            )
-            return
-
-        retry_probe: Optional[dict[str, Any]] = None
-        retry_tab = await self._wait_for_visible_locator(
-            page,
-            PROJECT_SOURCES_TAB_SELECTORS,
-            label="project-sources-tab-after-direct-route",
-            total_timeout_ms=5_000,
-        )
-        if retry_tab is not None:
-            self._record_browser_action(kind='click_attempt', label='project-sources-tab-after-direct-route', strategy='primary')
-            await retry_tab.click(timeout=5_000)
-            self._record_browser_action(kind='click_success', label='project-sources-tab-after-direct-route', strategy='primary')
-            await page.wait_for_timeout(750)
-            retry_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=1_000)
-            if retry_probe.get("ready"):
-                self._log(
-                    "project-source",
-                    "sources tab opened after direct route",
-                    source_surface_probe=retry_probe,
-                )
-                return
-
-        recovery_probes: list[dict[str, Any]] = []
-        project_home_url = self._project_home_url_from_url(current_url or self._project_home_url())
-        recovery_steps = (
-            ("project-home-then-sources", project_home_url, 1_500, sources_url, 8_000),
-            ("sources-route-reload", sources_url, 2_500, None, 8_000),
-            ("project-home-then-sources-final", project_home_url, 3_000, sources_url, 12_000),
-        )
-        for step_name, primary_url, settle_ms, secondary_url, probe_timeout_ms in recovery_steps:
-            self._log(
-                "project-source",
-                "attempting sources surface route recovery",
-                step=step_name,
-                primary_url=primary_url,
-                secondary_url=secondary_url,
-                previous_probe=direct_probe,
-            )
-            try:
-                await self._goto(
-                    page,
-                    primary_url,
-                    label=f"project-sources-route-recovery-{step_name}-primary",
-                    respect_history_rate_limit_cooldown=False,
-                )
-            except Exception as exc:
-                recovery_probes.append({"step": step_name, "phase": "primary_goto", "error": repr(exc)})
-            try:
-                await page.wait_for_timeout(max(0, int(settle_ms)))
-            except Exception:
-                pass
-            if secondary_url:
-                try:
-                    await self._goto(
-                        page,
-                        secondary_url,
-                        label=f"project-sources-route-recovery-{step_name}-sources",
-                        respect_history_rate_limit_cooldown=False,
-                    )
-                except Exception as exc:
-                    recovery_probes.append({"step": step_name, "phase": "sources_goto", "error": repr(exc)})
-                try:
-                    await page.wait_for_timeout(1_000)
-                except Exception:
-                    pass
-            else:
-                try:
-                    reload = getattr(page, "reload", None)
-                    if callable(reload):
-                        await reload(wait_until="domcontentloaded", timeout=15_000)
-                        await page.wait_for_timeout(1_000)
-                except Exception as exc:
-                    recovery_probes.append({"step": step_name, "phase": "reload", "error": repr(exc)})
-            recovery_probe = await self._project_sources_surface_probe(
-                page,
-                add_button_timeout_ms=max(1, int(probe_timeout_ms)),
-            )
-            recovery_probe = dict(recovery_probe)
-            recovery_probe["step"] = step_name
-            if recovery_probe.get("likely_blocked_by_challenge"):
-                recovery_probe = await self._project_sources_challenge_settle_probe(
-                    page,
-                    label=f"project-sources-route-recovery-{step_name}",
-                    probe=recovery_probe,
-                    timeout_ms=20_000,
-                )
-                recovery_probe = dict(recovery_probe)
-                recovery_probe["step"] = step_name
-            recovery_probes.append(recovery_probe)
-            if recovery_probe.get("ready"):
-                self._log(
-                    "project-source",
-                    "sources surface opened after route recovery",
-                    source_surface_probe=recovery_probe,
-                    recovery_probes=recovery_probes,
-                )
-                return
-
-        all_probes = [probe for probe in [initial_probe, direct_probe, retry_probe, *recovery_probes] if isinstance(probe, dict)]
-        challenge_probes = [probe for probe in all_probes if probe.get("likely_blocked_by_challenge")]
-        if challenge_probes:
-            raise ResponseTimeoutError(
-                self._project_sources_challenge_error_message(
-                    probe=challenge_probes[-1],
-                    recovery_probes=recovery_probes,
-                )
-            )
-        raise ResponseTimeoutError(
-            "Project Sources surface did not become visible after route recovery; "
-            f"initial_probe={initial_probe}; direct_probe={direct_probe}; retry_probe={retry_probe}; "
-            f"recovery_probes={recovery_probes}"
-        )
+        self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
 
     async def _click_add_source_button(self, page: Any) -> None:
         button = await self._wait_for_visible_locator(
@@ -18218,11 +17866,6 @@ class ChatGPTBrowserClient:
         query_pairs: list[tuple[str, str]] = []
         existing_tab = False
         for key, value in parse_qsl(parsed.query, keep_blank_values=True):
-            # Cloudflare challenge/query tokens are transient route state.  Keeping
-            # them while forcing tab=sources can strand the browser on a stale
-            # challenge URL where the Project Sources surface never hydrates.
-            if key.startswith('__cf_') or key in {'cf_chl_rt_tk', 'cf_chl_jschl_tk'}:
-                continue
             if key == 'tab':
                 query_pairs.append((key, 'sources'))
                 existing_tab = True

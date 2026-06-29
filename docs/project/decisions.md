@@ -452,21 +452,12 @@ Decision: Replace unbounded `browser_status()` polling in that fixture with an e
 
 Consequence: The release-validation group should fail fast with deterministic local diagnostics if scheduler state does not start as expected. No normal scope advances and v0.1.105 remains deferred.
 
+## ADR-PROJ-113 — v0.1.104.7 returns to the v0.1.104.1 source line
 
-## Decision — v0.1.104.2 isolated release tests are pre-adoption only
+Status: accepted for v0.1.104.7 repair candidate.
 
-For `v0.1.104.2`, isolated release tests may be used to shorten the repair feedback loop before running the full live/browser release matrix. They do not create accepted/current status and cannot be combined with `--adopt-after-validation`. Accepted/current still requires full release-control evidence unless a future explicit control-surface decision changes the adoption policy.
+Context: Repair candidates `v0.1.104.2` through `v0.1.104.6` attempted Project ensure, isolated validation, Project Sources direct-route, route-hydration, and challenge/interstitial diagnostics. Operator feedback identified that this branch added complexity without resolving the live Project Sources blockage.
 
+Decision: Build v0.1.104.7 from the `v0.1.104.1` source line, preserving the `v0.1.104` sandbox mutation verification target and the `v0.1.104.1` project-remove frozen scheduler timeout repair. Do not carry forward the `v0.1.104.2`-`v0.1.104.6` Project Source/browser recovery experiments or isolated release-test mode.
 
-## Decision — v0.1.104.3 removes isolated release-test mode
-
-The failed `v0.1.104.2` candidate introduced `--run-isolated-release-tests` as a pre-adoption accelerator, but the additional mode created another validation path and operator confusion. `v0.1.104.3` removes that mode. Focused local checks remain acceptable during artifact creation, but accepted/current status requires full release-control evidence and artifact-current alignment.
-
-
-## Decision — v0.1.104.4 accepts verified Project Sources surface without visible tab control
-
-The live `v0.1.104.3` full release-control run failed before validation because Project Source ZIP add received a service 504: the Project Sources tab did not become visible. The source surface can be route-addressable via `?tab=sources`, so source add/remove/capability flows now navigate directly to that route and accept verified source-surface evidence even when the tab control itself is absent. Ambiguous or absent surface evidence remains release-blocking.
-
-## Decision — v0.1.104.6 treats `?tab=sources` URL as insufficient without hydrated Sources surface
-
-The live `v0.1.104.4` release-control run reached the `?tab=sources` route but still saw no Project Sources cards, empty state, or add/upload affordance. A bare route match is not proof that the Sources surface hydrated. `v0.1.104.6` strips transient Cloudflare challenge parameters, performs bounded route recovery through Project home and Sources, records richer surface diagnostics, and still fails closed when no concrete Sources surface evidence is visible.
+Consequence: The release line returns to one full release-control adoption gate. `v0.1.105` remains deferred until `v0.1.104` is accepted/current through a repair candidate.

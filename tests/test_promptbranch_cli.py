@@ -11056,38 +11056,6 @@ def test_src_add_service_error_returns_structured_json_without_traceback(monkeyp
     assert "Traceback" not in captured.out
     assert "Traceback" not in captured.err
 
-
-
-def test_src_add_challenge_interstitial_error_returns_operator_review_payload(monkeypatch, capsys, tmp_path) -> None:
-    class FakeServiceClient:
-        def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
-            pass
-
-        def add_project_source(self, **kwargs):
-            raise RuntimeError(
-                "504 error for POST http://localhost:8000/v1/project-sources: "
-                "project_sources_challenge_interstitial_blocking: Enable JavaScript and cookies to continue"
-            )
-
-    file_path = tmp_path / "chatgpt_claudecode_workflow-2_v0.1.104.6.zip"
-    file_path.write_bytes(b"zip")
-    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
-
-    exit_code = main(["--service-base-url", "http://localhost:8000", "src", "add", str(file_path)])
-
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-    assert exit_code == 1
-    assert payload["status"] == "project_sources_challenge_interstitial_blocking"
-    assert payload["project_source_mutated"] is False
-    assert payload["persistence_verified"] is False
-    assert payload["operator_review_required"] is True
-    assert payload["manual_action_required"] is True
-    assert payload["release_blocking"] is True
-    assert "Traceback" not in captured.out
-    assert "Traceback" not in captured.err
-
-
 def test_phase3_src_sync_confirm_upload_service_error_with_expected_source_is_ambiguous(monkeypatch, capsys, tmp_path) -> None:
     calls: list[dict[str, object]] = []
 
