@@ -464,3 +464,5 @@ Acceptance criteria:
 | DOD-145 | Isolated release-test mode is removed from release-control and full release-control remains the only accepted/current gate | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.104.3.md` | v0.1.104.3 |
 
 | DOD-146 | Project Source add/remove/capability flows open `?tab=sources` directly and accept verified source-surface evidence when the tab control is not visible | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.104.4.md` | v0.1.104.4 |
+
+| DOD-147 | Project Sources route hydration recovery is bounded and fail-closed | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.104.5.md` | v0.1.104.5 |

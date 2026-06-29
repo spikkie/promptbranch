@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-active candidate version: v0.1.104.4
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+active candidate version: v0.1.104.5
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -30,7 +30,7 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.4.zip repair candidate once packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.5.zip repair candidate once packaged
 release status: v0.1.104.3 is a focused-validated repair candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
@@ -782,13 +782,18 @@ Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
 
 The release remains not accepted/current until full release-control and artifact-current alignment pass.
 
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.4.zip`.
+Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.5.zip`.
 
 
 ## v0.1.104.4 repair candidate status
 
 `v0.1.104.4` is a repair-only candidate built from failed `v0.1.104.3`. It preserves the `v0.1.104` sandbox mutation verification and rollback evidence gate, prior scheduler/Project ensure repairs, and the removal of isolated release-test mode. It repairs Project Source ZIP add failures where the browser service returned `Project Sources tab did not become visible` by opening `?tab=sources` directly and accepting a verified Project Sources surface even if the tab control itself is hidden or not rendered.
 
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.4.zip`.
+Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.5.zip`.
 
 `v0.1.105 — Sandbox correction promotion readiness check` remains deferred until this repair is accepted/current.
+
+
+## v0.1.104.5 repair candidate note
+
+`v0.1.104.5` is a repair-only candidate for the `v0.1.104` sandbox mutation verification slice. It preserves all prior `v0.1.104.x` repairs and adds bounded Project Sources route hydration recovery when `?tab=sources` is present but no Sources surface, add button, card, or empty state has rendered. It strips transient Cloudflare challenge query parameters, reloads/re-enters the Project home route before returning to Sources, and still fails closed without concrete Sources surface evidence. `v0.1.105` remains deferred.

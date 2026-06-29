@@ -3633,6 +3633,77 @@ def test_open_project_sources_tab_retries_direct_sources_route_when_tab_missing(
     assert "project-sources-tab" in waits
     assert "project-sources-surface-add-button-probe" in waits
 
+def test_project_sources_url_strips_transient_cloudflare_tokens(browser_client: ChatGPTBrowserClient) -> None:
+    assert browser_client._project_sources_url(
+        "https://chatgpt.com/g/g-p-123/project?tab=chats&__cf_chl_rt_tk=stale&foo=1"
+    ) == "https://chatgpt.com/g/g-p-123/project?tab=sources&foo=1"
+
+
+def test_open_project_sources_tab_recovers_via_home_route_when_direct_sources_route_does_not_hydrate(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class Page:
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    page = Page()
+    state = {
+        "url": "https://chatgpt.com/g/g-p-123/project?tab=sources&__cf_chl_rt_tk=stale",
+        "home_seen": False,
+        "hydrated": False,
+    }
+    waits: list[str] = []
+    gotos: list[tuple[str, str]] = []
+
+    async def fake_safe_page_url(_page) -> str:
+        return state["url"]
+
+    async def fake_snapshot(_page):
+        return []
+
+    async def fake_empty(_page) -> bool:
+        return False
+
+    async def fake_visible_text_preview(_page, *, limit: int = 600) -> str:
+        return "Sources Upload files" if state["hydrated"] else ""
+
+    async def fake_wait(_page, _selectors, *, label: str, total_timeout_ms: int, **_kwargs):
+        waits.append(label)
+        if label == "project-sources-surface-add-button-probe" and state["hydrated"]:
+            return object()
+        return None
+
+    async def fake_goto(_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        gotos.append((label, url))
+        state["url"] = url
+        if label.endswith("project-home-then-sources-primary"):
+            state["home_seen"] = True
+        if label.endswith("project-home-then-sources-sources") and state["home_seen"]:
+            state["hydrated"] = True
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    browser_client._visible_text_preview = fake_visible_text_preview  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+
+    asyncio.run(browser_client._open_project_sources_tab(page))
+
+    assert (
+        "project-sources-tab-direct-route",
+        "https://chatgpt.com/g/g-p-123/project?tab=sources",
+    ) in gotos
+    assert (
+        "project-sources-route-recovery-project-home-then-sources-primary",
+        "https://chatgpt.com/g/g-p-123/project",
+    ) in gotos
+    assert (
+        "project-sources-route-recovery-project-home-then-sources-sources",
+        "https://chatgpt.com/g/g-p-123/project?tab=sources",
+    ) in gotos
+    assert "project-sources-surface-add-button-probe" in waits
+
 
 def test_project_source_add_operation_opens_direct_sources_route_before_tab_probe(
     browser_client: ChatGPTBrowserClient,

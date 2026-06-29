@@ -184,12 +184,21 @@ PROJECT_SOURCES_PANEL_SELECTORS = [
 PROJECT_ADD_SOURCE_BUTTON_SELECTORS = [
     '[role="tabpanel"][data-state="active"] button:has-text("Add source")',
     '[role="tabpanel"][data-state="active"] button:has-text("Add Source")',
+    '[role="tabpanel"][data-state="active"] button:has-text("Add sources")',
+    '[role="tabpanel"][data-state="active"] button:has-text("Upload")',
+    '[role="tabpanel"][data-state="active"] button:has-text("Upload files")',
     '[role="tabpanel"][data-state="active"] [aria-label*="Add source" i]',
+    '[role="tabpanel"][data-state="active"] [aria-label*="Upload" i]',
     '[role="tabpanel"][data-state="active"] button:has-text("Add")',
     '[role="tabpanel"] button:has-text("Add")',
+    '[role="tabpanel"] button:has-text("Upload")',
     'button:has-text("Add source")',
     'button:has-text("Add Source")',
+    'button:has-text("Add sources")',
+    'button:has-text("Upload")',
+    'button:has-text("Upload files")',
     '[aria-label*="Add source" i]',
+    '[aria-label*="Upload" i]',
 ]
 PROJECT_SOURCE_DIALOG_SCOPE_SELECTORS = [
     '[role="dialog"]',
@@ -15643,6 +15652,8 @@ class ChatGPTBrowserClient:
         empty_state_error: Optional[str] = None
         add_button_visible = False
         add_button_error: Optional[str] = None
+        visible_text_preview = ""
+        visible_text_error: Optional[str] = None
 
         try:
             source_cards = await self._snapshot_project_source_cards(page)
@@ -15665,7 +15676,33 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             add_button_error = repr(exc)
 
-        ready = bool(source_cards or empty_state_visible or (url_has_sources_tab and add_button_visible))
+        try:
+            visible_text_preview = await self._visible_text_preview(page, limit=600)
+        except Exception as exc:
+            visible_text_error = repr(exc)
+
+        normalized_preview = re.sub(r"\s+", " ", visible_text_preview or "").strip().lower()
+        likely_blocked_by_challenge = bool(
+            "__cf_chl_rt_tk" in (current_url or "")
+            or "verify you are human" in normalized_preview
+            or "checking your browser" in normalized_preview
+            or "just a moment" in normalized_preview
+            or "cloudflare" in normalized_preview
+        )
+        # Some Project builds render the Sources route without the tab control.
+        # Treat the route as ready only when a concrete source affordance, card,
+        # or empty-state copy is visible; never accept a bare ?tab=sources URL.
+        route_text_indicates_sources_surface = bool(
+            url_has_sources_tab
+            and "sources" in normalized_preview
+            and (
+                "add source" in normalized_preview
+                or "add sources" in normalized_preview
+                or "upload" in normalized_preview
+                or "give chatgpt more context" in normalized_preview
+            )
+        )
+        ready = bool(source_cards or empty_state_visible or (url_has_sources_tab and add_button_visible) or route_text_indicates_sources_surface)
         return {
             "ready": ready,
             "current_url": current_url,
@@ -15677,9 +15714,13 @@ class ChatGPTBrowserClient:
             ],
             "empty_state_visible": empty_state_visible,
             "add_button_visible": add_button_visible,
+            "route_text_indicates_sources_surface": route_text_indicates_sources_surface,
+            "likely_blocked_by_challenge": likely_blocked_by_challenge,
+            "visible_text_preview": visible_text_preview[:300],
             "source_card_error": source_card_error,
             "empty_state_error": empty_state_error,
             "add_button_error": add_button_error,
+            "visible_text_error": visible_text_error,
         }
 
     async def _open_project_sources_tab(self, page: Any) -> None:
@@ -15743,6 +15784,7 @@ class ChatGPTBrowserClient:
             )
             return
 
+        retry_probe: Optional[dict[str, Any]] = None
         retry_tab = await self._wait_for_visible_locator(
             page,
             PROJECT_SOURCES_TAB_SELECTORS,
@@ -15763,9 +15805,77 @@ class ChatGPTBrowserClient:
                 )
                 return
 
+        recovery_probes: list[dict[str, Any]] = []
+        project_home_url = self._project_home_url_from_url(current_url or self._project_home_url())
+        recovery_steps = (
+            ("project-home-then-sources", project_home_url, 1_500, sources_url, 8_000),
+            ("sources-route-reload", sources_url, 2_500, None, 8_000),
+            ("project-home-then-sources-final", project_home_url, 3_000, sources_url, 12_000),
+        )
+        for step_name, primary_url, settle_ms, secondary_url, probe_timeout_ms in recovery_steps:
+            self._log(
+                "project-source",
+                "attempting sources surface route recovery",
+                step=step_name,
+                primary_url=primary_url,
+                secondary_url=secondary_url,
+                previous_probe=direct_probe,
+            )
+            try:
+                await self._goto(
+                    page,
+                    primary_url,
+                    label=f"project-sources-route-recovery-{step_name}-primary",
+                    respect_history_rate_limit_cooldown=False,
+                )
+            except Exception as exc:
+                recovery_probes.append({"step": step_name, "phase": "primary_goto", "error": repr(exc)})
+            try:
+                await page.wait_for_timeout(max(0, int(settle_ms)))
+            except Exception:
+                pass
+            if secondary_url:
+                try:
+                    await self._goto(
+                        page,
+                        secondary_url,
+                        label=f"project-sources-route-recovery-{step_name}-sources",
+                        respect_history_rate_limit_cooldown=False,
+                    )
+                except Exception as exc:
+                    recovery_probes.append({"step": step_name, "phase": "sources_goto", "error": repr(exc)})
+                try:
+                    await page.wait_for_timeout(1_000)
+                except Exception:
+                    pass
+            else:
+                try:
+                    reload = getattr(page, "reload", None)
+                    if callable(reload):
+                        await reload(wait_until="domcontentloaded", timeout=15_000)
+                        await page.wait_for_timeout(1_000)
+                except Exception as exc:
+                    recovery_probes.append({"step": step_name, "phase": "reload", "error": repr(exc)})
+            recovery_probe = await self._project_sources_surface_probe(
+                page,
+                add_button_timeout_ms=max(1, int(probe_timeout_ms)),
+            )
+            recovery_probe = dict(recovery_probe)
+            recovery_probe["step"] = step_name
+            recovery_probes.append(recovery_probe)
+            if recovery_probe.get("ready"):
+                self._log(
+                    "project-source",
+                    "sources surface opened after route recovery",
+                    source_surface_probe=recovery_probe,
+                    recovery_probes=recovery_probes,
+                )
+                return
+
         raise ResponseTimeoutError(
-            "Project Sources surface did not become visible; "
-            f"initial_probe={initial_probe}; direct_probe={direct_probe}"
+            "Project Sources surface did not become visible after route recovery; "
+            f"initial_probe={initial_probe}; direct_probe={direct_probe}; retry_probe={retry_probe}; "
+            f"recovery_probes={recovery_probes}"
         )
 
     async def _click_add_source_button(self, page: Any) -> None:
@@ -17993,6 +18103,11 @@ class ChatGPTBrowserClient:
         query_pairs: list[tuple[str, str]] = []
         existing_tab = False
         for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            # Cloudflare challenge/query tokens are transient route state.  Keeping
+            # them while forcing tab=sources can strand the browser on a stale
+            # challenge URL where the Project Sources surface never hydrates.
+            if key.startswith('__cf_') or key in {'cf_chl_rt_tk', 'cf_chl_jschl_tk'}:
+                continue
             if key == 'tab':
                 query_pairs.append((key, 'sources'))
                 existing_tab = True
