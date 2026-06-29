@@ -344,7 +344,6 @@ class ChatGPTServiceClient:
         memory_mode: str = "default",
         keep_open: bool = False,
         project_url: Optional[str] = None,
-        request_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "name": name,
@@ -355,8 +354,7 @@ class ChatGPTServiceClient:
         }
         if project_url:
             payload["project_url"] = project_url
-        timeout = float(request_timeout_seconds) if request_timeout_seconds is not None else self._timeout
-        return self._json(self._client.post("/v1/projects/ensure", json=payload, timeout=timeout))
+        return self._json(self._client.post("/v1/projects/ensure", json=payload))
 
     def remove_project(
         self,

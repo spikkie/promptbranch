@@ -443,26 +443,11 @@ Last release: v0.1.102
 | Last release | v0.1.104.1 |
 | Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
 
-
-## DOD-144 — v0.1.104.2 project ensure create/reuse timeout repair
+## DOD-144 — v0.1.104.7 rollback to v0.1.104.1 source line
 
 | Field | Value |
 |---|---|
 | Status | focused_candidate |
-| Evidence | extended Project ensure timeout, exact post-timeout resolve recovery, fail-closed unrecovered timeout tests, isolated release-test mode |
-| Last release | v0.1.104.2 |
-| Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
-
-Acceptance criteria:
-- Project ensure/create/reuse gets an extended service request timeout separate from the general browser service timeout.
-- ReadTimeout recovery accepts success only when exact project identity is verified by post-timeout resolve.
-- Unverified post-timeout states remain release-blocking.
-- Isolated release tests are available for focused pre-adoption validation but cannot be combined with `--adopt-after-validation`.
-- No ChatGPT Project deletion is enabled.
-
-
-| DOD-145 | Isolated release-test mode is removed from release-control and full release-control remains the only accepted/current gate | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.104.3.md` | v0.1.104.3 |
-
-| DOD-146 | Project Source add/remove/capability flows open `?tab=sources` directly and accept verified source-surface evidence when the tab control is not visible | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.104.4.md` | v0.1.104.4 |
-
-| DOD-147 | Project Sources route hydration recovery is bounded and fail-closed | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.104.6.md` | v0.1.104.6 |
+| Evidence | Version/control-surface tests, scheduler source-lifecycle focused tests, sandbox verification CLI smoke, Artifact Guardian, ZIP hygiene |
+| Last release | v0.1.104.7 |
+| Scope | Repair-only rollback candidate; preserves v0.1.104 sandbox verification and v0.1.104.1 scheduler timeout repair; drops v0.1.104.2-v0.1.104.6 experiments; no normal scope advancement |

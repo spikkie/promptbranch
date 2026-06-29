@@ -94,6 +94,7 @@ run_all_strict_source_kind_matrix="${PROMPTBRANCH_RUN_ALL_STRICT_SOURCE_KIND_MAT
 # Developer accelerator: run only the currently isolated failing text-source
 # compatibility path through the selected full-test transports.
 run_failing_tests=0
+
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
 service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
@@ -4506,7 +4507,6 @@ INNERPY
     workflow_rc=1
   fi
 }
-
 
 if [[ ${skip_tests} -eq 0 ]]; then
   start_test_session_log

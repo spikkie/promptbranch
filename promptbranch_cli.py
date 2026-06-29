@@ -5404,14 +5404,11 @@ def _project_source_add_exception_payload(
 ) -> dict[str, Any]:
     error_text = str(exc)
     status = "source_add_failed"
-    normalized_error = error_text.lower()
-    if "project_sources_challenge_interstitial_blocking" in normalized_error:
-        status = "project_sources_challenge_interstitial_blocking"
-    elif "remove/delete action" in error_text:
+    if "remove/delete action" in error_text:
         status = "overwrite_remove_failed"
-    elif "already exists" in normalized_error:
+    elif "already exists" in error_text.lower():
         status = "source_already_exists"
-    payload = {
+    return {
         "ok": False,
         "action": "source_add",
         "status": status,
@@ -5421,16 +5418,9 @@ def _project_source_add_exception_payload(
         "overwrite_existing": overwrite_existing,
         "project_source_mutated": False,
         "persistence_verified": False,
-        "operator_review_required": status in {"overwrite_remove_failed", "project_sources_challenge_interstitial_blocking"},
+        "operator_review_required": status == "overwrite_remove_failed",
         "error": error_text,
     }
-    if status == "project_sources_challenge_interstitial_blocking":
-        payload.update({
-            "release_blocking": True,
-            "manual_action_required": True,
-            "safe_next_action": "restore a real ChatGPT Project Sources page in the browser profile, then rerun release-control",
-        })
-    return payload
 
 
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:

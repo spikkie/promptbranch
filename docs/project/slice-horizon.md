@@ -15,23 +15,3 @@
 ## Repair horizon rule
 
 Repair releases must keep the active normal slice fixed, set `scope_advance_allowed=false`, and must not move the rolling horizon forward.
-
-
-## v0.1.104.2 repair horizon note
-
-`v0.1.104.2` does not advance the rolling horizon. `v0.1.105 — Sandbox correction promotion readiness check` remains deferred until `v0.1.104` is accepted through the latest repair.
-
-
-## v0.1.104.3 repair horizon note
-
-`v0.1.104.3` does not advance the rolling horizon. It removes the failed isolated release-test mode and keeps `v0.1.105 — Sandbox correction promotion readiness check` deferred until `v0.1.104` is accepted through the latest repair.
-
-
-## v0.1.104.4 repair horizon note
-
-`v0.1.104.4` does not advance the rolling horizon. It repairs Project Sources direct-route visibility for source add and keeps `v0.1.105 — Sandbox correction promotion readiness check` deferred until `v0.1.104` is accepted through the latest repair.
-
-
-## v0.1.104.6 repair candidate note
-
-`v0.1.104.6` is a repair-only candidate for the `v0.1.104` sandbox mutation verification slice. It preserves all prior `v0.1.104.x` repairs and adds bounded Project Sources route hydration recovery when `?tab=sources` is present but no Sources surface, add button, card, or empty state has rendered. It strips transient Cloudflare challenge query parameters, reloads/re-enters the Project home route before returning to Sources, and still fails closed without concrete Sources surface evidence. `v0.1.105` remains deferred.
