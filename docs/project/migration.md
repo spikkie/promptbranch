@@ -698,3 +698,19 @@ The next planned normal slice after `v0.1.102` acceptance is `v0.1.103` — Firs
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a sandbox-only mutation schema and CLI flag that copy an explicit fixture into a temporary workspace, mutate the copy, and record before/after evidence while keeping the repository fixture unchanged.
 
 The next planned normal slice after `v0.1.103` acceptance is `v0.1.104` — Sandbox mutation verification and rollback evidence gate.
+
+## v0.1.104 migration note
+
+No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a verification and rollback evidence gate over the sandbox-only mutation payload from `v0.1.103`. The gate proves sandbox before/after change, repository before/after immutability, and temporary workspace deletion; it does not promote sandbox changes into repository files.
+
+The next planned normal slice after `v0.1.104` acceptance is `v0.1.105` — Sandbox correction promotion readiness check.
+
+## v0.1.104.1 migration note
+
+No user data, Project Source, artifact-current, or ChatGPT Project migration is performed. This repair only makes the project-remove frozen scheduler fixture bounded and deterministic after the `v0.1.104` release-control timeout. `v0.1.104` sandbox mutation verification behavior is preserved; `v0.1.105` remains deferred until this repair is accepted/current.
+
+## v0.1.104.7 migration note
+
+No user data, Project Source, artifact-current, deployment, Kubernetes, or ChatGPT Project migration is performed. This repair intentionally returns to the `v0.1.104.1` source line, preserving only the project-remove frozen scheduler timeout repair on top of the `v0.1.104` sandbox mutation verification target. The `v0.1.104.2` through `v0.1.104.6` Project ensure, isolated release-test, Project Sources direct-route, route-hydration, and challenge/interstitial experiments are not carried forward.
+
+The next planned normal slice after `v0.1.104` acceptance remains `v0.1.105` — Sandbox correction promotion readiness check.
