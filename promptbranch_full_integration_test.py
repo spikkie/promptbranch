@@ -39,14 +39,6 @@ SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS = float(os.getenv(
     "PROMPTBRANCH_SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS",
     os.getenv("CHATGPT_SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS", "900.0"),
 ))
-PROJECT_ENSURE_SERVICE_TIMEOUT_SECONDS = float(os.getenv(
-    "PROMPTBRANCH_PROJECT_ENSURE_SERVICE_TIMEOUT_SECONDS",
-    os.getenv("CHATGPT_PROJECT_ENSURE_SERVICE_TIMEOUT_SECONDS", "900.0"),
-))
-PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS = float(os.getenv(
-    "PROMPTBRANCH_PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS",
-    "2.0",
-))
 
 CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "mcp_smoke",
@@ -355,9 +347,6 @@ class DockerServiceAdapter:
     def _source_mutation_timeout_seconds(self) -> float:
         return max(float(self.timeout_seconds), float(SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS))
 
-    def _project_ensure_timeout_seconds(self) -> float:
-        return max(float(self.timeout_seconds), float(PROJECT_ENSURE_SERVICE_TIMEOUT_SECONDS))
-
     @staticmethod
     def _browser_busy_payload(exc: Exception) -> dict[str, Any] | None:
         response = getattr(exc, "response", None)
@@ -491,104 +480,15 @@ class DockerServiceAdapter:
         memory_mode: str,
         keep_open: bool,
     ) -> dict[str, Any]:
-        request_timeout = self._project_ensure_timeout_seconds()
         with self._client() as client:
-            try:
-                return client.ensure_project(
-                    name=name,
-                    icon=icon,
-                    color=color,
-                    memory_mode=memory_mode,
-                    keep_open=keep_open,
-                    project_url=self.project_url,
-                    request_timeout_seconds=request_timeout,
-                )
-            except Exception as exc:
-                if type(exc).__name__ != "ReadTimeout":
-                    raise
-                return self._recover_project_ensure_after_timeout(
-                    name=name,
-                    keep_open=keep_open,
-                    request_timeout_seconds=request_timeout,
-                    error=exc,
-                )
-
-    def _recover_project_ensure_after_timeout(
-        self,
-        *,
-        name: str,
-        keep_open: bool,
-        request_timeout_seconds: float,
-        error: Exception,
-    ) -> dict[str, Any]:
-        if PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS > 0:
-            time.sleep(PROJECT_ENSURE_TIMEOUT_RECOVERY_DELAY_SECONDS)
-        try:
-            resolved = self._resolve_project_sync(name, keep_open, self.project_url)
-        except Exception as resolve_exc:
-            return {
-                "ok": False,
-                "action": "ensure_project",
-                "status": "project_ensure_request_timeout",
-                "project_name": name,
-                "project_url": self.project_url,
-                "request_timeout_seconds": request_timeout_seconds,
-                "general_service_timeout_seconds": self.timeout_seconds,
-                "error_type": type(error).__name__,
-                "error": str(error),
-                "post_timeout_resolve_attempted": True,
-                "post_timeout_resolve_ok": False,
-                "post_timeout_resolve_error_type": type(resolve_exc).__name__,
-                "post_timeout_resolve_error": str(resolve_exc),
-                "release_blocking": True,
-                "operator_review_required": True,
-                "recovery_guidance": [
-                    "Inspect the browser service log for the project ensure operation that timed out.",
-                    "Run `pb project-resolve <name> --json` to verify whether the project was created after the client timeout.",
-                    "Do not continue live Project Source or ask tests unless the exact project identity is verified.",
-                ],
-            }
-        match_count = resolved.get("match_count") if isinstance(resolved, dict) else None
-        project_url = resolved.get("project_url") or resolved.get("resolved_project_home_url") if isinstance(resolved, dict) else None
-        if isinstance(resolved, dict) and resolved.get("ok") is True and match_count == 1 and isinstance(project_url, str) and project_url.strip():
-            return {
-                "ok": True,
-                "action": "ensure_project",
-                "status": "verified_after_request_timeout",
-                "project_name": name,
-                "project_url": project_url.strip(),
-                "created": False,
-                "late_created_unknown": True,
-                "recovered_after_request_timeout": True,
-                "request_timeout_seconds": request_timeout_seconds,
-                "general_service_timeout_seconds": self.timeout_seconds,
-                "error_type": type(error).__name__,
-                "error": str(error),
-                "post_timeout_resolve_attempted": True,
-                "post_timeout_resolve_ok": True,
-                "post_timeout_resolve_result": resolved,
-                "release_blocking": False,
-            }
-        return {
-            "ok": False,
-            "action": "ensure_project",
-            "status": "project_ensure_request_timeout_not_recovered",
-            "project_name": name,
-            "project_url": self.project_url,
-            "request_timeout_seconds": request_timeout_seconds,
-            "general_service_timeout_seconds": self.timeout_seconds,
-            "error_type": type(error).__name__,
-            "error": str(error),
-            "post_timeout_resolve_attempted": True,
-            "post_timeout_resolve_ok": False,
-            "post_timeout_resolve_result": resolved,
-            "release_blocking": True,
-            "operator_review_required": True,
-            "recovery_guidance": [
-                "The project ensure request timed out and no exact post-timeout project identity was verified.",
-                "Inspect the retained browser profile/project list before retrying to avoid duplicate test projects.",
-            ],
-        }
+            return client.ensure_project(
+                name=name,
+                icon=icon,
+                color=color,
+                memory_mode=memory_mode,
+                keep_open=keep_open,
+                project_url=self.project_url,
+            )
 
     async def remove_project(
         self,

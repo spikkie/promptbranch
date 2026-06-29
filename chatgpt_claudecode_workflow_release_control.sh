@@ -94,10 +94,6 @@ run_all_strict_source_kind_matrix="${PROMPTBRANCH_RUN_ALL_STRICT_SOURCE_KIND_MAT
 # Developer accelerator: run only the currently isolated failing text-source
 # compatibility path through the selected full-test transports.
 run_failing_tests=0
-# Slice-local release validation is a pre-adoption accelerator. It runs only
-# focused local/static checks for the active slice/repair and intentionally does
-# not prove live browser, Project Source, or adoption readiness.
-run_isolated_release_tests=0
 
 # detached prevents the release-control script from being captured by a long-running service.
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
@@ -584,11 +580,6 @@ while [[ $# -gt 0 ]]; do
       test_transport="both"
       shift
       ;;
-    --run-isolated-release-tests|--run-slice-tests)
-      run_isolated_release_tests=1
-      skip_tests=0
-      shift
-      ;;
     --tests-only|--run-tests-only)
       tests_only=1
       skip_tests=0
@@ -786,10 +777,10 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
 fi
 
 need_cmd python3
-if [[ ${import_plan} -eq 0 && ${run_isolated_release_tests} -eq 0 ]]; then
+if [[ ${import_plan} -eq 0 ]]; then
   need_cmd promptbranch
 fi
-if [[ (${skip_tests} -eq 0 && ${run_isolated_release_tests} -eq 0) || ${adopt_current} -eq 1 ]]; then
+if [[ ${skip_tests} -eq 0 || ${adopt_current} -eq 1 ]]; then
   need_cmd pb
 fi
 if [[ ${import_plan} -eq 0 && ${tests_only} -eq 0 && ${adopt_current} -eq 0 ]]; then
@@ -1064,7 +1055,6 @@ printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
 printf 'run_all_tests:  %s\n' "${run_all_tests}"
 printf 'run_failing_tests:  %s\n' "${run_failing_tests}"
-printf 'run_isolated_release_tests: %s\n' "${run_isolated_release_tests}"
 printf 'run_all_strict_source_kind_matrix: %s\n' "${run_all_strict_source_kind_matrix}"
 printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
@@ -1075,10 +1065,6 @@ printf 'adopt_after_validation: %s\n' "${adopt_after_validation}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
 printf 'import_plan:    %s\n' "${import_plan}"
 printf '\n'
-
-if [[ ${run_isolated_release_tests} -eq 1 && ${adopt_after_validation} -eq 1 ]]; then
-  fail "--adopt-after-validation requires full release validation; run isolated release tests as a pre-adoption diagnostic only"
-fi
 
 if [[ ${import_plan} -eq 1 ]]; then
   [[ -f "${download_zip}" ]] || fail "import plan ZIP not found: ${download_zip}"
@@ -4522,105 +4508,24 @@ INNERPY
   fi
 }
 
-run_isolated_release_tests_profile() {
-  local isolated_log="${release_log_dir}/isolated_release_tests.${ver}.log"
-  local isolated_summary="${release_log_dir}/isolated_release_tests.${ver}.summary.json"
-  local rc=0
-  local step_specs=()
-  : > "${isolated_log}"
-  echo "== isolated release tests ==" | tee -a "${isolated_log}"
-  echo "profile: slice_local_static" | tee -a "${isolated_log}"
-  echo "adoption_gate: false" | tee -a "${isolated_log}"
-  echo "full_tests_run: false" | tee -a "${isolated_log}"
-  echo "live_browser_run: false" | tee -a "${isolated_log}"
-
-  run_isolated_step() {
-    local name="$1"
-    shift
-    local log_path="${release_log_dir}/isolated.${name}.${ver}.log"
-    local step_rc=0
-    echo "== isolated step: ${name} ==" | tee -a "${isolated_log}"
-    echo "+ $*" | tee -a "${isolated_log}"
-    timeout --foreground "${PROMPTBRANCH_ISOLATED_RELEASE_TEST_STEP_TIMEOUT_SECONDS:-180}" "$@" > "${log_path}" 2>&1
-    step_rc=$?
-    cat "${log_path}" >> "${isolated_log}"
-    step_specs+=("${name}|${log_path}|${step_rc}")
-    if [[ ${step_rc} -ne 0 ]]; then
-      rc=${step_rc}
-    fi
-  }
-
-  run_isolated_step pytest_loop python3 -m pytest -q tests/test_promptbranch_loop.py
-  run_isolated_step pytest_control_version python3 -m pytest -q tests/test_project_control_surface.py tests/test_promptbranch_version.py
-  run_isolated_step pytest_project_ensure_repair python3 -m pytest -q tests/test_full_integration_harness.py -k 'project_ensure_timeout or project_ensure_uses_extended_timeout'
-  run_isolated_step loop_sandbox_verify python3 promptbranch_cli.py loop run --target examples/loop-targets/sandboxed-file-mutation-target.json --read-only-execution --evidence-gate --execute-read-only-validation --diagnose-read-only-result --generate-correction-plan --execute-sandbox-mutation --verify-sandbox-mutation --json
-  run_isolated_step artifact_guard python3 promptbranch_cli.py artifact guard --zip "${artifact_zip}" --version "${ver}" --json
-
-  python3 - "${isolated_summary}" "${ver}" "${rc}" "${step_specs[@]}" <<'INNERPY'
-from __future__ import annotations
-from datetime import datetime, timezone
-from pathlib import Path
-import json
-import sys
-summary = Path(sys.argv[1])
-version = sys.argv[2]
-rc = int(sys.argv[3])
-steps = []
-for item in sys.argv[4:]:
-    name, log, rc_text = item.split('|', 2)
-    step_rc = int(rc_text)
-    steps.append({"name": name, "log": log, "exit_code": step_rc, "ok": step_rc == 0})
-payload = {
-    "schema": "promptbranch.release_control.isolated_release_tests",
-    "schema_version": "1.0",
-    "generated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-    "version": version,
-    "ok": rc == 0 and bool(steps) and all(step["ok"] for step in steps),
-    "status": "passed" if rc == 0 and bool(steps) and all(step["ok"] for step in steps) else "failed",
-    "adoption_gate": False,
-    "full_tests_run": False,
-    "live_browser_run": False,
-    "project_source_mutation_run": False,
-    "steps": steps,
-    "limitations": [
-        "isolated release tests do not prove live browser readiness",
-        "isolated release tests do not prove Project Source add/verify",
-        "isolated release tests do not prove adoption/current alignment",
-    ],
-}
-summary.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-print(json.dumps(payload, indent=2, sort_keys=True))
-raise SystemExit(0 if payload["ok"] else 1)
-INNERPY
-  rc=$?
-  if [[ ${rc} -ne 0 ]]; then
-    workflow_rc=${rc}
-  fi
-  return ${rc}
-}
-
 if [[ ${skip_tests} -eq 0 ]]; then
   start_test_session_log
   set +e
 
-  if [[ ${run_isolated_release_tests} -eq 1 ]]; then
-    run_isolated_release_tests_profile
-  else
-    case "${test_transport}" in
-      direct)
-        run_full_test_transport "direct" "${service_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
-        ;;
-      localhost)
-        run_full_test_transport "localhost" "${localhost_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
-        ;;
-      both)
-        run_full_test_transport "direct" "${service_base_url}" "${direct_full_log}" "${direct_report_json}" "${structured_summary_json}"
-        run_full_test_transport "localhost" "${localhost_base_url}" "${localhost_full_log}" "${localhost_report_json}" "${release_log_dir}/post_release_validation.localhost.${ver}.summary.json"
-        ;;
-    esac
-  fi
+  case "${test_transport}" in
+    direct)
+      run_full_test_transport "direct" "${service_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
+      ;;
+    localhost)
+      run_full_test_transport "localhost" "${localhost_base_url}" "${full_log}" "${report_json}" "${structured_summary_json}"
+      ;;
+    both)
+      run_full_test_transport "direct" "${service_base_url}" "${direct_full_log}" "${direct_report_json}" "${structured_summary_json}"
+      run_full_test_transport "localhost" "${localhost_base_url}" "${localhost_full_log}" "${localhost_report_json}" "${release_log_dir}/post_release_validation.localhost.${ver}.summary.json"
+      ;;
+  esac
 
-  if [[ ${run_all_tests} -eq 1 && ${run_isolated_release_tests} -eq 0 ]]; then
+  if [[ ${run_all_tests} -eq 1 ]]; then
     if [[ ${run_failing_tests} -eq 1 ]]; then
       echo "== pb test all: focused failing tests only =="
       echo "focused_failing_tests: text_source_add_compatibility"

@@ -442,20 +442,3 @@ Last release: v0.1.102
 | Evidence | `tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler`, browser scheduler source-lifecycle nodeid set, `docs/repair-v0.1.104.1.md` |
 | Last release | v0.1.104.1 |
 | Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
-
-
-## DOD-144 — v0.1.104.2 project ensure create/reuse timeout repair
-
-| Field | Value |
-|---|---|
-| Status | focused_candidate |
-| Evidence | extended Project ensure timeout, exact post-timeout resolve recovery, fail-closed unrecovered timeout tests, isolated release-test mode |
-| Last release | v0.1.104.2 |
-| Scope | Repair-only; no normal slice advancement beyond v0.1.104 |
-
-Acceptance criteria:
-- Project ensure/create/reuse gets an extended service request timeout separate from the general browser service timeout.
-- ReadTimeout recovery accepts success only when exact project identity is verified by post-timeout resolve.
-- Unverified post-timeout states remain release-blocking.
-- Isolated release tests are available for focused pre-adoption validation but cannot be combined with `--adopt-after-validation`.
-- No ChatGPT Project deletion is enabled.
