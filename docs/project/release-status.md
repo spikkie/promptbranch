@@ -322,15 +322,3 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 v0.1.104.1 repair candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.1.zip`.
 Next planned slice after acceptance remains: v0.1.105 — Sandbox correction promotion readiness check.
-
-
-## v0.1.104.2 candidate
-
-Status: focused repair candidate. Full release-control/adoption pending.
-
-Repair target: Project ensure create/reuse browser timeout after `v0.1.104.1`.
-
-Validation strategy: focused local repair tests plus isolated release-test mode first; full `--run-all-tests --strict-source-kind-matrix --adopt-after-validation` is still required for accepted/current status unless a future planning decision changes adoption policy.
-
-
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.

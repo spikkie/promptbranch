@@ -451,8 +451,3 @@ Context: `v0.1.104` full release-control failed because the `test_project_remove
 Decision: Replace unbounded `browser_status()` polling in that fixture with an explicit `asyncio.Event` start signal and bounded waits. Preserve the no-ChatGPT-Project-delete invariant: project removal remains blocked before browser/profile scheduler actuation and reports `project_delete_disabled`.
 
 Consequence: The release-validation group should fail fast with deterministic local diagnostics if scheduler state does not start as expected. No normal scope advances and v0.1.105 remains deferred.
-
-
-## Decision — v0.1.104.2 isolated release tests are pre-adoption only
-
-For `v0.1.104.2`, isolated release tests may be used to shorten the repair feedback loop before running the full live/browser release matrix. They do not create accepted/current status and cannot be combined with `--adopt-after-validation`. Accepted/current still requires full release-control evidence unless a future explicit control-surface decision changes the adoption policy.

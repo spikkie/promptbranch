@@ -7,8 +7,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
-active candidate version: v0.1.104.2
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+active candidate version: v0.1.104.1
 next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
@@ -1719,11 +1719,3 @@ Out of scope:
 `v0.1.104.1` repairs the failed release-control validation for `v0.1.104` without advancing the normal slice. The repair replaces the unbounded scheduler-status polling in `test_project_remove_is_frozen_before_profile_scheduler` with a bounded explicit start signal and task cleanup.
 
 The active normal slice remains `v0.1.104 — Sandbox mutation verification and rollback evidence gate`. `v0.1.105 — Sandbox correction promotion readiness check` remains planned only after acceptance.
-
-
-## v0.1.104.2 repair plan
-
-Repair-only scope: preserve `v0.1.104` sandbox mutation verification and rollback evidence, preserve `v0.1.104.1` scheduler repair, and repair Project ensure create/reuse browser timeout handling. Add isolated release-test support as a pre-adoption accelerator, not an adoption/current replacement. `v0.1.105` remains deferred.
-
-
-Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
