@@ -461,3 +461,8 @@ For `v0.1.104.2`, isolated release tests may be used to shorten the repair feedb
 ## Decision — v0.1.104.3 removes isolated release-test mode
 
 The failed `v0.1.104.2` candidate introduced `--run-isolated-release-tests` as a pre-adoption accelerator, but the additional mode created another validation path and operator confusion. `v0.1.104.3` removes that mode. Focused local checks remain acceptable during artifact creation, but accepted/current status requires full release-control evidence and artifact-current alignment.
+
+
+## Decision — v0.1.104.4 accepts verified Project Sources surface without visible tab control
+
+The live `v0.1.104.3` full release-control run failed before validation because Project Source ZIP add received a service 504: the Project Sources tab did not become visible. The source surface can be route-addressable via `?tab=sources`, so source add/remove/capability flows now navigate directly to that route and accept verified source-surface evidence even when the tab control itself is absent. Ambiguous or absent surface evidence remains release-blocking.

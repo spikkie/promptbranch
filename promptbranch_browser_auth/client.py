@@ -4682,7 +4682,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-capabilities-home")
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-capabilities-home")
         await self._open_project_sources_tab(page)
         await self._click_add_source_button(page)
         capabilities = await self._discover_project_source_capabilities(page)
@@ -4800,7 +4800,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-add-home")
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-add-home")
         await self._open_project_sources_tab(page)
 
         normalized_kind = (source_kind or "").strip().lower()
@@ -5650,7 +5650,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-remove-home")
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-remove-home")
         await self._open_project_sources_tab(page)
 
         source_cards = await self._snapshot_project_source_cards(page)
@@ -15626,20 +15626,147 @@ class ChatGPTBrowserClient:
         )
         return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
 
+    @staticmethod
+    def _url_has_sources_tab(url: str) -> bool:
+        try:
+            parsed = urlparse(url or "")
+        except Exception:
+            return False
+        return any(key == "tab" and value == "sources" for key, value in parse_qsl(parsed.query, keep_blank_values=True))
+
+    async def _project_sources_surface_probe(self, page: Any, *, add_button_timeout_ms: int = 750) -> dict[str, Any]:
+        current_url = await self._safe_page_url(page)
+        url_has_sources_tab = self._url_has_sources_tab(current_url)
+        source_cards: list[dict[str, str]] = []
+        source_card_error: Optional[str] = None
+        empty_state_visible = False
+        empty_state_error: Optional[str] = None
+        add_button_visible = False
+        add_button_error: Optional[str] = None
+
+        try:
+            source_cards = await self._snapshot_project_source_cards(page)
+        except Exception as exc:
+            source_card_error = repr(exc)
+
+        try:
+            empty_state_visible = bool(await self._project_sources_empty_state_visible(page))
+        except Exception as exc:
+            empty_state_error = repr(exc)
+
+        try:
+            add_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_ADD_SOURCE_BUTTON_SELECTORS,
+                label="project-sources-surface-add-button-probe",
+                total_timeout_ms=max(1, int(add_button_timeout_ms)),
+            )
+            add_button_visible = add_button is not None
+        except Exception as exc:
+            add_button_error = repr(exc)
+
+        ready = bool(source_cards or empty_state_visible or (url_has_sources_tab and add_button_visible))
+        return {
+            "ready": ready,
+            "current_url": current_url,
+            "url_has_sources_tab": url_has_sources_tab,
+            "source_card_count": len(source_cards),
+            "source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text")
+                for source in source_cards[:10]
+            ],
+            "empty_state_visible": empty_state_visible,
+            "add_button_visible": add_button_visible,
+            "source_card_error": source_card_error,
+            "empty_state_error": empty_state_error,
+            "add_button_error": add_button_error,
+        }
+
     async def _open_project_sources_tab(self, page: Any) -> None:
+        initial_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=500)
+        if initial_probe.get("ready"):
+            self._log(
+                "project-source",
+                "sources surface already visible before tab click",
+                source_surface_probe=initial_probe,
+            )
+            return
+
         tab = await self._wait_for_visible_locator(
             page,
             PROJECT_SOURCES_TAB_SELECTORS,
             label="project-sources-tab",
             total_timeout_ms=15_000,
         )
-        if tab is None:
-            raise ResponseTimeoutError("Project Sources tab did not become visible")
-        self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
-        await tab.click(timeout=5_000)
-        self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
+        if tab is not None:
+            self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
+            await tab.click(timeout=5_000)
+            self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
+            await page.wait_for_timeout(750)
+            clicked_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=1_000)
+            if clicked_probe.get("ready"):
+                self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page), source_surface_probe=clicked_probe)
+                return
+
+        current_url = await self._safe_page_url(page)
+        sources_url = self._project_sources_url(current_url or self._project_home_url())
+        self._log(
+            "project-source",
+            "sources tab not visible; retrying with direct project sources route",
+            current_url=current_url,
+            sources_url=sources_url,
+            initial_probe=initial_probe,
+        )
+        try:
+            await self._goto(
+                page,
+                sources_url,
+                label="project-sources-tab-direct-route",
+                respect_history_rate_limit_cooldown=False,
+            )
+        except Exception as exc:
+            self._log(
+                "project-source",
+                "direct project sources route navigation failed",
+                current_url=current_url,
+                sources_url=sources_url,
+                error=repr(exc),
+            )
+
         await page.wait_for_timeout(750)
-        self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
+        direct_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=5_000)
+        if direct_probe.get("ready"):
+            self._log(
+                "project-source",
+                "sources surface opened via direct route",
+                source_surface_probe=direct_probe,
+            )
+            return
+
+        retry_tab = await self._wait_for_visible_locator(
+            page,
+            PROJECT_SOURCES_TAB_SELECTORS,
+            label="project-sources-tab-after-direct-route",
+            total_timeout_ms=5_000,
+        )
+        if retry_tab is not None:
+            self._record_browser_action(kind='click_attempt', label='project-sources-tab-after-direct-route', strategy='primary')
+            await retry_tab.click(timeout=5_000)
+            self._record_browser_action(kind='click_success', label='project-sources-tab-after-direct-route', strategy='primary')
+            await page.wait_for_timeout(750)
+            retry_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=1_000)
+            if retry_probe.get("ready"):
+                self._log(
+                    "project-source",
+                    "sources tab opened after direct route",
+                    source_surface_probe=retry_probe,
+                )
+                return
+
+        raise ResponseTimeoutError(
+            "Project Sources surface did not become visible; "
+            f"initial_probe={initial_probe}; direct_probe={direct_probe}"
+        )
 
     async def _click_add_source_button(self, page: Any) -> None:
         button = await self._wait_for_visible_locator(
