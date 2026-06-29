@@ -5,8 +5,8 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.zip
 accepted/current version: v0.1.103
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-active candidate version: v0.1.104.5
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.6.zip
+active candidate version: v0.1.104.6
 next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
@@ -341,6 +341,6 @@ Candidate artifact token: `chatgpt_claudecode_workflow-2_v0.1.104.2.zip`.
 | v0.1.104.4 | repair | Project Sources direct-route visibility/source-add repair | candidate `chatgpt_claudecode_workflow-2_v0.1.104.4.zip` | focused Project Sources route/control/version/artifact validation pending full release-control/adoption | DOD-146 focused; no normal scope advancement | pending adoption evidence |
 
 
-## v0.1.104.5 repair candidate note
+## v0.1.104.6 repair candidate note
 
-`v0.1.104.5` is a repair-only candidate for the `v0.1.104` sandbox mutation verification slice. It preserves all prior `v0.1.104.x` repairs and adds bounded Project Sources route hydration recovery when `?tab=sources` is present but no Sources surface, add button, card, or empty state has rendered. It strips transient Cloudflare challenge query parameters, reloads/re-enters the Project home route before returning to Sources, and still fails closed without concrete Sources surface evidence. `v0.1.105` remains deferred.
+`v0.1.104.6` is a repair-only candidate for the `v0.1.104` sandbox mutation verification slice. It preserves all prior `v0.1.104.x` repairs and adds bounded Project Sources route hydration recovery when `?tab=sources` is present but no Sources surface, add button, card, or empty state has rendered. It strips transient Cloudflare challenge query parameters, reloads/re-enters the Project home route before returning to Sources, and still fails closed without concrete Sources surface evidence. `v0.1.105` remains deferred.

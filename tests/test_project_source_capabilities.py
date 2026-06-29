@@ -3777,3 +3777,83 @@ def test_project_source_add_operation_opens_direct_sources_route_before_tab_prob
 
     assert gotos == ["https://chatgpt.com/g/g-p-123/project?tab=sources"]
     assert result["ok"] is True
+
+
+def test_project_sources_surface_probe_detects_challenge_interstitial_text(browser_client: ChatGPTBrowserClient) -> None:
+    page = object()
+
+    async def fake_safe_page_url(_page) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    async def fake_snapshot(_page):
+        return []
+
+    async def fake_empty(_page) -> bool:
+        return False
+
+    async def fake_visible_text_preview(_page, *, limit: int = 600) -> str:
+        return "Verification successful. Waiting for chatgpt.com to respond Enable JavaScript and cookies to continue"
+
+    async def fake_wait(_page, _selectors, *, label: str, total_timeout_ms: int, **_kwargs):
+        return None
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    browser_client._visible_text_preview = fake_visible_text_preview  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait  # type: ignore[method-assign]
+
+    probe = asyncio.run(browser_client._project_sources_surface_probe(page))
+
+    assert probe["ready"] is False
+    assert probe["likely_blocked_by_challenge"] is True
+    assert "Enable JavaScript" in probe["visible_text_preview"]
+
+
+def test_open_project_sources_tab_fails_closed_with_challenge_interstitial_status(browser_client: ChatGPTBrowserClient) -> None:
+    class Page:
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    page = Page()
+    state = {"url": "https://chatgpt.com/g/g-p-123/project?tab=sources&__cf_chl_rt_tk=stale"}
+    gotos: list[str] = []
+
+    async def fake_safe_page_url(_page) -> str:
+        return state["url"]
+
+    async def fake_snapshot(_page):
+        return []
+
+    async def fake_empty(_page) -> bool:
+        return False
+
+    async def fake_visible_text_preview(_page, *, limit: int = 600) -> str:
+        return "Verification successful. Waiting for chatgpt.com to respond Enable JavaScript and cookies to continue"
+
+    async def fake_wait(_page, _selectors, *, label: str, total_timeout_ms: int, **_kwargs):
+        return None
+
+    async def fake_goto(_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        gotos.append(label)
+        state["url"] = url
+
+    async def fake_settle(_page, *, label: str, probe: dict, timeout_ms: int = 20_000) -> dict:
+        settled = dict(probe)
+        settled["likely_blocked_by_challenge"] = True
+        settled["challenge_settle_label"] = label
+        return settled
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    browser_client._visible_text_preview = fake_visible_text_preview  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._project_sources_challenge_settle_probe = fake_settle  # type: ignore[method-assign]
+
+    with pytest.raises(ResponseTimeoutError) as exc_info:
+        asyncio.run(browser_client._open_project_sources_tab(page))
+
+    assert "project_sources_challenge_interstitial_blocking" in str(exc_info.value)
+    assert "project-sources-route-recovery-project-home-then-sources-primary" in gotos
