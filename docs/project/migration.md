@@ -719,4 +719,4 @@ No state migration is required. Operators may run isolated release tests before 
 
 | `docs/repair-v0.1.104.4.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Repairs Project Sources direct-route visibility for source add while preserving v0.1.104 scope and keeping v0.1.105 deferred. |
 
-| `docs/repair-v0.1.104.5.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Repairs Project Sources route hydration recovery while preserving v0.1.104 scope and keeping v0.1.105 deferred. |
+| `docs/repair-v0.1.104.6.md` | repair evidence | `docs/project/status.md`, `docs/project/plan.md`, `docs/project/release-status.md`, `docs/project/definition-of-done.md`, `docs/project/decisions.md` | added | Repairs Project Sources route hydration recovery while preserving v0.1.104 scope and keeping v0.1.105 deferred. |

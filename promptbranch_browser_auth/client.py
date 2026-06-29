@@ -15643,6 +15643,92 @@ class ChatGPTBrowserClient:
             return False
         return any(key == "tab" and value == "sources" for key, value in parse_qsl(parsed.query, keep_blank_values=True))
 
+    @staticmethod
+    def _looks_like_project_sources_challenge_text(text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", text or "").strip().lower()
+        if not normalized:
+            return False
+        challenge_hints = (
+            "verify you are human",
+            "checking your browser",
+            "just a moment",
+            "cloudflare",
+            "enable javascript and cookies",
+            "enable javascript and cookies to continue",
+            "verification successful. waiting for chatgpt.com to respond",
+            "waiting for chatgpt.com to respond",
+            "challenge-error-text",
+            "window._cf_chl_opt",
+            "cf_chl_opt",
+        )
+        return any(hint in normalized for hint in challenge_hints)
+
+    @staticmethod
+    def _project_sources_challenge_error_message(*, probe: dict[str, Any], recovery_probes: list[dict[str, Any]] | None = None) -> str:
+        latest_probe = dict(probe or {})
+        probes = list(recovery_probes or [])
+        if probes:
+            candidate = probes[-1]
+            if isinstance(candidate, dict):
+                latest_probe = dict(candidate)
+        return (
+            "project_sources_challenge_interstitial_blocking: "
+            "Project Sources is blocked by a ChatGPT/Cloudflare challenge or interstitial; "
+            f"latest_probe={latest_probe}; recovery_probes={probes}"
+        )
+
+    async def _project_sources_challenge_settle_probe(
+        self,
+        page: Any,
+        *,
+        label: str,
+        probe: dict[str, Any],
+        timeout_ms: int = 20_000,
+    ) -> dict[str, Any]:
+        if not probe.get("likely_blocked_by_challenge"):
+            return probe
+        deadline = asyncio.get_running_loop().time() + (max(1, int(timeout_ms)) / 1000)
+        attempts: list[dict[str, Any]] = []
+        self._log(
+            "project-source",
+            "Project Sources challenge/interstitial detected; waiting for surface to settle",
+            label=label,
+            initial_probe=probe,
+            timeout_ms=timeout_ms,
+        )
+        attempt = 0
+        latest = dict(probe)
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            try:
+                await page.wait_for_timeout(1_000)
+            except Exception:
+                pass
+            latest = await self._project_sources_surface_probe(page, add_button_timeout_ms=750)
+            latest = dict(latest)
+            latest["challenge_settle_label"] = label
+            latest["challenge_settle_attempt"] = attempt
+            attempts.append(latest)
+            if latest.get("ready") or not latest.get("likely_blocked_by_challenge"):
+                self._log(
+                    "project-source",
+                    "Project Sources challenge/interstitial settle probe completed",
+                    label=label,
+                    final_probe=latest,
+                    attempts=attempts[-5:],
+                )
+                latest["challenge_settle_attempts"] = attempts[-5:]
+                return latest
+        latest["challenge_settle_attempts"] = attempts[-5:]
+        self._log(
+            "project-source",
+            "Project Sources challenge/interstitial still blocking after settle timeout",
+            label=label,
+            final_probe=latest,
+            attempts=attempts[-5:],
+        )
+        return latest
+
     async def _project_sources_surface_probe(self, page: Any, *, add_button_timeout_ms: int = 750) -> dict[str, Any]:
         current_url = await self._safe_page_url(page)
         url_has_sources_tab = self._url_has_sources_tab(current_url)
@@ -15684,10 +15770,7 @@ class ChatGPTBrowserClient:
         normalized_preview = re.sub(r"\s+", " ", visible_text_preview or "").strip().lower()
         likely_blocked_by_challenge = bool(
             "__cf_chl_rt_tk" in (current_url or "")
-            or "verify you are human" in normalized_preview
-            or "checking your browser" in normalized_preview
-            or "just a moment" in normalized_preview
-            or "cloudflare" in normalized_preview
+            or self._looks_like_project_sources_challenge_text(normalized_preview)
         )
         # Some Project builds render the Sources route without the tab control.
         # Treat the route as ready only when a concrete source affordance, card,
@@ -15725,6 +15808,13 @@ class ChatGPTBrowserClient:
 
     async def _open_project_sources_tab(self, page: Any) -> None:
         initial_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=500)
+        if initial_probe.get("likely_blocked_by_challenge"):
+            initial_probe = await self._project_sources_challenge_settle_probe(
+                page,
+                label="initial-project-sources-probe",
+                probe=initial_probe,
+                timeout_ms=20_000,
+            )
         if initial_probe.get("ready"):
             self._log(
                 "project-source",
@@ -15776,6 +15866,13 @@ class ChatGPTBrowserClient:
 
         await page.wait_for_timeout(750)
         direct_probe = await self._project_sources_surface_probe(page, add_button_timeout_ms=5_000)
+        if direct_probe.get("likely_blocked_by_challenge"):
+            direct_probe = await self._project_sources_challenge_settle_probe(
+                page,
+                label="direct-project-sources-route",
+                probe=direct_probe,
+                timeout_ms=20_000,
+            )
         if direct_probe.get("ready"):
             self._log(
                 "project-source",
@@ -15862,6 +15959,15 @@ class ChatGPTBrowserClient:
             )
             recovery_probe = dict(recovery_probe)
             recovery_probe["step"] = step_name
+            if recovery_probe.get("likely_blocked_by_challenge"):
+                recovery_probe = await self._project_sources_challenge_settle_probe(
+                    page,
+                    label=f"project-sources-route-recovery-{step_name}",
+                    probe=recovery_probe,
+                    timeout_ms=20_000,
+                )
+                recovery_probe = dict(recovery_probe)
+                recovery_probe["step"] = step_name
             recovery_probes.append(recovery_probe)
             if recovery_probe.get("ready"):
                 self._log(
@@ -15872,6 +15978,15 @@ class ChatGPTBrowserClient:
                 )
                 return
 
+        all_probes = [probe for probe in [initial_probe, direct_probe, retry_probe, *recovery_probes] if isinstance(probe, dict)]
+        challenge_probes = [probe for probe in all_probes if probe.get("likely_blocked_by_challenge")]
+        if challenge_probes:
+            raise ResponseTimeoutError(
+                self._project_sources_challenge_error_message(
+                    probe=challenge_probes[-1],
+                    recovery_probes=recovery_probes,
+                )
+            )
         raise ResponseTimeoutError(
             "Project Sources surface did not become visible after route recovery; "
             f"initial_probe={initial_probe}; direct_probe={direct_probe}; retry_probe={retry_probe}; "
