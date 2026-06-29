@@ -87,6 +87,7 @@ from promptbranch_loop import (
     build_loop_read_only_command_execution_payload,
     build_loop_read_only_correction_plan_payload,
     build_loop_sandbox_file_mutation_payload,
+    build_loop_sandbox_mutation_verification_payload,
     build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
     build_loop_read_only_execution_payload,
@@ -97,6 +98,7 @@ from promptbranch_loop import (
     render_loop_read_only_command_execution_text,
     render_loop_read_only_correction_plan_text,
     render_loop_sandbox_file_mutation_text,
+    render_loop_sandbox_mutation_verification_text,
     render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
     render_loop_plan_text,
@@ -7581,7 +7583,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json", "--proof"],
-        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation", "--diagnose-read-only-result", "--generate-correction-plan"],
+        "loop": ["validate", "plan", "run", "--target", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation", "--diagnose-read-only-result", "--generate-correction-plan", "--execute-sandbox-mutation", "--verify-sandbox-mutation"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8071,6 +8073,7 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         # --execute-read-only-validation. v0.1.101 diagnoses the result, and
         # v0.1.102 may generate a proposal-only correction plan with no file mutation.
         # v0.1.103 may mutate only a temporary sandbox fixture after that plan.
+        # v0.1.104 verifies sandbox mutation evidence and rollback cleanup only.
         payload = plan_loop_target_file(target, execute_stubbed=True)
         payload["dry_run"] = True
         selected_modes = [
@@ -8105,6 +8108,9 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if getattr(args, "execute_sandbox_mutation", False) and not getattr(args, "generate_correction_plan", False):
             print("error: --execute-sandbox-mutation requires --generate-correction-plan", file=sys.stderr)
             return 2
+        if getattr(args, "verify_sandbox_mutation", False) and not getattr(args, "execute_sandbox_mutation", False):
+            print("error: --verify-sandbox-mutation requires --execute-sandbox-mutation", file=sys.stderr)
+            return 2
         if getattr(args, "state_only", False):
             payload = build_loop_state_only_payload(payload)
         elif getattr(args, "planned_actions", False):
@@ -8123,6 +8129,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
                             payload = build_loop_read_only_correction_plan_payload(payload)
                             if getattr(args, "execute_sandbox_mutation", False):
                                 payload = build_loop_sandbox_file_mutation_payload(plan=plan_loop_target_file(target, execute_stubbed=True), correction_payload=payload, repo_root=Path.cwd())
+                                if getattr(args, "verify_sandbox_mutation", False):
+                                    payload = build_loop_sandbox_mutation_verification_payload(payload)
                 else:
                     payload = gate
         if getattr(args, "json", False):
@@ -8134,6 +8142,8 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         elif getattr(args, "read_only_execution", False):
             if getattr(args, "evidence_report", False):
                 print(render_loop_read_only_evidence_report_text(payload), end="")
+            elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False) and getattr(args, "generate_correction_plan", False) and getattr(args, "execute_sandbox_mutation", False) and getattr(args, "verify_sandbox_mutation", False):
+                print(render_loop_sandbox_mutation_verification_text(payload), end="")
             elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False) and getattr(args, "generate_correction_plan", False) and getattr(args, "execute_sandbox_mutation", False):
                 print(render_loop_sandbox_file_mutation_text(payload), end="")
             elif getattr(args, "evidence_gate", False) and getattr(args, "execute_read_only_validation", False) and getattr(args, "diagnose_read_only_result", False) and getattr(args, "generate_correction_plan", False):
@@ -24015,6 +24025,7 @@ def make_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--diagnose-read-only-result", action="store_true", help="With --execute-read-only-validation, classify the read-only command result as passed, blocked, or failed without generating corrections or mutating files.")
     loop_run.add_argument("--generate-correction-plan", action="store_true", help="With --diagnose-read-only-result, generate a bounded proposal-only correction plan without writing files, retrying commands, or mutating state.")
     loop_run.add_argument("--execute-sandbox-mutation", action="store_true", help="With --generate-correction-plan, mutate only a temporary sandbox copy of an explicit fixture and emit before/after evidence.")
+    loop_run.add_argument("--verify-sandbox-mutation", action="store_true", help="With --execute-sandbox-mutation, verify sandbox mutation evidence and rollback/cleanup gates without new mutation.")
     loop_run.add_argument("--json", action="store_true", help="Emit stubbed loop run as JSON.")
 
     state = subparsers.add_parser("state", help="Show remembered current project/chat state for the active profile.")

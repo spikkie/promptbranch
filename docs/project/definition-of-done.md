@@ -431,3 +431,5 @@ Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranc
 Last release: v0.1.102
 
 | DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103 |
+
+| DOD-142 | Sandbox mutation verification and rollback evidence gate validates temporary sandbox changes without repository promotion | focused_candidate | `pb loop run --verify-sandbox-mutation`, `promptbranch_loop.py`, `promptbranch_cli.py`, focused loop/CLI tests, `docs/release-v0.1.104.md` | v0.1.104 |

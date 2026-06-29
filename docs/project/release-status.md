@@ -315,3 +315,8 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 
 | v0.1.103 | normal | First controlled file mutation in sandboxed fixture only | candidate | Built from accepted/current v0.1.102; full release-control/adoption pending. |
+
+| v0.1.104 | normal | Sandbox mutation verification and rollback evidence gate | candidate | Built from accepted/current v0.1.103; focused loop/CLI/control-surface validation pending full release-control/adoption. | DOD-142 focused; verifies sandbox mutation evidence and rollback cleanup without repository promotion | pending adoption evidence |
+
+v0.1.104 candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.104.zip`.
+Next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check.

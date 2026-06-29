@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
-accepted/current version: v0.1.102
-last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.zip
+accepted/current version: v0.1.103
+last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.zip
-active candidate version: v0.1.103
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.zip
-next normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
+active candidate version: v0.1.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
+next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.104 — Sandbox mutation verification 
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.102 — Correction-plan generation without file mutation
-active plan slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+last accepted/current slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+active plan slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 repair mode: false
 scope advance allowed: true
 ```
@@ -29,9 +29,9 @@ scope advance allowed: true
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip candidate once packaged
-release status: v0.1.103 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.104.zip candidate once packaged
+release status: v0.1.104 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -754,3 +754,9 @@ This repair adapts the visibility reconciliation pattern used by the spikkies-si
 `v0.1.103` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.102.zip`. It adds the first controlled file mutation path for MVP-1, but only against a copied fixture inside a temporary sandbox workspace. The repository fixture is snapshotted before and after and must remain unchanged.
 
 This slice does not verify rollback, mutate repository files, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.104` remains the first planned sandbox mutation verification and rollback evidence gate.
+## v0.1.104 candidate status
+
+`v0.1.104` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.103.zip`. It verifies the sandbox mutation evidence produced by `v0.1.103`, confirms the repository fixture remained unchanged, and requires rollback evidence through deletion of the temporary sandbox workspace.
+
+This slice does not promote sandbox changes into repository files, retry commands, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.105` remains the planned sandbox correction promotion readiness check.
+
