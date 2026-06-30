@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
-active candidate version: v0.1.103.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
-next normal slice: v0.1.103.3 — passive auth-readiness runtime-client wiring repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
+active candidate version: v0.1.103.4
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
+next normal slice: v0.1.103.4 — Docker parity guarded Project Source mutation test
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1723,3 +1723,16 @@ Out of scope:
 
 
 Control-surface token: Passive auth-readiness runtime-client wiring repair
+
+
+## v0.1.103.4 — Docker parity guarded Project Source mutation test
+
+Scope:
+
+- Run passive `/v1/auth-readiness` before Docker parity Project Source mutation.
+- Require `logged_in=true`, `challenge_detected=false`, `composer_visible=true`, and `release_blocking=false`.
+- Require explicit `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1`.
+- Report profile ownership/writability before browser launch.
+- Provide a diagnostic script for guarded source upload testing.
+
+Out of scope: adoption/current mutation, Cloudflare bypass, automatic login, hidden manual-login wait, broad release-control changes, and ChatGPT Project deletion.

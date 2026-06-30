@@ -453,3 +453,8 @@ Consequence: unauthenticated Docker profiles now fail fast with structured `auth
 Decision: passive auth-readiness must be implemented on `promptbranch_browser_auth.ChatGPTBrowserClient`, because `promptbranch_automation` imports that runtime client. Compatibility code in `chatgpt_browser_auth` is insufficient for the Docker service.
 
 Consequence: future browser-client repairs must verify the actual runtime import path, not only compatibility aliases.
+
+
+## ADR-PROJ-114 — v0.1.103.4 Docker parity Project Source mutation requires passive readiness and explicit opt-in
+
+Docker browser parity mode may mutate Project Sources only when `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1` is set and passive auth-readiness proves `logged_in=true`, `challenge_detected=false`, `composer_visible=true`, and `release_blocking=false`. This preserves the diagnostic recovery path without allowing accidental source mutation during profile/bootstrap research.
