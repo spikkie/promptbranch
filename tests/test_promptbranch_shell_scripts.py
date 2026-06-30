@@ -3130,3 +3130,22 @@ def test_docker_browser_profile_bootstrap_script_is_promptbranch_native() -> Non
     assert "/app/profile" in (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
     assert "google-chrome" in script
     assert "docker-browser-parity" not in script.lower()
+
+
+def test_docker_browser_parity_export_challenge_artifacts_is_bounded_and_safe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "docker-browser-parity-export-challenge-artifacts.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "/tmp/pb-challenge-artifacts" in script
+    assert "auth_readiness_auth_challenge_detected_*" in script
+    assert "PROMPTBRANCH_CHALLENGE_ARTIFACT_EXPORT_MAX_FILES" in script
+    assert "PROMPTBRANCH_CHALLENGE_ARTIFACT_EXPORT_MAX_BYTES" in script
+    assert "artifact_export_size_limit_exceeded" in script
+    assert "refusing destination inside repo debug_artifacts" in script
+    assert 'docker cp "${CID}:/tmp/pb-challenge-artifacts/."' in script
+    assert 'docker cp "$CID:/app/debug_artifacts/."' not in script
+    assert 'docker cp "${CID}:/app/debug_artifacts/."' not in script
+    assert 'docker cp "$CID:/app/debug_artifacts"' not in script
+    assert 'docker cp "${CID}:/app/debug_artifacts"' not in script

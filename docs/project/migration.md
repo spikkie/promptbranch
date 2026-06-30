@@ -718,3 +718,7 @@ Project Source mutation.
 ## v0.1.103.5 migration note
 
 `v0.1.103.5` migrates the Docker parity investigation from passive authenticated reuse toward guarded Project Source mutation testing. The migration remains diagnostic-only: Project Source mutation requires explicit operator opt-in and does not imply artifact adoption/current status.
+
+## v0.1.103.6 migration note
+
+`v0.1.103.6` changes only diagnostic artifact export behavior. Existing browser profiles, Project Source state, accepted/current artifact state, and release adoption behavior are not migrated. The safe exporter writes to an external `/tmp` target by default and never packages debug artifacts into release ZIPs.
