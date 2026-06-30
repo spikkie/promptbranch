@@ -3149,3 +3149,27 @@ def test_docker_browser_parity_export_challenge_artifacts_is_bounded_and_safe() 
     assert 'docker cp "${CID}:/app/debug_artifacts/."' not in script
     assert 'docker cp "$CID:/app/debug_artifacts"' not in script
     assert 'docker cp "${CID}:/app/debug_artifacts"' not in script
+
+def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "docker-browser-parity-cloudflare-check.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "docker browser parity Cloudflare check" in script
+    assert "/v1/docker/browser-runtime" in script
+    assert "/v1/auth-readiness" in script
+    assert "/v1/auth-readiness/session/status" in script
+    assert "{\"keep_open\": true}" in script
+    assert "PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS" in script
+    assert "PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS" in script
+    assert "docker-browser-parity-export-challenge-artifacts.sh" in script
+    assert "auth_readiness_auth_challenge_detected_*" in script
+    assert "cloudflare_timeout" in script
+    assert "cloudflare_cleared_auth_ready" in script
+    assert "cloudflare_cleared_not_auth_ready" in script
+    assert "docker cp" not in script
+    assert "curl -sS -o" in script
+    assert "http://localhost:8000/v1/project-sources" not in script
+    assert "http://localhost:8000/v1/login-check" not in script
+

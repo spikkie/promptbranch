@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
-active candidate version: v0.1.103.6
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
-next normal slice: v0.1.103.6 — Docker parity artifact export safety
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.7.zip
+active candidate version: v0.1.103.7
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.7.zip
+next normal slice: v0.1.103.7 — Docker parity Cloudflare challenge settle loop
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1742,3 +1742,7 @@ Out of scope: adoption/current mutation, Cloudflare bypass, automatic login, hid
 Reason: manual copying of `/app/debug_artifacts/.` into a nested repo debug directory can recursively expand when the container debug directory is a bind mount.
 
 Scope: add a safe exporter that stages only `auth_readiness_auth_challenge_detected_*` artifacts under `/tmp/pb-challenge-artifacts`, enforces file-count and byte limits, and refuses recursive debug-tree destinations. Project Source mutation remains gated and out of scope while auth-readiness is red.
+## v0.1.103.7 — Docker parity Cloudflare challenge settle loop
+
+Scope: add only `scripts/docker-browser-parity-cloudflare-check.sh` plus control-surface metadata for the candidate. The script keeps Project Source mutation out of scope, opens one Docker parity keep-open browser session, polls the same held session until Cloudflare clears or times out, and uses the bounded challenge artifact exporter instead of wholesale `docker cp`.
+

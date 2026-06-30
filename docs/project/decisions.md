@@ -466,3 +466,9 @@ Context: copying `/app/debug_artifacts/.` directly from the Docker service into 
 Decision: Docker parity challenge artifact export must stage only matching `auth_readiness_auth_challenge_detected_*` files through `/tmp/pb-challenge-artifacts`, enforce maximum file count and total bytes, and refuse recursive debug-tree destinations.
 
 Consequence: operators use `scripts/docker-browser-parity-export-challenge-artifacts.sh` instead of manual wholesale `docker cp` commands.
+## ADR-PROJ-116 — v0.1.103.7 Docker Cloudflare challenge is tested before downstream mutation
+
+Decision: Docker parity work must focus first on whether the held `/app/profile` Patchright Chrome session can clear the ChatGPT Cloudflare `Just a moment...` challenge. Project Source mutation, login clicking, and Google auth flows remain out of scope until challenge settling is proven with same-session polling and bounded evidence export.
+
+Consequence: operators use `scripts/docker-browser-parity-cloudflare-check.sh` for the next diagnostic run.
+
