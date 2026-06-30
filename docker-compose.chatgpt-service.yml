@@ -37,8 +37,13 @@ services:
       CHATGPT_MIN_CONTEXT_SPACING_SECONDS: ${CHATGPT_MIN_CONTEXT_SPACING_SECONDS:-8.0}
       CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS: ${CHATGPT_CONVERSATION_HISTORY_RATE_LIMIT_COOLDOWN_SECONDS:-120.0}
       CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS: ${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}
+      PROMPTBRANCH_DOCKER_BROWSER_PROFILE: ${PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-promptbranch}
+      PROMPTBRANCH_PROFILE_DIR: ${PROMPTBRANCH_PROFILE_DIR:-/app/.pb_profile}
+      PROMPTBRANCH_DOCKER_XVFB_SCREEN: ${PROMPTBRANCH_DOCKER_XVFB_SCREEN:-1920x1080x24}
+      CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS: ${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}
     volumes:
       - ./.pb_profile:/app/.pb_profile
+      - ./.pb_profile_docker:/app/profile
       - ./debug_artifacts:/app/debug_artifacts
     secrets:
       - chatgpt_password
@@ -63,6 +68,7 @@ services:
             - .venv/
             - __pycache__/
             - .pb_profile/
+            - .pb_profile_docker/
             - debug_artifacts/
             - uploaded_receipts*
             - '*.log'

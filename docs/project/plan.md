@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.101.zip
-accepted/current version: v0.1.101
-last completed normal slice: v0.1.101 — Read-only command result diagnosis and blocked/failed classification
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
+accepted/current version: v0.1.102
+last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.102.zip
-active candidate version: v0.1.102
-next normal target: chatgpt_claudecode_workflow-2_v0.1.102.zip
-next normal slice: v0.1.102 — Correction-plan generation without file mutation
-next planned slice after acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
+active candidate version: v0.1.103.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
+next normal slice: v0.1.103.1 — Docker browser parity diagnostic envelope
+next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
 ## Plan summary
@@ -26,7 +26,7 @@ The active rolling horizon is stored in `docs/project/plan-state.json` and expla
 
 ```text
 v0.1.102 — Correction-plan generation without file mutation
-v0.1.103 — First controlled file mutation in sandboxed fixture only
+v0.1.103.1 — Docker browser parity diagnostic envelope
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
@@ -42,7 +42,7 @@ Acceptance scope:
 - Add a machine-readable correction-plan schema for read-only command diagnosis results.
 - Generate plan entries for `blocked` and `failed` classifications with reason codes and operator-review actions.
 - Generate a `no_correction_required` result for passed diagnosis evidence.
-- Keep file mutation deferred to `v0.1.103` sandbox-only execution.
+- Keep file mutation deferred to `v0.1.103.1` sandbox-only execution.
 - Preserve the single allowlisted JSON validation command path from `v0.1.100` and diagnosis layer from `v0.1.101`.
 
 ## Release / slice plan
@@ -1621,7 +1621,7 @@ Out of scope:
 - Creating patch/diff artifacts.
 - Deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion.
 
-Planned after v0.1.102 acceptance: v0.1.103 — First controlled file mutation in sandboxed fixture only.
+Planned after v0.1.102 acceptance: v0.1.103.1 — Docker browser parity diagnostic envelope.
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 
@@ -1648,7 +1648,7 @@ Out of scope:
 
 Planned after v0.1.101. This slice produces a bounded correction plan from diagnosis evidence without writing files.
 
-## v0.1.103 — First controlled file mutation in sandboxed fixture only
+## v0.1.103.1 — Docker browser parity diagnostic envelope
 
 Planned after v0.1.102. This slice performs the first file mutation only inside an explicit sandbox fixture with before/after evidence.
 
@@ -1667,10 +1667,10 @@ Out of scope: v0.1.101 diagnosis behavior, correction planning, file mutation, d
 
 
 
-## v0.1.103 — First controlled file mutation in sandboxed fixture only
+## v0.1.103.1 — Docker browser parity diagnostic envelope
 
-Release: v0.1.103
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.zip
+Release: v0.1.103.1
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
 Next after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 
 Scope:
@@ -1690,3 +1690,10 @@ Out of scope:
 - deployment or Kubernetes mutation
 - Project Source mutation/adoption behavior changes
 - ChatGPT Project deletion
+
+## v0.1.103.1 diagnostic plan note
+
+`v0.1.103.1` adds the smallest initial Docker browser parity envelope needed to test
+whether Promptbranch Docker browser auth can reproduce the Docker pattern that
+works in the reference Docker browser source. Project Source mutation stays out of scope until
+auth readiness is clean.

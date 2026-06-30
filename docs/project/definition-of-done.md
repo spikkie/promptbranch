@@ -424,10 +424,12 @@ Acceptance criteria:
 - Blocked and failed diagnosis results produce bounded operator-review plan entries.
 - Passed diagnosis results produce `no_correction_required` evidence.
 - Generated plans include no file changes, no write actions, no immediate command retries, no Project Source mutation, no artifact adoption, no deployment, and no ChatGPT Project deletion.
-- File mutation remains deferred to `v0.1.103` sandbox-only execution.
+- File mutation remains deferred to `v0.1.103.1` sandbox-only execution.
 
 Evidence: `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/release-v0.1.102.md`.
 
 Last release: v0.1.102
 
-| DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103 |
+| DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103.1 |
+
+| DOD-136 | Docker browser parity diagnostic envelope is explicit and non-mutating | in_progress | `scripts/docker-browser-parity-auth-readiness.sh`; `/v1/docker/browser-runtime`; no Project Source mutation in script | v0.1.103.1 |

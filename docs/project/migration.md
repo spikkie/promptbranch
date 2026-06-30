@@ -690,11 +690,18 @@ The next planned normal slice after `v0.1.101` acceptance is `v0.1.102` — Corr
 
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a proposal-only correction-plan schema and CLI flag that consume read-only command diagnosis evidence. Generated correction plans are evidence only; they contain no file changes, write actions, immediate command retries, patch/diff artifacts, Project Source mutation, artifact adoption, deployment, or ChatGPT Project deletion.
 
-The next planned normal slice after `v0.1.102` acceptance is `v0.1.103` — First controlled file mutation in sandboxed fixture only.
+The next planned normal slice after `v0.1.102` acceptance is `v0.1.103.1` — Docker browser parity diagnostic envelope.
 
 
-## v0.1.103 migration note
+## v0.1.103.1 migration note
 
 No user data, Project Source state, artifact-current state, deployment, Kubernetes state, or ChatGPT Projects are migrated. This slice adds a sandbox-only mutation schema and CLI flag that copy an explicit fixture into a temporary workspace, mutate the copy, and record before/after evidence while keeping the repository fixture unchanged.
 
-The next planned normal slice after `v0.1.103` acceptance is `v0.1.104` — Sandbox mutation verification and rollback evidence gate.
+The next planned normal slice after `v0.1.103.1` acceptance is `v0.1.104` — Sandbox mutation verification and rollback evidence gate.
+
+## v0.1.103.1 migration note
+
+No user data migration is required. `.pb_profile_docker/` is treated as local
+Docker browser state and is excluded from ZIP artifacts. Operators can run the
+Docker browser parity diagnostic script to collect auth-readiness evidence without
+Project Source mutation.

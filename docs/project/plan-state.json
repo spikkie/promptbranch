@@ -10,16 +10,16 @@
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_repair_version": "v0.1.100.3",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "active_candidate_version": "v0.1.103",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.zip",
-  "active_slice": "First controlled file mutation in sandboxed fixture only",
-  "next_normal_version": "v0.1.103",
-  "next_normal_slice": "First controlled file mutation in sandboxed fixture only",
+  "active_candidate_version": "v0.1.103.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.1.zip",
+  "active_slice": "Docker browser parity diagnostic envelope",
+  "next_normal_version": "v0.1.103.1",
+  "next_normal_slice": "Docker browser parity diagnostic envelope",
   "next_planned_version_after_acceptance": "v0.1.104",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "repair_must_not_advance_scope": true,
-  "release_mode": "normal",
+  "release_mode": "repair",
   "out_of_scope": [
     "sandbox mutation verification and rollback gate before v0.1.104",
     "mutation of repository fixture files",
@@ -54,11 +54,11 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.103",
-      "slice": "First controlled file mutation in sandboxed fixture only",
+      "version": "v0.1.103.1",
+      "slice": "Docker browser parity diagnostic envelope",
       "status": "active",
-      "release_mode": "normal",
-      "scope": "perform the first mutation only inside an explicit temporary sandbox fixture with before/after evidence while repository fixtures remain unchanged"
+      "release_mode": "repair",
+      "scope": "add diagnostic-only Docker browser parity launch envelope and auth-readiness evidence matrix without Project Source mutation or adoption"
     },
     {
       "version": "v0.1.104",

@@ -25,3 +25,5 @@ task_show_*
 *.task.show
 .pb_profile_local_debug
 .pb_profile_local_debug_pools
+
+.pb_profile_docker
