@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.4.zip",
-  "active_candidate_version": "v0.1.103.4",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.5.zip",
+  "active_candidate_version": "v0.1.103.5",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Docker parity guarded Project Source mutation test",
+  "active_slice": "Docker parity true keep-open browser session mode",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.4.zip",
-  "next_normal_slice": "Docker parity guarded Project Source mutation test",
-  "next_normal_version": "v0.1.103.4",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.5.zip",
+  "next_normal_slice": "Docker parity true keep-open browser session mode",
+  "next_normal_version": "v0.1.103.5",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -41,8 +41,8 @@
     {
       "kind": "repair/diagnostic",
       "status": "candidate",
-      "summary": "Docker parity Project Source mutation is gated by explicit env opt-in and passive auth-readiness.",
-      "version": "v0.1.103.4"
+      "summary": "Docker parity passive auth-readiness can hold a browser context server-side with TTL and screenshot diagnostics.",
+      "version": "v0.1.103.5"
     }
   ],
   "release_mode": "repair",
@@ -69,10 +69,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "guard Docker parity Project Source mutation behind passive auth-readiness, explicit operator opt-in, and profile writability evidence without adoption",
-      "slice": "Docker parity guarded Project Source mutation test",
+      "scope": "hold Docker parity passive-auth browser sessions server-side with no-recreate diagnostics and challenge screenshots without Project Source mutation",
+      "slice": "Docker parity true keep-open browser session mode",
       "status": "active",
-      "version": "v0.1.103.4"
+      "version": "v0.1.103.5"
     },
     {
       "release_mode": "normal",
@@ -116,5 +116,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.4"
+  "updated_for": "v0.1.103.5"
 }

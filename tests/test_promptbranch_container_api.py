@@ -73,6 +73,28 @@ def test_auth_readiness_endpoint_uses_passive_service(monkeypatch) -> None:
     assert payload["release_blocking"] is True
 
 
+def test_auth_readiness_session_status_endpoint_uses_service(monkeypatch) -> None:
+    class FakeService:
+        async def auth_readiness_session_status(self):
+            return {
+                "ok": False,
+                "action": "auth_readiness_session_status",
+                "status": "no_held_auth_readiness_session",
+                "held_session": {"active": False},
+                "release_blocking": True,
+            }
+
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+    client = TestClient(app)
+    response = client.get("/v1/auth-readiness/session/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action"] == "auth_readiness_session_status"
+    assert payload["status"] == "no_held_auth_readiness_session"
+    assert payload["held_session"]["active"] is False
+
+
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")
@@ -525,6 +547,8 @@ def test_runtime_browser_client_exposes_passive_auth_readiness() -> None:
     assert hasattr(RuntimeClient, "run_passive_auth_readiness")
     assert hasattr(RuntimeClient, "_run_passive_auth_readiness_operation")
     assert hasattr(RuntimeClient, "_probe_auth_readiness_state")
+    assert hasattr(RuntimeClient, "auth_readiness_session_status")
+    assert hasattr(RuntimeClient, "_run_passive_auth_readiness_keep_open")
     assert hasattr(CompatibilityClient, "run_passive_auth_readiness")
 
 

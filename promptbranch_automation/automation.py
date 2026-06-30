@@ -340,6 +340,9 @@ class ChatGPTAutomation:
     async def run_passive_auth_readiness(self, keep_open: bool = False) -> dict[str, Any]:
         return await self.client.run_passive_auth_readiness(keep_open=keep_open)
 
+    async def auth_readiness_session_status(self) -> dict[str, Any]:
+        return await self.client.auth_readiness_session_status()
+
     async def list_projects(
         self,
         *,
