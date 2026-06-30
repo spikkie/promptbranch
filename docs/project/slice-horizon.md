@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.6 | Docker parity artifact export safety | active | Wire passive auth readiness into the actual Promptbranch browser client used by the service | Project Source mutation, deployment, artifact adoption |
+| v0.1.103.7 | Docker parity Cloudflare challenge settle loop | active | Wire passive auth readiness into the actual Promptbranch browser client used by the service | Project Source mutation, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -17,6 +17,6 @@
 Repair releases must keep the active normal slice fixed, set `scope_advance_allowed=false`, and must not move the rolling horizon forward.
 
 
-## v0.1.103.6 active repair horizon
+## v0.1.103.7 active repair horizon
 
-`v0.1.103.6` is the active Docker parity repair horizon. It keeps Project Source mutation gated and adds safe export of Docker auth-readiness challenge artifacts through bounded `/tmp/pb-challenge-artifacts` staging instead of wholesale `docker cp /app/debug_artifacts`.
+`v0.1.103.7` is the active Docker parity repair horizon. It focuses only on Cloudflare challenge settling with one held `/app/profile` browser session, same-session polling, and bounded evidence export. Project Source mutation remains out of scope.

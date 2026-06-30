@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.6.zip",
-  "active_candidate_version": "v0.1.103.6",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.7.zip",
+  "active_candidate_version": "v0.1.103.7",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Docker parity artifact export safety",
+  "active_slice": "Docker parity Cloudflare challenge settle loop",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.6.zip",
-  "next_normal_slice": "Docker parity artifact export safety",
-  "next_normal_version": "v0.1.103.6",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.7.zip",
+  "next_normal_slice": "Docker parity Cloudflare challenge settle loop",
+  "next_normal_version": "v0.1.103.7",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -38,6 +38,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "kind": "repair/diagnostic",
+      "status": "candidate",
+      "summary": "Docker parity Cloudflare challenge settling is tested with one held browser session, bounded polling, and safe evidence export; no Project Source mutation.",
+      "version": "v0.1.103.7"
+    },
     {
       "kind": "repair/diagnostic",
       "status": "candidate",
@@ -69,10 +75,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "safely export Docker auth-readiness challenge artifacts through bounded /tmp staging without Project Source mutation",
-      "slice": "Docker parity artifact export safety",
+      "scope": "test Docker Cloudflare challenge settling with one held /app/profile browser session and bounded evidence export, without Project Source mutation",
+      "slice": "Docker parity Cloudflare challenge settle loop",
       "status": "active",
-      "version": "v0.1.103.6"
+      "version": "v0.1.103.7"
     },
     {
       "release_mode": "normal",
@@ -116,5 +122,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.6"
+  "updated_for": "v0.1.103.7"
 }
