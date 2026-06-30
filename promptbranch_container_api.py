@@ -254,6 +254,7 @@ class ServiceInfo(BaseModel):
     auth_required: bool
     docker_browser_profile: Optional[str] = None
     docker_browser_parity_mode: bool = False
+    bonnetjes_cloudflare_parity_mode: bool = False
     service_display_mode: Optional[str] = None
     service_under_xvfb: bool = False
     display: Optional[str] = None
@@ -277,6 +278,7 @@ class DockerBrowserRuntimeInfo(BaseModel):
     action: str = "docker_browser_runtime"
     docker_browser_profile: str
     docker_browser_parity_mode: bool
+    bonnetjes_cloudflare_parity_mode: bool = False
     service_display_mode: Optional[str] = None
     service_under_xvfb: bool
     display: Optional[str] = None
@@ -300,18 +302,21 @@ class DockerBrowserRuntimeInfo(BaseModel):
     challenge_wait_timeout_ms: Optional[int] = None
     auth_readiness_keep_open_seconds: Optional[int] = None
     browser_extra_args: list[str] = Field(default_factory=list)
+    patchright_headed_safe_args: Optional[str] = None
     recommendation: str
 
 
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
+_BONNETJES_CLOUDFLARE_PROFILE = "bonnetjes-cloudflare-parity"
+_DOCKER_BROWSER_PROFILE_DIR_MODES = {"docker-browser-parity", _BONNETJES_CLOUDFLARE_PROFILE}
 
 
 def _effective_profile_dir() -> str:
     profile_dir = (os.getenv("PROMPTBRANCH_PROFILE_DIR") or "").strip()
     docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip().lower()
     if not profile_dir:
-        profile_dir = "/app/profile" if docker_browser_profile == "docker-browser-parity" else "/app/.pb_profile"
+        profile_dir = "/app/profile" if docker_browser_profile in _DOCKER_BROWSER_PROFILE_DIR_MODES else "/app/.pb_profile"
     return profile_dir
 
 
@@ -372,10 +377,12 @@ def _profile_dir_status(path: str) -> dict:
 def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict:
     docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
     profile_dir = settings.profile_dir
-    docker_browser_parity_mode = docker_browser_profile == "docker-browser-parity"
+    docker_browser_parity_mode = docker_browser_profile in _DOCKER_BROWSER_PROFILE_DIR_MODES
+    bonnetjes_cloudflare_parity_mode = docker_browser_profile == _BONNETJES_CLOUDFLARE_PROFILE
     return {
         "docker_browser_profile": docker_browser_profile,
         "docker_browser_parity_mode": docker_browser_parity_mode,
+        "bonnetjes_cloudflare_parity_mode": bonnetjes_cloudflare_parity_mode,
         "service_display_mode": os.getenv("PROMPTBRANCH_DOCKER_SERVICE_DISPLAY_MODE"),
         "service_under_xvfb": _env_flag("PROMPTBRANCH_DOCKER_SERVICE_UNDER_XVFB", False),
         "display": os.getenv("DISPLAY"),
@@ -391,10 +398,15 @@ def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict
         "challenge_wait_timeout_ms": _env_int("CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS", 20_000),
         "auth_readiness_keep_open_seconds": _env_int("PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS", 300),
         "browser_extra_args": [part for part in (os.getenv("CHATGPT_BROWSER_EXTRA_ARGS") or "").split() if part],
+        "patchright_headed_safe_args": (os.getenv("CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS") or "1"),
         "recommendation": (
-            "docker-browser-parity envelope active: run auth-readiness before Project Source mutation"
-            if docker_browser_parity_mode
-            else "set PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity to test the Promptbranch Docker browser launch envelope"
+            "Bonnetjes Cloudflare parity envelope active: run only the Cloudflare settle loop"
+            if bonnetjes_cloudflare_parity_mode
+            else (
+                "docker-browser-parity envelope active: run auth-readiness before Project Source mutation"
+                if docker_browser_parity_mode
+                else "set PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity or bonnetjes-cloudflare-parity to test a Docker browser launch envelope"
+            )
         ),
     }
 
@@ -588,6 +600,7 @@ async def healthz() -> ServiceInfo:
         auth_required=bool(_SERVICE_TOKEN),
         docker_browser_profile=runtime["docker_browser_profile"],
         docker_browser_parity_mode=runtime["docker_browser_parity_mode"],
+        bonnetjes_cloudflare_parity_mode=runtime.get("bonnetjes_cloudflare_parity_mode", False),
         service_display_mode=runtime["service_display_mode"],
         service_under_xvfb=runtime["service_under_xvfb"],
         display=runtime["display"],
@@ -609,7 +622,7 @@ async def healthz() -> ServiceInfo:
 
 async def _require_project_source_mutation_preflight(project_url: Optional[str]) -> Optional[dict]:
     docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
-    if docker_browser_profile != "docker-browser-parity":
+    if docker_browser_profile not in _DOCKER_BROWSER_PROFILE_DIR_MODES:
         return None
 
     svc = _service_for(project_url)

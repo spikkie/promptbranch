@@ -722,7 +722,7 @@ Project Source mutation.
 ## v0.1.103.6 migration note
 
 `v0.1.103.6` changes only diagnostic artifact export behavior. Existing browser profiles, Project Source state, accepted/current artifact state, and release adoption behavior are not migrated. The safe exporter writes to an external `/tmp` target by default and never packages debug artifacts into release ZIPs.
-## v0.1.103.7 migration note
+## v0.1.103.8 migration note
 
-`v0.1.103.7` changes only Docker parity diagnostics. It adds a Cloudflare challenge settle-loop script and leaves browser profiles, Project Source mutation behavior, artifact adoption behavior, and release-control semantics unchanged.
+`v0.1.103.8` changes only Docker parity diagnostics. It adds a Cloudflare challenge settle-loop script and leaves browser profiles, Project Source mutation behavior, artifact adoption behavior, and release-control semantics unchanged.
 

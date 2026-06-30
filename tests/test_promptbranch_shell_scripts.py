@@ -3163,6 +3163,9 @@ def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> No
     assert "{\"keep_open\": true}" in script
     assert "PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS" in script
     assert "PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS" in script
+    assert "bonnetjes-cloudflare-parity" in script
+    assert "CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS" in script
+    assert "chrome-argv-" in script
     assert "docker-browser-parity-export-challenge-artifacts.sh" in script
     assert "auth_readiness_auth_challenge_detected_*" in script
     assert "cloudflare_timeout" in script
@@ -3173,3 +3176,20 @@ def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> No
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
 
+
+
+def test_docker_bonnetjes_cloudflare_check_runs_seeded_and_clean_profiles() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "docker-bonnetjes-cloudflare-check.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "bonnetjes-cloudflare-parity" in script
+    assert ".pb_profile_docker" in script
+    assert ".pb_profile_bonnetjes_clean" in script
+    assert "CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS=0" in script
+    assert "CHATGPT_BROWSER_EXTRA_ARGS=" in script
+    assert "CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE=disabled" in script
+    assert "docker-browser-parity-cloudflare-check.sh" in script
+    assert "http://localhost:8000/v1/project-sources" not in script
+    assert "http://localhost:8000/v1/login-check" not in script

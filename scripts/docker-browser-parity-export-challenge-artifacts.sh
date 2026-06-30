@@ -66,7 +66,9 @@ printf 'max_files=%s\n' "${max_files}"
 printf 'max_bytes=%s\n' "${max_bytes}"
 
 # Stage bounded artifacts in /tmp inside the container. Never docker cp the
-# whole /app/debug_artifacts tree.
+# whole /app/debug_artifacts tree. Create the stage directory first so even
+# no-matching-artifact cases remain docker-cp safe.
+docker exec "${CID}" sh -lc 'rm -rf /tmp/pb-challenge-artifacts && mkdir -p /tmp/pb-challenge-artifacts'
 docker exec "${CID}" python3 - "${max_files}" "${max_bytes}" <<'PY'
 from __future__ import annotations
 
@@ -109,7 +111,8 @@ for path in files:
             'rejected_file_size': size,
         }
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
-        raise SystemExit(json.dumps(manifest, sort_keys=True))
+        print(json.dumps(manifest, indent=2, sort_keys=True))
+        raise SystemExit(0)
     shutil.copy2(path, stage / path.name)
     total_bytes += size
     entries.append({'name': path.name, 'bytes': size})

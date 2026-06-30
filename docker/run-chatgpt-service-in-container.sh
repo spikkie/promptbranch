@@ -16,11 +16,16 @@ if [[ -z "${PROMPTBRANCH_PROFILE_DIR:-}" ]]; then
   export PROMPTBRANCH_PROFILE_DIR="/app/.pb_profile"
 fi
 
+bonnetjes_cloudflare_parity=0
+if [[ "${docker_browser_profile}" == "bonnetjes-cloudflare-parity" ]]; then
+  bonnetjes_cloudflare_parity=1
+fi
+
 # Docker browser parity is a diagnostic launch envelope based on a working
 # Docker browser service pattern: one service process under xvfb-run,
 # Patchright + Chrome, FedCM disabled, default Docker no-sandbox behavior
 # preserved, and an isolated /app/profile browser profile.
-if [[ "${docker_browser_profile}" == "docker-browser-parity" ]]; then
+if [[ "${docker_browser_profile}" == "docker-browser-parity" || "${docker_browser_profile}" == "bonnetjes-cloudflare-parity" ]]; then
   if [[ -z "${PROMPTBRANCH_PROFILE_DIR:-}" || "${PROMPTBRANCH_PROFILE_DIR}" == "/app/.pb_profile" ]]; then
     export PROMPTBRANCH_PROFILE_DIR="/app/profile"
   fi
@@ -31,6 +36,23 @@ if [[ "${docker_browser_profile}" == "docker-browser-parity" ]]; then
   export CHATGPT_FILTER_NO_SANDBOX="${CHATGPT_FILTER_NO_SANDBOX:-0}"
   export CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS="${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}"
   export CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS="${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}"
+fi
+
+# Bonnetjes exact Cloudflare parity deliberately removes Promptbranch-only
+# headed Patchright safety args and browser-extra args. The goal is to test
+# the minimal working Bonnetjes launch envelope: Xvfb + headed Patchright
+# Chrome + /app/profile + FedCM disabled + preserved default no-sandbox.
+if [[ "${bonnetjes_cloudflare_parity}" == "1" ]]; then
+  export PROMPTBRANCH_PROFILE_DIR="/app/profile"
+  export CHATGPT_USE_PATCHRIGHT="1"
+  export CHATGPT_BROWSER_CHANNEL="chrome"
+  export CHATGPT_HEADLESS="0"
+  export CHATGPT_DISABLE_FEDCM="1"
+  export CHATGPT_FILTER_NO_SANDBOX="0"
+  export CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS="${CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS:-1}"
+  export CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS="0"
+  export CHATGPT_BROWSER_EXTRA_ARGS=""
+  export CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE="disabled"
 fi
 
 export PROMPTBRANCH_DOCKER_SERVICE_DISPLAY_MODE="xvfb-run"
