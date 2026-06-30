@@ -705,3 +705,7 @@ No user data migration is required. `.pb_profile_docker/` is treated as local
 Docker browser state and is excluded from ZIP artifacts. Operators can run the
 Docker browser parity diagnostic script to collect auth-readiness evidence without
 Project Source mutation.
+
+## v0.1.103.2 migration note
+
+`v0.1.103.2` migrates the Docker browser parity diagnostic from an active login-check flow to a passive auth-readiness flow. It preserves the Promptbranch-native Docker browser envelope and adds host-Chrome profile bootstrap instructions for `.pb_profile_docker` mounted as `/app/profile`.

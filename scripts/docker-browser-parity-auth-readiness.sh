@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Diagnostic-only helper. It starts the Docker service with the Promptbranch Docker browser
-# launch envelope and records runtime/auth-readiness evidence. It does not add
-# Project Sources or adopt artifacts.
+# launch envelope and records runtime/passive auth-readiness evidence. It does not add
+# Project Sources, click the ChatGPT login button, wait for hidden manual login, or adopt artifacts.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
@@ -54,11 +54,17 @@ if [[ -n "${TOKEN}" ]]; then
   auth_header=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
-curl -fsS "${auth_header[@]}" http://localhost:8000/v1/docker/browser-runtime > "${out_dir}/docker-browser-runtime.json" || true
-curl -fsS -X POST http://localhost:8000/v1/auth-readiness \
+runtime_http_code="$(curl -sS -o "${out_dir}/docker-browser-runtime.json" -w '%{http_code}' \
+  "${auth_header[@]}" \
+  http://localhost:8000/v1/docker/browser-runtime || true)"
+printf '%s\n' "${runtime_http_code}" > "${out_dir}/docker-browser-runtime.http_code"
+
+auth_http_code="$(curl -sS -o "${out_dir}/auth-readiness.json" -w '%{http_code}' \
+  -X POST http://localhost:8000/v1/auth-readiness \
   "${auth_header[@]}" \
   -H 'Content-Type: application/json' \
-  -d '{"keep_open": false}' > "${out_dir}/auth-readiness.json" || true
+  -d '{"keep_open": false}' || true)"
+printf '%s\n' "${auth_http_code}" > "${out_dir}/auth-readiness.http_code"
 
 docker compose -f docker-compose.chatgpt-service.yml logs --tail=400 chatgpt-service > "${out_dir}/docker-service.log" || true
 
@@ -69,10 +75,22 @@ out = Path(${out_dir@Q})
 summary = {"ok": True, "action": "docker_browser_parity_auth_readiness", "output_dir": str(out)}
 for name in ["healthz", "docker-browser-runtime", "auth-readiness"]:
     path = out / f"{name}.json"
+    http_code_path = out / f"{name}.http_code"
+    http_code = http_code_path.read_text().strip() if http_code_path.exists() else ""
     try:
-        summary[name.replace('-', '_')] = json.loads(path.read_text())
+        payload = json.loads(path.read_text())
+        if http_code:
+            payload.setdefault("http_code", http_code)
+        summary[name.replace('-', '_')] = payload
     except Exception as exc:
-        summary[name.replace('-', '_')] = {"ok": False, "error": str(exc), "path": str(path)}
+        summary[name.replace('-', '_')] = {"ok": False, "error": str(exc), "path": str(path), "http_code": http_code}
+
+auth = summary.get("auth_readiness", {})
+runtime = summary.get("docker_browser_runtime", {})
+summary["ok"] = bool(runtime.get("ok") and auth.get("ok"))
+summary["status"] = auth.get("status") or ("diagnostic_failed" if not summary["ok"] else "auth_preflight_ready")
+summary["release_blocking"] = bool(auth.get("release_blocking", not summary["ok"]))
 (out / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 print(json.dumps(summary, indent=2, sort_keys=True))
+raise SystemExit(0 if summary["ok"] else 2)
 PY

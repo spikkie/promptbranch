@@ -3110,6 +3110,18 @@ def test_docker_browser_parity_diagnostic_script_is_present_and_safe() -> None:
     assert "PROMPTBRANCH_DOCKER_BROWSER_PROFILE" in script
     assert "docker-browser-parity" in script
     assert "/v1/auth-readiness" in script
+    assert "/v1/login-check" not in script
+    assert 'summary["ok"] = bool(runtime.get("ok") and auth.get("ok"))' in script
     assert "/v1/docker/browser-runtime" in script
     assert "/v1/project-sources" not in script
     assert "/v1/project-sources" not in script
+
+
+def test_docker_browser_profile_bootstrap_script_is_promptbranch_native() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "docker-browser-profile-bootstrap-host-chrome.sh").read_text(encoding="utf-8")
+
+    assert ".pb_profile_docker" in script
+    assert "/app/profile" in (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+    assert "google-chrome" in script
+    assert "docker-browser-parity" not in script.lower()

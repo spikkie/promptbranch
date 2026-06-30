@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
-active candidate version: v0.1.103.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
-next normal slice: v0.1.103.1 — Docker browser parity diagnostic envelope
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
+active candidate version: v0.1.103.2
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
+next normal slice: v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1697,3 +1697,9 @@ Out of scope:
 whether Promptbranch Docker browser auth can reproduce the Docker pattern that
 works in the reference Docker browser source. Project Source mutation stays out of scope until
 auth readiness is clean.
+
+## v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
+
+Repair the Docker parity diagnostic so it uses a passive `/v1/auth-readiness` endpoint rather than `/v1/login-check`. The diagnostic must not click login or wait for hidden manual-login inside Xvfb. Add a host-Chrome bootstrap helper for `.pb_profile_docker`, which is mounted into Docker as `/app/profile`.
+
+Out of scope remains Project Source mutation, artifact adoption/current mutation, Cloudflare bypass, and any change to the `v0.1.104.13.x` host-CDP repair line.

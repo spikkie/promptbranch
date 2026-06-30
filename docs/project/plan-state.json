@@ -1,25 +1,30 @@
 {
-  "schema": "promptbranch.project.plan_state",
-  "schema_version": "1.0",
-  "repo_id": "chatgpt_claudecode_workflow-2",
-  "accepted_current_version": "v0.1.102",
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
+  "accepted_current_version": "v0.1.102",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.2.zip",
+  "active_candidate_version": "v0.1.103.2",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
+  "active_slice": "Docker browser parity passive-auth and profile-bootstrap repair",
   "architecture_goal": "controlled problem-solving loop",
-  "last_completed_normal_slice_version": "v0.1.102",
+  "architecture_invariants": [
+    "artifact-first baseline continuity",
+    "control surface is authoritative over conversation memory",
+    "exactly one active normal slice",
+    "repair releases must not advance scope",
+    "actuation moves only through gated safety layers",
+    "ChatGPT Project deletion remains frozen",
+    "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
+    "repository paths in policies and configs remain repo-relative"
+  ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
-  "last_completed_repair_version": "v0.1.100.3",
+  "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "active_candidate_version": "v0.1.103.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.1.zip",
-  "active_slice": "Docker browser parity diagnostic envelope",
-  "next_normal_version": "v0.1.103.1",
-  "next_normal_slice": "Docker browser parity diagnostic envelope",
-  "next_planned_version_after_acceptance": "v0.1.104",
+  "last_completed_repair_version": "v0.1.100.3",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.2.zip",
+  "next_normal_slice": "Docker browser parity passive-auth and profile-bootstrap repair",
+  "next_normal_version": "v0.1.103.2",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
-  "scope_advance_allowed": false,
-  "repair_must_not_advance_scope": true,
-  "release_mode": "repair",
+  "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
     "sandbox mutation verification and rollback gate before v0.1.104",
     "mutation of repository fixture files",
@@ -32,69 +37,15 @@
     "automatic retry or correction execution outside the temporary sandbox",
     "patch/diff artifact generation"
   ],
-  "architecture_invariants": [
-    "artifact-first baseline continuity",
-    "control surface is authoritative over conversation memory",
-    "exactly one active normal slice",
-    "repair releases must not advance scope",
-    "actuation moves only through gated safety layers",
-    "ChatGPT Project deletion remains frozen",
-    "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
-    "repository paths in policies and configs remain repo-relative"
-  ],
-  "slice_derivation_inputs": [
-    "main product goal",
-    "current MVP stage",
-    "architecture invariants",
-    "definition of done",
-    "latest accepted/current baseline",
-    "known blockers and repair history",
-    "smallest testable next capability",
-    "operational risk"
-  ],
-  "rolling_slice_horizon": [
-    {
-      "version": "v0.1.103.1",
-      "slice": "Docker browser parity diagnostic envelope",
-      "status": "active",
-      "release_mode": "repair",
-      "scope": "add diagnostic-only Docker browser parity launch envelope and auth-readiness evidence matrix without Project Source mutation or adoption"
-    },
-    {
-      "version": "v0.1.104",
-      "slice": "Sandbox mutation verification and rollback evidence gate",
-      "status": "planned_after_acceptance",
-      "release_mode": "normal",
-      "scope": "verify sandbox mutation result evidence and define rollback/stop gates before broader correction workflows"
-    },
-    {
-      "version": "v0.1.105",
-      "slice": "Sandbox correction promotion readiness check",
-      "status": "planned",
-      "release_mode": "normal",
-      "scope": "decide whether sandbox-only correction evidence is ready for broader controlled correction workflows without deployment"
-    },
-    {
-      "version": "v0.1.106",
-      "slice": "Controlled correction promotion decision record",
-      "status": "planned",
-      "release_mode": "normal",
-      "scope": "record whether correction workflows may move beyond sandbox fixtures based on accumulated evidence"
-    },
-    {
-      "version": "v0.1.107",
-      "slice": "Controlled correction execution envelope design",
-      "status": "planned",
-      "release_mode": "normal",
-      "scope": "define the future execution envelope for controlled corrections without enabling repository-wide mutation"
-    }
-  ],
+  "release_mode": "repair",
+  "repair_must_not_advance_scope": true,
   "replan_rules": [
     "Normal releases may update the rolling horizon when the decision is recorded in docs/project/decisions.md.",
     "Repair releases must keep scope_advance_allowed=false and may not change the active normal slice.",
     "A failed or ambiguous control-surface validation blocks packaging and adoption.",
     "Changing architecture invariants requires an explicit architecture decision record."
   ],
+  "repo_id": "chatgpt_claudecode_workflow-2",
   "required_control_surface_files": [
     "docs/project/mvp.md",
     "docs/project/definition-of-done.md",
@@ -106,5 +57,55 @@
     "docs/project/plan-state.json",
     "docs/project/architecture.md",
     "docs/project/slice-horizon.md"
+  ],
+  "rolling_slice_horizon": [
+    {
+      "release_mode": "repair",
+      "scope": "repair diagnostic-only Docker browser parity auth-readiness with passive probing, fail-fast summary semantics, and host-profile bootstrap without Project Source mutation or adoption",
+      "slice": "Docker browser parity passive-auth and profile-bootstrap repair",
+      "status": "active",
+      "version": "v0.1.103.2"
+    },
+    {
+      "release_mode": "normal",
+      "scope": "verify sandbox mutation result evidence and define rollback/stop gates before broader correction workflows",
+      "slice": "Sandbox mutation verification and rollback evidence gate",
+      "status": "planned_after_acceptance",
+      "version": "v0.1.104"
+    },
+    {
+      "release_mode": "normal",
+      "scope": "decide whether sandbox-only correction evidence is ready for broader controlled correction workflows without deployment",
+      "slice": "Sandbox correction promotion readiness check",
+      "status": "planned",
+      "version": "v0.1.105"
+    },
+    {
+      "release_mode": "normal",
+      "scope": "record whether correction workflows may move beyond sandbox fixtures based on accumulated evidence",
+      "slice": "Controlled correction promotion decision record",
+      "status": "planned",
+      "version": "v0.1.106"
+    },
+    {
+      "release_mode": "normal",
+      "scope": "define the future execution envelope for controlled corrections without enabling repository-wide mutation",
+      "slice": "Controlled correction execution envelope design",
+      "status": "planned",
+      "version": "v0.1.107"
+    }
+  ],
+  "schema": "promptbranch.project.plan_state",
+  "schema_version": "1.0",
+  "scope_advance_allowed": false,
+  "slice_derivation_inputs": [
+    "main product goal",
+    "current MVP stage",
+    "architecture invariants",
+    "definition of done",
+    "latest accepted/current baseline",
+    "known blockers and repair history",
+    "smallest testable next capability",
+    "operational risk"
   ]
 }

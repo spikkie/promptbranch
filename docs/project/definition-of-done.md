@@ -433,3 +433,5 @@ Last release: v0.1.102
 | DOD-141 | First controlled sandbox-only file mutation is gated and evidenced | done | `pb loop run --execute-sandbox-mutation` fixture and focused loop/CLI tests | v0.1.103.1 |
 
 | DOD-136 | Docker browser parity diagnostic envelope is explicit and non-mutating | in_progress | `scripts/docker-browser-parity-auth-readiness.sh`; `/v1/docker/browser-runtime`; no Project Source mutation in script | v0.1.103.1 |
+
+| DOD-142 | Docker browser parity auth readiness is passive and fail-fast | in_progress | `/v1/auth-readiness`; `scripts/docker-browser-parity-auth-readiness.sh`; `scripts/docker-browser-profile-bootstrap-host-chrome.sh` | v0.1.103.2 |
