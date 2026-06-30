@@ -458,3 +458,11 @@ Consequence: future browser-client repairs must verify the actual runtime import
 ## ADR-PROJ-114 — v0.1.103.5 Docker parity Project Source mutation requires passive readiness and explicit opt-in
 
 Docker browser parity mode may mutate Project Sources only when `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1` is set and passive auth-readiness proves `logged_in=true`, `challenge_detected=false`, `composer_visible=true`, and `release_blocking=false`. This preserves the diagnostic recovery path without allowing accidental source mutation during profile/bootstrap research.
+
+## ADR-PROJ-115 — v0.1.103.6 Docker challenge artifact export must be bounded and staged
+
+Context: copying `/app/debug_artifacts/.` directly from the Docker service into a host path under `debug_artifacts/` can recursively grow when the source is a bind-mounted repo debug tree.
+
+Decision: Docker parity challenge artifact export must stage only matching `auth_readiness_auth_challenge_detected_*` files through `/tmp/pb-challenge-artifacts`, enforce maximum file count and total bytes, and refuse recursive debug-tree destinations.
+
+Consequence: operators use `scripts/docker-browser-parity-export-challenge-artifacts.sh` instead of manual wholesale `docker cp` commands.

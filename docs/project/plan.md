@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
-active candidate version: v0.1.103.5
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
-next normal slice: v0.1.103.5 — Docker parity true keep-open browser session mode
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
+active candidate version: v0.1.103.6
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
+next normal slice: v0.1.103.6 — Docker parity artifact export safety
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1736,3 +1736,9 @@ Scope:
 - Provide a diagnostic script for guarded source upload testing.
 
 Out of scope: adoption/current mutation, Cloudflare bypass, automatic login, hidden manual-login wait, broad release-control changes, and ChatGPT Project deletion.
+
+## v0.1.103.6 — Docker parity artifact export safety
+
+Reason: manual copying of `/app/debug_artifacts/.` into a nested repo debug directory can recursively expand when the container debug directory is a bind mount.
+
+Scope: add a safe exporter that stages only `auth_readiness_auth_challenge_detected_*` artifacts under `/tmp/pb-challenge-artifacts`, enforces file-count and byte limits, and refuses recursive debug-tree destinations. Project Source mutation remains gated and out of scope while auth-readiness is red.

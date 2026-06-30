@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
-active candidate version: v0.1.103.5
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
-next normal slice: v0.1.103.5 — Docker parity true keep-open browser session mode
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
+active candidate version: v0.1.103.6
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.6.zip
+next normal slice: v0.1.103.6 — Docker parity artifact export safety
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -793,3 +793,7 @@ Control-surface token: Passive auth-readiness runtime-client wiring repair
 ## v0.1.103.5 candidate status
 
 `v0.1.103.5` continues the Docker browser parity investigation after `v0.1.103.3` proved passive authenticated Docker reuse. This slice adds a guarded Project Source mutation path: Docker parity mode must pass passive auth-readiness and must receive explicit `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1` before `/v1/project-sources` can mutate ChatGPT Project Sources. The candidate is diagnostic-only and is not accepted/current.
+
+## v0.1.103.6 candidate status
+
+`v0.1.103.6` adds Docker parity artifact export safety. It keeps the authenticated-readiness and Project Source mutation gates from `v0.1.103.5`, and adds a bounded exporter so operators do not copy `/app/debug_artifacts` wholesale into the repo debug tree. The candidate is diagnostic-only and is not accepted/current.
