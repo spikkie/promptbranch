@@ -52,6 +52,11 @@ By default it runs:
   2. clean profile: host ./.pb_profile_bonnetjes_clean -> /app/profile
 
 It never calls /v1/project-sources or /v1/login-check.
+
+Clean logged-in workflow:
+  1. Run scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh
+  2. Log in in the visible Chrome window and close Chrome.
+  3. Run docker-browser-parity-cloudflare-check.sh with the printed PROMPTBRANCH_HOST_PROFILE_DIR.
 HELP
       exit 0
       ;;

@@ -73,6 +73,8 @@ services:
             - __pycache__/
             - .pb_profile/
             - .pb_profile_docker/
+            - .pb_profile*/
+            - .pb_profile_*/
             - debug_artifacts/
             - uploaded_receipts*
             - '*.log'

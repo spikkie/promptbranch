@@ -49,6 +49,7 @@ Cloudflare challenge settle-loop diagnostic only. This script:
     scripts/docker-browser-parity-export-challenge-artifacts.sh
 
 It never calls /v1/project-sources, /v1/login-check, or any Google login flow.
+It refuses host profile paths that would be copied into Docker build context.
 HELP
       exit 0
       ;;
@@ -100,6 +101,74 @@ if [[ "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "bonnetjes-cloudflare-parity" 
   export CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS="0"
   export CHATGPT_BROWSER_EXTRA_ARGS=""
   export CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE="disabled"
+fi
+
+assert_host_profile_not_in_docker_build_context() {
+  local host_profile="${PROMPTBRANCH_HOST_PROFILE_DIR:-./.pb_profile_docker}"
+  python3 - "${repo_root}" "${host_profile}" <<'PY_GUARD'
+from __future__ import annotations
+
+import fnmatch
+import json
+import sys
+from pathlib import Path
+
+repo = Path(sys.argv[1]).resolve()
+raw_profile = sys.argv[2]
+profile_path = Path(raw_profile)
+if not profile_path.is_absolute():
+    profile_path = repo / profile_path
+profile_real = profile_path.parent.resolve() / profile_path.name
+try:
+    rel = profile_real.relative_to(repo)
+except ValueError:
+    print(json.dumps({
+        "ok": True,
+        "status": "host_profile_outside_build_context",
+        "host_profile_dir": str(profile_real),
+    }, sort_keys=True))
+    raise SystemExit(0)
+
+dockerignore = repo / ".dockerignore"
+patterns = []
+if dockerignore.exists():
+    patterns = [line.strip() for line in dockerignore.read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
+rel_s = rel.as_posix()
+name = profile_real.name
+matched = False
+for pattern in patterns:
+    pat = pattern.rstrip("/")
+    if fnmatch.fnmatch(rel_s, pat) or fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel_s + "/", pattern):
+        matched = True
+        break
+required = {".pb_profile*", "debug_artifacts/", "*.zip"}
+missing = sorted(required.difference(patterns))
+if matched and not missing:
+    print(json.dumps({
+        "ok": True,
+        "status": "host_profile_excluded_from_build_context",
+        "host_profile_dir": str(profile_real),
+        "relative_path": rel_s,
+        "matched_by_dockerignore": True,
+    }, sort_keys=True))
+    raise SystemExit(0)
+print(json.dumps({
+    "ok": False,
+    "status": "host_profile_would_enter_docker_build_context",
+    "host_profile_dir": str(profile_real),
+    "relative_path": rel_s,
+    "matched_by_dockerignore": matched,
+    "missing_required_dockerignore_patterns": missing,
+    "recommendation": "Move the profile outside the repo or ensure .dockerignore excludes .pb_profile*, debug_artifacts/, and *.zip.",
+}, indent=2, sort_keys=True))
+raise SystemExit(78)
+PY_GUARD
+}
+
+assert_host_profile_not_in_docker_build_context | tee "${out_dir}/host-profile-build-context-guard.json"
+
+if [[ -n "${PROMPTBRANCH_HOST_PROFILE_DIR:-}" ]]; then
+  mkdir -p -- "${PROMPTBRANCH_HOST_PROFILE_DIR}"
 fi
 
 {

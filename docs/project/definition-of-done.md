@@ -441,3 +441,5 @@ Last release: v0.1.102
 | DOD-144 | Docker parity Project Source mutation is guarded by passive auth readiness and explicit operator opt-in | in_progress | `promptbranch_container_api.py`; `scripts/docker-browser-parity-guarded-project-source-test.sh`; focused API tests | v0.1.103.5 |
 | DOD-145 | Docker parity challenge artifacts are exported safely without recursive debug tree copies | in_progress | `scripts/docker-browser-parity-export-challenge-artifacts.sh`; focused shell-script test | v0.1.103.6 |
 | DOD-146 | Docker parity Cloudflare challenge settling is isolated from downstream mutation | in_progress | `scripts/docker-browser-parity-cloudflare-check.sh`; same-session `/v1/auth-readiness/session/status` polling; bounded evidence export; no Project Source mutation | v0.1.103.8 |
+
+| DOD-147 | Bonnetjes Cloudflare parity profile hygiene is documented and build-context safe | in_progress | `.dockerignore`; `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`; `docs/bonnetjes-cloudflare-parity-test-procedure.md`; safe no-artifact export | v0.1.103.9 |

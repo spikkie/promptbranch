@@ -3143,7 +3143,8 @@ def test_docker_browser_parity_export_challenge_artifacts_is_bounded_and_safe() 
     assert "PROMPTBRANCH_CHALLENGE_ARTIFACT_EXPORT_MAX_FILES" in script
     assert "PROMPTBRANCH_CHALLENGE_ARTIFACT_EXPORT_MAX_BYTES" in script
     assert "artifact_export_size_limit_exceeded" in script
-    assert "refusing destination inside repo debug_artifacts" in script
+    assert "no_matching_artifacts" in script
+    assert "refusing_destination_inside_repo_debug_artifacts" in script
     assert 'docker cp "${CID}:/tmp/pb-challenge-artifacts/."' in script
     assert 'docker cp "$CID:/app/debug_artifacts/."' not in script
     assert 'docker cp "${CID}:/app/debug_artifacts/."' not in script
@@ -3168,6 +3169,8 @@ def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> No
     assert "chrome-argv-" in script
     assert "docker-browser-parity-export-challenge-artifacts.sh" in script
     assert "auth_readiness_auth_challenge_detected_*" in script
+    assert "assert_host_profile_not_in_docker_build_context" in script
+    assert "host_profile_would_enter_docker_build_context" in script
     assert "cloudflare_timeout" in script
     assert "cloudflare_cleared_auth_ready" in script
     assert "cloudflare_cleared_not_auth_ready" in script
@@ -3190,6 +3193,32 @@ def test_docker_bonnetjes_cloudflare_check_runs_seeded_and_clean_profiles() -> N
     assert "CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS=0" in script
     assert "CHATGPT_BROWSER_EXTRA_ARGS=" in script
     assert "CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE=disabled" in script
+    assert "docker-browser-parity-cloudflare-check.sh" in script
+    assert "docker-bonnetjes-clean-login-profile-bootstrap.sh" in script
+    assert "http://localhost:8000/v1/project-sources" not in script
+    assert "http://localhost:8000/v1/login-check" not in script
+
+
+def test_dockerignore_excludes_browser_profiles_from_build_context() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dockerignore = (root / ".dockerignore").read_text(encoding="utf-8")
+
+    assert ".pb_profile*" in dockerignore
+    assert ".pb_profile_*" in dockerignore
+    assert "debug_artifacts/" in dockerignore
+    assert "*.zip" in dockerignore
+
+
+def test_docker_bonnetjes_clean_login_profile_bootstrap_documents_manual_phase() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "docker-bonnetjes-clean-login-profile-bootstrap.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "google-chrome" in script
+    assert ".pb_profile_bonnetjes_manual_" in script
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
+    assert "bonnetjes-cloudflare-parity" in script
     assert "docker-browser-parity-cloudflare-check.sh" in script
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script

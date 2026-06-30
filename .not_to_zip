@@ -43,6 +43,8 @@ venv/
 # profile
 .pb_profile/
 .pb_profile_docker/
+.pb_profile_*/
+.pb_profile*/
 .pb_profile_local_debug/
 .pb_profile_local_debug_pools/
 profile/
