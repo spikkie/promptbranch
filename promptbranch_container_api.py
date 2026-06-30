@@ -260,6 +260,12 @@ class ServiceInfo(BaseModel):
     xvfb_screen: Optional[str] = None
     profile_dir_exists: bool = False
     profile_dir_mode: Optional[str] = None
+    profile_dir_uid: Optional[int] = None
+    profile_dir_gid: Optional[int] = None
+    profile_dir_writable: bool = False
+    profile_dir_write_probe_ok: bool = False
+    profile_dir_write_probe_error: Optional[str] = None
+    project_source_mutation_allowed: bool = False
     disable_fedcm: bool = True
     filter_no_sandbox: bool = False
     challenge_wait_timeout_ms: Optional[int] = None
@@ -277,6 +283,14 @@ class DockerBrowserRuntimeInfo(BaseModel):
     profile_dir: str
     profile_dir_exists: bool
     profile_dir_mode: Optional[str] = None
+    profile_dir_uid: Optional[int] = None
+    profile_dir_gid: Optional[int] = None
+    profile_dir_writable: bool = False
+    profile_dir_write_probe_ok: bool = False
+    profile_dir_write_probe_error: Optional[str] = None
+    service_uid: Optional[int] = None
+    service_gid: Optional[int] = None
+    project_source_mutation_allowed: bool = False
     headless: bool
     use_patchright: bool
     browser_channel: Optional[str] = None
@@ -316,6 +330,43 @@ def _profile_dir_mode(path: str) -> Optional[str]:
         return None
 
 
+def _profile_dir_status(path: str) -> dict:
+    profile_path = Path(path)
+    status_payload: dict[str, object] = {
+        "profile_dir_exists": profile_path.exists(),
+        "profile_dir_mode": _profile_dir_mode(path),
+        "profile_dir_uid": None,
+        "profile_dir_gid": None,
+        "profile_dir_writable": False,
+        "profile_dir_write_probe_ok": False,
+        "profile_dir_write_probe_error": None,
+        "service_uid": os.getuid() if hasattr(os, "getuid") else None,
+        "service_gid": os.getgid() if hasattr(os, "getgid") else None,
+    }
+    try:
+        stat_result = profile_path.stat()
+        status_payload["profile_dir_uid"] = stat_result.st_uid
+        status_payload["profile_dir_gid"] = stat_result.st_gid
+    except OSError as exc:
+        status_payload["profile_dir_write_probe_error"] = f"stat failed: {exc}"
+        return status_payload
+
+    if not profile_path.is_dir():
+        status_payload["profile_dir_write_probe_error"] = "profile path is not a directory"
+        return status_payload
+
+    status_payload["profile_dir_writable"] = os.access(profile_path, os.W_OK | os.X_OK)
+    probe_path = profile_path / ".promptbranch-write-probe"
+    try:
+        probe_path.write_text("ok\n")
+        probe_path.unlink(missing_ok=True)
+        status_payload["profile_dir_write_probe_ok"] = True
+        status_payload["profile_dir_writable"] = True
+    except OSError as exc:
+        status_payload["profile_dir_write_probe_error"] = str(exc)
+    return status_payload
+
+
 def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict:
     docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
     profile_dir = settings.profile_dir
@@ -328,8 +379,8 @@ def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict
         "display": os.getenv("DISPLAY"),
         "xvfb_screen": os.getenv("PROMPTBRANCH_DOCKER_XVFB_SCREEN"),
         "profile_dir": profile_dir,
-        "profile_dir_exists": Path(profile_dir).exists(),
-        "profile_dir_mode": _profile_dir_mode(profile_dir),
+        **_profile_dir_status(profile_dir),
+        "project_source_mutation_allowed": _env_flag("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", False),
         "headless": settings.headless,
         "use_patchright": settings.use_patchright,
         "browser_channel": settings.browser_channel,
@@ -540,10 +591,71 @@ async def healthz() -> ServiceInfo:
         xvfb_screen=runtime["xvfb_screen"],
         profile_dir_exists=runtime["profile_dir_exists"],
         profile_dir_mode=runtime["profile_dir_mode"],
+        profile_dir_uid=runtime["profile_dir_uid"],
+        profile_dir_gid=runtime["profile_dir_gid"],
+        profile_dir_writable=runtime["profile_dir_writable"],
+        profile_dir_write_probe_ok=runtime["profile_dir_write_probe_ok"],
+        profile_dir_write_probe_error=runtime["profile_dir_write_probe_error"],
+        project_source_mutation_allowed=runtime["project_source_mutation_allowed"],
         disable_fedcm=runtime["disable_fedcm"],
         filter_no_sandbox=runtime["filter_no_sandbox"],
         challenge_wait_timeout_ms=runtime["challenge_wait_timeout_ms"],
     )
+
+
+async def _require_project_source_mutation_preflight(project_url: Optional[str]) -> Optional[dict]:
+    docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
+    if docker_browser_profile != "docker-browser-parity":
+        return None
+
+    svc = _service_for(project_url)
+    runtime = _docker_browser_runtime_payload(svc.settings)
+
+    if not _env_flag("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "ok": False,
+                "status": "project_source_mutation_gate_closed",
+                "release_blocking": True,
+                "error": "Docker browser parity Project Source mutation requires PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1.",
+                "runtime": runtime,
+            },
+        )
+
+    if not runtime.get("profile_dir_write_probe_ok"):
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail={
+                "ok": False,
+                "status": "profile_dir_not_writable",
+                "release_blocking": True,
+                "error": "Docker browser parity profile directory is not writable before browser launch.",
+                "runtime": runtime,
+            },
+        )
+
+    readiness = await svc.run_passive_auth_readiness(keep_open=False)
+    required = {
+        "logged_in": readiness.get("logged_in") is True,
+        "challenge_clear": readiness.get("challenge_detected") is False,
+        "composer_visible": readiness.get("composer_visible") is True,
+        "release_not_blocking": readiness.get("release_blocking") is False,
+    }
+    if not all(required.values()):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "ok": False,
+                "status": "project_source_preflight_not_ready",
+                "release_blocking": True,
+                "error": "Docker browser parity Project Source mutation preflight failed.",
+                "required": required,
+                "auth_readiness": readiness,
+                "runtime": runtime,
+            },
+        )
+    return {"runtime": runtime, "auth_readiness": readiness}
 
 
 @protected.get("/docker/browser-runtime", response_model=DockerBrowserRuntimeInfo, dependencies=[Depends(require_service_token)])
@@ -901,6 +1013,7 @@ async def add_project_source(
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> dict:
+    preflight = await _require_project_source_mutation_preflight(project_url)
     temp_path: Optional[Path] = None
     temp_dir: Optional[Path] = None
     try:
@@ -925,7 +1038,12 @@ async def add_project_source(
         }
         if profile_lock_wait_seconds is not None:
             call_kwargs["profile_lock_wait_seconds"] = profile_lock_wait_seconds
-        return await _service_for(project_url).add_project_source(**call_kwargs)
+        result = await _service_for(project_url).add_project_source(**call_kwargs)
+        if preflight is not None and isinstance(result, dict):
+            result.setdefault("project_source_mutation_gate", "docker_browser_parity_preflight_passed")
+            result.setdefault("auth_readiness_preflight", preflight.get("auth_readiness"))
+            result.setdefault("docker_browser_runtime", preflight.get("runtime"))
+        return result
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - exercised by live runs

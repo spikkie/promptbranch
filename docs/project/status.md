@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
-active candidate version: v0.1.103.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
-next normal slice: v0.1.103.3 — passive auth-readiness runtime-client wiring repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
+active candidate version: v0.1.103.4
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
+next normal slice: v0.1.103.4 — Docker parity guarded Project Source mutation test
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -788,3 +788,8 @@ Status: focused_candidate.
 
 
 Control-surface token: Passive auth-readiness runtime-client wiring repair
+
+
+## v0.1.103.4 candidate status
+
+`v0.1.103.4` continues the Docker browser parity investigation after `v0.1.103.3` proved passive authenticated Docker reuse. This slice adds a guarded Project Source mutation path: Docker parity mode must pass passive auth-readiness and must receive explicit `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1` before `/v1/project-sources` can mutate ChatGPT Project Sources. The candidate is diagnostic-only and is not accepted/current.

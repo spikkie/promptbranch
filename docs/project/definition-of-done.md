@@ -437,3 +437,5 @@ Last release: v0.1.102
 | DOD-142 | Docker browser parity auth readiness is passive and fail-fast | in_progress | `/v1/auth-readiness`; `scripts/docker-browser-parity-auth-readiness.sh`; `scripts/docker-browser-profile-bootstrap-host-chrome.sh` | v0.1.103.2 |
 
 | DOD-143 | Docker passive auth-readiness is implemented on the runtime browser client | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_promptbranch_container_api.py`; `/v1/auth-readiness` must not return AttributeError | v0.1.103.3 |
+
+| DOD-144 | Docker parity Project Source mutation is guarded by passive auth readiness and explicit operator opt-in | in_progress | `promptbranch_container_api.py`; `scripts/docker-browser-parity-guarded-project-source-test.sh`; focused API tests | v0.1.103.4 |

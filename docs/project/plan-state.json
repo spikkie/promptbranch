@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.3.zip",
-  "active_candidate_version": "v0.1.103.3",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.4.zip",
+  "active_candidate_version": "v0.1.103.4",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Passive auth-readiness runtime-client wiring repair",
+  "active_slice": "Docker parity guarded Project Source mutation test",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.3.zip",
-  "next_normal_slice": "Passive auth-readiness runtime-client wiring repair",
-  "next_normal_version": "v0.1.103.3",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.4.zip",
+  "next_normal_slice": "Docker parity guarded Project Source mutation test",
+  "next_normal_version": "v0.1.103.4",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -36,6 +36,14 @@
     "broad shell execution beyond allowlisted JSON validation and controlled sandbox fixture mutation",
     "automatic retry or correction execution outside the temporary sandbox",
     "patch/diff artifact generation"
+  ],
+  "release_history": [
+    {
+      "kind": "repair/diagnostic",
+      "status": "candidate",
+      "summary": "Docker parity Project Source mutation is gated by explicit env opt-in and passive auth-readiness.",
+      "version": "v0.1.103.4"
+    }
   ],
   "release_mode": "repair",
   "repair_must_not_advance_scope": true,
@@ -61,10 +69,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "repair the Docker parity passive-auth endpoint by implementing passive auth readiness on the runtime Promptbranch browser client without Project Source mutation or adoption",
-      "slice": "Passive auth-readiness runtime-client wiring repair",
+      "scope": "guard Docker parity Project Source mutation behind passive auth-readiness, explicit operator opt-in, and profile writability evidence without adoption",
+      "slice": "Docker parity guarded Project Source mutation test",
       "status": "active",
-      "version": "v0.1.103.3"
+      "version": "v0.1.103.4"
     },
     {
       "release_mode": "normal",
@@ -107,5 +115,6 @@
     "known blockers and repair history",
     "smallest testable next capability",
     "operational risk"
-  ]
+  ],
+  "updated_for": "v0.1.103.4"
 }

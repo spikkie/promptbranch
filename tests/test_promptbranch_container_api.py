@@ -533,3 +533,114 @@ def test_automation_uses_runtime_client_with_passive_auth_readiness() -> None:
 
     automation = ChatGPTAutomation(project_url="https://chatgpt.com/", email=None, password=None, profile_dir="/tmp/pb-passive-test-profile")
     assert hasattr(automation.client, "run_passive_auth_readiness")
+
+
+def _fake_settings(profile_dir: str):
+    class Settings:
+        headless = False
+        use_patchright = True
+        browser_channel = "chrome"
+        disable_fedcm = True
+        filter_no_sandbox = False
+
+        def __init__(self, profile_dir: str):
+            self.profile_dir = profile_dir
+
+    return Settings(profile_dir)
+
+
+def test_docker_parity_project_source_requires_explicit_mutation_gate(monkeypatch, tmp_path) -> None:
+    class FakeService:
+        settings = _fake_settings(str(tmp_path))
+
+        async def run_passive_auth_readiness(self, keep_open: bool = False):  # pragma: no cover - must not be called
+            raise AssertionError("passive auth should not run when the explicit mutation gate is closed")
+
+        async def add_project_source(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("Project Source mutation must not run when the explicit mutation gate is closed")
+
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
+    monkeypatch.delenv("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", raising=False)
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file"},
+        files={"file": ("candidate.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert detail["status"] == "project_source_mutation_gate_closed"
+    assert detail["release_blocking"] is True
+
+
+def test_docker_parity_project_source_checks_profile_writable_before_browser_launch(monkeypatch, tmp_path) -> None:
+    bad_profile = tmp_path / "profile-is-file"
+    bad_profile.write_text("not a directory")
+
+    class FakeService:
+        settings = _fake_settings(str(bad_profile))
+
+        async def run_passive_auth_readiness(self, keep_open: bool = False):  # pragma: no cover - must not be called
+            raise AssertionError("browser auth must not run before profile writability passes")
+
+        async def add_project_source(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("Project Source mutation must not run before profile writability passes")
+
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
+    monkeypatch.setenv("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", "1")
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file"},
+        files={"file": ("candidate.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 423
+    detail = response.json()["detail"]
+    assert detail["status"] == "profile_dir_not_writable"
+    assert detail["release_blocking"] is True
+
+
+def test_docker_parity_project_source_runs_passive_preflight_before_mutation(monkeypatch, tmp_path) -> None:
+    calls: list[str] = []
+
+    class FakeService:
+        settings = _fake_settings(str(tmp_path))
+
+        async def run_passive_auth_readiness(self, keep_open: bool = False):
+            calls.append("passive")
+            return {
+                "ok": True,
+                "status": "auth_preflight_ready",
+                "logged_in": True,
+                "challenge_detected": False,
+                "composer_visible": True,
+                "release_blocking": False,
+            }
+
+        async def add_project_source(self, **kwargs):
+            calls.append("mutate")
+            return {"ok": True, "status": "source_added"}
+
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
+    monkeypatch.setenv("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", "1")
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file"},
+        files={"file": ("candidate.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert calls == ["passive", "mutate"]
+    assert payload["ok"] is True
+    assert payload["project_source_mutation_gate"] == "docker_browser_parity_preflight_passed"
+    assert payload["auth_readiness_preflight"]["status"] == "auth_preflight_ready"

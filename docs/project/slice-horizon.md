@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.3 | Passive auth-readiness runtime-client wiring repair | active | Wire passive auth readiness into the actual Promptbranch browser client used by the service | Project Source mutation, deployment, artifact adoption |
+| v0.1.103.4 | Docker parity guarded Project Source mutation test | active | Wire passive auth readiness into the actual Promptbranch browser client used by the service | Project Source mutation, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -15,3 +15,8 @@
 ## Repair horizon rule
 
 Repair releases must keep the active normal slice fixed, set `scope_advance_allowed=false`, and must not move the rolling horizon forward.
+
+
+## v0.1.103.4 active repair horizon
+
+`v0.1.103.4` is the active Docker parity repair horizon. It gates Project Source mutation behind passive auth-readiness, profile writability, and explicit `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1`.
