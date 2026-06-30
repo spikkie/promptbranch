@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # KISS Cloudflare settle-loop diagnostic for the Promptbranch Docker browser
-# parity envelope. It does not click login, does not start Google auth, does
+# parity envelope and Bonnetjes exact Cloudflare parity envelope. It does not click login, does not start Google auth, does
 # not mutate Project Sources, and does not copy /app/debug_artifacts wholesale.
 # It keeps one Docker browser session alive and polls that same session until
 # the challenge clears, the held session is lost, or the timeout expires.
@@ -39,6 +39,8 @@ Usage: docker-browser-parity-cloudflare-check.sh [--no-recreate] [--max-wait-sec
 
 Cloudflare challenge settle-loop diagnostic only. This script:
   - starts or reuses the Docker parity browser service
+  - supports PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity
+    and PROMPTBRANCH_DOCKER_BROWSER_PROFILE=bonnetjes-cloudflare-parity
   - requires docker_browser_parity_mode=true and profile_dir=/app/profile
   - opens one keep-open browser session through /v1/auth-readiness
   - polls /v1/auth-readiness/session/status for the same held session
@@ -89,13 +91,24 @@ export CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS="${CHATGPT_CLEAR_PROFILE_SINGLETON_
 export CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS="${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}"
 export PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-300}"
 
+if [[ "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "bonnetjes-cloudflare-parity" ]]; then
+  export CHATGPT_USE_PATCHRIGHT="1"
+  export CHATGPT_BROWSER_CHANNEL="chrome"
+  export CHATGPT_HEADLESS="0"
+  export CHATGPT_DISABLE_FEDCM="1"
+  export CHATGPT_FILTER_NO_SANDBOX="0"
+  export CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS="0"
+  export CHATGPT_BROWSER_EXTRA_ARGS=""
+  export CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE="disabled"
+fi
+
 {
   printf '== docker browser parity Cloudflare check ==\n'
   printf 'no_recreate=%s\n' "${no_recreate}"
   printf 'max_wait_seconds=%s\n' "${max_wait_seconds}"
   printf 'poll_seconds=%s\n' "${poll_seconds}"
   printf 'export_evidence=%s\n' "${export_evidence}"
-  env | sort | grep -E '^(PROMPTBRANCH_DOCKER_BROWSER_PROFILE|PROMPTBRANCH_PROFILE_DIR|PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS|CHATGPT_USE_PATCHRIGHT|CHATGPT_BROWSER_CHANNEL|CHATGPT_HEADLESS|CHATGPT_DISABLE_FEDCM|CHATGPT_FILTER_NO_SANDBOX|CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS|CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS)='
+  env | sort | grep -E '^(PROMPTBRANCH_DOCKER_BROWSER_PROFILE|PROMPTBRANCH_PROFILE_DIR|PROMPTBRANCH_HOST_PROFILE_DIR|PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS|CHATGPT_USE_PATCHRIGHT|CHATGPT_BROWSER_CHANNEL|CHATGPT_HEADLESS|CHATGPT_DISABLE_FEDCM|CHATGPT_FILTER_NO_SANDBOX|CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS|CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS|CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS|CHATGPT_BROWSER_EXTRA_ARGS|CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE)='
 } | tee "${out_dir}/run.log"
 
 mkdir -p .pb_profile .pb_profile_docker debug_artifacts
@@ -134,6 +147,20 @@ if [[ -n "${TOKEN}" ]]; then
   auth_header=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
+dump_chrome_argv() {
+  local label="$1"
+  local dest="${out_dir}/chrome-argv-${label}.txt"
+  local cid
+  cid="$(docker ps --filter name=chatgpt_claudecode_workflow-chatgpt-service-1 -q | head -1)"
+  if [[ -z "${cid}" ]]; then
+    printf 'no running container\n' > "${dest}"
+    return 0
+  fi
+  docker exec "${cid}" sh -lc '
+    ps -eo pid,ppid,stat,args | grep -E "chrome|chromium" | grep -v grep || true
+  ' > "${dest}" 2>&1 || true
+}
+
 runtime_http_code="$(curl -sS -o "${out_dir}/docker-browser-runtime.json" -w '%{http_code}' \
   "${auth_header[@]}" \
   http://localhost:8000/v1/docker/browser-runtime || true)"
@@ -150,8 +177,11 @@ payload = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
 errors = []
 if not payload.get('ok'):
     errors.append('runtime ok=false')
+profile = payload.get('docker_browser_profile')
 if payload.get('docker_browser_parity_mode') is not True:
     errors.append('docker_browser_parity_mode is not true')
+if profile not in {'docker-browser-parity', 'bonnetjes-cloudflare-parity'}:
+    errors.append(f'docker_browser_profile is {profile!r}')
 if payload.get('profile_dir') != '/app/profile':
     errors.append(f"profile_dir is {payload.get('profile_dir')!r}, expected '/app/profile'")
 if payload.get('service_under_xvfb') is not True:
@@ -160,6 +190,13 @@ if payload.get('headless') is not False:
     errors.append('headless is not false')
 if payload.get('use_patchright') is not True:
     errors.append('use_patchright is not true')
+if profile == 'bonnetjes-cloudflare-parity':
+    if payload.get('bonnetjes_cloudflare_parity_mode') is not True:
+        errors.append('bonnetjes_cloudflare_parity_mode is not true')
+    if payload.get('browser_extra_args') not in ([], None):
+        errors.append(f"browser_extra_args is {payload.get('browser_extra_args')!r}, expected []")
+    if str(payload.get('patchright_headed_safe_args')) != '0':
+        errors.append(f"patchright_headed_safe_args is {payload.get('patchright_headed_safe_args')!r}, expected '0'")
 if errors:
     print(json.dumps({'ok': False, 'status': 'runtime_parity_preflight_failed', 'errors': errors, 'runtime': payload}, indent=2, sort_keys=True))
     raise SystemExit(2)
@@ -172,6 +209,7 @@ start_http_code="$(curl -sS -o "${out_dir}/auth-readiness-start.json" -w '%{http
   -H 'Content-Type: application/json' \
   -d '{"keep_open": true}' || true)"
 printf '%s\n' "${start_http_code}" > "${out_dir}/auth-readiness-start.http_code"
+dump_chrome_argv "after-start"
 
 status="cloudflare_waiting"
 exit_code=2
@@ -259,6 +297,7 @@ if [[ "${export_evidence}" == "1" ]]; then
   fi
 fi
 
+dump_chrome_argv "final"
 docker compose -f docker-compose.chatgpt-service.yml logs --tail=500 chatgpt-service > "${out_dir}/docker-service.log" || true
 
 python3 - "${out_dir}" "${status}" "${last_status_file}" "${evidence_export_json}" "${max_wait_seconds}" "${poll_seconds}" <<'PY'

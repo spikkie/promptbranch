@@ -61,3 +61,5 @@ promptbranch-project-list.json
 
 # Kubernetes render output
 helm-chart/charts/
+
+.pb_profile_bonnetjes_clean/

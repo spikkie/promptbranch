@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.7.zip
-active candidate version: v0.1.103.7
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.7.zip
-next normal slice: v0.1.103.7 — Docker parity Cloudflare challenge settle loop
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.8.zip
+active candidate version: v0.1.103.8
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.8.zip
+next normal slice: v0.1.103.8 — Docker parity Cloudflare challenge settle loop
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -797,7 +797,7 @@ Control-surface token: Passive auth-readiness runtime-client wiring repair
 ## v0.1.103.6 candidate status
 
 `v0.1.103.6` adds Docker parity artifact export safety. It keeps the authenticated-readiness and Project Source mutation gates from `v0.1.103.5`, and adds a bounded exporter so operators do not copy `/app/debug_artifacts` wholesale into the repo debug tree. The candidate is diagnostic-only and is not accepted/current.
-## v0.1.103.7 candidate status
+## v0.1.103.8 candidate status
 
-`v0.1.103.7` narrows the Docker parity investigation to the Cloudflare challenge itself. It adds a KISS settle-loop script that starts or reuses the parity service, requires `/app/profile`, opens one keep-open browser session, polls `/v1/auth-readiness/session/status`, and exports bounded challenge artifacts through the safe exporter. It does not call `/v1/project-sources`, `/v1/login-check`, or Google login flows. The candidate is diagnostic-only and is not accepted/current.
+`v0.1.103.8` narrows the Docker parity investigation to the Cloudflare challenge itself. It adds a KISS settle-loop script that starts or reuses the parity service, requires `/app/profile`, opens one keep-open browser session, polls `/v1/auth-readiness/session/status`, and exports bounded challenge artifacts through the safe exporter. It does not call `/v1/project-sources`, `/v1/login-check`, or Google login flows. The candidate is diagnostic-only and is not accepted/current.
 

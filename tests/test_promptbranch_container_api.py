@@ -33,6 +33,15 @@ def test_effective_profile_dir_uses_docker_browser_parity_when_unset(monkeypatch
     assert _effective_profile_dir() == "/app/profile"
 
 
+
+def test_effective_profile_dir_uses_bonnetjes_cloudflare_parity_when_unset(monkeypatch) -> None:
+    monkeypatch.delenv("PROMPTBRANCH_PROFILE_DIR", raising=False)
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "bonnetjes-cloudflare-parity")
+
+    from promptbranch_container_api import _effective_profile_dir
+
+    assert _effective_profile_dir() == "/app/profile"
+
 def test_docker_browser_runtime_endpoint_reports_parity_recommendation(monkeypatch) -> None:
     monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
     client = TestClient(app)
@@ -41,7 +50,7 @@ def test_docker_browser_runtime_endpoint_reports_parity_recommendation(monkeypat
     assert response.status_code == 200
     payload = response.json()
     assert payload["action"] == "docker_browser_runtime"
-    assert payload["docker_browser_profile"] in {"promptbranch", "docker-browser-parity"}
+    assert payload["docker_browser_profile"] in {"promptbranch", "docker-browser-parity", "bonnetjes-cloudflare-parity"}
     assert "recommendation" in payload
 
 

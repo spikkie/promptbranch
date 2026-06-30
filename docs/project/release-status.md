@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.7.zip
-active candidate version: v0.1.103.7
-next normal slice: v0.1.103.7 — Docker parity Cloudflare challenge settle loop
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.8.zip
+active candidate version: v0.1.103.8
+next normal slice: v0.1.103.8 — Docker parity Cloudflare challenge settle loop
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -324,4 +324,4 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 | v0.1.103.5 | repair/diagnostic | Docker parity true keep-open browser session mode | candidate | focused local validation only; live guarded Project Source test pending | DOD-144 in_progress | pending |
 | v0.1.103.6 | repair/diagnostic | Docker parity artifact export safety | candidate | focused local validation only; live export pending | DOD-145 in_progress | pending |
-| v0.1.103.7 | repair/diagnostic | Docker parity Cloudflare challenge settle loop | candidate | focused local validation only; live Cloudflare settle-loop pending | DOD-146 in_progress | pending |
+| v0.1.103.8 | repair/diagnostic | Docker parity Cloudflare challenge settle loop | candidate | focused local validation only; live Cloudflare settle-loop pending | DOD-146 in_progress | pending |
