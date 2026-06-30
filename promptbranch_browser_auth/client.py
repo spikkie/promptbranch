@@ -41,6 +41,8 @@ class _ProjectSourceAlreadyExists(RuntimeError):
 
 
 _LATEST_ASK_PROGRESS: dict[str, Any] = {}
+_AUTH_READINESS_HELD_SESSIONS: dict[str, dict[str, Any]] = {}
+_AUTH_READINESS_HELD_SESSIONS_LOCK = asyncio.Lock()
 
 
 def clear_latest_ask_progress() -> None:
@@ -1084,6 +1086,239 @@ class ChatGPTBrowserClient:
         except EOFError:
             self._log('debug', 'skipping keep-open wait after stdin EOF', prompt=prompt)
 
+    def _auth_readiness_session_key(self) -> str:
+        return f"{self._profile_key}|{self.config.project_url}|{self.driver_name}|{self.config.browser_channel or 'default'}"
+
+    def _auth_readiness_keep_open_seconds(self) -> float:
+        raw = os.getenv("PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS", "300")
+        try:
+            return max(1.0, float(raw))
+        except (TypeError, ValueError):
+            return 300.0
+
+    def _auth_readiness_status_from_state(self, state: dict[str, Any]) -> str:
+        challenge_detected = bool(state.get("challenge_detected"))
+        logged_in = bool(state.get("logged_in"))
+        if challenge_detected:
+            return "auth_challenge_detected"
+        if logged_in:
+            return "auth_preflight_ready"
+        return "auth_profile_not_logged_in"
+
+    def _auth_readiness_result_from_state(
+        self,
+        state: dict[str, Any],
+        *,
+        action: str = "passive_auth_readiness",
+        held_session: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        challenge_detected = bool(state.get("challenge_detected"))
+        logged_in = bool(state.get("logged_in"))
+        status = self._auth_readiness_status_from_state(state)
+        result: dict[str, Any] = {
+            "ok": bool(logged_in and not challenge_detected),
+            "action": action,
+            "status": status,
+            "logged_in": logged_in,
+            "release_blocking": bool(not logged_in or challenge_detected),
+            "manual_login_required": bool(not logged_in and not challenge_detected),
+            "profile_dir": self.config.profile_dir,
+            "headless": self.config.headless,
+            "url": self.config.project_url,
+            "driver": self.driver_name,
+            "debug": self.config.debug,
+            "debug_artifact_dir": self.config.debug_artifact_dir,
+            **state,
+        }
+        if held_session:
+            now = time.monotonic()
+            expires_at = float(held_session.get("expires_at_monotonic") or now)
+            result["held_session"] = {
+                "active": True,
+                "session_key": held_session.get("session_key"),
+                "created_at_monotonic": held_session.get("created_at_monotonic"),
+                "expires_at_monotonic": expires_at,
+                "seconds_until_expiry": max(0.0, round(expires_at - now, 3)),
+                "ttl_seconds": held_session.get("ttl_seconds"),
+            }
+        return result
+
+    async def _close_auth_readiness_held_session(self, session: dict[str, Any], *, reason: str) -> None:
+        if session.get("closed"):
+            return
+        session["closed"] = True
+        close_task = session.get("close_task")
+        current_task = asyncio.current_task()
+        if close_task is not None and close_task is not current_task:
+            try:
+                close_task.cancel()
+            except Exception:
+                pass
+        context = session.get("context")
+        playwright = session.get("playwright")
+        operation_name = str(session.get("operation_name") or "auth_readiness")
+        try:
+            if context is not None:
+                await self._finalize_context(context, operation_name)
+        finally:
+            if playwright is not None:
+                try:
+                    await playwright.stop()
+                except Exception as exc:
+                    self._log("driver", "failed to stop held playwright session", reason=reason, error=repr(exc))
+            _PROFILE_LAST_CONTEXT_CLOSED_AT[self._profile_key] = time.monotonic()
+            self._log("auth-readiness", "held auth readiness session closed", reason=reason, session_key=session.get("session_key"))
+
+    async def _expire_auth_readiness_session_after(self, key: str, session: dict[str, Any], ttl_seconds: float) -> None:
+        try:
+            await asyncio.sleep(max(1.0, float(ttl_seconds)))
+            async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+                current = _AUTH_READINESS_HELD_SESSIONS.get(key)
+                if current is not session:
+                    return
+                _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+            await self._close_auth_readiness_held_session(session, reason="ttl_expired")
+        except asyncio.CancelledError:
+            return
+
+    async def _held_auth_readiness_session(self) -> dict[str, Any] | None:
+        key = self._auth_readiness_session_key()
+        async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+            session = _AUTH_READINESS_HELD_SESSIONS.get(key)
+            if session is None:
+                return None
+            if bool(session.get("closed")):
+                _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+                return None
+            expires_at = float(session.get("expires_at_monotonic") or 0.0)
+            if expires_at and expires_at <= time.monotonic():
+                _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+                await self._close_auth_readiness_held_session(session, reason="ttl_expired")
+                return None
+            return session
+
+    async def _capture_auth_readiness_observation_artifacts(self, page: Any, result: dict[str, Any]) -> dict[str, Any]:
+        if not bool(result.get("challenge_detected")):
+            return result
+        artifacts: list[str] = []
+        status = str(result.get("status") or "auth_observation")
+        base = self._artifact_dir / f"auth_readiness_{status}_{self._timestamp_for_filename()}"
+        try:
+            self._artifact_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        try:
+            json_path = base.with_suffix(".json")
+            await self._write_json(json_path, result)
+            artifacts.append(str(json_path))
+            self._log("artifact", "saved auth-readiness observation json", path=str(json_path))
+        except Exception as exc:
+            self._log("artifact", "failed to save auth-readiness observation json", error=str(exc))
+        if self.config.save_html:
+            try:
+                html_path = base.with_suffix(".html")
+                await self._write_text(html_path, await page.content())
+                artifacts.append(str(html_path))
+                self._log("artifact", "saved auth-readiness observation html", path=str(html_path))
+            except Exception as exc:
+                self._log("artifact", "failed to save auth-readiness observation html", error=str(exc))
+        if self.config.save_screenshot:
+            try:
+                png_path = base.with_suffix(".png")
+                await page.screenshot(path=str(png_path), full_page=True)
+                artifacts.append(str(png_path))
+                self._log("artifact", "saved auth-readiness observation screenshot", path=str(png_path))
+            except Exception as exc:
+                self._log("artifact", "failed to save auth-readiness observation screenshot", error=str(exc))
+        if artifacts:
+            result.setdefault("debug_artifacts", artifacts)
+        return result
+
+    async def _build_auth_readiness_launch_session(self, *, operation_name: str) -> tuple[Any, Any, Any]:
+        Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
+        self._clear_profile_singleton_locks()
+        self._log('rate-limit', 'skipping persisted conversation history cooldown for non-history operation', operation=operation_name)
+        await self._respect_context_spacing()
+        playwright_cm = await self._start_driver()
+        playwright = await playwright_cm.start()
+        browser_args = self._effective_browser_args()
+        if self.config.disable_fedcm:
+            browser_args.extend([
+                "--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics",
+                "--disable-blink-features=FedCm",
+            ])
+        ignore_default_args = []
+        if self.config.filter_no_sandbox:
+            ignore_default_args.extend(["--no-sandbox", "--disable-setuid-sandbox"])
+        self._log(
+            "driver",
+            "launching persistent chromium context",
+            disable_fedcm=self.config.disable_fedcm,
+            filter_no_sandbox=self.config.filter_no_sandbox,
+            no_viewport=self.config.no_viewport,
+            channel=self.config.browser_channel or "default",
+            running_as_root=(os.geteuid() == 0 if hasattr(os, "geteuid") else None),
+            browser_args=browser_args,
+            ignore_default_args=ignore_default_args,
+            keep_open_session=True,
+        )
+        launch_kwargs = {
+            "user_data_dir": self.config.profile_dir,
+            "headless": self.config.headless,
+            "channel": self.config.browser_channel,
+            "slow_mo": self.config.slow_mo_ms,
+            "accept_downloads": True,
+            "args": browser_args,
+            "ignore_default_args": ignore_default_args or None,
+        }
+        if self.config.no_viewport is True:
+            launch_kwargs["no_viewport"] = True
+            launch_kwargs["screen"] = {"width": self.config.viewport_width, "height": self.config.viewport_height}
+        else:
+            launch_kwargs["viewport"] = {"width": self.config.viewport_width, "height": self.config.viewport_height}
+        context = await self._launch_persistent_context_with_recovery(playwright.chromium, launch_kwargs)
+        context.set_default_timeout(self.config.navigation_timeout_ms)
+        page = context.pages[0] if context.pages else await context.new_page()
+        await self._install_conversation_history_request_shield(context, operation_name=operation_name)
+        self._attach_context_debug(context, page, operation_name)
+        return playwright, context, page
+
+    async def auth_readiness_session_status(self) -> dict[str, Any]:
+        session = await self._held_auth_readiness_session()
+        if session is None:
+            return {
+                "ok": False,
+                "action": "auth_readiness_session_status",
+                "status": "no_held_auth_readiness_session",
+                "held_session": {"active": False},
+                "profile_dir": self.config.profile_dir,
+                "release_blocking": True,
+            }
+        page = session.get("page")
+        try:
+            state = await self._probe_auth_readiness_state(page)
+            result = self._auth_readiness_result_from_state(
+                state,
+                action="auth_readiness_session_status",
+                held_session=session,
+            )
+            result = await self._capture_auth_readiness_observation_artifacts(page, result)
+            return self._attach_rate_limit_telemetry(result)
+        except Exception as exc:
+            async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+                _AUTH_READINESS_HELD_SESSIONS.pop(self._auth_readiness_session_key(), None)
+            await self._close_auth_readiness_held_session(session, reason="status_probe_failed")
+            return {
+                "ok": False,
+                "action": "auth_readiness_session_status",
+                "status": "held_session_probe_failed",
+                "release_blocking": True,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "held_session": {"active": False},
+                "profile_dir": self.config.profile_dir,
+            }
+
     def _locator_page(self, locator: Any) -> Any | None:
         page = getattr(locator, 'page', None)
         if page is not None:
@@ -1261,6 +1496,15 @@ class ChatGPTBrowserClient:
             channel=self.config.browser_channel or "default",
             keep_open=keep_open,
         )
+        existing_session = await self._held_auth_readiness_session()
+        if existing_session is not None:
+            if keep_open:
+                existing_session["expires_at_monotonic"] = time.monotonic() + self._auth_readiness_keep_open_seconds()
+                existing_session["ttl_seconds"] = self._auth_readiness_keep_open_seconds()
+                self._log("auth-readiness", "extended held auth-readiness browser session", session_key=existing_session.get("session_key"))
+            return await self.auth_readiness_session_status()
+        if keep_open:
+            return await self._run_passive_auth_readiness_keep_open()
         return await self._run_with_context(
             operation_name="auth_readiness",
             operation=self._run_passive_auth_readiness_operation,
@@ -1985,33 +2229,65 @@ class ChatGPTBrowserClient:
         )
         await self._wait_for_challenge_resolution(page, label="passive-auth-readiness")
         state = await self._probe_auth_readiness_state(page)
-        challenge_detected = bool(state.get("challenge_detected"))
-        logged_in = bool(state.get("logged_in"))
-        if challenge_detected:
-            status = "auth_challenge_detected"
-        elif logged_in:
-            status = "auth_preflight_ready"
-        else:
-            status = "auth_profile_not_logged_in"
-        result = {
-            "ok": bool(logged_in and not challenge_detected),
-            "action": "passive_auth_readiness",
-            "status": status,
-            "logged_in": logged_in,
-            "release_blocking": bool(not logged_in or challenge_detected),
-            "manual_login_required": bool(not logged_in and not challenge_detected),
-            "profile_dir": self.config.profile_dir,
-            "headless": self.config.headless,
-            "url": self.config.project_url,
-            "driver": self.driver_name,
-            "debug": self.config.debug,
-            "debug_artifact_dir": self.config.debug_artifact_dir,
-            **state,
-        }
+        result = self._auth_readiness_result_from_state(state)
+        result = await self._capture_auth_readiness_observation_artifacts(page, result)
         self._log("auth-readiness", "passive auth readiness result", **result)
         if keep_open and self.config.is_headed:
-            await self._pause_for_keep_open("Passive auth readiness completed. Press Enter to close the browser... ")
+            self._log("debug", "stdin keep-open is deprecated for passive auth-readiness; use service-side held session mode instead")
         return result
+
+    async def _run_passive_auth_readiness_keep_open(self) -> dict[str, Any]:
+        operation_name = "auth_readiness"
+        key = self._auth_readiness_session_key()
+        async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+            old_session = _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+        if old_session is not None:
+            await self._close_auth_readiness_held_session(old_session, reason="replaced")
+
+        playwright = context = page = None
+        try:
+            playwright, context, page = await self._build_auth_readiness_launch_session(operation_name=operation_name)
+            await self._goto(
+                page,
+                self.config.project_url,
+                label="passive-auth-readiness",
+                respect_history_rate_limit_cooldown=False,
+            )
+            await self._wait_for_challenge_resolution(page, label="passive-auth-readiness")
+            state = await self._probe_auth_readiness_state(page)
+            ttl_seconds = self._auth_readiness_keep_open_seconds()
+            now = time.monotonic()
+            session = {
+                "session_key": key,
+                "operation_name": operation_name,
+                "playwright": playwright,
+                "context": context,
+                "page": page,
+                "created_at_monotonic": now,
+                "expires_at_monotonic": now + ttl_seconds,
+                "ttl_seconds": ttl_seconds,
+                "closed": False,
+            }
+            session["close_task"] = asyncio.create_task(self._expire_auth_readiness_session_after(key, session, ttl_seconds))
+            async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+                _AUTH_READINESS_HELD_SESSIONS[key] = session
+            result = self._auth_readiness_result_from_state(state, held_session=session)
+            result = await self._capture_auth_readiness_observation_artifacts(page, result)
+            result = self._attach_rate_limit_telemetry(result)
+            self._log("auth-readiness", "passive auth readiness result; browser context held", **result)
+            return result
+        except Exception:
+            if context is not None:
+                try:
+                    await self._finalize_context(context, operation_name)
+                except Exception:
+                    pass
+            if playwright is not None:
+                try:
+                    await playwright.stop()
+                except Exception:
+                    pass
+            raise
 
     @staticmethod
     def _coerce_chat_attachment_paths(

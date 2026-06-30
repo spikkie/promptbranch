@@ -1079,6 +1079,11 @@ class ChatGPTAutomationService:
             logger.info("Running passive ChatGPT browser auth readiness check")
             return await self._build_bot().run_passive_auth_readiness(keep_open=keep_open)
 
+    async def auth_readiness_session_status(self) -> dict[str, Any]:
+        async with self._lock.operation("auth_readiness_session_status"):
+            logger.info("Inspecting held passive ChatGPT browser auth readiness session")
+            return await self._build_bot().auth_readiness_session_status()
+
     async def remove_project(
         self,
         *,

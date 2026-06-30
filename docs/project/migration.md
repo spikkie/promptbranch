@@ -715,6 +715,6 @@ Project Source mutation.
 `v0.1.103.3` migrates the passive auth-readiness implementation into the Promptbranch runtime browser client. This repairs the split-client wiring mismatch introduced by the diagnostic continuation without changing endpoint names or widening mutation scope.
 
 
-## v0.1.103.4 migration note
+## v0.1.103.5 migration note
 
-`v0.1.103.4` migrates the Docker parity investigation from passive authenticated reuse toward guarded Project Source mutation testing. The migration remains diagnostic-only: Project Source mutation requires explicit operator opt-in and does not imply artifact adoption/current status.
+`v0.1.103.5` migrates the Docker parity investigation from passive authenticated reuse toward guarded Project Source mutation testing. The migration remains diagnostic-only: Project Source mutation requires explicit operator opt-in and does not imply artifact adoption/current status.

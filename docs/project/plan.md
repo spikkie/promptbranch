@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
-active candidate version: v0.1.103.4
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.4.zip
-next normal slice: v0.1.103.4 — Docker parity guarded Project Source mutation test
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
+active candidate version: v0.1.103.5
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.5.zip
+next normal slice: v0.1.103.5 — Docker parity true keep-open browser session mode
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1725,7 +1725,7 @@ Out of scope:
 Control-surface token: Passive auth-readiness runtime-client wiring repair
 
 
-## v0.1.103.4 — Docker parity guarded Project Source mutation test
+## v0.1.103.5 — Docker parity true keep-open browser session mode
 
 Scope:
 

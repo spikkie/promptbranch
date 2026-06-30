@@ -269,6 +269,7 @@ class ServiceInfo(BaseModel):
     disable_fedcm: bool = True
     filter_no_sandbox: bool = False
     challenge_wait_timeout_ms: Optional[int] = None
+    auth_readiness_keep_open_seconds: Optional[int] = None
 
 
 class DockerBrowserRuntimeInfo(BaseModel):
@@ -297,6 +298,7 @@ class DockerBrowserRuntimeInfo(BaseModel):
     disable_fedcm: bool
     filter_no_sandbox: bool
     challenge_wait_timeout_ms: Optional[int] = None
+    auth_readiness_keep_open_seconds: Optional[int] = None
     browser_extra_args: list[str] = Field(default_factory=list)
     recommendation: str
 
@@ -387,6 +389,7 @@ def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict
         "disable_fedcm": settings.disable_fedcm,
         "filter_no_sandbox": settings.filter_no_sandbox,
         "challenge_wait_timeout_ms": _env_int("CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS", 20_000),
+        "auth_readiness_keep_open_seconds": _env_int("PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS", 300),
         "browser_extra_args": [part for part in (os.getenv("CHATGPT_BROWSER_EXTRA_ARGS") or "").split() if part],
         "recommendation": (
             "docker-browser-parity envelope active: run auth-readiness before Project Source mutation"
@@ -600,6 +603,7 @@ async def healthz() -> ServiceInfo:
         disable_fedcm=runtime["disable_fedcm"],
         filter_no_sandbox=runtime["filter_no_sandbox"],
         challenge_wait_timeout_ms=runtime["challenge_wait_timeout_ms"],
+        auth_readiness_keep_open_seconds=runtime["auth_readiness_keep_open_seconds"],
     )
 
 
@@ -680,6 +684,14 @@ async def login_check(payload: LoginCheckRequest) -> dict:
 async def auth_readiness(payload: LoginCheckRequest) -> dict:
     try:
         return await service.run_passive_auth_readiness(keep_open=payload.keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.get("/auth-readiness/session/status", dependencies=[Depends(require_service_token)])
+async def auth_readiness_session_status(project_url: Optional[str] = None) -> dict:
+    try:
+        return await _service_for(project_url).auth_readiness_session_status()
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 

@@ -3110,6 +3110,11 @@ def test_docker_browser_parity_diagnostic_script_is_present_and_safe() -> None:
     assert "PROMPTBRANCH_DOCKER_BROWSER_PROFILE" in script
     assert "docker-browser-parity" in script
     assert "/v1/auth-readiness" in script
+    assert "/v1/auth-readiness/session/status" in script
+    assert "--keep-open" in script
+    assert "--no-recreate" in script
+    assert "PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS" in script
+    assert "PROMPTBRANCH_DOCKER_BROWSER_NO_RECREATE" in script
     assert "/v1/login-check" not in script
     assert 'summary["ok"] = bool(runtime.get("ok") and auth.get("ok"))' in script
     assert "/v1/docker/browser-runtime" in script
