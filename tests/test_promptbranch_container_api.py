@@ -45,6 +45,34 @@ def test_docker_browser_runtime_endpoint_reports_parity_recommendation(monkeypat
     assert "recommendation" in payload
 
 
+def test_auth_readiness_endpoint_uses_passive_service(monkeypatch) -> None:
+    class FakeService:
+        async def run_passive_auth_readiness(self, keep_open: bool = False):
+            assert keep_open is False
+            return {
+                "ok": False,
+                "action": "passive_auth_readiness",
+                "status": "auth_profile_not_logged_in",
+                "logged_in": False,
+                "release_blocking": True,
+                "challenge_detected": False,
+                "login_visible": True,
+                "signup_visible": True,
+                "anonymous_visible": True,
+                "composer_visible": True,
+            }
+
+    monkeypatch.setattr("promptbranch_container_api.service", FakeService())
+    client = TestClient(app)
+    response = client.post("/v1/auth-readiness", json={"keep_open": False})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action"] == "passive_auth_readiness"
+    assert payload["status"] == "auth_profile_not_logged_in"
+    assert payload["release_blocking"] is True
+
+
 def test_healthz_version_matches_release() -> None:
     client = TestClient(app)
     response = client.get("/healthz")

@@ -799,6 +799,24 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
         )
 
+    async def run_passive_auth_readiness(self, keep_open: bool = False) -> dict[str, Any]:
+        self._log(
+            "auth-readiness",
+            "starting passive auth readiness check",
+            project_url=self.config.project_url,
+            profile_dir=self.config.profile_dir,
+            headless=self.config.headless,
+            driver=self.driver_name,
+            channel=self.config.browser_channel or "default",
+            keep_open=keep_open,
+        )
+        return await self._run_with_context(
+            operation_name="auth_readiness",
+            operation=self._run_passive_auth_readiness_operation,
+            keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
+        )
+
     async def ask_question(
         self,
         prompt: str,
@@ -1333,6 +1351,49 @@ class ChatGPTBrowserClient:
         self._log("login-check", "login result", **result)
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open("Login check passed. Press Enter to close the browser... ")
+        return result
+
+    async def _run_passive_auth_readiness_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self._goto(
+            page,
+            self.config.project_url,
+            label="passive-auth-readiness",
+            respect_history_rate_limit_cooldown=False,
+        )
+        await self._wait_for_challenge_resolution(page, label="passive-auth-readiness")
+        state = await self._probe_auth_readiness_state(page)
+        challenge_detected = bool(state.get("challenge_detected"))
+        logged_in = bool(state.get("logged_in"))
+        if challenge_detected:
+            status = "auth_challenge_detected"
+        elif logged_in:
+            status = "auth_preflight_ready"
+        else:
+            status = "auth_profile_not_logged_in"
+        result = {
+            "ok": bool(logged_in and not challenge_detected),
+            "action": "passive_auth_readiness",
+            "status": status,
+            "logged_in": logged_in,
+            "release_blocking": bool(not logged_in or challenge_detected),
+            "manual_login_required": bool(not logged_in and not challenge_detected),
+            "profile_dir": self.config.profile_dir,
+            "headless": self.config.headless,
+            "url": self.config.project_url,
+            "driver": self.driver_name,
+            "debug": self.config.debug,
+            "debug_artifact_dir": self.config.debug_artifact_dir,
+            **state,
+        }
+        self._log("auth-readiness", "passive auth readiness result", **result)
+        if keep_open and self.config.is_headed:
+            await self._pause_for_keep_open("Passive auth readiness completed. Press Enter to close the browser... ")
         return result
 
     @staticmethod
@@ -3793,10 +3854,11 @@ class ChatGPTBrowserClient:
             from playwright.async_api import async_playwright
         return async_playwright()
 
-    async def _is_logged_in(self, page: Any) -> bool:
-        self._log("auth-check", "probing logged-in indicators")
+    async def _probe_auth_readiness_state(self, page: Any) -> dict[str, Any]:
+        self._log("auth-check", "probing auth readiness indicators")
 
         current_url = await self._safe_page_url(page)
+        title = await self._safe_page_title(page)
 
         auth_selector = await self._find_visible_locator(page, AUTHENTICATED_INDICATORS, label="authenticated-indicator")
         auth_visible = auth_selector is not None
@@ -3812,35 +3874,50 @@ class ChatGPTBrowserClient:
 
         composer_visible = await self._has_chat_input(page)
         project_page_visible = self._is_project_home_url(current_url)
+        challenge_detected = self._looks_like_challenge(current_url, title)
 
-        self._log(
-            "auth-check",
-            "auth state summary",
-            auth_visible=auth_visible,
-            login_visible=login_visible,
-            signup_visible=signup_visible,
-            anonymous_visible=anonymous_visible,
-            composer_visible=composer_visible,
-            project_page_visible=project_page_visible,
-            current_url=current_url,
-        )
+        if challenge_detected:
+            logged_in = False
+            session_state_reason = "challenge_detected"
+        elif auth_visible:
+            logged_in = True
+            session_state_reason = "authenticated_indicator_visible"
+        elif login_visible or signup_visible or anonymous_visible:
+            logged_in = False
+            session_state_reason = "anonymous_or_login_markers_visible"
+        elif composer_visible:
+            logged_in = True
+            session_state_reason = "composer_visible_without_anonymous_markers"
+        elif project_page_visible:
+            logged_in = True
+            session_state_reason = "project_page_visible_without_anonymous_markers"
+        else:
+            logged_in = False
+            session_state_reason = "no_authenticated_indicators"
 
-        if auth_visible:
-            self._log("auth-check", "authenticated indicator is visible; session considered active")
+        state = {
+            "current_url": current_url,
+            "title": title,
+            "challenge_detected": challenge_detected,
+            "auth_visible": auth_visible,
+            "login_visible": login_visible,
+            "signup_visible": signup_visible,
+            "anonymous_visible": anonymous_visible,
+            "composer_visible": composer_visible,
+            "project_page_visible": project_page_visible,
+            "logged_in": logged_in,
+            "session_state_reason": session_state_reason,
+        }
+        self._log("auth-check", "auth state summary", **state)
+        return state
+
+    async def _is_logged_in(self, page: Any) -> bool:
+        state = await self._probe_auth_readiness_state(page)
+        if state["logged_in"]:
+            self._log("auth-check", "session considered active", reason=state.get("session_state_reason"))
             return True
-
-        if login_visible or signup_visible or anonymous_visible:
+        if state["login_visible"] or state["signup_visible"] or state["anonymous_visible"]:
             self._log("auth-check", "anonymous markers detected; session considered inactive")
-            return False
-
-        if composer_visible:
-            self._log("auth-check", "composer visible without anonymous markers; tentatively treating session as active")
-            return True
-
-        if project_page_visible:
-            self._log("auth-check", "valid project page without anonymous markers; treating session as active")
-            return True
-
         return False
 
     async def _has_chat_input(self, page: Any) -> bool:

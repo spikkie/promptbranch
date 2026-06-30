@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
-active candidate version: v0.1.103.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
-next normal slice: v0.1.103.1 — Docker browser parity diagnostic envelope
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
+active candidate version: v0.1.103.2
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
+next normal slice: v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -762,3 +762,14 @@ start the Docker browser parity investigation. It adds Docker browser runtime
 metadata and an auth-readiness diagnostic script, but it does not mutate Project
 Sources, adopt artifacts, delete ChatGPT Projects, or change the host-CDP repair
 line.
+
+## v0.1.103.2 candidate status
+
+`v0.1.103.2` repairs the Docker browser parity diagnostic after the first live run. The release remains diagnostic-only: it adds passive auth readiness, fail-fast summary semantics, and a host-Chrome bootstrap script for `.pb_profile_docker` mounted as `/app/profile`. It does not mutate ChatGPT Project Sources, adopt artifacts, deploy, or delete ChatGPT Projects.
+
+Next safe action:
+
+```bash
+./scripts/docker-browser-profile-bootstrap-host-chrome.sh
+PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity ./scripts/docker-browser-parity-auth-readiness.sh
+```

@@ -439,3 +439,11 @@ reference Docker browser pattern. The diagnostic may test Xvfb service mode, Fed
 disabled mode, preserved Docker no-sandbox behavior, and `/app/profile`, but it
 must not bypass Cloudflare, automate challenges, mutate Project Sources, adopt
 artifacts, or delete ChatGPT Projects.
+
+## ADR-PROJ-112 — v0.1.103.2 passive Docker auth readiness
+
+Status: accepted for diagnostic candidate.
+
+Decision: Docker browser parity diagnostics must use passive auth readiness. The diagnostic may navigate to ChatGPT and wait for ordinary challenge settling, but it must not click the login button, start Google login, or wait for hidden manual-login under Xvfb. Profile bootstrap is handled explicitly by host Chrome seeding `.pb_profile_docker`, which Docker mounts as `/app/profile`.
+
+Consequence: unauthenticated Docker profiles now fail fast with structured `auth_profile_not_logged_in` evidence instead of hanging for the manual-login timeout.

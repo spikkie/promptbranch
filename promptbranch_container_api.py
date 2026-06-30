@@ -564,6 +564,14 @@ async def login_check(payload: LoginCheckRequest) -> dict:
         _raise_http_error(exc)
 
 
+@protected.post("/auth-readiness", dependencies=[Depends(require_service_token)])
+async def auth_readiness(payload: LoginCheckRequest) -> dict:
+    try:
+        return await service.run_passive_auth_readiness(keep_open=payload.keep_open)
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
 @protected.post("/ask", response_model=AskResponse, dependencies=[Depends(require_service_token)])
 async def ask(
     prompt: str = Form(...),
