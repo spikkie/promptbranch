@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.2.zip",
-  "active_candidate_version": "v0.1.103.2",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.3.zip",
+  "active_candidate_version": "v0.1.103.3",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Docker browser parity passive-auth and profile-bootstrap repair",
+  "active_slice": "Passive auth-readiness runtime-client wiring repair",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.2.zip",
-  "next_normal_slice": "Docker browser parity passive-auth and profile-bootstrap repair",
-  "next_normal_version": "v0.1.103.2",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.3.zip",
+  "next_normal_slice": "Passive auth-readiness runtime-client wiring repair",
+  "next_normal_version": "v0.1.103.3",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -61,10 +61,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "repair diagnostic-only Docker browser parity auth-readiness with passive probing, fail-fast summary semantics, and host-profile bootstrap without Project Source mutation or adoption",
-      "slice": "Docker browser parity passive-auth and profile-bootstrap repair",
+      "scope": "repair the Docker parity passive-auth endpoint by implementing passive auth readiness on the runtime Promptbranch browser client without Project Source mutation or adoption",
+      "slice": "Passive auth-readiness runtime-client wiring repair",
       "status": "active",
-      "version": "v0.1.103.2"
+      "version": "v0.1.103.3"
     },
     {
       "release_mode": "normal",

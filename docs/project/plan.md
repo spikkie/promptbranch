@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
-active candidate version: v0.1.103.2
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
-next normal slice: v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
+active candidate version: v0.1.103.3
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
+next normal slice: v0.1.103.3 — passive auth-readiness runtime-client wiring repair
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1703,3 +1703,23 @@ auth readiness is clean.
 Repair the Docker parity diagnostic so it uses a passive `/v1/auth-readiness` endpoint rather than `/v1/login-check`. The diagnostic must not click login or wait for hidden manual-login inside Xvfb. Add a host-Chrome bootstrap helper for `.pb_profile_docker`, which is mounted into Docker as `/app/profile`.
 
 Out of scope remains Project Source mutation, artifact adoption/current mutation, Cloudflare bypass, and any change to the `v0.1.104.13.x` host-CDP repair line.
+
+## v0.1.103.3 — passive auth-readiness runtime-client wiring repair
+
+Repair-only diagnostic continuation. Port the passive auth-readiness method to the actual runtime browser client imported by `promptbranch_automation`, preserving passive semantics and the Docker browser parity investigation boundary.
+
+In scope:
+
+- `promptbranch_browser_auth/client.py` passive auth-readiness method and operation.
+- Runtime-client regression tests.
+- No change to `/v1/auth-readiness` route semantics.
+
+Out of scope:
+
+- Project Source mutation.
+- Artifact adoption/current mutation.
+- Cloudflare bypass or challenge solving.
+- ChatGPT Project deletion.
+
+
+Control-surface token: Passive auth-readiness runtime-client wiring repair

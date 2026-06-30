@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
-active candidate version: v0.1.103.2
-next normal slice: v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
+active candidate version: v0.1.103.3
+next normal slice: v0.1.103.3 — passive auth-readiness runtime-client wiring repair
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -319,3 +319,5 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 | v0.1.103.1 | repair/diagnostic | Docker browser parity diagnostic envelope | candidate | focused local validation only; no live Docker auth-readiness run in artifact build | adds diagnostic evidence surface only | - |
 
 | v0.1.103.2 | repair/diagnostic | Docker browser parity passive-auth and profile-bootstrap repair | candidate | focused local validation only; live seeded-profile check pending | DOD-142 in_progress | pending |
+
+| v0.1.103.3 | repair/diagnostic | Passive auth-readiness runtime-client wiring repair | candidate | focused local validation only; live seeded-profile check pending | DOD-143 in_progress | pending |
