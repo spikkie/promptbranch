@@ -726,3 +726,8 @@ Project Source mutation.
 
 `v0.1.103.8` changes only Docker parity diagnostics. It adds a Cloudflare challenge settle-loop script and leaves browser profiles, Project Source mutation behavior, artifact adoption behavior, and release-control semantics unchanged.
 
+
+
+## v0.1.103.9 migration note
+
+`v0.1.103.9` requires no state migration. Operators should stop using stale `.pb_profile_docker` for Cloudflare diagnosis and instead create a clean timestamped Bonnetjes profile with `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`. Browser profiles must remain bind mounts and are excluded from Docker build context by `.dockerignore`.

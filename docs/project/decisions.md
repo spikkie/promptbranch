@@ -472,3 +472,9 @@ Decision: Docker parity work must focus first on whether the held `/app/profile`
 
 Consequence: operators use `scripts/docker-browser-parity-cloudflare-check.sh` for the next diagnostic run.
 
+
+## ADR-PROJ-117 — v0.1.103.9 Bonnetjes Cloudflare parity profile hygiene
+
+Decision: The Bonnetjes Cloudflare parity path is the supported Docker auth diagnostic path. Browser profiles used by `PROMPTBRANCH_HOST_PROFILE_DIR` must be bind-mounted into `/app/profile` and must not enter Docker build context. Repository-local profiles are allowed only when `.dockerignore` excludes `.pb_profile*`; challenge evidence export must treat an absence of challenge artifacts as `ok=true,status=no_matching_artifacts`.
+
+Consequence: operators use `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh` and `scripts/docker-browser-parity-cloudflare-check.sh` for clean logged-in Cloudflare checks. Project Source mutation remains out of scope.

@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.8.zip",
-  "active_candidate_version": "v0.1.103.8",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.9.zip",
+  "active_candidate_version": "v0.1.103.9",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Docker parity Cloudflare challenge settle loop",
+  "active_slice": "Bonnetjes Cloudflare parity profile hygiene",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.8.zip",
-  "next_normal_slice": "Docker parity Cloudflare challenge settle loop",
-  "next_normal_version": "v0.1.103.8",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.9.zip",
+  "next_normal_slice": "Bonnetjes Cloudflare parity profile hygiene",
+  "next_normal_version": "v0.1.103.9",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -38,6 +38,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "version": "v0.1.103.9",
+      "kind": "repair/diagnostic",
+      "status": "candidate",
+      "summary": "Bonnetjes Cloudflare parity profile hygiene documents and guards the clean logged-in Docker auth test path; no Project Source mutation."
+    },
     {
       "kind": "repair/diagnostic",
       "status": "candidate",
@@ -75,10 +81,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "test Docker Cloudflare challenge settling with one held /app/profile browser session and bounded evidence export, without Project Source mutation",
-      "slice": "Docker parity Cloudflare challenge settle loop",
+      "scope": "lock in Bonnetjes Cloudflare parity profile hygiene, build-context exclusions, clean logged-in profile bootstrap, and safe no-artifact evidence export without Project Source mutation",
+      "slice": "Bonnetjes Cloudflare parity profile hygiene",
       "status": "active",
-      "version": "v0.1.103.8"
+      "version": "v0.1.103.9"
     },
     {
       "release_mode": "normal",
@@ -122,5 +128,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.8"
+  "updated_for": "v0.1.103.9"
 }
