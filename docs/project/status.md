@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
-active candidate version: v0.1.103.2
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.2.zip
-next normal slice: v0.1.103.2 — Docker browser parity passive-auth and profile-bootstrap repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
+active candidate version: v0.1.103.3
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.3.zip
+next normal slice: v0.1.103.3 — passive auth-readiness runtime-client wiring repair
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -773,3 +773,18 @@ Next safe action:
 ./scripts/docker-browser-profile-bootstrap-host-chrome.sh
 PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity ./scripts/docker-browser-parity-auth-readiness.sh
 ```
+
+## v0.1.103.3 candidate status
+
+`v0.1.103.3` repairs the Docker browser parity passive-auth wiring bug from `v0.1.103.2`. The runtime service imports `promptbranch_browser_auth.ChatGPTBrowserClient`, so passive auth-readiness is now implemented on that class as well as the compatibility client. The `/v1/auth-readiness` endpoint remains passive and must not click Login, start Google auth, wait for hidden manual login, mutate ChatGPT Project Sources, adopt artifacts, deploy, or delete ChatGPT Projects.
+
+Next safe action:
+
+```bash
+PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity ./scripts/docker-browser-parity-auth-readiness.sh
+```
+
+Status: focused_candidate.
+
+
+Control-surface token: Passive auth-readiness runtime-client wiring repair

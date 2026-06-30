@@ -516,3 +516,20 @@ def test_ask_response_preserves_rate_limit_telemetry(monkeypatch) -> None:
     payload = response.json()
     assert payload["answer"] == "ready"
     assert payload["rate_limit_telemetry"] == telemetry
+
+
+def test_runtime_browser_client_exposes_passive_auth_readiness() -> None:
+    from promptbranch_browser_auth.client import ChatGPTBrowserClient as RuntimeClient
+    from chatgpt_browser_auth.client import ChatGPTBrowserClient as CompatibilityClient
+
+    assert hasattr(RuntimeClient, "run_passive_auth_readiness")
+    assert hasattr(RuntimeClient, "_run_passive_auth_readiness_operation")
+    assert hasattr(RuntimeClient, "_probe_auth_readiness_state")
+    assert hasattr(CompatibilityClient, "run_passive_auth_readiness")
+
+
+def test_automation_uses_runtime_client_with_passive_auth_readiness() -> None:
+    from promptbranch_automation.automation import ChatGPTAutomation
+
+    automation = ChatGPTAutomation(project_url="https://chatgpt.com/", email=None, password=None, profile_dir="/tmp/pb-passive-test-profile")
+    assert hasattr(automation.client, "run_passive_auth_readiness")

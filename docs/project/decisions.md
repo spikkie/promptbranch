@@ -447,3 +447,9 @@ Status: accepted for diagnostic candidate.
 Decision: Docker browser parity diagnostics must use passive auth readiness. The diagnostic may navigate to ChatGPT and wait for ordinary challenge settling, but it must not click the login button, start Google login, or wait for hidden manual-login under Xvfb. Profile bootstrap is handled explicitly by host Chrome seeding `.pb_profile_docker`, which Docker mounts as `/app/profile`.
 
 Consequence: unauthenticated Docker profiles now fail fast with structured `auth_profile_not_logged_in` evidence instead of hanging for the manual-login timeout.
+
+## ADR-PROJ-113 — v0.1.103.3 runtime browser client owns passive auth-readiness
+
+Decision: passive auth-readiness must be implemented on `promptbranch_browser_auth.ChatGPTBrowserClient`, because `promptbranch_automation` imports that runtime client. Compatibility code in `chatgpt_browser_auth` is insufficient for the Docker service.
+
+Consequence: future browser-client repairs must verify the actual runtime import path, not only compatibility aliases.

@@ -709,3 +709,7 @@ Project Source mutation.
 ## v0.1.103.2 migration note
 
 `v0.1.103.2` migrates the Docker browser parity diagnostic from an active login-check flow to a passive auth-readiness flow. It preserves the Promptbranch-native Docker browser envelope and adds host-Chrome profile bootstrap instructions for `.pb_profile_docker` mounted as `/app/profile`.
+
+## v0.1.103.3 migration note
+
+`v0.1.103.3` migrates the passive auth-readiness implementation into the Promptbranch runtime browser client. This repairs the split-client wiring mismatch introduced by the diagnostic continuation without changing endpoint names or widening mutation scope.
