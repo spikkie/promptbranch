@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.zip
-active candidate version: v0.1.103
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.zip
-next normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
+active candidate version: v0.1.103.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.1.zip
+next normal slice: v0.1.103.1 — Docker browser parity diagnostic envelope
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -21,17 +21,17 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
 last accepted/current slice: v0.1.102 — Correction-plan generation without file mutation
-active plan slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-repair mode: false
-scope advance allowed: true
+active plan slice: v0.1.103.1 — Docker browser parity diagnostic envelope
+repair mode: true
+scope advance allowed: false
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.zip candidate once packaged
-release status: v0.1.103 is a focused-validated normal candidate until full release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.1.zip candidate once packaged
+release status: v0.1.103.1 is a diagnostic repair candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -50,9 +50,9 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.103` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
-- Any normal or repair release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.103` may mutate only a temporary sandbox copy of an explicit fixture and must not mutate repository fixtures, retry commands outside the sandbox, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
+- `v0.1.103.1` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
+- Any normal, repair, or diagnostic release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
+- `v0.1.103.1` is diagnostic-only and must not mutate repository fixtures, retry commands outside the sandbox, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
 - Sandbox verification/rollback gates, repository file mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
 
 ## Current unknowns
@@ -65,14 +65,14 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103 as the first controlled file mutation in sandboxed fixture only slice from accepted/current v0.1.102.
+Validate and package v0.1.103.1 as the Docker browser parity diagnostic envelope from accepted/current v0.1.102.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.zip
-ver=v0.1.103
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.1.zip
+ver=v0.1.103.1
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
@@ -749,8 +749,16 @@ Operator-provided release-control evidence accepted `chatgpt_claudecode_workflow
 This repair adapts the visibility reconciliation pattern used by the spikkies-site lifecycle to text sources: after a text-source commit is observed, Promptbranch re-reads the Project Sources surface and accepts recovery only when the expected text-source identity or content anchor is visible. A nearby unrelated source or a release ZIP source card does not satisfy text-source proof. The `v0.1.97` read-only evidence gate behavior is unchanged and no loop action executes commands or mutates files.
 
 
-## v0.1.103 candidate status
+## v0.1.103.1 candidate status
 
-`v0.1.103` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.102.zip`. It adds the first controlled file mutation path for MVP-1, but only against a copied fixture inside a temporary sandbox workspace. The repository fixture is snapshotted before and after and must remain unchanged.
+`v0.1.103.1` is a normal candidate built from accepted/current `chatgpt_claudecode_workflow-2_v0.1.102.zip`. It adds the first controlled file mutation path for MVP-1, but only against a copied fixture inside a temporary sandbox workspace. The repository fixture is snapshotted before and after and must remain unchanged.
 
 This slice does not verify rollback, mutate repository files, deploy, mutate Kubernetes, mutate Project Sources, adopt artifacts, or delete ChatGPT Projects. `v0.1.104` remains the first planned sandbox mutation verification and rollback evidence gate.
+
+## v0.1.103.1 diagnostic candidate status
+
+`v0.1.103.1` is a diagnostic-only candidate built on top of `v0.1.103` to
+start the Docker browser parity investigation. It adds Docker browser runtime
+metadata and an auth-readiness diagnostic script, but it does not mutate Project
+Sources, adopt artifacts, delete ChatGPT Projects, or change the host-CDP repair
+line.

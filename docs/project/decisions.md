@@ -419,15 +419,23 @@ Context: `v0.1.101` can classify read-only command evidence as passed, blocked, 
 
 Decision: `v0.1.102` may generate bounded correction-plan evidence from diagnosis results, but the generated plan must contain no file changes, no write actions, no immediate command retries, no Project Source mutation, no artifact adoption, no deployment, no ChatGPT Project deletion, and no patch/diff artifacts.
 
-Consequence: file mutation remains explicitly deferred to `v0.1.103`, where it must occur only inside a sandbox fixture with before/after evidence.
+Consequence: file mutation remains explicitly deferred to `v0.1.103.1`, where it must occur only inside a sandbox fixture with before/after evidence.
 
 
-## ADR-PROJ-110 — v0.1.103 file mutation is sandbox-only
+## ADR-PROJ-110 — v0.1.103.1 file mutation is sandbox-only
 
-Status: accepted for v0.1.103 candidate.
+Status: accepted for v0.1.103.1 candidate.
 
 Context: `v0.1.102` can generate bounded correction-plan evidence without writing files. The next safety layer must prove that Promptbranch can perform a write while preventing uncontrolled repository mutation.
 
-Decision: `v0.1.103` may perform a file mutation only on a copied fixture inside a temporary sandbox workspace. The source fixture path must be repo-relative, under `examples/loop-sandbox/`, covered by `target.allowed_paths`, and optionally pinned by an expected SHA-256. The repository fixture must remain unchanged.
+Decision: `v0.1.103.1` may perform a file mutation only on a copied fixture inside a temporary sandbox workspace. The source fixture path must be repo-relative, under `examples/loop-sandbox/`, covered by `target.allowed_paths`, and optionally pinned by an expected SHA-256. The repository fixture must remain unchanged.
 
 Consequence: rollback and promotion decisions remain deferred to later slices, starting with v0.1.104 — Sandbox mutation verification and rollback evidence gate. Repository-wide correction workflows remain out of scope.
+
+## ADR-PROJ-136 — Docker browser parity investigation is diagnostic first
+
+`v0.1.103.1` introduces a diagnostic Docker browser envelope based on the
+reference Docker browser pattern. The diagnostic may test Xvfb service mode, FedCM
+disabled mode, preserved Docker no-sandbox behavior, and `/app/profile`, but it
+must not bypass Cloudflare, automate challenges, mutate Project Sources, adopt
+artifacts, or delete ChatGPT Projects.

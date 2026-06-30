@@ -31,7 +31,7 @@ RUN patchright install chrome
 # RUN playwright install-deps chromium
 RUN playwright install --with-deps chromium
 
-RUN rm -rf /app/.pb_profile
+RUN rm -rf /app/.pb_profile /app/profile
 
 # The source fingerprint is intentionally consumed before COPY so a
 # same-size source change with deterministic ZIP mtimes cannot reuse a
@@ -96,6 +96,10 @@ ENV CHATGPT_BROWSER_CHANNEL=chrome
 ENV CHATGPT_DISABLE_FEDCM=1
 ENV CHATGPT_FILTER_NO_SANDBOX=0
 ENV CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS=1
+ENV PROMPTBRANCH_DOCKER_BROWSER_PROFILE=promptbranch
+ENV PROMPTBRANCH_PROFILE_DIR=/app/.pb_profile
+ENV PROMPTBRANCH_DOCKER_XVFB_SERVICE_MODE=1
+ENV PROMPTBRANCH_DOCKER_XVFB_SCREEN=1920x1080x24
 ENV CHATGPT_UVICORN_APP=promptbranch_container_api:app
 ENV CHATGPT_UVICORN_RELOAD=0
 ENV PORT=8000

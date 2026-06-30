@@ -724,6 +724,7 @@ def test_dockerignore_excludes_repo_generated_state_and_python_artifacts() -> No
         ".pb_profile",
         "debug_artifacts",
         "profile",
+        ".pb_profile_docker",
         "__pycache__",
         ".pytest_cache",
         ".mypy_cache",
@@ -772,7 +773,10 @@ def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> Non
     assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in run_script
     assert 'export PROMPTBRANCH_DOCKER_GID="${PROMPTBRANCH_DOCKER_GID:-$(id -g)}"' in run_script
     assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in dev_script
-    assert 'mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/debug_artifacts' in container_script
+    assert 'mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/profile /app/debug_artifacts' in container_script
+    assert 'PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-promptbranch' in container_script
+    assert 'docker-browser-parity' in container_script
+    assert 'export PROMPTBRANCH_PROFILE_DIR="/app/profile"' in container_script
 
 
 
@@ -3097,3 +3101,15 @@ def test_release_control_all_tests_progress_writer_uses_chr10_newline() -> None:
     assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")' in script
     assert 'out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")' not in script
     assert 'all_tests_progress: ' in script
+
+
+def test_docker_browser_parity_diagnostic_script_is_present_and_safe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "docker-browser-parity-auth-readiness.sh").read_text(encoding="utf-8")
+
+    assert "PROMPTBRANCH_DOCKER_BROWSER_PROFILE" in script
+    assert "docker-browser-parity" in script
+    assert "/v1/auth-readiness" in script
+    assert "/v1/docker/browser-runtime" in script
+    assert "/v1/project-sources" not in script
+    assert "/v1/project-sources" not in script

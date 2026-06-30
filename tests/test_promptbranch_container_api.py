@@ -17,6 +17,32 @@ def test_healthz_reports_service_metadata():
     assert payload["ok"] is True
     assert payload["service"] == "promptbranch-service"
     assert payload["version"] == PACKAGE_VERSION
+    assert "docker_browser_profile" in payload
+    assert "service_under_xvfb" in payload
+    assert "profile_dir_exists" in payload
+    assert "disable_fedcm" in payload
+    assert "filter_no_sandbox" in payload
+
+
+def test_effective_profile_dir_uses_docker_browser_parity_when_unset(monkeypatch) -> None:
+    monkeypatch.delenv("PROMPTBRANCH_PROFILE_DIR", raising=False)
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
+
+    from promptbranch_container_api import _effective_profile_dir
+
+    assert _effective_profile_dir() == "/app/profile"
+
+
+def test_docker_browser_runtime_endpoint_reports_parity_recommendation(monkeypatch) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "docker-browser-parity")
+    client = TestClient(app)
+    response = client.get("/v1/docker/browser-runtime")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action"] == "docker_browser_runtime"
+    assert payload["docker_browser_profile"] in {"promptbranch", "docker-browser-parity"}
+    assert "recommendation" in payload
 
 
 def test_healthz_version_matches_release() -> None:

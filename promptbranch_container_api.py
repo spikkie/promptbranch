@@ -252,10 +252,97 @@ class ServiceInfo(BaseModel):
     use_patchright: bool
     browser_channel: Optional[str] = None
     auth_required: bool
+    docker_browser_profile: Optional[str] = None
+    docker_browser_parity_mode: bool = False
+    service_display_mode: Optional[str] = None
+    service_under_xvfb: bool = False
+    display: Optional[str] = None
+    xvfb_screen: Optional[str] = None
+    profile_dir_exists: bool = False
+    profile_dir_mode: Optional[str] = None
+    disable_fedcm: bool = True
+    filter_no_sandbox: bool = False
+    challenge_wait_timeout_ms: Optional[int] = None
+
+
+class DockerBrowserRuntimeInfo(BaseModel):
+    ok: bool = True
+    action: str = "docker_browser_runtime"
+    docker_browser_profile: str
+    docker_browser_parity_mode: bool
+    service_display_mode: Optional[str] = None
+    service_under_xvfb: bool
+    display: Optional[str] = None
+    xvfb_screen: Optional[str] = None
+    profile_dir: str
+    profile_dir_exists: bool
+    profile_dir_mode: Optional[str] = None
+    headless: bool
+    use_patchright: bool
+    browser_channel: Optional[str] = None
+    disable_fedcm: bool
+    filter_no_sandbox: bool
+    challenge_wait_timeout_ms: Optional[int] = None
+    browser_extra_args: list[str] = Field(default_factory=list)
+    recommendation: str
 
 
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
+
+
+def _effective_profile_dir() -> str:
+    profile_dir = (os.getenv("PROMPTBRANCH_PROFILE_DIR") or "").strip()
+    docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip().lower()
+    if not profile_dir:
+        profile_dir = "/app/profile" if docker_browser_profile == "docker-browser-parity" else "/app/.pb_profile"
+    return profile_dir
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+def _profile_dir_mode(path: str) -> Optional[str]:
+    try:
+        return oct(Path(path).stat().st_mode & 0o777)
+    except OSError:
+        return None
+
+
+def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict:
+    docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
+    profile_dir = settings.profile_dir
+    docker_browser_parity_mode = docker_browser_profile == "docker-browser-parity"
+    return {
+        "docker_browser_profile": docker_browser_profile,
+        "docker_browser_parity_mode": docker_browser_parity_mode,
+        "service_display_mode": os.getenv("PROMPTBRANCH_DOCKER_SERVICE_DISPLAY_MODE"),
+        "service_under_xvfb": _env_flag("PROMPTBRANCH_DOCKER_SERVICE_UNDER_XVFB", False),
+        "display": os.getenv("DISPLAY"),
+        "xvfb_screen": os.getenv("PROMPTBRANCH_DOCKER_XVFB_SCREEN"),
+        "profile_dir": profile_dir,
+        "profile_dir_exists": Path(profile_dir).exists(),
+        "profile_dir_mode": _profile_dir_mode(profile_dir),
+        "headless": settings.headless,
+        "use_patchright": settings.use_patchright,
+        "browser_channel": settings.browser_channel,
+        "disable_fedcm": settings.disable_fedcm,
+        "filter_no_sandbox": settings.filter_no_sandbox,
+        "challenge_wait_timeout_ms": _env_int("CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS", 20_000),
+        "browser_extra_args": [part for part in (os.getenv("CHATGPT_BROWSER_EXTRA_ARGS") or "").split() if part],
+        "recommendation": (
+            "docker-browser-parity envelope active: run auth-readiness before Project Source mutation"
+            if docker_browser_parity_mode
+            else "set PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity to test the Promptbranch Docker browser launch envelope"
+        ),
+    }
 
 
 def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAutomationService:
@@ -264,7 +351,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             project_url=project_url_override or _DEFAULT_PROJECT_URL,
             email=os.getenv("CHATGPT_EMAIL") or os.getenv("EMAIL"),
             password=os.getenv("CHATGPT_PASSWORD") or os.getenv("PASSWORD"),
-            profile_dir=os.getenv("PROMPTBRANCH_PROFILE_DIR", "/app/.pb_profile"),
+            profile_dir=_effective_profile_dir(),
             headless=_env_flag("CHATGPT_HEADLESS", False),
             use_patchright=_env_flag("CHATGPT_USE_PATCHRIGHT", True),
             browser_channel=os.getenv("CHATGPT_BROWSER_CHANNEL", "chrome"),
@@ -435,6 +522,7 @@ async def test_suite_frontend() -> HTMLResponse:
 @app.get("/healthz", response_model=ServiceInfo)
 async def healthz() -> ServiceInfo:
     settings = service.settings
+    runtime = _docker_browser_runtime_payload(settings)
     return ServiceInfo(
         service="promptbranch-service",
         version=SERVICE_VERSION,
@@ -444,9 +532,24 @@ async def healthz() -> ServiceInfo:
         use_patchright=settings.use_patchright,
         browser_channel=settings.browser_channel,
         auth_required=bool(_SERVICE_TOKEN),
+        docker_browser_profile=runtime["docker_browser_profile"],
+        docker_browser_parity_mode=runtime["docker_browser_parity_mode"],
+        service_display_mode=runtime["service_display_mode"],
+        service_under_xvfb=runtime["service_under_xvfb"],
+        display=runtime["display"],
+        xvfb_screen=runtime["xvfb_screen"],
+        profile_dir_exists=runtime["profile_dir_exists"],
+        profile_dir_mode=runtime["profile_dir_mode"],
+        disable_fedcm=runtime["disable_fedcm"],
+        filter_no_sandbox=runtime["filter_no_sandbox"],
+        challenge_wait_timeout_ms=runtime["challenge_wait_timeout_ms"],
     )
 
 
+@protected.get("/docker/browser-runtime", response_model=DockerBrowserRuntimeInfo, dependencies=[Depends(require_service_token)])
+async def docker_browser_runtime(project_url: Optional[str] = None) -> DockerBrowserRuntimeInfo:
+    settings = _service_for(project_url).settings
+    return DockerBrowserRuntimeInfo(**_docker_browser_runtime_payload(settings))
 
 
 @protected.get("/browser/status", dependencies=[Depends(require_service_token)])

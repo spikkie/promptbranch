@@ -38,6 +38,7 @@ pb_*.report.json
 
 # Local browser/profile state
 .pb_profile/
+.pb_profile_docker/
 .pb_profile_local_debug/
 .pb_profile_local_debug_pools/
 profile/
