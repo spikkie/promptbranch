@@ -64,3 +64,8 @@ helm-chart/charts/
 
 .pb_profile_bonnetjes_clean/
 .pb_profile_bonnetjes_manual_*/
+.dockerignore:
+.pb_profile*
+.pb_profile_*
+debug_artifacts/
+*.zip
