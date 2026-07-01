@@ -609,6 +609,48 @@ def test_docker_parity_project_source_requires_explicit_mutation_gate(monkeypatc
     assert detail["release_blocking"] is True
 
 
+
+def test_docker_parity_project_source_accepts_per_request_mutation_intent(monkeypatch, tmp_path) -> None:
+    calls: list[str] = []
+
+    class FakeService:
+        settings = _fake_settings(str(tmp_path))
+
+        async def run_passive_auth_readiness(self, keep_open: bool = False):
+            calls.append("passive")
+            return {
+                "ok": True,
+                "status": "auth_preflight_ready",
+                "logged_in": True,
+                "challenge_detected": False,
+                "composer_visible": True,
+                "release_blocking": False,
+            }
+
+        async def add_project_source(self, **kwargs):
+            calls.append("mutate")
+            return {"ok": True, "status": "source_added"}
+
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "standard-browser")
+    monkeypatch.delenv("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", raising=False)
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file", "allow_project_source_mutation": "true"},
+        files={"file": ("candidate.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert calls == ["passive", "mutate"]
+    assert payload["ok"] is True
+    assert payload["project_source_mutation_gate"] == "docker_browser_parity_preflight_passed"
+    assert payload["project_source_mutation_intent"] == "per_request"
+    assert payload["docker_browser_runtime"]["project_source_mutation_allowed_by_env"] is False
+    assert payload["docker_browser_runtime"]["project_source_mutation_allowed_by_request"] is True
+
 def test_docker_parity_project_source_checks_profile_writable_before_browser_launch(monkeypatch, tmp_path) -> None:
     bad_profile = tmp_path / "profile-is-file"
     bad_profile.write_text("not a directory")

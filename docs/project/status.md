@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
-active candidate version: v0.1.103.10.12
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
-next normal slice: v0.1.103.10.12 — pb ask preserves current project conversation scope
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+active candidate version: v0.1.103.10.13
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+next normal slice: v0.1.103.10.13 — guarded pbsa Project Source mutation intent
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -877,3 +877,14 @@ Expected next validation: auth-only validation, then `pb ask "Reply with exactly
 `v0.1.103.10.10` still hit Cloudflare immediately during auth-only validation even though the same standard profile had previously worked after host bootstrap. The likely weakness is that a host-created browser profile does not always carry the same trust/fingerprint state when reused by Docker/Patchright/Xvfb. `v0.1.103.10.11` adds a Docker-originated visible Chrome bootstrap so the operator can clear Cloudflare and log in using Chrome launched from the Promptbranch Docker image against the same `/app/profile` bind mount later used by auth-readiness and `pb ask`.
 
 Out of scope preserved: Project Source mutation, v0.1.104.x host-CDP browser manager, ChatGPT Project deletion, Git commit/push, and adoption behavior changes.
+
+
+## v0.1.103.10.13 status
+
+Active repair: `pbsa` guarded Project Source mutation intent.
+
+Baseline: `v0.1.103.10.12` candidate line after project-scoped `pb ask` repair.
+
+Candidate intent: allow explicit CLI source-add mutation again while preserving service fail-closed behavior for calls that do not carry operator mutation intent.
+
+Validation required: focused API/client tests, control-surface validation, artifact hygiene, operator live `pbsa` source-add proof.

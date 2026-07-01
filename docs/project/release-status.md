@@ -400,3 +400,7 @@ Control-surface slice token: v0.1.103.10.11 — Docker-originated visible browse
 | v0.1.103.10.12 | repair | pb ask preserves current project conversation scope | candidate | focused held-session routing/shell tests before operator auth-only validation; adoption pending | DOD-156 in_progress; DOD-148..DOD-155 preserved | pending |
 
 <!-- v0.1.103.10.12 — pb ask preserves current project conversation scope: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip -->
+
+| v0.1.103.10.13 | repair | guarded `pbsa` Project Source mutation intent | candidate | focused API/client/source gate tests before operator live `pbsa`; adoption pending | DOD-157 in_progress; DOD-148..DOD-156 preserved | pending |
+
+<!-- v0.1.103.10.13 — guarded pbsa Project Source mutation intent: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip -->

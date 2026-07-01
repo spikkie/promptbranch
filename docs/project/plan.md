@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
-active candidate version: v0.1.103.10.12
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
-next normal slice: v0.1.103.10.12 — pb ask preserves current project conversation scope
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+active candidate version: v0.1.103.10.13
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+next normal slice: v0.1.103.10.13 — guarded pbsa Project Source mutation intent
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1796,3 +1796,32 @@ Plan: extend the `v0.1.103.10.9` held-session repair. Reusing the held session i
 Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
 
 Plan: add `scripts/pb-docker-browser-profile-bootstrap.sh`, which opens Chrome inside the Promptbranch Docker image on the host X11 display while bind-mounting `.pb_profile/browser/default` as `/app/profile`. Make the one-shot auth-only validation default to this Docker visual bootstrap, while preserving `--host-bootstrap` and `--skip-bootstrap`. This addresses the observed mismatch where a host-created profile can still receive `Just a moment...` in the Docker browser context. Project Source mutation remains disabled.
+
+
+## v0.1.103.10.13 — guarded pbsa Project Source mutation intent
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+
+Scope:
+
+- Make `pbsa` / `promptbranch src add` possible again from the CLI by sending an explicit per-request Project Source mutation intent.
+- Keep unauthenticated/direct service calls gate-closed unless the request carries that explicit intent or `PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1` is set.
+- Preserve Docker standard-browser preflight: writable profile, Cloudflare clear, logged in, composer visible, and release_not_blocking before mutation.
+- Preserve Project Source mutation evidence in the source-add result.
+- Keep ChatGPT Project deletion frozen.
+- Keep v0.1.104.x host-CDP browser manager out of scope.
+
+Live acceptance target:
+
+```bash
+pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
+```
+
+Expected source-add result includes:
+
+```text
+project_source_mutation_gate=docker_browser_parity_preflight_passed
+project_source_mutation_intent=per_request
+persistence_verified=true
+project_source_mutated=true
+```

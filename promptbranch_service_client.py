@@ -397,12 +397,14 @@ class ChatGPTServiceClient:
         project_url: Optional[str] = None,
         profile_lock_wait_seconds: Optional[float] = None,
         request_timeout_seconds: Optional[float] = None,
+        allow_project_source_mutation: bool = True,
     ) -> dict[str, Any]:
         normalized_display_name = Path(display_name).name if display_name else None
         data = {
             "type": source_kind,
             "keep_open": str(keep_open).lower(),
             "overwrite_existing": str(overwrite_existing).lower(),
+            "allow_project_source_mutation": str(bool(allow_project_source_mutation)).lower(),
         }
         if value is not None:
             data["value"] = value

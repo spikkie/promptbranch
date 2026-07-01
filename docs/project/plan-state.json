@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip",
-  "active_candidate_version": "v0.1.103.10.12",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip",
+  "active_candidate_version": "v0.1.103.10.13",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "pb ask preserves current project conversation scope",
+  "active_slice": "guarded pbsa Project Source mutation intent",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip",
-  "next_normal_slice": "v0.1.103.10.12 \u2014 pb ask preserves current project conversation scope",
-  "next_normal_version": "v0.1.103.10.12",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip",
+  "next_normal_slice": "v0.1.103.10.13 \u2014 guarded pbsa Project Source mutation intent",
+  "next_normal_version": "v0.1.103.10.13",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -30,7 +30,7 @@
     "mutation of repository fixture files",
     "deployment",
     "Kubernetes mutation",
-    "Project Source behavior change",
+    "Project Source mutation without explicit operator intent and passing Docker browser preflight",
     "artifact adoption behavior change",
     "ChatGPT Project deletion",
     "broad shell execution beyond allowlisted JSON validation and controlled sandbox fixture mutation",
@@ -39,46 +39,52 @@
   ],
   "release_history": [
     {
-      "version": "v0.1.103.10.12",
+      "kind": "repair/source-add",
+      "status": "candidate",
+      "summary": "Allows pbsa/promptbranch src add to carry explicit per-request Project Source mutation intent while preserving direct API gate closure and Docker auth/profile preflight.",
+      "version": "v0.1.103.10.13"
+    },
+    {
       "kind": "repair/browser-routing",
       "status": "candidate",
-      "summary": "Repairs pb ask so held-session reuse may not submit from generic ChatGPT when state targets a project conversation; Docker bootstrap/auth-readiness can target the current state URL."
+      "summary": "Repairs pb ask so held-session reuse may not submit from generic ChatGPT when state targets a project conversation; Docker bootstrap/auth-readiness can target the current state URL.",
+      "version": "v0.1.103.10.12"
     },
     {
-      "version": "v0.1.103.10.11",
       "kind": "repair/browser-bootstrap",
       "status": "accepted_current",
-      "summary": "Adds a Docker-launched visible Chrome bootstrap path so the standard profile can be trusted using the same Docker browser fingerprint that auth-readiness and pb ask use."
+      "summary": "Adds a Docker-launched visible Chrome bootstrap path so the standard profile can be trusted using the same Docker browser fingerprint that auth-readiness and pb ask use.",
+      "version": "v0.1.103.10.11"
     },
     {
-      "version": "v0.1.103.10.10",
       "kind": "repair/browser-session",
       "status": "candidate",
-      "summary": "Repairs held-session pb ask so it sends through the already auth-ready current page and skips direct target conversation navigation that can trigger Cloudflare."
+      "summary": "Repairs held-session pb ask so it sends through the already auth-ready current page and skips direct target conversation navigation that can trigger Cloudflare.",
+      "version": "v0.1.103.10.10"
     },
     {
-      "version": "v0.1.103.10.9",
       "kind": "repair/browser-session",
       "status": "candidate",
-      "summary": "Repairs pb ask so it reuses a compatible held auth-ready browser session and refuses Singleton* cleanup while that session is active."
+      "summary": "Repairs pb ask so it reuses a compatible held auth-ready browser session and refuses Singleton* cleanup while that session is active.",
+      "version": "v0.1.103.10.9"
     },
     {
-      "version": "v0.1.103.10.8",
       "kind": "repair/packaging",
       "status": "candidate",
-      "summary": "Repackages the standard browser validation candidate without generated cache entries so release import can proceed to auth-only validation."
+      "summary": "Repackages the standard browser validation candidate without generated cache entries so release import can proceed to auth-only validation.",
+      "version": "v0.1.103.10.8"
     },
     {
-      "version": "v0.1.103.10.6",
       "kind": "repair/diagnostic",
       "status": "candidate",
-      "summary": "Repairs standard browser preserves the Project Source mutation safety gate and adds operator-safe recovery guidance when pbsa/pb src add is used during auth-only standard-browser validation."
+      "summary": "Repairs standard browser preserves the Project Source mutation safety gate and adds operator-safe recovery guidance when pbsa/pb src add is used during auth-only standard-browser validation.",
+      "version": "v0.1.103.10.6"
     },
     {
-      "version": "v0.1.103.9",
       "kind": "repair/diagnostic",
       "status": "candidate",
-      "summary": "Bonnetjes Cloudflare parity profile hygiene documents and guards the clean logged-in Docker auth test path; no Project Source mutation."
+      "summary": "Bonnetjes Cloudflare parity profile hygiene documents and guards the clean logged-in Docker auth test path; no Project Source mutation.",
+      "version": "v0.1.103.9"
     },
     {
       "kind": "repair/diagnostic",
@@ -116,11 +122,11 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.103.10.12",
-      "slice": "v0.1.103.10.12 \u2014 pb ask preserves current project conversation scope",
-      "status": "active",
       "release_mode": "repair",
-      "scope": "preserve Promptbranch project/conversation scope during pb ask while reusing Docker-authenticated held browser sessions"
+      "scope": "allow explicit CLI source-add mutation only after Docker browser auth/profile preflight passes",
+      "slice": "v0.1.103.10.13 \u2014 guarded pbsa Project Source mutation intent",
+      "status": "active",
+      "version": "v0.1.103.10.13"
     },
     {
       "release_mode": "normal",
@@ -164,5 +170,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.12"
+  "updated_for": "v0.1.103.10.13"
 }

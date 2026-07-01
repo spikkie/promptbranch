@@ -520,3 +520,7 @@ Decision: auth-only standard-browser validation may use a Docker-launched visibl
 | ADR-PROJ-156 | 2026-07-01 | Held-session `pb ask` reuse must still honor the current project/conversation scope | v0.1.103.10.11 proved generic ChatGPT ask could work but created a conversation outside Promptbranch3 when state targeted a `/g/.../c/...` URL | A visible composer alone is insufficient; project-scoped targets require matching project/conversation URL or fail-fast project-scope navigation diagnostics |
 
 <!-- v0.1.103.10.12 -->
+
+
+<!-- v0.1.103.10.13 -->
+- `pbsa` is treated as an explicit operator mutation command, but the service still requires a per-request mutation intent or the legacy environment gate and must pass Docker browser auth/profile preflight before mutating Project Sources.

@@ -631,7 +631,7 @@ async def healthz() -> ServiceInfo:
     )
 
 
-async def _require_project_source_mutation_preflight(project_url: Optional[str]) -> Optional[dict]:
+async def _require_project_source_mutation_preflight(project_url: Optional[str], *, allow_project_source_mutation: bool = False) -> Optional[dict]:
     docker_browser_profile = (os.getenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE") or "promptbranch").strip() or "promptbranch"
     if docker_browser_profile not in _DOCKER_BROWSER_PROFILE_DIR_MODES:
         return None
@@ -639,17 +639,26 @@ async def _require_project_source_mutation_preflight(project_url: Optional[str])
     svc = _service_for(project_url)
     runtime = _docker_browser_runtime_payload(svc.settings)
 
-    if not _env_flag("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", False):
+    env_allows_mutation = _env_flag("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", False)
+    request_allows_mutation = bool(allow_project_source_mutation)
+    if not (env_allows_mutation or request_allows_mutation):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "ok": False,
                 "status": "project_source_mutation_gate_closed",
                 "release_blocking": True,
-                "error": "Docker browser parity Project Source mutation requires PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1.",
+                "error": "Docker browser parity Project Source mutation requires either PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1 or an explicit per-request mutation intent.",
                 "runtime": runtime,
+                "mutation_gate_env": "PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1",
+                "per_request_mutation_intent_required": True,
             },
         )
+
+    runtime = dict(runtime)
+    runtime["project_source_mutation_allowed_by_env"] = env_allows_mutation
+    runtime["project_source_mutation_allowed_by_request"] = request_allows_mutation
+    runtime["project_source_mutation_allowed"] = bool(env_allows_mutation or request_allows_mutation)
 
     if not runtime.get("profile_dir_write_probe_ok"):
         raise HTTPException(
@@ -683,7 +692,7 @@ async def _require_project_source_mutation_preflight(project_url: Optional[str])
                 "runtime": runtime,
             },
         )
-    return {"runtime": runtime, "auth_readiness": readiness}
+    return {"runtime": runtime, "auth_readiness": readiness, "mutation_intent": "env" if env_allows_mutation else "per_request"}
 
 
 @protected.get("/docker/browser-runtime", response_model=DockerBrowserRuntimeInfo, dependencies=[Depends(require_service_token)])
@@ -1045,11 +1054,15 @@ async def add_project_source(
     keep_open: bool = Form(False),
     overwrite_existing: bool = Form(True),
     profile_lock_wait_seconds: Optional[float] = Form(default=None),
+    allow_project_source_mutation: bool = Form(False),
     project_url: Optional[str] = Form(default=None),
     conversation_url: Optional[str] = Form(default=None),
     file: Optional[UploadFile] = File(default=None),
 ) -> dict:
-    preflight = await _require_project_source_mutation_preflight(project_url)
+    preflight = await _require_project_source_mutation_preflight(
+        project_url,
+        allow_project_source_mutation=allow_project_source_mutation,
+    )
     temp_path: Optional[Path] = None
     temp_dir: Optional[Path] = None
     try:
@@ -1077,6 +1090,7 @@ async def add_project_source(
         result = await _service_for(project_url).add_project_source(**call_kwargs)
         if preflight is not None and isinstance(result, dict):
             result.setdefault("project_source_mutation_gate", "docker_browser_parity_preflight_passed")
+            result.setdefault("project_source_mutation_intent", preflight.get("mutation_intent"))
             result.setdefault("auth_readiness_preflight", preflight.get("auth_readiness"))
             result.setdefault("docker_browser_runtime", preflight.get("runtime"))
         return result

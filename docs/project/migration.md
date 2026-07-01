@@ -770,3 +770,8 @@ No data migration is required. Operators may reuse `.pb_profile/browser/default`
 ## v0.1.103.10.12 repair mapping
 
 `v0.1.103.10.12` maps the observed generic-ChatGPT false-green from Docker held-session ask into the standard browser repair line. It preserves Project Source mutation disabled and records that project-scoped ask must target the state conversation/project URL.
+
+
+## v0.1.103.10.13 repair mapping
+
+`v0.1.103.10.13` maps the operator request to make `pbsa` possible into a guarded per-request Project Source mutation intent. It does not make arbitrary service calls mutable: direct API calls without intent remain gate-closed.

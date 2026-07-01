@@ -484,3 +484,26 @@ def test_add_project_source_uses_request_timeout_override() -> None:
 
     assert payload["ok"] is True
     assert observed_timeout["read"] == 900.0
+
+
+def test_add_project_source_posts_explicit_mutation_intent(tmp_path: Path) -> None:
+    source = tmp_path / "candidate.zip"
+    source.write_bytes(b"zip-bytes")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/project-sources"
+        body = request.read().decode("utf-8", errors="ignore")
+        assert 'name="allow_project_source_mutation"' in body
+        assert "true" in body
+        assert "candidate.zip" in body
+        return httpx.Response(200, json={"ok": True, "status": "source_added"})
+
+    transport = httpx.MockTransport(handler)
+    with ChatGPTServiceClient("http://example.test", transport=transport) as client:
+        payload = client.add_project_source(
+            source_kind="file",
+            file_path=str(source),
+            display_name="candidate.zip",
+        )
+
+    assert payload["ok"] is True
