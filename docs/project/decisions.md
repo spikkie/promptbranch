@@ -529,6 +529,11 @@ Decision: auth-only standard-browser validation may use a Docker-launched visibl
 - Decision: `pbsa` must not create a second persistent browser context while a compatible auth-ready session is held. Project Source mutation preflight and upload may reuse that held session; if unavailable, failures must be structured and non-500.
 
 
-## DEC-v0.1.103.10.16 — separate bootstrap URL from validation URL
+## DEC-v0.1.103.10.17 — separate bootstrap URL from validation URL
 
 Visible Docker browser bootstrap is a trust/session establishment step and should default to `https://chatgpt.com/`. Project/conversation scope remains enforced by the subsequent auth-readiness validation URL. Operators can still pass an explicit project bootstrap URL for diagnosis.
+
+
+## DEC-v0.1.103.10.17 — reuse held session for remembered overwrite removal
+
+Project Source overwrite removal must not launch a second persistent browser context while an auth-readiness session owns `/app/profile`; remove and add flows should reuse the held session and only require authenticated/no-challenge UI state.

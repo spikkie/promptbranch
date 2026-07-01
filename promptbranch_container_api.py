@@ -690,7 +690,6 @@ async def _require_project_source_mutation_preflight(project_url: Optional[str],
     required = {
         "logged_in": readiness.get("logged_in") is True,
         "challenge_clear": readiness.get("challenge_detected") is False,
-        "composer_visible": readiness.get("composer_visible") is True,
         "release_not_blocking": readiness.get("release_blocking") is False,
     }
     if not all(required.values()):

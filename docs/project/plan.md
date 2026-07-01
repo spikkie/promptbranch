@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
-active candidate version: v0.1.103.10.16
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
-next normal slice: v0.1.103.10.16 — split Docker bootstrap URL from project-scoped auth target
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip
+active candidate version: v0.1.103.10.17
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip
+next normal slice: v0.1.103.10.17 — pbsa reuses held session for remembered overwrite removal
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1844,10 +1844,19 @@ Scope: keep `pbsa` on the project `?tab=sources` route before Add source lookup.
 Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip` must reach Add source lookup on the project Sources route or fail without generic-conversation ambiguity.
 
 
-## v0.1.103.10.16 — split Docker bootstrap URL from project-scoped auth target
+## v0.1.103.10.17 — pbsa reuses held session for remembered overwrite removal
 
-`v0.1.103.10.16` keeps Docker visible browser bootstrap on a stable generic URL by default while preserving the current Promptbranch project/conversation URL for Docker auth-readiness validation. This repairs the `v0.1.103.10.15` auth-only adoption failure where bootstrap opened the project conversation URL directly and Chrome exited before validation could run.
+`v0.1.103.10.17` keeps Docker visible browser bootstrap on a stable generic URL by default while preserving the current Promptbranch project/conversation URL for Docker auth-readiness validation. This repairs the `v0.1.103.10.15` auth-only adoption failure where bootstrap opened the project conversation URL directly and Chrome exited before validation could run.
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip
 
-Validation target: auth-only adoption must show `bootstrap_url=https://chatgpt.com/` and `target_url=<current project conversation URL>`, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip` may be retried.
+Validation target: auth-only adoption must show `bootstrap_url=https://chatgpt.com/` and `target_url=<current project conversation URL>`, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip` may be retried.
+
+
+## v0.1.103.10.17 — pbsa reuses held session for remembered overwrite removal
+
+`v0.1.103.10.17` repairs the live `pbsa` failure after `v0.1.103.10.16`: when overwrite_existing uses a remembered verified source, Project Source removal now reuses the active held auth-readiness browser session instead of launching a competing persistent context against `/app/profile`. Project Source add/remove held-session checks now require logged-in/no-challenge state rather than a visible chat composer, because the Project Sources page is authenticated but normally has no composer.
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip
+
+Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip` should not fail with `browser_context_unavailable_held_auth_session_active` during remembered overwrite removal.

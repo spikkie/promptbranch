@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.16 | split Docker bootstrap URL from project-scoped auth target | active | Keep visible Docker bootstrap on a stable generic URL while auth-readiness validates the current project/conversation URL | direct API mutation without intent, host-CDP session manager, deployment, artifact adoption |
+| v0.1.103.10.17 | pbsa reuses held session for remembered overwrite removal | active | Keep one Docker browser owner for Project Source overwrite remove/add and avoid competing persistent contexts | direct API mutation without intent, host-CDP session manager, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |

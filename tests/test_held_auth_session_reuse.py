@@ -405,3 +405,110 @@ def test_project_source_add_reuses_compatible_held_auth_ready_session(tmp_path, 
     assert observed["page"] is page
     assert observed["context"] is context
     assert observed["source_kind"] == "file"
+
+
+def test_project_source_remove_reuses_compatible_held_auth_ready_session(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/project")
+    now = time.monotonic()
+    session_key = f"{client._profile_key}|https://chatgpt.com/g/g-p-demo/c/chat-1|{client.driver_name}|chrome"
+    page = object()
+    context = object()
+    _AUTH_READINESS_HELD_SESSIONS[session_key] = {
+        "session_key": session_key,
+        "operation_name": "auth_readiness",
+        "context": context,
+        "page": page,
+        "created_at_monotonic": now,
+        "expires_at_monotonic": now + 300,
+        "ttl_seconds": 300,
+        "closed": False,
+    }
+
+    observed: dict[str, object] = {}
+
+    async def fake_probe(probe_page):
+        assert probe_page is page
+        return {
+            "challenge_detected": False,
+            "composer_visible": False,
+            "logged_in": True,
+            "auth_visible": True,
+            "current_url": "https://chatgpt.com/g/g-p-demo/project?tab=sources",
+            "title": "ChatGPT",
+        }
+
+    async def fake_operation(**kwargs):
+        observed.update(kwargs)
+        return {"ok": True, "status": "source_removed", "removed": True}
+
+    async def forbidden_run(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("Project Source remove must reuse the held auth session")
+
+    monkeypatch.setattr(client, "_probe_auth_readiness_state", fake_probe)
+    monkeypatch.setattr(client, "_remove_project_source_operation", fake_operation)
+    monkeypatch.setattr(client, "_run_with_context", forbidden_run)
+
+    result = asyncio.run(client.remove_project_source(source_name="candidate.zip", exact=True))
+
+    assert result["ok"] is True
+    assert result["held_session_reused"] is True
+    assert result["held_session_match_mode"] == "compatible_profile_driver_channel"
+    assert observed["page"] is page
+    assert observed["context"] is context
+    assert observed["source_name"] == "candidate.zip"
+    assert observed["exact"] is True
+
+
+def test_project_source_add_reuses_project_page_held_session_without_composer(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/project")
+    now = time.monotonic()
+    session_key = f"{client._profile_key}|https://chatgpt.com/g/g-p-demo/project|{client.driver_name}|chrome"
+    page = object()
+    context = object()
+    _AUTH_READINESS_HELD_SESSIONS[session_key] = {
+        "session_key": session_key,
+        "operation_name": "auth_readiness",
+        "context": context,
+        "page": page,
+        "created_at_monotonic": now,
+        "expires_at_monotonic": now + 300,
+        "ttl_seconds": 300,
+        "closed": False,
+    }
+
+    observed: dict[str, object] = {}
+
+    async def fake_probe(probe_page):
+        assert probe_page is page
+        return {
+            "challenge_detected": False,
+            "composer_visible": False,
+            "logged_in": True,
+            "auth_visible": True,
+            "current_url": "https://chatgpt.com/g/g-p-demo/project?tab=sources",
+            "title": "ChatGPT",
+        }
+
+    async def fake_operation(**kwargs):
+        observed.update(kwargs)
+        return {"ok": True, "status": "source_added", "project_source_mutated": True}
+
+    async def forbidden_run(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("Project Source add must reuse the held project page session even without a composer")
+
+    monkeypatch.setattr(client, "_probe_auth_readiness_state", fake_probe)
+    monkeypatch.setattr(client, "_add_project_source_operation", fake_operation)
+    monkeypatch.setattr(client, "_run_with_context", forbidden_run)
+
+    result = asyncio.run(
+        client.add_project_source(
+            source_kind="file",
+            file_path=str(tmp_path / "candidate.zip"),
+            display_name="candidate.zip",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["held_session_reused"] is True
+    assert observed["page"] is page
+    assert observed["context"] is context

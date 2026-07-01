@@ -1734,7 +1734,6 @@ class ChatGPTBrowserClient:
 
         if not (
             status == "auth_preflight_ready"
-            and bool(session_status.get("composer_visible"))
             and bool(session_status.get("logged_in"))
             and not bool(session_status.get("challenge_detected"))
         ):
@@ -2205,7 +2204,6 @@ class ChatGPTBrowserClient:
 
         if not (
             status == "auth_preflight_ready"
-            and bool(session_status.get("composer_visible"))
             and bool(session_status.get("logged_in"))
             and not bool(session_status.get("challenge_detected"))
         ):
@@ -2299,6 +2297,13 @@ class ChatGPTBrowserClient:
             exact=exact,
             keep_open=keep_open,
         )
+        held_result = await self._try_remove_project_source_with_held_auth_ready_session(
+            source_name=source_name,
+            exact=exact,
+            keep_open=keep_open,
+        )
+        if held_result is not None:
+            return held_result
         return await self._run_with_context(
             operation_name="project_source_remove",
             operation=self._remove_project_source_operation,
@@ -2307,6 +2312,125 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
             respect_history_rate_limit_cooldown=False,
         )
+
+    async def _try_remove_project_source_with_held_auth_ready_session(
+        self,
+        *,
+        source_name: str,
+        exact: bool,
+        keep_open: bool,
+    ) -> dict[str, Any] | None:
+        session_key, session, match_mode = await self._compatible_held_auth_readiness_session()
+        if session is None or session_key is None:
+            self._log(
+                "project-source-remove",
+                "no held auth-readiness session available before Project Source remove; launching normal browser context",
+                profile_dir=self.config.profile_dir,
+                driver=self.driver_name,
+                browser_channel=self.config.browser_channel or "default",
+            )
+            return None
+
+        context = session.get("context")
+        page = session.get("page")
+        if context is None or page is None:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="project_source_remove_reuse_missing_context_or_page")
+            return {
+                "ok": False,
+                "action": "project_source_remove",
+                "status": "held_auth_ready_session_invalid",
+                "error": "held auth-readiness session had no context/page; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_invalid",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "removed": False,
+                "release_blocking": True,
+            }
+
+        try:
+            state = await self._probe_auth_readiness_state(page)
+            status = self._auth_readiness_status_from_state(state)
+            session_status = self._auth_readiness_result_from_state(
+                state,
+                action="project_source_remove_preflight_held_auth_readiness_session_status",
+                held_session=session,
+            )
+            session_status = self._attach_rate_limit_telemetry(session_status)
+        except Exception as exc:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="project_source_remove_preflight_probe_failed")
+            return {
+                "ok": False,
+                "action": "project_source_remove",
+                "status": "held_auth_ready_session_probe_failed",
+                "error": f"held auth-readiness session probe failed before Project Source remove: {type(exc).__name__}: {exc}",
+                "error_type": type(exc).__name__,
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "removed": False,
+                "release_blocking": True,
+            }
+
+        if not (
+            status == "auth_preflight_ready"
+            and bool(session_status.get("logged_in"))
+            and not bool(session_status.get("challenge_detected"))
+        ):
+            await self._remove_held_auth_readiness_session(session_key, session, reason=f"project_source_remove_preflight_{status}")
+            return {
+                "ok": False,
+                "action": "project_source_remove",
+                "status": "held_auth_ready_session_not_ready",
+                "error": "held auth-readiness session was challenged/stale before Project Source remove; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_not_ready",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "held_session_status": session_status,
+                "removed": False,
+                "release_blocking": True,
+                "recovery_hint": "Run the standard browser auth-readiness bootstrap/check again before retrying Project Source removal.",
+            }
+
+        self._log(
+            "project-source-remove",
+            "reusing held auth-readiness browser session for Project Source remove",
+            session_key=session_key,
+            match_mode=match_mode,
+            profile_dir=self.config.profile_dir,
+            project_url=self.config.project_url,
+            source_name=source_name,
+        )
+
+        try:
+            result = await self._remove_project_source_operation(
+                context=context,
+                page=page,
+                source_name=source_name,
+                exact=exact,
+                keep_open=keep_open,
+            )
+            if isinstance(result, dict):
+                result.setdefault("held_session_reused", True)
+                result.setdefault("held_session_match_mode", match_mode)
+                result.setdefault("held_session_key", session_key)
+                result.setdefault("held_session_status", session_status)
+                result = self._attach_rate_limit_telemetry(result)
+            self._log("result", "Project Source remove completed via held auth-readiness session", result_type=type(result).__name__)
+            return result
+        except Exception as exc:
+            current_url = await self._safe_page_url(page)
+            self._log(
+                "error",
+                "Project Source remove failed while reusing held auth-readiness session",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                current_url=current_url,
+                session_key=session_key,
+            )
+            await self._dump_failure_artifacts(page, "project_source_remove_held_session", exc)
+            raise
 
     @property
     def driver_name(self) -> str:
