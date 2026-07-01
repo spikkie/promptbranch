@@ -537,3 +537,11 @@ Visible Docker browser bootstrap is a trust/session establishment step and shoul
 ## DEC-v0.1.103.10.17 — reuse held session for remembered overwrite removal
 
 Project Source overwrite removal must not launch a second persistent browser context while an auth-readiness session owns `/app/profile`; remove and add flows should reuse the held session and only require authenticated/no-challenge UI state.
+
+
+## Decision — API coverage runner defaults to non-destructive mode
+
+The API coverage runner must not create/delete ChatGPT Projects or remove Project Sources by default. Mutation paths require explicit flags and are serialized by the operator workflow.
+
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip

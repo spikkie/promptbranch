@@ -69,3 +69,8 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 - scope: reuse compatible held auth-readiness session during Project Source mutation preflight and upload
 - version: v0.1.103.10.15
 - slice: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
+
+
+## Active repair — v0.1.103.10.18
+
+`v0.1.103.10.18 — pb test api coverage runner`: add a rerunnable sequential API coverage command under `pb test api`; keep destructive endpoint behavior skipped/guarded by default.

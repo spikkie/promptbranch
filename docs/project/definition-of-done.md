@@ -467,3 +467,8 @@ Last release: v0.1.102
 | DOD-160 | Docker visible browser bootstrap uses a stable bootstrap URL while auth-readiness keeps the project-scoped target URL, preventing bootstrap URL instability from blocking project validation | in_progress | `scripts/pb-browser-cloudflare-validation.sh`, `scripts/pb-docker-browser-profile-bootstrap.sh`, `tests/test_promptbranch_shell_scripts.py`; live auth-only validation pending | v0.1.103.10.17 |
 
 | DOD-161 | pbsa remembered overwrite removal reuses the active held auth-readiness browser session, and Project Source add/remove reuse accepts authenticated Project Source pages without requiring a chat composer | in_progress | `promptbranch_browser_auth/client.py`, `promptbranch_container_api.py`, `tests/test_held_auth_session_reuse.py`, `tests/test_promptbranch_container_api.py`; live pbsa retry pending | v0.1.103.10.17 |
+
+
+## DOD-162 — pb test api sequential API coverage runner
+
+`pb test api` provides a rerunnable sequential API coverage test runner for the Promptbranch container API. It records a JSON report, exercises safe/status/browser/read endpoints, skips destructive endpoints by default, and only performs Project Source mutation when explicit source-add flags are supplied.

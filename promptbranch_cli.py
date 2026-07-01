@@ -22152,6 +22152,58 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     return 0 if payload.get("ok") else 1
 
 
+
+async def cmd_test_api(args: argparse.Namespace) -> int:
+    script = Path(__file__).resolve().parent / "scripts" / "pb-api-coverage-test.py"
+    if not script.exists():
+        print(json.dumps({
+            "ok": False,
+            "action": "api_coverage_test",
+            "status": "script_missing",
+            "script": str(script),
+        }, indent=2))
+        return 1
+    cmd = [sys.executable, str(script)]
+    option_map = [
+        ("base_url", "--base-url"),
+        ("token", "--token"),
+        ("state_file", "--state-file"),
+        ("project_url", "--project-url"),
+        ("conversation_url", "--conversation-url"),
+        ("project_name", "--project-name"),
+        ("run_id", "--run-id"),
+        ("report_dir", "--report-dir"),
+        ("timeout_seconds", "--timeout-seconds"),
+        ("step_delay_seconds", "--step-delay-seconds"),
+        ("ask_token", "--ask-token"),
+        ("ask_timeout_seconds", "--ask-timeout-seconds"),
+        ("source_file", "--source-file"),
+        ("source_name", "--source-name"),
+        ("remove_source_name", "--remove-source-name"),
+    ]
+    for attr, flag in option_map:
+        value = getattr(args, attr, None)
+        if value is not None and value != "":
+            cmd.extend([flag, str(value)])
+    if getattr(args, "keep_open", False):
+        cmd.append("--keep-open")
+    if getattr(args, "no_browser", False):
+        cmd.append("--no-browser")
+    if getattr(args, "no_ask", False):
+        cmd.append("--no-ask")
+    if getattr(args, "allow_source_add", False):
+        cmd.append("--allow-source-add")
+    if getattr(args, "allow_source_remove", False):
+        cmd.append("--allow-source-remove")
+    if getattr(args, "include_source_gate_test", False):
+        cmd.append("--include-source-gate-test")
+    if getattr(args, "json", False):
+        cmd.append("--json")
+    if getattr(args, "summary", False):
+        cmd.append("--summary")
+    completed = subprocess.run(cmd)
+    return int(completed.returncode)
+
 async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
     result = package_import_smoke(repo_path=getattr(args, "path", "."), python_executable=getattr(args, "python_executable", None))
     if getattr(args, "json", False):
@@ -22170,6 +22222,8 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
         return await cmd_test_status(args)
     if args.test_command == "import-smoke":
         return await cmd_test_import_smoke(args)
+    if args.test_command == "api":
+        return await cmd_test_api(args)
     if args.test_command == "ask-live":
         _apply_delete_frozen_live_test_defaults(args, profile="ask-live")
         return await cmd_test_ask_live(backend, args)
@@ -23821,6 +23875,30 @@ def make_parser() -> argparse.ArgumentParser:
     test_smoke.add_argument("--project-list-debug-manual-pause", action="store_true")
     test_smoke.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts before launch.")
 
+    test_api = test_subparsers.add_parser("api", help="Run sequential Promptbranch container API coverage tests.")
+    test_api.add_argument("--json", action="store_true", help="Emit the full API coverage report as JSON.")
+    test_api.add_argument("--summary", action="store_true", help="Also print compact summary metadata.")
+    test_api.add_argument("--base-url", default=os.getenv("PROMPTBRANCH_SERVICE_BASE_URL", "http://localhost:8000"))
+    test_api.add_argument("--token", help="Bearer token override. Defaults to CHATGPT_SERVICE_TOKEN/CHATGPT_API_TOKEN.")
+    test_api.add_argument("--state-file", default=".pb_profile/.promptbranch_state.json")
+    test_api.add_argument("--project-url")
+    test_api.add_argument("--conversation-url")
+    test_api.add_argument("--project-name", default="promptbranch3")
+    test_api.add_argument("--run-id")
+    test_api.add_argument("--report-dir")
+    test_api.add_argument("--timeout-seconds", type=float, default=300.0)
+    test_api.add_argument("--step-delay-seconds", type=float, default=0.0)
+    test_api.add_argument("--keep-open", action="store_true")
+    test_api.add_argument("--no-browser", action="store_true", help="Skip browser-owning auth/login endpoints.")
+    test_api.add_argument("--no-ask", action="store_true", help="Skip /v1/ask.")
+    test_api.add_argument("--ask-token", default="API_ASK_OK")
+    test_api.add_argument("--ask-timeout-seconds", type=float, default=300.0)
+    test_api.add_argument("--allow-source-add", action="store_true", help="Actually test /v1/project-sources mutation with --source-file.")
+    test_api.add_argument("--source-file", help="File uploaded when --allow-source-add is set.")
+    test_api.add_argument("--source-name", help="Display name for --source-file upload.")
+    test_api.add_argument("--allow-source-remove", action="store_true", help="Actually test /v1/project-sources/remove with --remove-source-name.")
+    test_api.add_argument("--include-source-gate-test", action="store_true", help="Attempt mutation without explicit intent and expect a 403 gate. Use only in gated standard-browser mode.")
+    test_api.add_argument("--remove-source-name")
 
     test_browser = test_subparsers.add_parser("browser", help="Run the browser/project/source/task integration test profile.")
     _add_test_suite_profile_options(test_browser)

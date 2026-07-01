@@ -414,3 +414,13 @@ Control-surface slice token: v0.1.103.10.15 — pbsa preserves Project Sources r
 | v0.1.103.10.17 | repair | split Docker bootstrap URL from project-scoped auth target | candidate | focused script/version/control-surface tests before operator live auth-only validation; adoption pending | DOD-160 in_progress; DOD-148..DOD-159 preserved | pending |
 
 | v0.1.103.10.17 | repair | v0.1.103.10.17 — pbsa reuses held session for remembered overwrite removal | chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip candidate | focused held-session/source/preflight/version/control-surface tests before operator live auth-only validation; adoption pending | DOD-161 in_progress; DOD-148..DOD-160 preserved | pending |
+
+
+## v0.1.103.10.18
+
+Release state: candidate only. Adds `pb test api` and `scripts/pb-api-coverage-test.sh` / `.py` for rerunnable API coverage. No adoption claimed.
+
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip
+
+control token: v0.1.103.10.18 — pb test api coverage runner
