@@ -63,16 +63,78 @@ def _payload_text(payload: Any) -> str:
         return repr(payload)
 
 
+def _nested_get(payload: Any, key: str) -> Any:
+    if isinstance(payload, dict):
+        if key in payload:
+            return payload.get(key)
+        detail = payload.get("detail")
+        if isinstance(detail, dict) and key in detail:
+            return detail.get(key)
+    return None
+
+
+def _diagnostic_text(payload: Any | None, error: str | None) -> str:
+    parts: list[str] = []
+    if error:
+        parts.append(str(error))
+    if isinstance(payload, dict):
+        for key in ("error", "detail", "status", "reason", "message"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                for nested_key in ("error", "detail", "status", "reason", "message"):
+                    nested_value = value.get(nested_key)
+                    if isinstance(nested_value, (str, int, float, bool)):
+                        parts.append(str(nested_value))
+            elif isinstance(value, (str, int, float, bool)):
+                parts.append(str(value))
+    elif payload is not None:
+        parts.append(_payload_text(payload))
+    return " ".join(parts)
+
+
 def _classify_response(status: int | None, payload: Any | None, error: str | None) -> str | None:
-    text = " ".join(part for part in [str(status or ""), error or "", _payload_text(payload)] if part)
-    if "browser_context_unavailable_held_auth_session_active" in text:
+    """Classify only real endpoint conditions, not incidental response text.
+
+    v0.1.103.10.20 attached classifications by scanning the entire JSON
+    payload. That produced false labels when successful responses contained
+    words like ``challenge_detected=false``, ``status=clear``, or historical
+    conversation text mentioning profile contention.  Keep classification tied
+    to explicit top-level/detail status fields and actual error diagnostics.
+    """
+    diagnostic = _diagnostic_text(payload, error)
+    diagnostic_lower = diagnostic.lower()
+    payload_ok = _nested_get(payload, "ok")
+    payload_status = str(_nested_get(payload, "status") or "").strip().lower()
+    challenge_detected = _nested_get(payload, "challenge_detected") is True
+    release_blocking = _nested_get(payload, "release_blocking") is True
+    rate_limited_flag = _nested_get(payload, "rate_limited") is True
+    http_failure = status is None or int(status) >= 400
+
+    if "browser_context_unavailable_held_auth_session_active" in diagnostic:
         return "browser_profile_busy"
-    if "project_source_mutation_gate_closed" in text:
+    if payload_status == "browser_context_unavailable_held_auth_session_active":
+        return "browser_profile_busy"
+
+    if "project_source_mutation_gate_closed" in diagnostic or payload_status == "project_source_mutation_gate_closed":
         return "project_source_mutation_gate_closed"
-    if "Too many requests" in text or "conversation_history_rate_limit" in text:
+
+    rate_limited_statuses = {"rate_limited", "conversation_history_rate_limit", "too_many_requests"}
+    if rate_limited_flag or payload_status in rate_limited_statuses:
         return "rate_limited"
-    if "Cloudflare" in text or "challenge_detected" in text and "true" in text.lower():
+    if http_failure and ("too many requests" in diagnostic_lower or "conversation_history_rate_limit" in diagnostic_lower):
+        return "rate_limited"
+
+    if challenge_detected:
         return "auth_challenge_or_cloudflare"
+    challenge_status_markers = ("cloudflare", "challenge", "auth_challenge")
+    if release_blocking and any(marker in payload_status for marker in challenge_status_markers):
+        return "auth_challenge_or_cloudflare"
+    if http_failure and ("cloudflare" in diagnostic_lower or "challenge_detected" in diagnostic_lower):
+        return "auth_challenge_or_cloudflare"
+
+    if payload_ok is False and release_blocking and any(marker in diagnostic_lower for marker in challenge_status_markers):
+        return "auth_challenge_or_cloudflare"
+
     return None
 
 

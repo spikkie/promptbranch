@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
-active candidate version: v0.1.103.10.20
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
-next normal slice: v0.1.103.10.20 — pb test api avoids held-session self-conflicts
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+active candidate version: v0.1.103.10.21
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+next normal slice: v0.1.103.10.21 — pb test api classification cleanup
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1870,10 +1870,13 @@ Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatg
 
 `v0.1.103.10.19 — install-safe pb test api module runner` repairs the packaging/install path for `pb test api` by invoking an installed package module instead of a non-installed top-level scripts directory.
 
-## Active repair slice — v0.1.103.10.20
+## Active repair slice — v0.1.103.10.21
 
-`v0.1.103.10.20 — pb test api avoids held-session self-conflicts` changes `pb test api` default ordering to serial browser mode: it no longer holds auth-readiness before unrelated browser-owning endpoint checks, keeps dangerous/mutation endpoints gated, and classifies held-profile conflicts as `browser_profile_busy`.
+`v0.1.103.10.21 — pb test api classification cleanup` changes `pb test api` default ordering to serial browser mode: it no longer holds auth-readiness before unrelated browser-owning endpoint checks, keeps dangerous/mutation endpoints gated, and classifies held-profile conflicts as `browser_profile_busy`.
 
-## Backlog repair slice after v0.1.103.10.20
+## Backlog repair slice after v0.1.103.10.21
 
 `v0.1.103.10.21 — browser-owning API endpoints reuse held auth-ready session` remains a backlog repair candidate after the API runner self-conflict is fixed. Target endpoints: login-check, projects list/resolve, chats list/debug/get, rate-limit debug, and project-source capabilities/list.
+## Active repair slice — v0.1.103.10.21
+
+`v0.1.103.10.21 — pb test api classification cleanup` is report-only: no endpoint ordering, browser/session architecture, Project Source mutation semantics, or held-session reuse behavior changes. It fixes false-positive classifications in `pb test api` reports.

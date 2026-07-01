@@ -432,11 +432,19 @@ Candidate only. Repairs `pb test api` installed-package execution by moving the 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
 control token: v0.1.103.10.19 — install-safe pb test api module runner
 
-## v0.1.103.10.20
+## v0.1.103.10.21
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.20 | repair | pb test api avoids held-session self-conflicts | candidate | focused tests pending/live install pending | DOD-164 | n/a |
+| v0.1.103.10.21 | repair | pb test api classification cleanup | candidate | focused tests pending/live install pending | DOD-164 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
-control token: v0.1.103.10.20 — pb test api avoids held-session self-conflicts
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+control token: v0.1.103.10.21 — pb test api classification cleanup
+## v0.1.103.10.21
+
+| version | type | scope | state | validation | dod | adoption |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.21 | repair | pb test api classification cleanup | candidate | focused tests pending/live install pending | DOD-165 | n/a |
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+control token: v0.1.103.10.21 — pb test api classification cleanup

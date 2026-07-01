@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
-active candidate version: v0.1.103.10.20
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
-next normal slice: v0.1.103.10.20 — pb test api avoids held-session self-conflicts
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+active candidate version: v0.1.103.10.21
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+next normal slice: v0.1.103.10.21 — pb test api classification cleanup
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -931,10 +931,13 @@ Candidate slice `v0.1.103.10.19 — install-safe pb test api module runner` adds
 
 Candidate slice `v0.1.103.10.19 — install-safe pb test api module runner` repairs the `pb test api` packaging bug found after installation. The API coverage runner is now available as `promptbranch.api_coverage_test` and the CLI invokes it with `python -m promptbranch.api_coverage_test`, avoiding missing `site-packages/scripts/...` paths.
 
-## v0.1.103.10.20 status
+## v0.1.103.10.21 status
 
-Candidate slice `v0.1.103.10.20 — pb test api avoids held-session self-conflicts` repairs the API coverage runner self-conflict observed in `v0.1.103.10.19`: the full runner held an auth-readiness session and then caused later browser-owning endpoints to fail with `browser_context_unavailable_held_auth_session_active`. The new default is serial/no-held-session between unrelated endpoints.
+Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` repairs the API coverage runner self-conflict observed in `v0.1.103.10.19`: the full runner held an auth-readiness session and then caused later browser-owning endpoints to fail with `browser_context_unavailable_held_auth_session_active`. The new default is serial/no-held-session between unrelated endpoints.
 
-## Backlog repair after v0.1.103.10.20
+## Backlog repair after v0.1.103.10.21
 
-`v0.1.103.10.21 — browser-owning API endpoints reuse held auth-ready session` is recorded as the next possible repair after `pb test api` no longer self-conflicts. It is not implemented in v0.1.103.10.20.
+`v0.1.103.10.21 — browser-owning API endpoints reuse held auth-ready session` is recorded as the next possible repair after `pb test api` no longer self-conflicts. It is not implemented in v0.1.103.10.21.
+## v0.1.103.10.21 status
+
+Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` keeps endpoint behavior unchanged and narrows API coverage report classification to actual failure/warning fields. It removes misleading `browser_profile_busy`, `rate_limited`, and `auth_challenge_or_cloudflare` labels from successful clear responses.

@@ -79,6 +79,9 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 
 `v0.1.103.10.19 — install-safe pb test api module runner`: package the API coverage runner as an installed module and invoke it through `python -m` from `pb test api`.
 
-## Active repair — v0.1.103.10.20
+## Active repair — v0.1.103.10.21
 
-`v0.1.103.10.20 — pb test api avoids held-session self-conflicts`: make API coverage default to serial browser checks with no held auth-readiness session between unrelated endpoints; classify held-profile conflicts as `browser_profile_busy`.
+`v0.1.103.10.21 — pb test api classification cleanup`: make API coverage default to serial browser checks with no held auth-readiness session between unrelated endpoints; classify held-profile conflicts as `browser_profile_busy`.
+## Active repair — v0.1.103.10.21
+
+`v0.1.103.10.21 — pb test api classification cleanup`: narrow API coverage classification logic so passed/clear responses do not carry misleading failure classifications. No browser/session architecture changes.

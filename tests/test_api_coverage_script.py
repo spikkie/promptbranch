@@ -56,3 +56,19 @@ def test_api_coverage_classifies_browser_profile_busy() -> None:
     from promptbranch.api_coverage_test import _classify_response
 
     assert _classify_response(503, {"detail": "browser_context_unavailable_held_auth_session_active"}, "HTTP Error 503") == "browser_profile_busy"
+
+def test_api_coverage_does_not_classify_successful_clear_responses() -> None:
+    from promptbranch.api_coverage_test import _classify_response
+
+    assert _classify_response(200, {"ok": True, "action": "get_chat", "status": "completed", "text": "browser_context_unavailable_held_auth_session_active was mentioned in history"}, None) is None
+    assert _classify_response(200, {"ok": True, "action": "debug_rate_limit", "status": "clear", "conversation_history_rate_limit": False}, None) is None
+    assert _classify_response(200, {"ok": True, "action": "passive_auth_readiness", "status": "auth_preflight_ready", "challenge_detected": False, "release_blocking": False}, None) is None
+    assert _classify_response(200, {"ok": True, "action": "add", "persistence_verified": True, "project_source_mutation_intent": "per_request", "challenge_detected": False, "release_blocking": False}, None) is None
+
+
+def test_api_coverage_classifies_actual_rate_limit_and_challenge() -> None:
+    from promptbranch.api_coverage_test import _classify_response
+
+    assert _classify_response(429, {"detail": "Too many requests"}, "HTTP Error 429") == "rate_limited"
+    assert _classify_response(200, {"ok": False, "status": "auth_challenge", "challenge_detected": True, "release_blocking": True}, None) == "auth_challenge_or_cloudflare"
+

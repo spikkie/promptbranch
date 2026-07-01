@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip",
-  "active_candidate_version": "v0.1.103.10.20",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip",
+  "active_candidate_version": "v0.1.103.10.21",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.20 \u2014 pb test api avoids held-session self-conflicts",
+  "active_slice": "v0.1.103.10.21 — pb test api classification cleanup",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip",
-  "next_normal_slice": "v0.1.103.10.20 \u2014 pb test api avoids held-session self-conflicts",
-  "next_normal_version": "v0.1.103.10.20",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip",
+  "next_normal_slice": "v0.1.103.10.21 — pb test api classification cleanup",
+  "next_normal_version": "v0.1.103.10.21",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -141,10 +141,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "add a rerunnable sequential API coverage test runner under pb test api without enabling destructive or implicit mutation behavior",
-      "slice": "v0.1.103.10.20 \u2014 pb test api avoids held-session self-conflicts",
+      "scope": "fix misleading pb test api report classifications only; no browser/session architecture or endpoint behavior changes",
+      "slice": "v0.1.103.10.21 — pb test api classification cleanup",
       "status": "active",
-      "version": "v0.1.103.10.20"
+      "version": "v0.1.103.10.21"
     },
     {
       "release_mode": "normal",
@@ -188,5 +188,6 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.17"
+  "updated_for": "v0.1.103.10.17",
+  "last_updated": "2026-07-01"
 }

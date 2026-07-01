@@ -552,8 +552,8 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
 
-## Decision — v0.1.103.10.20 serializes API coverage browser checks
+## Decision — v0.1.103.10.21 serializes API coverage browser checks
 
 `pb test api` defaults to serial browser mode and does not keep an auth-readiness session open before projects/chats/sources checks. Held-session reuse testing remains explicit via flags.
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
