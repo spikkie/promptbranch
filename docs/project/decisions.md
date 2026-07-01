@@ -525,5 +525,5 @@ Decision: auth-only standard-browser validation may use a Docker-launched visibl
 <!-- v0.1.103.10.13 -->
 - `pbsa` is treated as an explicit operator mutation command, but the service still requires a per-request mutation intent or the legacy environment gate and must pass Docker browser auth/profile preflight before mutating Project Sources.
 
-<!-- v0.1.103.10.14 -->
+<!-- v0.1.103.10.15 -->
 - Decision: `pbsa` must not create a second persistent browser context while a compatible auth-ready session is held. Project Source mutation preflight and upload may reuse that held session; if unavailable, failures must be structured and non-500.

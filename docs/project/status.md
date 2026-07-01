@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
-active candidate version: v0.1.103.10.14
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
-next normal slice: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
+active candidate version: v0.1.103.10.15
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
+next normal slice: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -889,7 +889,7 @@ Candidate intent: allow explicit CLI source-add mutation again while preserving 
 
 Validation required: focused API/client tests, control-surface validation, artifact hygiene, operator live `pbsa` source-add proof.
 
-## v0.1.103.10.14 status
+## v0.1.103.10.15 status
 
 Baseline: `v0.1.103.10.13` candidate after guarded per-request `pbsa` mutation intent.
 
@@ -898,3 +898,8 @@ Status: candidate.
 Scope: reuse compatible held auth-readiness session during Project Source mutation preflight and source upload, preserving Project Source mutation as explicit operator intent only.
 
 Validation: focused held-session/API tests pending/live operator `pbsa` pending.
+
+
+## v0.1.103.10.15 status
+
+`v0.1.103.10.15` repairs the live `pbsa` 504 where clicking/opening Sources escaped from the Promptbranch3 project page to a generic `/c/...` conversation before Add source lookup. The repair opens the direct `?tab=sources` route first, skips risky tab clicks when already on that route, and recovers/fails closed if a tab click leaves project scope. Project Source mutation remains explicit per-request operator intent only.

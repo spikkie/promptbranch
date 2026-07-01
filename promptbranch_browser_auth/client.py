@@ -5041,8 +5041,8 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-list-home")
-        await self._open_project_sources_tab(page)
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-list-home")
+        await self._open_project_sources_tab(page, project_url=project_home_url)
 
         deadline = asyncio.get_running_loop().time() + 12.0
         source_cards: list[dict[str, str]] = []
@@ -5550,8 +5550,8 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-capabilities-home")
-        await self._open_project_sources_tab(page)
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-capabilities-home")
+        await self._open_project_sources_tab(page, project_url=project_home_url)
         await self._click_add_source_button(page)
         capabilities = await self._discover_project_source_capabilities(page)
         result = {
@@ -5668,8 +5668,9 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-add-home")
-        await self._open_project_sources_tab(page)
+        project_sources_url = self._project_sources_url(project_home_url)
+        await self._goto(page, project_sources_url, label="project-source-add-sources-home")
+        await self._open_project_sources_tab(page, project_url=project_home_url)
 
         normalized_kind = (source_kind or "").strip().lower()
         if normalized_kind not in {"link", "text", "file"}:
@@ -6518,8 +6519,8 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
-        await self._goto(page, project_home_url, label="project-source-remove-home")
-        await self._open_project_sources_tab(page)
+        await self._goto(page, self._project_sources_url(project_home_url), label="project-source-remove-home")
+        await self._open_project_sources_tab(page, project_url=project_home_url)
 
         source_cards = await self._snapshot_project_source_cards(page)
         matched_card = self._match_source_card(source_cards, [source_name], exact_safe=exact, anchor_safe=not exact)
@@ -16580,7 +16581,54 @@ class ChatGPTBrowserClient:
         )
         return result if isinstance(result, dict) else {'moved': bool(result), 'raw': result}
 
-    async def _open_project_sources_tab(self, page: Any) -> None:
+    async def _open_project_sources_tab(self, page: Any, *, project_url: Optional[str] = None) -> None:
+        expected_project_url = self._project_home_url_from_url(project_url or self._project_home_url())
+        sources_url = self._project_sources_url(expected_project_url)
+
+        async def current_scope() -> dict[str, Any]:
+            current = await self._safe_page_url(page)
+            same_project = False
+            try:
+                same_project = bool(current and self._project_urls_refer_to_same_project(current, expected_project_url))
+            except Exception:
+                same_project = False
+            parsed = urlparse(current or "")
+            tab_values = [value for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key == "tab"]
+            return {
+                "current_url": current,
+                "same_project": same_project,
+                "on_sources_url": bool(same_project and any(value == "sources" for value in tab_values)),
+            }
+
+        before_scope = await current_scope()
+        if not before_scope["same_project"] or not before_scope["on_sources_url"]:
+            self._log(
+                "project-source",
+                "opening Project Sources by direct project sources URL before tab click",
+                current_url=before_scope["current_url"],
+                project_url=expected_project_url,
+                sources_url=sources_url,
+                same_project=before_scope["same_project"],
+                on_sources_url=before_scope["on_sources_url"],
+            )
+            await self._goto(
+                page,
+                sources_url,
+                label="project-sources-tab-direct-open",
+                respect_history_rate_limit_cooldown=False,
+            )
+
+        direct_scope = await current_scope()
+        if direct_scope["same_project"] and direct_scope["on_sources_url"]:
+            self._log(
+                "project-source",
+                "Project Sources direct URL active; skipping tab click to preserve project scope",
+                current_url=direct_scope["current_url"],
+                project_url=expected_project_url,
+                sources_url=sources_url,
+            )
+            return
+
         tab = await self._wait_for_visible_locator(
             page,
             PROJECT_SOURCES_TAB_SELECTORS,
@@ -16588,12 +16636,43 @@ class ChatGPTBrowserClient:
             total_timeout_ms=15_000,
         )
         if tab is None:
+            after_direct_scope = await current_scope()
+            if after_direct_scope["same_project"] and after_direct_scope["on_sources_url"]:
+                self._log(
+                    "project-source",
+                    "Project Sources direct URL active without visible tab control",
+                    current_url=after_direct_scope["current_url"],
+                    project_url=expected_project_url,
+                    sources_url=sources_url,
+                )
+                return
             raise ResponseTimeoutError("Project Sources tab did not become visible")
         self._record_browser_action(kind='click_attempt', label='project-sources-tab', strategy='primary')
         await tab.click(timeout=5_000)
         self._record_browser_action(kind='click_success', label='project-sources-tab', strategy='primary')
         await page.wait_for_timeout(750)
-        self._log("project-source", "sources tab opened", current_url=await self._safe_page_url(page))
+        after_click_scope = await current_scope()
+        if not after_click_scope["same_project"]:
+            self._log(
+                "project-source",
+                "Project Sources tab click escaped project scope; recovering with direct project sources URL",
+                clicked_url=after_click_scope["current_url"],
+                project_url=expected_project_url,
+                sources_url=sources_url,
+            )
+            await self._goto(
+                page,
+                sources_url,
+                label="project-sources-tab-scope-recovery",
+                respect_history_rate_limit_cooldown=False,
+            )
+            recovered_scope = await current_scope()
+            if not recovered_scope["same_project"]:
+                raise ResponseTimeoutError(
+                    "Project Sources tab navigation escaped project scope before Add source button lookup"
+                )
+            after_click_scope = recovered_scope
+        self._log("project-source", "sources tab opened", current_url=after_click_scope["current_url"])
 
     async def _click_add_source_button(self, page: Any) -> None:
         button = await self._wait_for_visible_locator(

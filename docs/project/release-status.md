@@ -405,8 +405,8 @@ Control-surface slice token: v0.1.103.10.11 — Docker-originated visible browse
 
 <!-- v0.1.103.10.13 — guarded pbsa Project Source mutation intent: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip -->
 
-| v0.1.103.10.14 | repair | `pbsa` held-session preflight/upload reuse | candidate | focused held-session/API tests before operator live `pbsa`; adoption pending | DOD-158 in_progress; DOD-148..DOD-157 preserved | pending |
+| v0.1.103.10.15 | repair | `pbsa` held-session preflight/upload reuse | candidate | focused held-session/API tests before operator live `pbsa`; adoption pending | DOD-158 in_progress; DOD-148..DOD-157 preserved | pending |
 
-<!-- v0.1.103.10.14 — pbsa held-session preflight/upload reuse: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip -->
+<!-- v0.1.103.10.15 — pbsa project-sources route preservation: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip -->
 
-Control-surface slice token: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
+Control-surface slice token: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup

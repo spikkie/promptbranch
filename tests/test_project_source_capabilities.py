@@ -3553,3 +3553,97 @@ def test_capacity_prune_stops_without_loose_retry_when_exact_remove_reports_iden
     assert result["capacity_prune_retry_suppressed"] is True
     assert result["capacity_prune_remove_drift_detected"] is True
     assert result["capacity_prune_identity_verified"] is False
+
+
+def test_open_project_sources_tab_uses_direct_sources_url_without_clicking_escaping_link(browser_client: ChatGPTBrowserClient) -> None:
+    browser_client.config.project_url = "https://chatgpt.com/g/g-p-123/project"
+
+    class Page:
+        def __init__(self) -> None:
+            self.url = "https://chatgpt.com/g/g-p-123/c/conversation-1"
+            self.waits: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.waits.append(timeout_ms)
+
+    page = Page()
+    calls: list[tuple[str, str]] = []
+
+    async def fake_safe_page_url(target_page) -> str:
+        return target_page.url
+
+    async def fake_goto(target_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        calls.append((label, url))
+        target_page.url = url
+
+    async def fail_wait_for_visible(*_args, **_kwargs):
+        raise AssertionError("tab lookup/click should be skipped when direct sources URL is active")
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fail_wait_for_visible  # type: ignore[method-assign]
+
+    asyncio.run(browser_client._open_project_sources_tab(page, project_url="https://chatgpt.com/g/g-p-123/project"))
+
+    assert calls == [
+        (
+            "project-sources-tab-direct-open",
+            "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        )
+    ]
+    assert page.url == "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+
+def test_open_project_sources_tab_recovers_if_tab_click_escapes_project_scope(browser_client: ChatGPTBrowserClient) -> None:
+    browser_client.config.project_url = "https://chatgpt.com/g/g-p-123/project"
+
+    class Locator:
+        async def click(self, timeout: int) -> None:
+            page.url = "https://chatgpt.com/c/generic-after-sources-click"
+
+    class Page:
+        def __init__(self) -> None:
+            self.url = "https://chatgpt.com/g/g-p-123/project?tab=chats"
+            self.waits: list[int] = []
+
+        async def wait_for_timeout(self, timeout_ms: int) -> None:
+            self.waits.append(timeout_ms)
+
+    page = Page()
+    calls: list[tuple[str, str]] = []
+    direct_open_done = False
+
+    async def fake_safe_page_url(target_page) -> str:
+        return target_page.url
+
+    async def fake_goto(target_page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True) -> None:
+        nonlocal direct_open_done
+        calls.append((label, url))
+        target_page.url = url
+        if label == "project-sources-tab-direct-open":
+            # Simulate a UI that does not honor ?tab=sources, so the tab path is tried.
+            target_page.url = "https://chatgpt.com/g/g-p-123/project"
+            direct_open_done = True
+
+    async def fake_wait_for_visible(*_args, **kwargs):
+        assert kwargs["label"] == "project-sources-tab"
+        assert direct_open_done is True
+        return Locator()
+
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._wait_for_visible_locator = fake_wait_for_visible  # type: ignore[method-assign]
+
+    asyncio.run(browser_client._open_project_sources_tab(page, project_url="https://chatgpt.com/g/g-p-123/project"))
+
+    assert calls == [
+        (
+            "project-sources-tab-direct-open",
+            "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        ),
+        (
+            "project-sources-tab-scope-recovery",
+            "https://chatgpt.com/g/g-p-123/project?tab=sources",
+        ),
+    ]
+    assert page.url == "https://chatgpt.com/g/g-p-123/project?tab=sources"

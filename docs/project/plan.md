@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
-active candidate version: v0.1.103.10.14
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
-next normal slice: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
+active candidate version: v0.1.103.10.15
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
+next normal slice: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1826,10 +1826,19 @@ persistence_verified=true
 project_source_mutated=true
 ```
 
-## v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
+## v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
 
 Repair target: the live `pbsa` run produced HTTP 500 because Project Source preflight launched a second persistent browser while an auth-ready project session was held. This slice makes readiness preflight and source upload reuse compatible held auth sessions and maps browser-context-unavailable failures to structured release-blocking responses.
 
-Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip` must either mutate with preflight evidence or fail with a structured non-500 diagnostic.
+Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip` must either mutate with preflight evidence or fail with a structured non-500 diagnostic.
+
+
+## v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
+
+Scope: keep `pbsa` on the project `?tab=sources` route before Add source lookup. If Sources navigation escapes to a generic conversation, recover via direct sources URL or fail closed with structured diagnostics.
+
+Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip` must reach Add source lookup on the project Sources route or fail without generic-conversation ambiguity.
