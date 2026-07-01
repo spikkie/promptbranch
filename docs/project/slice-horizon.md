@@ -71,6 +71,10 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 - slice: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
 
 
-## Active repair — v0.1.103.10.18
+## Active repair — v0.1.103.10.19
 
-`v0.1.103.10.18 — pb test api coverage runner`: add a rerunnable sequential API coverage command under `pb test api`; keep destructive endpoint behavior skipped/guarded by default.
+`v0.1.103.10.19 — install-safe pb test api module runner`: add a rerunnable sequential API coverage command under `pb test api`; keep destructive endpoint behavior skipped/guarded by default.
+
+## Active repair — v0.1.103.10.19
+
+`v0.1.103.10.19 — install-safe pb test api module runner`: package the API coverage runner as an installed module and invoke it through `python -m` from `pb test api`.

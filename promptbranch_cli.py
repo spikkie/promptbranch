@@ -22154,16 +22154,12 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
 
 
 async def cmd_test_api(args: argparse.Namespace) -> int:
-    script = Path(__file__).resolve().parent / "scripts" / "pb-api-coverage-test.py"
-    if not script.exists():
-        print(json.dumps({
-            "ok": False,
-            "action": "api_coverage_test",
-            "status": "script_missing",
-            "script": str(script),
-        }, indent=2))
-        return 1
-    cmd = [sys.executable, str(script)]
+    # Run the API coverage runner as an installed package module.
+    # The previous v0.1.103.10.18 implementation looked for
+    # an installed site-packages script path, but top-level repo
+    # scripts are not installed by pipx/setuptools. Keeping this as a module
+    # makes `pb test api` work both from a source tree and from an installed wheel.
+    cmd = [sys.executable, "-m", "promptbranch.api_coverage_test"]
     option_map = [
         ("base_url", "--base-url"),
         ("token", "--token"),

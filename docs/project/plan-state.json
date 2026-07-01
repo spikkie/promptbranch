@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip",
-  "active_candidate_version": "v0.1.103.10.18",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip",
+  "active_candidate_version": "v0.1.103.10.19",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.18 — pb test api coverage runner",
+  "active_slice": "v0.1.103.10.19 — install-safe pb test api module runner",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip",
-  "next_normal_slice": "v0.1.103.10.18 — pb test api coverage runner",
-  "next_normal_version": "v0.1.103.10.18",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip",
+  "next_normal_slice": "v0.1.103.10.19 — install-safe pb test api module runner",
+  "next_normal_version": "v0.1.103.10.19",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -42,7 +42,7 @@
       "kind": "repair/api-coverage-test-runner",
       "status": "candidate",
       "summary": "Adds a rerunnable sequential API coverage runner as pb test api and scripts/pb-api-coverage-test.sh, with destructive endpoints skipped or guard-tested by default and Project Source mutation requiring explicit flags.",
-      "version": "v0.1.103.10.18"
+      "version": "v0.1.103.10.19"
     },
     {
       "kind": "repair/source-add-held-session-remove",
@@ -142,9 +142,9 @@
     {
       "release_mode": "repair",
       "scope": "add a rerunnable sequential API coverage test runner under pb test api without enabling destructive or implicit mutation behavior",
-      "slice": "v0.1.103.10.18 — pb test api coverage runner",
+      "slice": "v0.1.103.10.19 — install-safe pb test api module runner",
       "status": "active",
-      "version": "v0.1.103.10.18"
+      "version": "v0.1.103.10.19"
     },
     {
       "release_mode": "normal",

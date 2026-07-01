@@ -786,6 +786,10 @@ No data migration is required. Operators may reuse `.pb_profile/browser/default`
 The repair maps the live auth-only adoption failure from `v0.1.103.10.15` into a URL-role split: visible Docker bootstrap uses a stable generic URL by default, while Docker auth-readiness still validates the current Promptbranch project/conversation target.
 
 
-## v0.1.103.10.18 migration note
+## v0.1.103.10.19 migration note
 
 After installing this candidate, use `pb test api` for repeated API coverage checks instead of copy/pasting individual curl commands. Existing `pb test browser/full` flows are unchanged.
+
+## v0.1.103.10.19 migration note
+
+After installing this version, rerun `pb test api --json`. No manual copy of `scripts/pb-api-coverage-test.py` into site-packages is required.

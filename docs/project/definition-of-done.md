@@ -472,3 +472,7 @@ Last release: v0.1.102
 ## DOD-162 — pb test api sequential API coverage runner
 
 `pb test api` provides a rerunnable sequential API coverage test runner for the Promptbranch container API. It records a JSON report, exercises safe/status/browser/read endpoints, skips destructive endpoints by default, and only performs Project Source mutation when explicit source-add flags are supplied.
+
+## DOD-163 — Install-safe API coverage command
+
+`pb test api` must invoke the API coverage runner as an installed Promptbranch package module, not as a top-level source-tree script path, so the command works after pipx/wheel installation and remains rerunnable after every release.

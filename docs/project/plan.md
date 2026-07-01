@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip
-active candidate version: v0.1.103.10.18
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip
-next normal slice: v0.1.103.10.18 — pb test api coverage runner
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
+active candidate version: v0.1.103.10.19
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
+next normal slice: v0.1.103.10.19 — install-safe pb test api module runner
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1862,6 +1862,10 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip
 Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.17.zip` should not fail with `browser_context_unavailable_held_auth_session_active` during remembered overwrite removal.
 
 
-## Active repair slice — v0.1.103.10.18
+## Active repair slice — v0.1.103.10.19
 
-`v0.1.103.10.18 — pb test api coverage runner` adds sequential API endpoint coverage under `pb test api` so the same API checks can be rerun after each release without copying individual curl commands.
+`v0.1.103.10.19 — install-safe pb test api module runner` adds sequential API endpoint coverage under `pb test api` so the same API checks can be rerun after each release without copying individual curl commands.
+
+## Active repair slice — v0.1.103.10.19
+
+`v0.1.103.10.19 — install-safe pb test api module runner` repairs the packaging/install path for `pb test api` by invoking an installed package module instead of a non-installed top-level scripts directory.

@@ -544,4 +544,10 @@ Project Source overwrite removal must not launch a second persistent browser con
 The API coverage runner must not create/delete ChatGPT Projects or remove Project Sources by default. Mutation paths require explicit flags and are serialized by the operator workflow.
 
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.18.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
+
+## Decision — v0.1.103.10.19 installs API coverage runner as package module
+
+`pb test api` must not depend on a source-tree-only `scripts/` directory after pipx installation. The runner is packaged as `promptbranch.api_coverage_test`; the shell script remains a source-tree convenience wrapper.
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip

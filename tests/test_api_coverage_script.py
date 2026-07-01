@@ -27,3 +27,15 @@ def test_cli_exposes_test_api_command() -> None:
     assert 'test_subparsers.add_parser("api"' in text
     assert 'async def cmd_test_api' in text
     assert 'args.test_command == "api"' in text
+
+
+def test_api_coverage_module_help_is_install_safe() -> None:
+    result = subprocess.run(["python3", "-m", "promptbranch.api_coverage_test", "--help"], text=True, capture_output=True, check=True)
+    assert "Run Promptbranch container API coverage tests sequentially" in result.stdout
+
+
+def test_cli_test_api_uses_installed_module_not_site_packages_scripts() -> None:
+    cli = Path(__file__).resolve().parents[1] / "promptbranch_cli.py"
+    text = cli.read_text(encoding="utf-8")
+    assert '"-m", "promptbranch.api_coverage_test"' in text
+    assert 'status": "script_missing"' not in text
