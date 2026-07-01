@@ -513,3 +513,7 @@ Decision: when a standard-browser auth-readiness run keeps a browser context ali
 ### v0.1.103.10.10 — held auth-ready ask must not navigate away before send
 
 Decision: when `pb ask` reuses an auth-readiness-held browser page that is already logged in with a visible composer, it must send through that page instead of first navigating to the configured target conversation URL. The observed `v0.1.103.10.9` path reused the session but immediately navigated from `https://chatgpt.com/` to a project conversation URL and triggered Cloudflare again. This repair keeps Project Source mutation disabled and does not introduce the later host-CDP session manager.
+
+### v0.1.103.10.11 — standard profile should be bootstrapped by Docker Chrome when Docker fingerprint is challenged
+
+Decision: auth-only standard-browser validation may use a Docker-launched visible Chrome bootstrap by default. Host Chrome bootstrap remains a compatibility option, but Docker-originated trust is preferred when Docker/Patchright receives Cloudflare despite a host-created profile. Project Source mutation remains disabled.

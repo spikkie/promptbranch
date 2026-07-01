@@ -387,3 +387,13 @@ Control-surface slice token: v0.1.103.10.9 — pb ask reuses held auth-ready bro
 Control-surface tokens: v0.1.103.10.10 chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip held auth-ready current page skip target navigation pb ask Cloudflare avoidance
 
 Control-surface slice token: v0.1.103.10.10 — pb ask sends through held auth-ready current page
+
+## v0.1.103.10.11
+
+| Version | Kind | Scope | State | Validation | DoD movement | Acceptance |
+| --- | --- | --- | --- | --- | --- | --- |
+| v0.1.103.10.11 | repair | Docker-originated visible browser profile bootstrap | candidate | focused shell/control validation required; operator live Docker visual bootstrap required | DOD-155 added; DOD-148..DOD-154 preserved | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.11 chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip Docker visual browser bootstrap standard profile Cloudflare fingerprint
+
+Control-surface slice token: v0.1.103.10.11 — Docker-originated visible browser profile bootstrap

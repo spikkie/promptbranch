@@ -21,6 +21,7 @@ install_version="${PROMPTBRANCH_VALIDATION_INSTALL_VERSION:-}"
 profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"
 fresh_profile=0
 skip_bootstrap=0
+bootstrap_mode="${PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE:-docker}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
 
@@ -30,7 +31,7 @@ Usage: pb-browser-cloudflare-validation.sh [options]
 
 One-shot standard browser Cloudflare validation phase:
   1. optional install of a candidate ZIP
-  2. visible host Chrome login/bootstrap using .pb_profile/browser/default
+  2. visible Docker Chrome login/bootstrap using .pb_profile/browser/default by default
   3. Docker standard-browser Cloudflare parity check against that profile
   4. strict validation of the resulting summary.json
 
@@ -38,9 +39,11 @@ Options:
   --install-artifact ZIP     Optional candidate ZIP to install first.
   --install-version VERSION  Version used with --install-artifact, for example v0.1.103.10.5.
   --profile-dir PATH         Browser profile directory. Default: ./.pb_profile/browser/default.
-  --fresh-profile            Delete and recreate the selected profile before host Chrome bootstrap.
+  --fresh-profile            Delete and recreate the selected profile before browser bootstrap.
   --reuse-profile            Reuse selected profile. This is the default.
-  --skip-bootstrap           Do not open host Chrome; use an already logged-in profile.
+  --skip-bootstrap           Do not open a browser; use an already logged-in profile.
+  --docker-bootstrap         Open Chrome inside Docker on the host display. Default.
+  --host-bootstrap           Compatibility mode: open host Chrome directly.
   --max-wait-seconds N       Cloudflare check timeout. Default: 300.
   --poll-seconds N           Cloudflare check polling interval. Default: 10.
   --help                     Show this help.
@@ -51,6 +54,7 @@ Environment equivalents:
   PROMPTBRANCH_HOST_PROFILE_DIR
   PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS
   PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS
+  PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host
 
 Success criteria:
   - docker profile mode is standard-browser
@@ -87,6 +91,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-bootstrap)
       skip_bootstrap=1
+      shift
+      ;;
+    --docker-bootstrap)
+      bootstrap_mode="docker"
+      shift
+      ;;
+    --host-bootstrap)
+      bootstrap_mode="host"
       shift
       ;;
     --max-wait-seconds)
@@ -136,6 +148,7 @@ log "profile_dir=${profile_dir}"
 log "max_wait_seconds=${max_wait_seconds}"
 log "poll_seconds=${poll_seconds}"
 log "skip_bootstrap=${skip_bootstrap}"
+log "bootstrap_mode=${bootstrap_mode}"
 log "fresh_profile=${fresh_profile}"
 
 if [[ -n "${install_artifact}" ]]; then
@@ -156,15 +169,29 @@ if [[ -n "${install_artifact}" ]]; then
 fi
 
 if [[ "${skip_bootstrap}" == "0" ]]; then
-  log "== visible host Chrome login bootstrap =="
   bootstrap_args=(--profile-dir "${profile_dir}")
   if [[ "${fresh_profile}" == "1" ]]; then
     bootstrap_args+=(--fresh)
   else
     bootstrap_args+=(--reuse)
   fi
-  ./scripts/pb-browser-profile-bootstrap.sh "${bootstrap_args[@]}" \
-    2>&1 | tee "${validation_dir}/bootstrap.log"
+
+  case "${bootstrap_mode}" in
+    docker)
+      log "== visible Docker Chrome login bootstrap =="
+      ./scripts/pb-docker-browser-profile-bootstrap.sh "${bootstrap_args[@]}" \
+        2>&1 | tee "${validation_dir}/bootstrap.log"
+      ;;
+    host)
+      log "== visible host Chrome login bootstrap =="
+      ./scripts/pb-browser-profile-bootstrap.sh "${bootstrap_args[@]}" \
+        2>&1 | tee "${validation_dir}/bootstrap.log"
+      ;;
+    *)
+      echo "ERROR: unsupported bootstrap mode: ${bootstrap_mode}. Use docker or host." >&2
+      exit 64
+      ;;
+  esac
 else
   log "== skip bootstrap; using existing profile =="
   if [[ ! -d "${profile_dir}" ]]; then

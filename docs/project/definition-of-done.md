@@ -453,3 +453,5 @@ Last release: v0.1.102
 | DOD-153 | pb ask reuses a held auth-ready browser session instead of launching a competing profile context | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_held_auth_session_reuse.py`; ask preflight probes held auth-readiness and refuses Singleton* cleanup while held session is active | v0.1.103.10.9 |
 
 | DOD-154 | pb ask sends through the held auth-ready current page without target conversation navigation | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_held_auth_session_reuse.py`; held auth-ready ask sets `navigation_mode=held_auth_ready_current_page` and skips direct project conversation URL navigation | v0.1.103.10.10 |
+
+| DOD-155 | standard profile can be bootstrapped by a visible Docker-launched Chrome fingerprint | in_progress | `scripts/pb-docker-browser-profile-bootstrap.sh`; `scripts/pb-browser-cloudflare-validation.sh`; validation defaults to Docker visual bootstrap and preserves host bootstrap as compatibility mode | v0.1.103.10.11 |

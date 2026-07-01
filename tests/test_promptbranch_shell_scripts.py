@@ -3283,3 +3283,35 @@ def test_docker_challenge_exporter_returns_no_matching_artifacts_without_manifes
     assert "status': 'no_matching_artifacts'" in script
     assert "missing staging manifest treated as clean no-op" in script
     assert "matching_count" in script
+
+def test_docker_browser_profile_bootstrap_runs_chrome_inside_container() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "pb-docker-browser-profile-bootstrap.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "Docker-launched Chrome" in script
+    assert "docker run --rm -it" in script
+    assert "google-chrome" in script
+    assert "--user-data-dir=/app/profile" in script
+    assert "/tmp/.X11-unix:/tmp/.X11-unix" in script
+    assert "XAUTHORITY=/tmp/.docker.xauth" in script
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
+    assert ".pb_profile/browser/default" in script
+    assert "PROMPTBRANCH_DOCKER_BOOTSTRAP_EXTRA_ARGS" in script
+    assert "http://localhost:8000/v1/project-sources" not in script
+    assert "http://localhost:8000/v1/login-check" not in script
+
+
+def test_standard_browser_validation_defaults_to_docker_visual_bootstrap() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+
+    assert 'bootstrap_mode="${PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE:-docker}"' in script
+    assert "--docker-bootstrap" in script
+    assert "--host-bootstrap" in script
+    assert "pb-docker-browser-profile-bootstrap.sh" in script
+    assert "visible Docker Chrome login bootstrap" in script
+    assert "bootstrap_mode=${bootstrap_mode}" in script
+    assert "PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host" in script
+    assert script.index("pb-docker-browser-profile-bootstrap.sh") < script.index("docker-browser-parity-cloudflare-check.sh")

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
-active candidate version: v0.1.103.10.10
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
-next normal slice: v0.1.103.10.10 — pb ask sends through held auth-ready current page
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip
+active candidate version: v0.1.103.10.11
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip
+next normal slice: v0.1.103.10.11 — Docker-originated visible browser profile bootstrap
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -871,3 +871,9 @@ Expected evidence: `held_session_reused=true` in service result/log evidence and
 `v0.1.103.10.10` repairs the remaining `pb ask` smoke failure after `v0.1.103.10.9`. The log showed `pb ask` did reuse the held auth-readiness browser session, but then navigated from the ready `https://chatgpt.com/` composer to the configured project conversation URL, which triggered Cloudflare (`Just a moment...`) and manual-login polling. This candidate makes held-session ask send through the already auth-ready current page instead of navigating away first.
 
 Expected next validation: auth-only validation, then `pb ask "Reply with exactly the single token PB_ASK_OK and nothing else."` should show `navigation_mode=held_auth_ready_current_page` / `navigation_skipped=true` and return `PB_ASK_OK`.
+
+## v0.1.103.10.11 candidate status
+
+`v0.1.103.10.10` still hit Cloudflare immediately during auth-only validation even though the same standard profile had previously worked after host bootstrap. The likely weakness is that a host-created browser profile does not always carry the same trust/fingerprint state when reused by Docker/Patchright/Xvfb. `v0.1.103.10.11` adds a Docker-originated visible Chrome bootstrap so the operator can clear Cloudflare and log in using Chrome launched from the Promptbranch Docker image against the same `/app/profile` bind mount later used by auth-readiness and `pb ask`.
+
+Out of scope preserved: Project Source mutation, v0.1.104.x host-CDP browser manager, ChatGPT Project deletion, Git commit/push, and adoption behavior changes.

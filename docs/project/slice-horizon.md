@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.9 | pb ask reuses held auth-ready browser session | active | Reuse the held standard-browser auth-readiness session for pb ask without Singleton* cleanup or competing browser contexts | Project Source mutation, host-CDP session manager, deployment, artifact adoption |
+| v0.1.103.10.11 | Docker-originated visible browser profile bootstrap | active | Bootstrap the standard profile using visible Chrome launched from the Promptbranch Docker image and mounted as `/app/profile` | Project Source mutation, host-CDP session manager, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -29,6 +29,17 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 
 `v0.1.103.10.9` is the active standard-browser repair horizon after auth-readiness passed but `pb ask` opened a competing profile context. It remains candidate-only and keeps Project Source mutation plus v0.1.104.x host-CDP work out of scope.
 
-## v0.1.103.10.10 active repair horizon
+
+## v0.1.103.10.11 active repair horizon
+
+`v0.1.103.10.11` is the active standard-browser repair horizon after `v0.1.103.10.10` still received Cloudflare immediately during auth-only validation. It adds Docker-originated visible browser profile bootstrap while keeping Project Source mutation and v0.1.104.x host-CDP work out of scope.
+
+- status: active
+- release_mode: repair
+- scope: bootstrap the standard profile using visible Chrome launched from the Promptbranch Docker image and mounted as `/app/profile`
+- version: v0.1.103.10.11
+- slice: v0.1.103.10.11 — Docker-originated visible browser profile bootstrap
+
+## v0.1.103.10.10 previous repair horizon
 
 `v0.1.103.10.10` is the active standard-browser repair horizon after `v0.1.103.10.9` proved held-session reuse but still navigated to a Cloudflare-prone project conversation URL before sending. It remains candidate-only and keeps Project Source mutation plus v0.1.104.x host-CDP work out of scope.

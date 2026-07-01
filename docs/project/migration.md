@@ -761,3 +761,7 @@ No data migration. Operators should stop any hanging `pb ask`, restart the Docke
 ## v0.1.103.10.10 migration
 
 No data migration. Install the candidate ZIP, rerun auth-only validation, then rerun the `pb ask` smoke. If an old held browser session is still challenged, stop the service and rerun standard browser auth-readiness before retrying.
+
+## v0.1.103.10.11 migration
+
+No data migration is required. Operators may reuse `.pb_profile/browser/default`, but when Docker auth-readiness reports `Just a moment...`, run the Docker visual bootstrap so Chrome inside the Promptbranch image writes the profile state through the `/app/profile` bind mount.
