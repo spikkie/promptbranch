@@ -719,3 +719,35 @@ def test_docker_parity_project_source_runs_passive_preflight_before_mutation(mon
     assert payload["ok"] is True
     assert payload["project_source_mutation_gate"] == "docker_browser_parity_preflight_passed"
     assert payload["auth_readiness_preflight"]["status"] == "auth_preflight_ready"
+
+
+def test_docker_parity_project_source_preflight_browser_context_unavailable_is_structured(monkeypatch, tmp_path) -> None:
+    from promptbranch_browser_auth.exceptions import BrowserContextUnavailableError
+
+    class FakeService:
+        settings = _fake_settings(str(tmp_path))
+
+        async def run_passive_auth_readiness(self, keep_open: bool = False):
+            raise BrowserContextUnavailableError(
+                "browser_context_unavailable_held_auth_session_active: refusing to clear Singleton* while held auth-readiness session is active"
+            )
+
+        async def add_project_source(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("Project Source mutation must not run when browser preflight is unavailable")
+
+    monkeypatch.setenv("PROMPTBRANCH_DOCKER_BROWSER_PROFILE", "standard-browser")
+    monkeypatch.delenv("PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION", raising=False)
+    monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/project-sources",
+        data={"type": "file", "allow_project_source_mutation": "true"},
+        files={"file": ("candidate.zip", b"zip-bytes", "application/zip")},
+    )
+
+    assert response.status_code == 423
+    detail = response.json()["detail"]
+    assert detail["status"] == "project_source_preflight_browser_context_unavailable"
+    assert detail["release_blocking"] is True
+    assert detail["error_type"] == "BrowserContextUnavailableError"

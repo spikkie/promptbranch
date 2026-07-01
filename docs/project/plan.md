@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
-active candidate version: v0.1.103.10.13
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
-next normal slice: v0.1.103.10.13 — guarded pbsa Project Source mutation intent
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+active candidate version: v0.1.103.10.14
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+next normal slice: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1825,3 +1825,11 @@ project_source_mutation_intent=per_request
 persistence_verified=true
 project_source_mutated=true
 ```
+
+## v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+
+Repair target: the live `pbsa` run produced HTTP 500 because Project Source preflight launched a second persistent browser while an auth-ready project session was held. This slice makes readiness preflight and source upload reuse compatible held auth sessions and maps browser-context-unavailable failures to structured release-blocking responses.
+
+Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip` must either mutate with preflight evidence or fail with a structured non-500 diagnostic.

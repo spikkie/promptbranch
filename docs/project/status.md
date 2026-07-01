@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
-active candidate version: v0.1.103.10.13
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.13.zip
-next normal slice: v0.1.103.10.13 — guarded pbsa Project Source mutation intent
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+active candidate version: v0.1.103.10.14
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.14.zip
+next normal slice: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -888,3 +888,13 @@ Baseline: `v0.1.103.10.12` candidate line after project-scoped `pb ask` repair.
 Candidate intent: allow explicit CLI source-add mutation again while preserving service fail-closed behavior for calls that do not carry operator mutation intent.
 
 Validation required: focused API/client tests, control-surface validation, artifact hygiene, operator live `pbsa` source-add proof.
+
+## v0.1.103.10.14 status
+
+Baseline: `v0.1.103.10.13` candidate after guarded per-request `pbsa` mutation intent.
+
+Status: candidate.
+
+Scope: reuse compatible held auth-readiness session during Project Source mutation preflight and source upload, preserving Project Source mutation as explicit operator intent only.
+
+Validation: focused held-session/API tests pending/live operator `pbsa` pending.

@@ -1344,17 +1344,7 @@ class ChatGPTBrowserClient:
         self._attach_context_debug(context, page, operation_name)
         return playwright, context, page
 
-    async def auth_readiness_session_status(self) -> dict[str, Any]:
-        session = await self._held_auth_readiness_session()
-        if session is None:
-            return {
-                "ok": False,
-                "action": "auth_readiness_session_status",
-                "status": "no_held_auth_readiness_session",
-                "held_session": {"active": False},
-                "profile_dir": self.config.profile_dir,
-                "release_blocking": True,
-            }
+    async def _auth_readiness_session_status_for(self, key: str, session: dict[str, Any]) -> dict[str, Any]:
         page = session.get("page")
         try:
             state = await self._probe_auth_readiness_state(page)
@@ -1367,7 +1357,9 @@ class ChatGPTBrowserClient:
             return self._attach_rate_limit_telemetry(result)
         except Exception as exc:
             async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
-                _AUTH_READINESS_HELD_SESSIONS.pop(self._auth_readiness_session_key(), None)
+                current = _AUTH_READINESS_HELD_SESSIONS.get(key)
+                if current is session:
+                    _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
             await self._close_auth_readiness_held_session(session, reason="status_probe_failed")
             return {
                 "ok": False,
@@ -1379,6 +1371,19 @@ class ChatGPTBrowserClient:
                 "held_session": {"active": False},
                 "profile_dir": self.config.profile_dir,
             }
+
+    async def auth_readiness_session_status(self) -> dict[str, Any]:
+        session = await self._held_auth_readiness_session()
+        if session is None:
+            return {
+                "ok": False,
+                "action": "auth_readiness_session_status",
+                "status": "no_held_auth_readiness_session",
+                "held_session": {"active": False},
+                "profile_dir": self.config.profile_dir,
+                "release_blocking": True,
+            }
+        return await self._auth_readiness_session_status_for(self._auth_readiness_session_key(), session)
 
     def _locator_page(self, locator: Any) -> Any | None:
         page = getattr(locator, 'page', None)
@@ -1557,13 +1562,26 @@ class ChatGPTBrowserClient:
             channel=self.config.browser_channel or "default",
             keep_open=keep_open,
         )
-        existing_session = await self._held_auth_readiness_session()
-        if existing_session is not None:
+        existing_key, existing_session, existing_match = await self._compatible_held_auth_readiness_session()
+        if existing_session is not None and existing_key is not None:
             if keep_open:
                 existing_session["expires_at_monotonic"] = time.monotonic() + self._auth_readiness_keep_open_seconds()
                 existing_session["ttl_seconds"] = self._auth_readiness_keep_open_seconds()
-                self._log("auth-readiness", "extended held auth-readiness browser session", session_key=existing_session.get("session_key"))
-            return await self.auth_readiness_session_status()
+                self._log(
+                    "auth-readiness",
+                    "extended compatible held auth-readiness browser session",
+                    session_key=existing_session.get("session_key"),
+                    match_mode=existing_match,
+                    requested_project_url=self.config.project_url,
+                )
+            self._log(
+                "auth-readiness",
+                "reusing compatible held auth-readiness browser session for readiness check",
+                session_key=existing_session.get("session_key"),
+                match_mode=existing_match,
+                requested_project_url=self.config.project_url,
+            )
+            return await self._auth_readiness_session_status_for(existing_key, existing_session)
         if keep_open:
             return await self._run_passive_auth_readiness_keep_open()
         return await self._run_with_context(
@@ -2101,6 +2119,16 @@ class ChatGPTBrowserClient:
             display_name=display_name,
             keep_open=keep_open,
         )
+        held_result = await self._try_add_project_source_with_held_auth_ready_session(
+            source_kind=source_kind,
+            value=value,
+            file_path=file_path,
+            display_name=display_name,
+            keep_open=keep_open,
+            overwrite_existing=overwrite_existing,
+        )
+        if held_result is not None:
+            return held_result
         return await self._run_with_context(
             operation_name="project_source_add",
             operation=self._add_project_source_operation,
@@ -2112,6 +2140,131 @@ class ChatGPTBrowserClient:
             overwrite_existing=overwrite_existing,
             respect_history_rate_limit_cooldown=False,
         )
+
+    async def _try_add_project_source_with_held_auth_ready_session(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str],
+        file_path: Optional[str],
+        display_name: Optional[str],
+        keep_open: bool,
+        overwrite_existing: bool,
+    ) -> dict[str, Any] | None:
+        session_key, session, match_mode = await self._compatible_held_auth_readiness_session()
+        if session is None or session_key is None:
+            self._log(
+                "project-source-add",
+                "no held auth-readiness session available before Project Source add; launching normal browser context",
+                profile_dir=self.config.profile_dir,
+                driver=self.driver_name,
+                browser_channel=self.config.browser_channel or "default",
+            )
+            return None
+
+        context = session.get("context")
+        page = session.get("page")
+        if context is None or page is None:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="project_source_reuse_missing_context_or_page")
+            return {
+                "ok": False,
+                "action": "project_source_add",
+                "status": "held_auth_ready_session_invalid",
+                "error": "held auth-readiness session had no context/page; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_invalid",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "project_source_mutated": False,
+                "release_blocking": True,
+            }
+
+        try:
+            state = await self._probe_auth_readiness_state(page)
+            status = self._auth_readiness_status_from_state(state)
+            session_status = self._auth_readiness_result_from_state(
+                state,
+                action="project_source_preflight_held_auth_readiness_session_status",
+                held_session=session,
+            )
+            session_status = self._attach_rate_limit_telemetry(session_status)
+        except Exception as exc:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="project_source_preflight_probe_failed")
+            return {
+                "ok": False,
+                "action": "project_source_add",
+                "status": "held_auth_ready_session_probe_failed",
+                "error": f"held auth-readiness session probe failed before Project Source add: {type(exc).__name__}: {exc}",
+                "error_type": type(exc).__name__,
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "project_source_mutated": False,
+                "release_blocking": True,
+            }
+
+        if not (
+            status == "auth_preflight_ready"
+            and bool(session_status.get("composer_visible"))
+            and bool(session_status.get("logged_in"))
+            and not bool(session_status.get("challenge_detected"))
+        ):
+            await self._remove_held_auth_readiness_session(session_key, session, reason=f"project_source_preflight_{status}")
+            return {
+                "ok": False,
+                "action": "project_source_add",
+                "status": "held_auth_ready_session_not_ready",
+                "error": "held auth-readiness session was challenged/stale before Project Source add; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_not_ready",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "held_session_status": session_status,
+                "project_source_mutated": False,
+                "release_blocking": True,
+                "recovery_hint": "Run the standard browser auth-readiness bootstrap/check again before retrying pbsa.",
+            }
+
+        self._log(
+            "project-source-add",
+            "reusing held auth-readiness browser session for Project Source add",
+            session_key=session_key,
+            match_mode=match_mode,
+            profile_dir=self.config.profile_dir,
+            project_url=self.config.project_url,
+        )
+
+        try:
+            result = await self._add_project_source_operation(
+                context=context,
+                page=page,
+                source_kind=source_kind,
+                value=value,
+                file_path=file_path,
+                display_name=display_name,
+                keep_open=keep_open,
+                overwrite_existing=overwrite_existing,
+            )
+            if isinstance(result, dict):
+                result.setdefault("held_session_reused", True)
+                result.setdefault("held_session_match_mode", match_mode)
+                result.setdefault("held_session_key", session_key)
+                result.setdefault("held_session_status", session_status)
+                result = self._attach_rate_limit_telemetry(result)
+            self._log("result", "Project Source add completed via held auth-readiness session", result_type=type(result).__name__)
+            return result
+        except Exception as exc:
+            current_url = await self._safe_page_url(page)
+            self._log(
+                "error",
+                "Project Source add failed while reusing held auth-readiness session",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                current_url=current_url,
+                session_key=session_key,
+            )
+            await self._dump_failure_artifacts(page, "project_source_add_held_session", exc)
+            raise
 
     async def discover_project_source_capabilities(
         self,

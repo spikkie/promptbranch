@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.13 | guarded pbsa Project Source mutation intent | active | Allow explicit CLI source-add mutation only after Docker browser auth/profile preflight passes | direct API mutation without intent, host-CDP session manager, deployment, artifact adoption |
+| v0.1.103.10.14 | pbsa reuses held auth-ready browser session for mutation preflight | active | Reuse held project-auth session for explicit CLI source-add mutation preflight and upload | direct API mutation without intent, host-CDP session manager, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -59,3 +59,13 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 - scope: allow explicit CLI source-add mutation only after Docker browser auth/profile preflight passes
 - version: v0.1.103.10.13
 - slice: v0.1.103.10.13 — guarded pbsa Project Source mutation intent
+
+## Active repair — v0.1.103.10.14
+
+`v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight` remains inside the standard browser repair line and does not advance v0.1.104.
+
+- status: active
+- release_mode: repair
+- scope: reuse compatible held auth-readiness session during Project Source mutation preflight and upload
+- version: v0.1.103.10.14
+- slice: v0.1.103.10.14 — pbsa reuses held auth-ready browser session for mutation preflight

@@ -672,7 +672,21 @@ async def _require_project_source_mutation_preflight(project_url: Optional[str],
             },
         )
 
-    readiness = await svc.run_passive_auth_readiness(keep_open=False)
+    try:
+        readiness = await svc.run_passive_auth_readiness(keep_open=False)
+    except BrowserContextUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail={
+                "ok": False,
+                "status": "project_source_preflight_browser_context_unavailable",
+                "release_blocking": True,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "runtime": runtime,
+                "recovery_hint": "Reuse or close the active held auth-readiness browser session before retrying pbsa.",
+            },
+        ) from exc
     required = {
         "logged_in": readiness.get("logged_in") is True,
         "challenge_clear": readiness.get("challenge_detected") is False,
