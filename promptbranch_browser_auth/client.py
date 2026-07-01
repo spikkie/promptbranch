@@ -1756,6 +1756,7 @@ class ChatGPTBrowserClient:
                 keep_open=keep_open,
                 service_timeout_seconds=service_timeout_seconds,
                 prefer_button_submit=prefer_button_submit,
+                reuse_current_page_if_ready=True,
             )
             if isinstance(result, dict):
                 result.setdefault("held_session_reused", True)
@@ -3010,6 +3011,7 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
         service_timeout_seconds: Optional[float] = None,
         prefer_button_submit: bool = False,
+        reuse_current_page_if_ready: bool = False,
     ) -> dict[str, Any]:
         operation_started = time.monotonic()
         ask_operation_deadline_monotonic = self._ask_operation_deadline_monotonic(
@@ -3037,18 +3039,81 @@ class ChatGPTBrowserClient:
         phase_timings["response_request_marker_count"] = response_request_binding.get("response_request_marker_count")
         phase_timings["response_request_nonce_injected"] = response_request_binding.get("response_request_nonce_injected")
 
+        target_url = conversation_url or self.config.project_url
+        requested_target_url = target_url
+        using_held_current_page = False
+        held_current_page_status: dict[str, Any] | None = None
+
         phase_started = time.monotonic()
-        await self.ensure_logged_in(page, context)
+        if reuse_current_page_if_ready:
+            held_state = await self._probe_auth_readiness_state(page)
+            held_status = self._auth_readiness_status_from_state(held_state)
+            held_current_page_status = self._auth_readiness_result_from_state(
+                held_state,
+                action="ask_held_auth_ready_current_page_status",
+                held_session=None,
+            )
+            if (
+                held_status == "auth_preflight_ready"
+                and bool(held_current_page_status.get("composer_visible"))
+                and bool(held_current_page_status.get("logged_in"))
+                and not bool(held_current_page_status.get("challenge_detected"))
+            ):
+                current_url = held_current_page_status.get("current_url") or await self._safe_page_url(page)
+                if isinstance(current_url, str) and current_url.strip():
+                    target_url = current_url.strip()
+                using_held_current_page = True
+                self._log(
+                    "ask",
+                    "using held auth-ready current page for ask; skipping target navigation",
+                    current_url=target_url,
+                    requested_target_url=requested_target_url,
+                    composer_visible=held_current_page_status.get("composer_visible"),
+                    logged_in=held_current_page_status.get("logged_in"),
+                )
+            else:
+                phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+                result = {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "held_auth_ready_current_page_not_ready",
+                    "error": "held auth-ready session was not ready at send time; refusing to navigate to a Cloudflare-prone target URL",
+                    "error_type": "held_auth_ready_current_page_not_ready",
+                    "requested_target_url": requested_target_url,
+                    "held_current_page_status": held_current_page_status,
+                    "partial_result": True,
+                    "release_blocking": True,
+                    "ask_phase_timings": phase_timings,
+                }
+                self._record_ask_progress(**result)
+                return result
+        else:
+            await self.ensure_logged_in(page, context)
         mark_phase("auth_check_seconds", phase_started)
 
-        target_url = conversation_url or self.config.project_url
         phase_started = time.monotonic()
-        navigation_evidence = await self._goto(page, target_url, label="chat-home-after-login")
+        if using_held_current_page:
+            navigation_evidence = {
+                "mode": "held_auth_ready_current_page",
+                "skipped": True,
+                "refresh_required": False,
+                "reason": "held_auth_ready_current_page_has_visible_composer",
+                "requested_target_url": requested_target_url,
+                "current_url": target_url,
+            }
+        else:
+            navigation_evidence = await self._goto(page, target_url, label="chat-home-after-login")
         mark_phase("navigation_seconds", phase_started)
         if isinstance(navigation_evidence, dict):
             phase_timings["navigation_mode"] = navigation_evidence.get("mode")
             phase_timings["navigation_skipped"] = navigation_evidence.get("skipped")
             phase_timings["navigation_refresh_required"] = navigation_evidence.get("refresh_required")
+            phase_timings["navigation_reason"] = navigation_evidence.get("reason")
+            phase_timings["requested_target_url"] = navigation_evidence.get("requested_target_url")
+            phase_timings["effective_target_url"] = navigation_evidence.get("current_url") or target_url
+        phase_timings["held_auth_ready_current_page_used"] = bool(using_held_current_page)
+        if held_current_page_status is not None:
+            phase_timings["held_current_page_status"] = held_current_page_status.get("status")
 
         phase_started = time.monotonic()
         hydration = await self._ensure_target_conversation_hydrated(

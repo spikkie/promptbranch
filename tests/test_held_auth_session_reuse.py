@@ -162,3 +162,66 @@ def test_run_with_context_skips_singleton_cleanup_when_held_session_is_active(tm
         assert str(exc) == "stop before launching browser"
 
     assert cleared == []
+
+
+def test_ask_operation_sends_through_held_current_page_without_target_navigation(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/demo/c/chat-1")
+    page = object()
+    context = object()
+    hydration_calls: list[dict[str, object]] = []
+
+    async def fake_probe(probe_page):
+        assert probe_page is page
+        return {
+            "challenge_detected": False,
+            "composer_visible": True,
+            "logged_in": True,
+            "auth_visible": True,
+            "current_url": "https://chatgpt.com/",
+            "title": "ChatGPT",
+        }
+
+    async def forbidden_ensure_logged_in(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("held auth-ready ask must not run ensure_logged_in/navigation precheck")
+
+    async def forbidden_goto(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("held auth-ready ask must not navigate to the target conversation URL")
+
+    async def fake_hydration(*_args, **kwargs):
+        hydration_calls.append(kwargs)
+        return {"status": "not_required", "target_url": kwargs.get("target_url")}
+
+    async def stop_at_input_wait(*_args, **_kwargs):
+        raise RuntimeError("stop after navigation decision")
+
+    monkeypatch.setattr(client, "_probe_auth_readiness_state", fake_probe)
+    monkeypatch.setattr(client, "ensure_logged_in", forbidden_ensure_logged_in)
+    monkeypatch.setattr(client, "_goto", forbidden_goto)
+    monkeypatch.setattr(client, "_ensure_target_conversation_hydrated", fake_hydration)
+    monkeypatch.setattr(client, "_wait_for_chat_input", stop_at_input_wait)
+
+    try:
+        asyncio.run(
+            client._ask_question_operation(
+                context=context,
+                page=page,
+                prompt="hello",
+                file_path=None,
+                attachment_paths=None,
+                conversation_url="https://chatgpt.com/g/demo/c/chat-1",
+                expect_json=False,
+                keep_open=False,
+                service_timeout_seconds=None,
+                prefer_button_submit=False,
+                reuse_current_page_if_ready=True,
+            )
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "stop after navigation decision"
+
+    assert hydration_calls
+    assert hydration_calls[0]["target_url"] == "https://chatgpt.com/"
+    evidence = hydration_calls[0]["navigation_evidence"]
+    assert evidence["mode"] == "held_auth_ready_current_page"
+    assert evidence["skipped"] is True
+    assert evidence["requested_target_url"] == "https://chatgpt.com/g/demo/c/chat-1"

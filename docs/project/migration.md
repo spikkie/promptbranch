@@ -757,3 +757,7 @@ No data migration. Install the candidate ZIP over `v0.1.103.10.7` and rerun auth
 ## v0.1.103.10.9 migration
 
 No data migration. Operators should stop any hanging `pb ask`, restart the Docker service if necessary, rerun auth-readiness to create a clean held session, then retry the `pb ask` smoke after installing this candidate. Project Source mutation remains disabled by default.
+
+## v0.1.103.10.10 migration
+
+No data migration. Install the candidate ZIP, rerun auth-only validation, then rerun the `pb ask` smoke. If an old held browser session is still challenged, stop the service and rerun standard browser auth-readiness before retrying.

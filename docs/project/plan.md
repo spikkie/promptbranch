@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
-active candidate version: v0.1.103.10.9
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
-next normal slice: v0.1.103.10.9 — pb ask reuses held auth-ready browser session
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
+active candidate version: v0.1.103.10.10
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
+next normal slice: v0.1.103.10.10 — pb ask sends through held auth-ready current page
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1784,3 +1784,9 @@ Validation target: `scripts/docker-browser-parity-cloudflare-check.sh` should re
 Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
 
 Plan: keep the standard-browser repair line narrow. Reuse the existing held auth-readiness browser session for `pb ask` when profile/driver/channel match, do a quick readiness probe before submission, and fail fast if the held session is challenged or stale. Do not introduce the later host-CDP browser session manager and do not enable Project Source mutation.
+
+## v0.1.103.10.10 — pb ask sends through held auth-ready current page
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
+
+Plan: extend the `v0.1.103.10.9` held-session repair. Reusing the held session is not sufficient if the ask operation then navigates to the target conversation URL and triggers Cloudflare. When the held page is already logged in with a visible composer, skip target navigation and submit through the current auth-ready page. Preserve Project Source mutation disabled and keep v0.1.104.x host-CDP work out of scope.

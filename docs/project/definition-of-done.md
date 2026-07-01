@@ -451,3 +451,5 @@ Last release: v0.1.102
 | DOD-152 | successful auth-readiness evidence export does not require a challenge manifest | in_progress | Docker standard-browser validation may clear Cloudflare immediately; missing staged challenge manifest is normalized only when readiness status is already cloudflare_cleared_* | v0.1.103.10.8 |
 
 | DOD-153 | pb ask reuses a held auth-ready browser session instead of launching a competing profile context | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_held_auth_session_reuse.py`; ask preflight probes held auth-readiness and refuses Singleton* cleanup while held session is active | v0.1.103.10.9 |
+
+| DOD-154 | pb ask sends through the held auth-ready current page without target conversation navigation | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_held_auth_session_reuse.py`; held auth-ready ask sets `navigation_mode=held_auth_ready_current_page` and skips direct project conversation URL navigation | v0.1.103.10.10 |

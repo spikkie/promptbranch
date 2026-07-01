@@ -377,3 +377,13 @@ Control-surface tokens: v0.1.103.10.8 chatgpt_claudecode_workflow-2_v0.1.103.10.
 Control-surface tokens: v0.1.103.10.9 chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip held auth-ready session reuse pb ask singleton cleanup guard
 
 Control-surface slice token: v0.1.103.10.9 — pb ask reuses held auth-ready browser session
+
+## v0.1.103.10.10
+
+| Version | Kind | Scope | State | Validation | DoD movement | Acceptance |
+| --- | --- | --- | --- | --- | --- | --- |
+| v0.1.103.10.10 | repair | pb ask sends through held auth-ready current page | candidate | focused held-session tests and control-surface validation required | DOD-154 added; DOD-148..DOD-153 preserved | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.10 chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip held auth-ready current page skip target navigation pb ask Cloudflare avoidance
+
+Control-surface slice token: v0.1.103.10.10 — pb ask sends through held auth-ready current page

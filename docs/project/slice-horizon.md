@@ -28,3 +28,7 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 ## v0.1.103.10.9 active repair horizon
 
 `v0.1.103.10.9` is the active standard-browser repair horizon after auth-readiness passed but `pb ask` opened a competing profile context. It remains candidate-only and keeps Project Source mutation plus v0.1.104.x host-CDP work out of scope.
+
+## v0.1.103.10.10 active repair horizon
+
+`v0.1.103.10.10` is the active standard-browser repair horizon after `v0.1.103.10.9` proved held-session reuse but still navigated to a Cloudflare-prone project conversation URL before sending. It remains candidate-only and keeps Project Source mutation plus v0.1.104.x host-CDP work out of scope.

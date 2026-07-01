@@ -509,3 +509,7 @@ Decision: the Docker browser parity Cloudflare check may normalize a `missing_st
 ### v0.1.103.10.9 — ask must not compete with a held auth-ready profile session
 
 Decision: when a standard-browser auth-readiness run keeps a browser context alive, `pb ask` must first probe and reuse that held session if the profile, browser driver, and channel are compatible. It must not clear `SingletonLock`, `SingletonSocket`, or `SingletonCookie` while the held session is active. If the held session is challenged, stale, or invalid, the safe behavior is to close it and fail fast with recovery guidance rather than silently opening a second competing persistent context.
+
+### v0.1.103.10.10 — held auth-ready ask must not navigate away before send
+
+Decision: when `pb ask` reuses an auth-readiness-held browser page that is already logged in with a visible composer, it must send through that page instead of first navigating to the configured target conversation URL. The observed `v0.1.103.10.9` path reused the session but immediately navigated from `https://chatgpt.com/` to a project conversation URL and triggered Cloudflare again. This repair keeps Project Source mutation disabled and does not introduce the later host-CDP session manager.
