@@ -793,3 +793,7 @@ After installing this candidate, use `pb test api` for repeated API coverage che
 ## v0.1.103.10.19 migration note
 
 After installing this version, rerun `pb test api --json`. No manual copy of `scripts/pb-api-coverage-test.py` into site-packages is required.
+
+## v0.1.103.10.20 migration note
+
+No user migration required. Re-run `pb test api --json`; use `--hold-auth-session` only when explicitly testing held-session behavior.

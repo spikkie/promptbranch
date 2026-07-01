@@ -44,6 +44,7 @@ class Step:
     url: str | None = None
     error: str | None = None
     skip_reason: str | None = None
+    classification: str | None = None
     response_summary: dict[str, Any] | None = None
 
 
@@ -53,6 +54,26 @@ def _json_loads_maybe(data: bytes) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return {"raw_text": text[:4000], "raw_text_length": len(text)}
+
+
+def _payload_text(payload: Any) -> str:
+    try:
+        return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    except Exception:
+        return repr(payload)
+
+
+def _classify_response(status: int | None, payload: Any | None, error: str | None) -> str | None:
+    text = " ".join(part for part in [str(status or ""), error or "", _payload_text(payload)] if part)
+    if "browser_context_unavailable_held_auth_session_active" in text:
+        return "browser_profile_busy"
+    if "project_source_mutation_gate_closed" in text:
+        return "project_source_mutation_gate_closed"
+    if "Too many requests" in text or "conversation_history_rate_limit" in text:
+        return "rate_limited"
+    if "Cloudflare" in text or "challenge_detected" in text and "true" in text.lower():
+        return "auth_challenge_or_cloudflare"
+    return None
 
 
 def _summarize_payload(payload: Any) -> dict[str, Any]:
@@ -158,6 +179,25 @@ class ApiRunner:
             )
         )
 
+    def _browser_body(self, *, keep_open: bool = False) -> dict[str, Any]:
+        return {"keep_open": bool(keep_open), "project_url": self.project_url}
+
+    def _browser_query(self, **extra: Any) -> dict[str, Any]:
+        query: dict[str, Any] = {"keep_open": False, "project_url": self.project_url}
+        query.update(extra)
+        return query
+
+    def _should_keep_auth_session_open(self) -> bool:
+        return bool(self.args.hold_auth_session or self.args.keep_open)
+
+    def _record_busy_classification(self, step: Step, payload: Any | None) -> None:
+        classification = _classify_response(step.http_status, payload, step.error)
+        if classification:
+            step.classification = classification
+            if step.response_summary is None:
+                step.response_summary = {}
+            step.response_summary["classification"] = classification
+
     def request(
         self,
         name: str,
@@ -234,6 +274,7 @@ class ApiRunner:
                 error=f"{type(exc).__name__}: {exc}",
                 response_summary={"traceback": traceback.format_exc(limit=5)},
             )
+        self._record_busy_classification(step, payload)
         self.steps.append(step)
         if self.args.step_delay_seconds > 0 and category in {"browser", "ask", "sources", "projects", "chats", "mutation"}:
             time.sleep(self.args.step_delay_seconds)
@@ -265,41 +306,24 @@ class ApiRunner:
         return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
     def run(self) -> dict[str, Any]:
-        # Root and health are intentionally unauthenticated/read-only.
+        # Root and health are intentionally unauthenticated/read-only.  They
+        # never take browser ownership and are safe before browser smoke tests.
         self.request("root_redirect", "GET", "/", category="status", expected_statuses=[200, 307, 308])
         self.request("healthz", "GET", "/healthz", category="status")
         self.request("docker_browser_runtime", "GET", "/v1/docker/browser-runtime", category="status")
         self.request("browser_status", "GET", "/v1/browser/status", category="status")
         self.request("auth_readiness_session_status", "GET", "/v1/auth-readiness/session/status", category="status", query={"project_url": self.project_url})
 
+        # Serial browser mode deliberately avoids holding an auth-readiness
+        # session before unrelated browser-owning endpoints.  v0.1.103.10.19
+        # proved that auth-readiness keep-open poisons later projects/chats/
+        # sources calls with browser_context_unavailable_held_auth_session_active.
         if self.args.include_browser:
-            self.request("auth_readiness", "POST", "/v1/auth-readiness", category="browser", json_body={"keep_open": self.args.keep_open})
-            self.request("login_check", "POST", "/v1/login-check", category="browser", json_body={"keep_open": False})
+            self.request("login_check", "POST", "/v1/login-check", category="browser", json_body=self._browser_body(keep_open=False))
         else:
-            self.skip("auth_readiness", "POST", "/v1/auth-readiness", "browser", "--no-browser")
             self.skip("login_check", "POST", "/v1/login-check", "browser", "--no-browser")
 
-        if self.args.include_ask:
-            target = self.conversation_url or self.project_url
-            self.request(
-                "ask",
-                "POST",
-                "/v1/ask",
-                category="ask",
-                multipart={
-                    "prompt": f"Reply with exactly the single token {self.args.ask_token} and nothing else.",
-                    "expect_json": "false",
-                    "keep_open": "false",
-                    "project_url": self.project_url,
-                    "conversation_url": target,
-                    "service_timeout_seconds": str(self.args.ask_timeout_seconds),
-                },
-                timeout=max(self.args.timeout_seconds, self.args.ask_timeout_seconds + 15),
-            )
-        else:
-            self.skip("ask", "POST", "/v1/ask", "ask", "--no-ask")
-
-        self.request("projects_list", "GET", "/v1/projects", category="projects", query={"keep_open": False, "project_url": self.project_url})
+        self.request("projects_list", "GET", "/v1/projects", category="projects", query=self._browser_query())
         self.request(
             "projects_resolve",
             "POST",
@@ -323,8 +347,8 @@ class ApiRunner:
             expected_statuses=[200, 400, 403, 423],
         )
 
-        self.request("chats_list", "GET", "/v1/chats", category="chats", query={"keep_open": False, "project_url": self.project_url})
-        self.request("chats_debug_light", "GET", "/v1/chats/debug", category="chats", query={"keep_open": False, "project_url": self.project_url, "scroll_rounds": 1, "wait_ms": 100, "include_history": "false"})
+        self.request("chats_list", "GET", "/v1/chats", category="chats", query=self._browser_query())
+        self.request("chats_debug_light", "GET", "/v1/chats/debug", category="chats", query=self._browser_query(scroll_rounds=1, wait_ms=100, include_history="false"))
         if self.conversation_url:
             self.request(
                 "chats_get",
@@ -337,9 +361,9 @@ class ApiRunner:
             self.skip("chats_get", "POST", "/v1/chats/get", "chats", "no conversation_url in state or arguments")
         self.skip("chats_download_artifact", "POST", "/v1/chats/download-artifact", "artifact", "requires known artifact URL/filename")
 
-        self.request("debug_rate_limit", "GET", "/v1/debug/rate-limit", category="debug", query={"keep_open": False, "project_url": self.project_url, "probe_backend": "false", "wait_ms": 100})
-        self.request("project_source_capabilities", "GET", "/v1/project-source-capabilities", category="sources", query={"keep_open": False, "project_url": self.project_url})
-        self.request("project_sources_list", "GET", "/v1/project-sources", category="sources", query={"keep_open": False, "project_url": self.project_url})
+        self.request("debug_rate_limit", "GET", "/v1/debug/rate-limit", category="debug", query=self._browser_query(probe_backend="false", wait_ms=100))
+        self.request("project_source_capabilities", "GET", "/v1/project-source-capabilities", category="sources", query=self._browser_query())
+        self.request("project_sources_list", "GET", "/v1/project-sources", category="sources", query=self._browser_query())
 
         if self.args.source_file and self.args.allow_source_add:
             source_path = Path(self.args.source_file)
@@ -405,6 +429,37 @@ class ApiRunner:
         else:
             self.skip("project_sources_remove", "POST", "/v1/project-sources/remove", "mutation", "requires --allow-source-remove and --remove-source-name")
 
+        if self.args.include_ask:
+            target = self.conversation_url or self.project_url
+            self.request(
+                "ask",
+                "POST",
+                "/v1/ask",
+                category="ask",
+                multipart={
+                    "prompt": f"Reply with exactly the single token {self.args.ask_token} and nothing else.",
+                    "expect_json": "false",
+                    "keep_open": "false",
+                    "project_url": self.project_url,
+                    "conversation_url": target,
+                    "service_timeout_seconds": str(self.args.ask_timeout_seconds),
+                },
+                timeout=max(self.args.timeout_seconds, self.args.ask_timeout_seconds + 15),
+            )
+        else:
+            self.skip("ask", "POST", "/v1/ask", "ask", "--no-ask")
+
+        if self.args.include_browser:
+            self.request(
+                "auth_readiness",
+                "POST",
+                "/v1/auth-readiness",
+                category="browser",
+                json_body=self._browser_body(keep_open=self._should_keep_auth_session_open()),
+            )
+        else:
+            self.skip("auth_readiness", "POST", "/v1/auth-readiness", "browser", "--no-browser")
+
         self.skip("test_suite_run", "POST", "/v1/test-suite/run", "heavy", "use pb test browser/full explicitly; skipped by API coverage by default")
         self.request("ui_test_suite", "GET", "/ui/test-suite", category="status")
 
@@ -433,6 +488,7 @@ class ApiRunner:
                 "passed": sum(1 for s in self.steps if s.status == "passed"),
                 "failed": len(failed),
                 "skipped": len(skipped),
+                "browser_profile_busy": sum(1 for s in self.steps if s.classification == "browser_profile_busy"),
             },
             "by_category": by_category,
             "steps": [s.__dict__ for s in self.steps],
@@ -457,7 +513,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report-dir")
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--step-delay-seconds", type=float, default=0.0)
-    parser.add_argument("--keep-open", action="store_true", help="Ask auth-readiness to keep the browser session open.")
+    parser.add_argument("--hold-auth-session", action="store_true", help="Leave the final auth-readiness session open. Off by default to avoid self-conflicts.")
+    parser.add_argument("--reuse-held-session", action="store_true", help="Reserved mode for endpoints that can intentionally reuse an active held auth session.")
+    parser.add_argument("--serial-browser-mode", action="store_true", default=True, help="Run browser-owning endpoints one at a time without holding auth-readiness between unrelated calls. Default: enabled.")
+    parser.add_argument("--keep-open", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-browser", dest="include_browser", action="store_false", help="Skip browser-owning auth/login endpoints.")
     parser.add_argument("--no-ask", dest="include_ask", action="store_false", help="Skip the /v1/ask endpoint.")
     parser.add_argument("--ask-token", default="API_ASK_OK")

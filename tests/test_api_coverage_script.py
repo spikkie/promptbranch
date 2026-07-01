@@ -10,9 +10,12 @@ def test_api_coverage_script_help_and_safe_defaults() -> None:
     result = subprocess.run(["python3", str(script), "--help"], text=True, capture_output=True, check=True)
     assert "--allow-source-add" in result.stdout
     assert "--include-source-gate-test" in result.stdout
+    assert "--hold-auth-session" in result.stdout
+    assert "--reuse-held-session" in result.stdout
     text = script.read_text(encoding="utf-8")
     assert "requires --allow-source-add and --source-file" in text
     assert "skipped by default because non-standard service modes may allow mutation" in text
+    assert "browser_profile_busy" in text
 
 
 def test_api_coverage_shell_wrapper_executes_python_script() -> None:
@@ -39,3 +42,17 @@ def test_cli_test_api_uses_installed_module_not_site_packages_scripts() -> None:
     text = cli.read_text(encoding="utf-8")
     assert '"-m", "promptbranch.api_coverage_test"' in text
     assert 'status": "script_missing"' not in text
+
+
+def test_api_coverage_serial_mode_runs_auth_readiness_after_ask() -> None:
+    script = Path(__file__).resolve().parents[1] / "promptbranch" / "api_coverage_test.py"
+    text = script.read_text(encoding="utf-8")
+    run_block = text[text.index("    def run(self) -> dict[str, Any]:"):text.index("    def report(self) -> dict[str, Any]:")]
+    assert run_block.rindex('"project_source_capabilities",') < run_block.rindex('"ask",')
+    assert run_block.rindex('"ask",') < run_block.rindex('"auth_readiness",')
+
+
+def test_api_coverage_classifies_browser_profile_busy() -> None:
+    from promptbranch.api_coverage_test import _classify_response
+
+    assert _classify_response(503, {"detail": "browser_context_unavailable_held_auth_session_active"}, "HTTP Error 503") == "browser_profile_busy"

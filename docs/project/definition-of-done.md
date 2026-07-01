@@ -476,3 +476,5 @@ Last release: v0.1.102
 ## DOD-163 — Install-safe API coverage command
 
 `pb test api` must invoke the API coverage runner as an installed Promptbranch package module, not as a top-level source-tree script path, so the command works after pipx/wheel installation and remains rerunnable after every release.
+
+| DOD-164 | `pb test api` avoids held-session self-conflicts | in_progress | Default serial-browser mode keeps auth-readiness from holding `/app/profile` before unrelated endpoint checks; `browser_context_unavailable_held_auth_session_active` is classified as `browser_profile_busy`. | v0.1.103.10.20 |

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
-active candidate version: v0.1.103.10.19
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
-next normal slice: v0.1.103.10.19 — install-safe pb test api module runner
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
+active candidate version: v0.1.103.10.20
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
+next normal slice: v0.1.103.10.20 — pb test api avoids held-session self-conflicts
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1869,3 +1869,11 @@ Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatg
 ## Active repair slice — v0.1.103.10.19
 
 `v0.1.103.10.19 — install-safe pb test api module runner` repairs the packaging/install path for `pb test api` by invoking an installed package module instead of a non-installed top-level scripts directory.
+
+## Active repair slice — v0.1.103.10.20
+
+`v0.1.103.10.20 — pb test api avoids held-session self-conflicts` changes `pb test api` default ordering to serial browser mode: it no longer holds auth-readiness before unrelated browser-owning endpoint checks, keeps dangerous/mutation endpoints gated, and classifies held-profile conflicts as `browser_profile_busy`.
+
+## Backlog repair slice after v0.1.103.10.20
+
+`v0.1.103.10.21 — browser-owning API endpoints reuse held auth-ready session` remains a backlog repair candidate after the API runner self-conflict is fixed. Target endpoints: login-check, projects list/resolve, chats list/debug/get, rate-limit debug, and project-source capabilities/list.

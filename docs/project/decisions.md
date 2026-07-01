@@ -551,3 +551,9 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
 `pb test api` must not depend on a source-tree-only `scripts/` directory after pipx installation. The runner is packaged as `promptbranch.api_coverage_test`; the shell script remains a source-tree convenience wrapper.
 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
+
+## Decision — v0.1.103.10.20 serializes API coverage browser checks
+
+`pb test api` defaults to serial browser mode and does not keep an auth-readiness session open before projects/chats/sources checks. Held-session reuse testing remains explicit via flags.
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.20.zip
