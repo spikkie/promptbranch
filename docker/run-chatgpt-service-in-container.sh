@@ -7,25 +7,29 @@ reload_setting="${CHATGPT_UVICORN_RELOAD:-0}"
 container_home="${HOME:-/tmp/promptbranch-home}"
 container_cache="${XDG_CACHE_HOME:-/tmp/promptbranch-cache}"
 container_config="${XDG_CONFIG_HOME:-/tmp/promptbranch-config}"
-docker_browser_profile="${PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-promptbranch}"
+docker_browser_profile="${PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-standard-browser}"
 xvfb_screen="${PROMPTBRANCH_DOCKER_XVFB_SCREEN:-1920x1080x24}"
 
 mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/profile /app/debug_artifacts
 
 if [[ -z "${PROMPTBRANCH_PROFILE_DIR:-}" ]]; then
-  export PROMPTBRANCH_PROFILE_DIR="/app/.pb_profile"
+  export PROMPTBRANCH_PROFILE_DIR="/app/profile"
 fi
 
 bonnetjes_cloudflare_parity=0
+standard_browser_mode=0
 if [[ "${docker_browser_profile}" == "bonnetjes-cloudflare-parity" ]]; then
   bonnetjes_cloudflare_parity=1
+fi
+if [[ "${docker_browser_profile}" == "standard-browser" ]]; then
+  standard_browser_mode=1
 fi
 
 # Docker browser parity is a diagnostic launch envelope based on a working
 # Docker browser service pattern: one service process under xvfb-run,
 # Patchright + Chrome, FedCM disabled, default Docker no-sandbox behavior
 # preserved, and an isolated /app/profile browser profile.
-if [[ "${docker_browser_profile}" == "docker-browser-parity" || "${docker_browser_profile}" == "bonnetjes-cloudflare-parity" ]]; then
+if [[ "${docker_browser_profile}" == "docker-browser-parity" || "${docker_browser_profile}" == "bonnetjes-cloudflare-parity" || "${docker_browser_profile}" == "standard-browser" ]]; then
   if [[ -z "${PROMPTBRANCH_PROFILE_DIR:-}" || "${PROMPTBRANCH_PROFILE_DIR}" == "/app/.pb_profile" ]]; then
     export PROMPTBRANCH_PROFILE_DIR="/app/profile"
   fi
@@ -38,11 +42,11 @@ if [[ "${docker_browser_profile}" == "docker-browser-parity" || "${docker_browse
   export CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS="${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}"
 fi
 
-# Bonnetjes exact Cloudflare parity deliberately removes Promptbranch-only
-# headed Patchright safety args and browser-extra args. The goal is to test
-# the minimal working Bonnetjes launch envelope: Xvfb + headed Patchright
-# Chrome + /app/profile + FedCM disabled + preserved default no-sandbox.
-if [[ "${bonnetjes_cloudflare_parity}" == "1" ]]; then
+# Standard browser mode keeps the Cloudflare-safe launch envelope discovered
+# during the Bonnetjes investigation while using a neutral product name and the
+# shared .pb_profile/browser/default host profile. The compatibility Bonnetjes
+# profile mode uses the same launch envelope.
+if [[ "${bonnetjes_cloudflare_parity}" == "1" || "${standard_browser_mode}" == "1" ]]; then
   export PROMPTBRANCH_PROFILE_DIR="/app/profile"
   export CHATGPT_USE_PATCHRIGHT="1"
   export CHATGPT_BROWSER_CHANNEL="chrome"

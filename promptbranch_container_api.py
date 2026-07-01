@@ -255,6 +255,7 @@ class ServiceInfo(BaseModel):
     docker_browser_profile: Optional[str] = None
     docker_browser_parity_mode: bool = False
     bonnetjes_cloudflare_parity_mode: bool = False
+    standard_browser_mode: bool = False
     service_display_mode: Optional[str] = None
     service_under_xvfb: bool = False
     display: Optional[str] = None
@@ -279,6 +280,7 @@ class DockerBrowserRuntimeInfo(BaseModel):
     docker_browser_profile: str
     docker_browser_parity_mode: bool
     bonnetjes_cloudflare_parity_mode: bool = False
+    standard_browser_mode: bool = False
     service_display_mode: Optional[str] = None
     service_under_xvfb: bool
     display: Optional[str] = None
@@ -309,7 +311,8 @@ class DockerBrowserRuntimeInfo(BaseModel):
 _SERVICE_TOKEN = os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN")
 _DEFAULT_PROJECT_URL = os.getenv("CHATGPT_PROJECT_URL", "https://chatgpt.com/")
 _BONNETJES_CLOUDFLARE_PROFILE = "bonnetjes-cloudflare-parity"
-_DOCKER_BROWSER_PROFILE_DIR_MODES = {"docker-browser-parity", _BONNETJES_CLOUDFLARE_PROFILE}
+_STANDARD_BROWSER_PROFILE = "standard-browser"
+_DOCKER_BROWSER_PROFILE_DIR_MODES = {"docker-browser-parity", _BONNETJES_CLOUDFLARE_PROFILE, _STANDARD_BROWSER_PROFILE}
 
 
 def _effective_profile_dir() -> str:
@@ -379,10 +382,13 @@ def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict
     profile_dir = settings.profile_dir
     docker_browser_parity_mode = docker_browser_profile in _DOCKER_BROWSER_PROFILE_DIR_MODES
     bonnetjes_cloudflare_parity_mode = docker_browser_profile == _BONNETJES_CLOUDFLARE_PROFILE
+    standard_browser_mode = docker_browser_profile == _STANDARD_BROWSER_PROFILE
+    cloudflare_safe_browser_mode = bonnetjes_cloudflare_parity_mode or standard_browser_mode
     return {
         "docker_browser_profile": docker_browser_profile,
         "docker_browser_parity_mode": docker_browser_parity_mode,
         "bonnetjes_cloudflare_parity_mode": bonnetjes_cloudflare_parity_mode,
+        "standard_browser_mode": standard_browser_mode,
         "service_display_mode": os.getenv("PROMPTBRANCH_DOCKER_SERVICE_DISPLAY_MODE"),
         "service_under_xvfb": _env_flag("PROMPTBRANCH_DOCKER_SERVICE_UNDER_XVFB", False),
         "display": os.getenv("DISPLAY"),
@@ -400,12 +406,16 @@ def _docker_browser_runtime_payload(settings: ChatGPTAutomationSettings) -> dict
         "browser_extra_args": [part for part in (os.getenv("CHATGPT_BROWSER_EXTRA_ARGS") or "").split() if part],
         "patchright_headed_safe_args": (os.getenv("CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS") or "1"),
         "recommendation": (
-            "Bonnetjes Cloudflare parity envelope active: run only the Cloudflare settle loop"
-            if bonnetjes_cloudflare_parity_mode
+            "standard browser envelope active: run auth-readiness through the shared .pb_profile/browser/default profile"
+            if standard_browser_mode
             else (
+                "Bonnetjes Cloudflare parity envelope active: run only the Cloudflare settle loop"
+                if bonnetjes_cloudflare_parity_mode
+                else (
                 "docker-browser-parity envelope active: run auth-readiness before Project Source mutation"
                 if docker_browser_parity_mode
-                else "set PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity or bonnetjes-cloudflare-parity to test a Docker browser launch envelope"
+                    else "set PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser or docker-browser-parity to test a Docker browser launch envelope"
+                )
             )
         ),
     }
@@ -601,6 +611,7 @@ async def healthz() -> ServiceInfo:
         docker_browser_profile=runtime["docker_browser_profile"],
         docker_browser_parity_mode=runtime["docker_browser_parity_mode"],
         bonnetjes_cloudflare_parity_mode=runtime.get("bonnetjes_cloudflare_parity_mode", False),
+        standard_browser_mode=runtime.get("standard_browser_mode", False),
         service_display_mode=runtime["service_display_mode"],
         service_under_xvfb=runtime["service_under_xvfb"],
         display=runtime["display"],

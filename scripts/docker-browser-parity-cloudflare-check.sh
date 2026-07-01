@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # KISS Cloudflare settle-loop diagnostic for the Promptbranch Docker browser
-# parity envelope and Bonnetjes exact Cloudflare parity envelope. It does not click login, does not start Google auth, does
+# parity envelope and the standard browser Cloudflare-safe envelope. It does not click login, does not start Google auth, does
 # not mutate Project Sources, and does not copy /app/debug_artifacts wholesale.
 # It keeps one Docker browser session alive and polls that same session until
 # the challenge clears, the held session is lost, or the timeout expires.
@@ -40,7 +40,7 @@ Usage: docker-browser-parity-cloudflare-check.sh [--no-recreate] [--max-wait-sec
 Cloudflare challenge settle-loop diagnostic only. This script:
   - starts or reuses the Docker parity browser service
   - supports PROMPTBRANCH_DOCKER_BROWSER_PROFILE=docker-browser-parity
-    and PROMPTBRANCH_DOCKER_BROWSER_PROFILE=bonnetjes-cloudflare-parity
+    and PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser
   - requires docker_browser_parity_mode=true and profile_dir=/app/profile
   - opens one keep-open browser session through /v1/auth-readiness
   - polls /v1/auth-readiness/session/status for the same held session
@@ -81,7 +81,7 @@ ts="$(date -u +%Y%m%dT%H%M%SZ)"
 out_dir="debug_artifacts/docker-browser-parity/cloudflare-check/${ts}"
 mkdir -p "${out_dir}/polls"
 
-export PROMPTBRANCH_DOCKER_BROWSER_PROFILE="${PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-docker-browser-parity}"
+export PROMPTBRANCH_DOCKER_BROWSER_PROFILE="${PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-standard-browser}"
 export PROMPTBRANCH_PROFILE_DIR="${PROMPTBRANCH_PROFILE_DIR:-/app/profile}"
 export CHATGPT_USE_PATCHRIGHT="${CHATGPT_USE_PATCHRIGHT:-1}"
 export CHATGPT_BROWSER_CHANNEL="${CHATGPT_BROWSER_CHANNEL:-chrome}"
@@ -92,7 +92,7 @@ export CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS="${CHATGPT_CLEAR_PROFILE_SINGLETON_
 export CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS="${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}"
 export PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-300}"
 
-if [[ "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "bonnetjes-cloudflare-parity" ]]; then
+if [[ "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "bonnetjes-cloudflare-parity" || "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "standard-browser" ]]; then
   export CHATGPT_USE_PATCHRIGHT="1"
   export CHATGPT_BROWSER_CHANNEL="chrome"
   export CHATGPT_HEADLESS="0"
@@ -104,7 +104,7 @@ if [[ "${PROMPTBRANCH_DOCKER_BROWSER_PROFILE}" == "bonnetjes-cloudflare-parity" 
 fi
 
 assert_host_profile_not_in_docker_build_context() {
-  local host_profile="${PROMPTBRANCH_HOST_PROFILE_DIR:-./.pb_profile_docker}"
+  local host_profile="${PROMPTBRANCH_HOST_PROFILE_DIR:-./.pb_profile/browser/default}"
   python3 - "${repo_root}" "${host_profile}" <<'PY_GUARD'
 from __future__ import annotations
 
@@ -180,7 +180,7 @@ fi
   env | sort | grep -E '^(PROMPTBRANCH_DOCKER_BROWSER_PROFILE|PROMPTBRANCH_PROFILE_DIR|PROMPTBRANCH_HOST_PROFILE_DIR|PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS|CHATGPT_USE_PATCHRIGHT|CHATGPT_BROWSER_CHANNEL|CHATGPT_HEADLESS|CHATGPT_DISABLE_FEDCM|CHATGPT_FILTER_NO_SANDBOX|CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS|CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS|CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS|CHATGPT_BROWSER_EXTRA_ARGS|CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE)='
 } | tee "${out_dir}/run.log"
 
-mkdir -p .pb_profile .pb_profile_docker debug_artifacts
+mkdir -p .pb_profile .pb_profile/browser/default debug_artifacts
 
 if [[ "${no_recreate}" =~ ^(1|true|yes|on)$ ]]; then
   if curl -fsS http://localhost:8000/healthz > "${out_dir}/healthz.preexisting.json"; then
@@ -249,7 +249,7 @@ if not payload.get('ok'):
 profile = payload.get('docker_browser_profile')
 if payload.get('docker_browser_parity_mode') is not True:
     errors.append('docker_browser_parity_mode is not true')
-if profile not in {'docker-browser-parity', 'bonnetjes-cloudflare-parity'}:
+if profile not in {'docker-browser-parity', 'bonnetjes-cloudflare-parity', 'standard-browser'}:
     errors.append(f'docker_browser_profile is {profile!r}')
 if payload.get('profile_dir') != '/app/profile':
     errors.append(f"profile_dir is {payload.get('profile_dir')!r}, expected '/app/profile'")
@@ -259,9 +259,11 @@ if payload.get('headless') is not False:
     errors.append('headless is not false')
 if payload.get('use_patchright') is not True:
     errors.append('use_patchright is not true')
-if profile == 'bonnetjes-cloudflare-parity':
-    if payload.get('bonnetjes_cloudflare_parity_mode') is not True:
+if profile in {'bonnetjes-cloudflare-parity', 'standard-browser'}:
+    if profile == 'bonnetjes-cloudflare-parity' and payload.get('bonnetjes_cloudflare_parity_mode') is not True:
         errors.append('bonnetjes_cloudflare_parity_mode is not true')
+    if profile == 'standard-browser' and payload.get('standard_browser_mode') is not True:
+        errors.append('standard_browser_mode is not true')
     if payload.get('browser_extra_args') not in ([], None):
         errors.append(f"browser_extra_args is {payload.get('browser_extra_args')!r}, expected []")
     if str(payload.get('patchright_headed_safe_args')) != '0':

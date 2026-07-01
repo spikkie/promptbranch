@@ -328,17 +328,17 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 | v0.1.103.9 | repair/diagnostic | Bonnetjes Cloudflare parity profile hygiene | candidate | focused local validation only; live clean logged-in profile path operator-proven before packaging | DOD-147 in_progress | pending |
 
-## v0.1.103.10.3
+## v0.1.103.10.4
 
 Status: candidate only, not accepted/current.
 
-Scope: one-shot Bonnetjes Cloudflare validation workflow.
+Scope: one-shot standard browser Cloudflare validation workflow.
 
 Validation focus: script syntax, focused shell-script tests, control-surface validation, artifact hygiene.
 
-Control-surface tokens: v0.1.103.10.3 chatgpt_claudecode_workflow-2_v0.1.103.10.3.zip Bonnetjes auth-only release-control path
+Control-surface tokens: v0.1.103.10.4 chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip standard browser profile default
 
-## v0.1.103.10.3
+## v0.1.103.10.4
 
 Status: candidate.
 

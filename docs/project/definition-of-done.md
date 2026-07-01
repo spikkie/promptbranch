@@ -443,4 +443,4 @@ Last release: v0.1.102
 | DOD-146 | Docker parity Cloudflare challenge settling is isolated from downstream mutation | in_progress | `scripts/docker-browser-parity-cloudflare-check.sh`; same-session `/v1/auth-readiness/session/status` polling; bounded evidence export; no Project Source mutation | v0.1.103.8 |
 
 | DOD-147 | Bonnetjes Cloudflare parity profile hygiene is documented and build-context safe | in_progress | `.dockerignore`; `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`; `docs/bonnetjes-cloudflare-parity-test-procedure.md`; safe no-artifact export | v0.1.103.9 |
-| DOD-148 | Bonnetjes Cloudflare validation can be run as one operator workflow | in_progress | `scripts/docker-bonnetjes-cloudflare-validation.sh`; `docs/bonnetjes-cloudflare-one-shot-validation.md` | v0.1.103.10.3 |
+| DOD-148 | standard browser Cloudflare validation can be run as one operator workflow | in_progress | `scripts/docker-bonnetjes-cloudflare-validation.sh`; `docs/bonnetjes-cloudflare-one-shot-validation.md` | v0.1.103.10.4 |

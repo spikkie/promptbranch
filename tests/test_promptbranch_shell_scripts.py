@@ -774,7 +774,7 @@ def test_docker_service_runs_as_host_user_to_avoid_root_owned_artifacts() -> Non
     assert 'export PROMPTBRANCH_DOCKER_GID="${PROMPTBRANCH_DOCKER_GID:-$(id -g)}"' in run_script
     assert 'export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"' in dev_script
     assert 'mkdir -p "${container_home}" "${container_cache}" "${container_config}" /app/.pb_profile /app/profile /app/debug_artifacts' in container_script
-    assert 'PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-promptbranch' in container_script
+    assert 'PROMPTBRANCH_DOCKER_BROWSER_PROFILE:-standard-browser' in container_script
     assert 'docker-browser-parity' in container_script
     assert 'export PROMPTBRANCH_PROFILE_DIR="/app/profile"' in container_script
 
@@ -3164,7 +3164,7 @@ def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> No
     assert "{\"keep_open\": true}" in script
     assert "PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS" in script
     assert "PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS" in script
-    assert "bonnetjes-cloudflare-parity" in script
+    assert "standard-browser" in script
     assert "CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS" in script
     assert "chrome-argv-" in script
     assert "docker-browser-parity-export-challenge-artifacts.sh" in script
@@ -3187,14 +3187,10 @@ def test_docker_bonnetjes_cloudflare_check_runs_seeded_and_clean_profiles() -> N
     script = script_path.read_text(encoding="utf-8")
 
     assert script_path.exists()
-    assert "bonnetjes-cloudflare-parity" in script
-    assert ".pb_profile_docker" in script
-    assert ".pb_profile_bonnetjes_clean" in script
-    assert "CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS=0" in script
-    assert "CHATGPT_BROWSER_EXTRA_ARGS=" in script
-    assert "CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE=disabled" in script
+    assert "standard-browser" in script
+    assert ".pb_profile/browser/default" in script
     assert "docker-browser-parity-cloudflare-check.sh" in script
-    assert "docker-bonnetjes-clean-login-profile-bootstrap.sh" in script
+    assert "docker-browser-parity-cloudflare-check.sh" in script
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
 
@@ -3215,11 +3211,13 @@ def test_docker_bonnetjes_clean_login_profile_bootstrap_documents_manual_phase()
     script = script_path.read_text(encoding="utf-8")
 
     assert script_path.exists()
-    assert "google-chrome" in script
-    assert ".pb_profile_bonnetjes_manual_" in script
-    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
-    assert "bonnetjes-cloudflare-parity" in script
-    assert "docker-browser-parity-cloudflare-check.sh" in script
+    assert "pb-browser-profile-bootstrap.sh" in script
+    neutral = (root / "scripts" / "pb-browser-profile-bootstrap.sh").read_text(encoding="utf-8")
+    assert "google-chrome" in neutral
+    assert ".pb_profile/browser/default" in neutral
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in neutral
+    assert "standard-browser" in neutral
+    assert "docker-browser-parity-cloudflare-check.sh" in neutral
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
 
@@ -3230,16 +3228,16 @@ def test_docker_bonnetjes_cloudflare_validation_wraps_install_bootstrap_and_chec
     script = script_path.read_text(encoding="utf-8")
 
     assert script_path.exists()
-    assert "One-shot Bonnetjes Cloudflare validation" in script
-    assert "--install-artifact" in script
-    assert "pb release install" in script
-    assert "docker-bonnetjes-clean-login-profile-bootstrap.sh" in script
-    assert "docker-browser-parity-cloudflare-check.sh" in script
-    assert "bonnetjes-cloudflare-parity" in script
-    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
-    assert "validation-summary.json" in script
-    assert "cloudflare_cleared_auth_ready" in script
-    assert "project_source_mutation_allowed" in script
+    assert "pb-browser-cloudflare-validation.sh" in script
+    neutral = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+    assert "--install-artifact" in neutral
+    assert "pb release install" in neutral
+    assert "pb-browser-profile-bootstrap.sh" in neutral
+    assert "docker-browser-parity-cloudflare-check.sh" in neutral
+    assert "standard-browser" in neutral
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in neutral
+    assert "validation-summary.json" in neutral
+    assert "project_source_mutation_allowed" in neutral
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
     assert "docker cp" not in script

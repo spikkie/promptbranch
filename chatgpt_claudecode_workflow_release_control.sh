@@ -2219,9 +2219,9 @@ verify_validation_reports_green() {
 }
 
 
-auth_only_validation_log="${release_log_dir}/bonnetjes_auth_only_validation.${ver}.log"
-auth_only_validation_summary_json="${release_log_dir}/bonnetjes_auth_only_validation_summary.${ver}.json"
-auth_only_validation_hygiene_json="${release_log_dir}/bonnetjes_auth_only_hygiene.${ver}.json"
+auth_only_validation_log="${release_log_dir}/standard_browser_auth_only_validation.${ver}.log"
+auth_only_validation_summary_json="${release_log_dir}/standard_browser_auth_only_validation_summary.${ver}.json"
+auth_only_validation_hygiene_json="${release_log_dir}/standard_browser_auth_only_hygiene.${ver}.json"
 
 run_auth_only_hygiene_checks() {
   echo "== Auth-only hygiene checks =="
@@ -2246,7 +2246,7 @@ def run(name: str, cmd: list[str]) -> None:
         errors.append(f"{name} failed with rc={completed.returncode}")
 
 run("py_compile", ["python3", "-m", "py_compile", "promptbranch_browser_auth/client.py", "promptbranch_service_client.py", "promptbranch_version.py", "promptbranch_cli.py", "promptbranch_project_control.py"])
-run("bash_n", ["bash", "-n", "scripts/docker-bonnetjes-cloudflare-validation.sh", "scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh", "scripts/docker-bonnetjes-cloudflare-check.sh", "scripts/docker-browser-parity-cloudflare-check.sh", "scripts/docker-browser-parity-export-challenge-artifacts.sh", "docker/run-chatgpt-service-in-container.sh"])
+run("bash_n", ["bash", "-n", "scripts/pb-browser-cloudflare-validation.sh", "scripts/pb-browser-profile-bootstrap.sh", "scripts/docker-bonnetjes-cloudflare-validation.sh", "scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh", "scripts/docker-bonnetjes-cloudflare-check.sh", "scripts/docker-browser-parity-cloudflare-check.sh", "scripts/docker-browser-parity-export-challenge-artifacts.sh", "docker/run-chatgpt-service-in-container.sh"])
 run("no_tracked_profiles_debug_or_zips", ["bash", "-lc", "test -z \"$(git ls-files | grep -E '^\\.pb_profile|^debug_artifacts|\\.zip$' || true)\""])
 run("no_history_profiles_weights_debug_or_zips", ["bash", "-lc", "test -z \"$(git rev-list --objects --all | grep -E '\\.zip$|\\.pb_profile|weights\\.bin|debug_artifacts' || true)\""])
 run("dockerignore_profile_debug_zip_rules", ["bash", "-lc", "grep -q '^\\.pb_profile\\*' .dockerignore && grep -q '^\\.pb_profile_\\*' .dockerignore && grep -q '^debug_artifacts/' .dockerignore && grep -q '^\\*\\.zip$' .dockerignore"])
@@ -2265,11 +2265,11 @@ INNERPY
 }
 
 run_auth_only_validation() {
-  echo "== Auth-only Bonnetjes Cloudflare validation =="
+  echo "== Auth-only standard browser Cloudflare validation =="
   run_auth_only_hygiene_checks || return $?
   local validation_start_epoch
   validation_start_epoch="$(date +%s)"
-  ./scripts/docker-bonnetjes-cloudflare-validation.sh \
+  ./scripts/pb-browser-cloudflare-validation.sh \
     --max-wait-seconds 300 \
     --poll-seconds 10 \
     2>&1 | tee "${auth_only_validation_log}"
@@ -2285,7 +2285,7 @@ from pathlib import Path
 repo = Path(sys.argv[1])
 start_epoch = int(sys.argv[2])
 out = Path(sys.argv[3])
-base = repo / 'debug_artifacts' / 'docker-browser-parity' / 'bonnetjes-validation'
+base = repo / 'debug_artifacts' / 'docker-browser-parity' / 'standard-validation'
 candidates = []
 if base.exists():
     for path in base.glob('*/validation-summary.json'):
@@ -2295,12 +2295,12 @@ if base.exists():
         except OSError:
             pass
 if not candidates:
-    raise SystemExit('no Bonnetjes validation-summary.json found for auth-only validation')
+    raise SystemExit('no standard browser validation-summary.json found for auth-only validation')
 candidates.sort(key=lambda p: p.stat().st_mtime)
 summary_path = candidates[-1]
 payload = json.loads(summary_path.read_text(encoding='utf-8'))
 if payload.get('ok') is not True or payload.get('status') != 'passed':
-    raise SystemExit(f'Bonnetjes validation did not pass: {payload!r}')
+    raise SystemExit(f'standard browser validation did not pass: {payload!r}')
 checks = payload.get('checks') if isinstance(payload.get('checks'), dict) else {}
 required = {
     'cloudflare_cleared': True,
@@ -2309,6 +2309,7 @@ required = {
     'challenge_detected': False,
     'composer_visible': True,
     'project_source_mutation_allowed': False,
+    'standard_browser_mode': True,
 }
 errors = [f'{key} expected {expected!r} got {checks.get(key)!r}' for key, expected in required.items() if checks.get(key) is not expected]
 if errors:
@@ -2337,6 +2338,7 @@ required = {
     'challenge_detected': False,
     'composer_visible': True,
     'project_source_mutation_allowed': False,
+    'standard_browser_mode': True,
 }
 for key, expected in required.items():
     if checks.get(key) is not expected:
