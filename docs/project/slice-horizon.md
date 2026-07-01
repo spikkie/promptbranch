@@ -85,3 +85,7 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 ## Active repair — v0.1.103.10.21
 
 `v0.1.103.10.21 — pb test api classification cleanup`: narrow API coverage classification logic so passed/clear responses do not carry misleading failure classifications. No browser/session architecture changes.
+
+## Active repair — v0.1.103.10.22
+
+`v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation`: add explicit shared-memory sizing for Docker Chrome compose/bootstrap paths; no browser/session architecture changes.

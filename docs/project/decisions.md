@@ -557,3 +557,9 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.19.zip
 `pb test api` defaults to serial browser mode and does not keep an auth-readiness session open before projects/chats/sources checks. Held-session reuse testing remains explicit via flags.
 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
+
+## Decision — v0.1.103.10.22 Docker Chrome shm sizing
+
+Promptbranch service and visible Docker browser bootstrap paths declare Docker shared-memory sizing to avoid Chrome crashes caused by default small `/dev/shm` mounts.
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip

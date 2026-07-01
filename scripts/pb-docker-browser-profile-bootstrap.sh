@@ -20,6 +20,7 @@ url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
 image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}"
 container_profile_dir="/app/profile"
 container_name="promptbranch-docker-browser-bootstrap-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+shm_size="${PROMPTBRANCH_DOCKER_SHM_SIZE:-2g}"
 
 usage() {
   cat <<'HELP'
@@ -36,6 +37,7 @@ Options:
   --reuse             Reuse selected profile. Default.
   --url URL           URL to open. Default: https://chatgpt.com/. Project URLs are supported when passed explicitly.
   --image IMAGE       Docker image. Default: promptbranch-service:local.
+  --shm-size SIZE    Docker shared-memory size for Chrome. Default: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2g}.
   --help              Show this help.
 
 Requirements:
@@ -113,6 +115,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --image)
       image="${2:-}"
+      shift 2
+      ;;
+    --shm-size)
+      shm_size="${2:-}"
       shift 2
       ;;
     --help|-h)
@@ -231,6 +237,7 @@ image=${image}
 display=${DISPLAY}
 url=${url}
 fresh=${fresh}
+shm_size=${shm_size}
 
 A Docker-launched Chrome window will open on your host display.
 In that window:
@@ -250,6 +257,7 @@ MSG
 
 docker run --rm -it \
   --name "${container_name}" \
+  --shm-size "${shm_size}" \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp/promptbranch-home \
   -e XDG_CACHE_HOME=/tmp/promptbranch-cache \

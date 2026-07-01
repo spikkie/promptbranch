@@ -11,3 +11,9 @@ def test_chatgpt_service_compose_uses_current_image_tag_and_long_response_timeou
     assert PACKAGE_VERSION not in text
     assert "CHATGPT_RESPONSE_TIMEOUT_MS: ${CHATGPT_RESPONSE_TIMEOUT_MS:-1200000}" in text
 
+
+
+def test_chatgpt_service_compose_sets_docker_shm_size_for_chrome() -> None:
+    text = Path("docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+
+    assert "shm_size: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2gb}" in text

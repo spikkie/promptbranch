@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
-active candidate version: v0.1.103.10.21
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
-next normal slice: v0.1.103.10.21 — pb test api classification cleanup
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
+active candidate version: v0.1.103.10.22
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
+next normal slice: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -941,3 +941,7 @@ Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` repairs 
 ## v0.1.103.10.21 status
 
 Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` keeps endpoint behavior unchanged and narrows API coverage report classification to actual failure/warning fields. It removes misleading `browser_profile_busy`, `rate_limited`, and `auth_challenge_or_cloudflare` labels from successful clear responses.
+
+## Active repair slice — v0.1.103.10.22
+
+`v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation` adds explicit Docker shared-memory sizing for the Promptbranch service compose container and the visible Docker Chrome bootstrap container. It targets Chrome/Patchright `exit_code=132` crashes with `No space left on device (28)` while keeping browser/session behavior unchanged.

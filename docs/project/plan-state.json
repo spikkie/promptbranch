@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip",
-  "active_candidate_version": "v0.1.103.10.21",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
+  "active_candidate_version": "v0.1.103.10.22",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.21 — pb test api classification cleanup",
+  "active_slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip",
-  "next_normal_slice": "v0.1.103.10.21 — pb test api classification cleanup",
-  "next_normal_version": "v0.1.103.10.21",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
+  "next_normal_slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
+  "next_normal_version": "v0.1.103.10.22",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -115,6 +115,13 @@
       "status": "candidate",
       "summary": "Docker parity challenge artifacts are exported through bounded /tmp staging instead of wholesale debug tree copies.",
       "version": "v0.1.103.6"
+    },
+    {
+      "version": "v0.1.103.10.22",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
+      "slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
+      "status": "candidate",
+      "scope": "Add Docker shared-memory sizing for Chrome service and visible bootstrap paths after exit_code=132 no-space-on-device crash."
     }
   ],
   "release_mode": "repair",
@@ -141,10 +148,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "fix misleading pb test api report classifications only; no browser/session architecture or endpoint behavior changes",
-      "slice": "v0.1.103.10.21 — pb test api classification cleanup",
+      "scope": "add explicit Docker shared-memory sizing for service compose and visible Docker Chrome bootstrap paths after Chrome exit_code=132 no-space-on-device crash; no browser/session architecture changes",
+      "slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
       "status": "active",
-      "version": "v0.1.103.10.21"
+      "version": "v0.1.103.10.22"
     },
     {
       "release_mode": "normal",

@@ -448,3 +448,12 @@ control token: v0.1.103.10.21 — pb test api classification cleanup
 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
 control token: v0.1.103.10.21 — pb test api classification cleanup
+
+## v0.1.103.10.22
+
+| version | type | scope | state | validation | dod | adoption |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.22 | repair | Docker Chrome shm sizing for visible browser validation | candidate | focused tests pending/live install pending | DOD-166 | n/a |
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
+control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation

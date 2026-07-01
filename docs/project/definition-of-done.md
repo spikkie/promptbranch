@@ -479,3 +479,5 @@ Last release: v0.1.102
 
 | DOD-164 | `pb test api` avoids held-session self-conflicts | in_progress | Default serial-browser mode keeps auth-readiness from holding `/app/profile` before unrelated endpoint checks; `browser_context_unavailable_held_auth_session_active` is classified as `browser_profile_busy`. | v0.1.103.10.21 |
 | DOD-165 | `pb test api` classification cleanup | in_progress | Successful clear API coverage steps do not receive misleading failure classifications; browser/profile busy, rate-limit, and auth challenge labels are emitted only when the endpoint response actually indicates those conditions. | v0.1.103.10.21 |
+
+| DOD-166 | Docker Chrome shared-memory sizing is explicit for service and visual bootstrap paths | in_progress | `docker-compose.chatgpt-service.yml` sets `shm_size`; `scripts/pb-docker-browser-profile-bootstrap.sh` passes `--shm-size`; default can be overridden with `PROMPTBRANCH_DOCKER_SHM_SIZE`. | v0.1.103.10.22 |

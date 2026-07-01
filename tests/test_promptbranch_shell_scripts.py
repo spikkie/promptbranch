@@ -3292,6 +3292,8 @@ def test_docker_browser_profile_bootstrap_runs_chrome_inside_container() -> None
     assert script_path.exists()
     assert "Docker-launched Chrome" in script
     assert "docker run --rm -it" in script
+    assert "--shm-size \"${shm_size}\"" in script
+    assert "PROMPTBRANCH_DOCKER_SHM_SIZE" in script
     assert "google-chrome" in script
     assert "--user-data-dir=/app/profile" in script
     assert "/tmp/.X11-unix:/tmp/.X11-unix" in script

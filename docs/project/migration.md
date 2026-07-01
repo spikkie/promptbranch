@@ -797,3 +797,7 @@ After installing this version, rerun `pb test api --json`. No manual copy of `sc
 ## v0.1.103.10.21 migration note
 
 No user migration required. Re-run `pb test api --json`; use `--hold-auth-session` only when explicitly testing held-session behavior.
+
+## v0.1.103.10.22 migration note
+
+Docker Chrome runtime paths now use explicit shared-memory sizing. Override with `PROMPTBRANCH_DOCKER_SHM_SIZE` if the default is unsuitable.
