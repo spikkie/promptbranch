@@ -5392,6 +5392,21 @@ def _source_add_busy_payload(
     return payload
 
 
+def _candidate_validation_command_from_file(file_path: Optional[str]) -> str | None:
+    if not file_path:
+        return None
+    path = Path(file_path)
+    match = re.search(r"_v(\d+(?:\.\d+){2,})\.zip$", path.name)
+    if not match:
+        return None
+    version = f"v{match.group(1)}"
+    return (
+        "./scripts/pb-browser-cloudflare-validation.sh "
+        f"--install-artifact {shlex.quote(str(path))} "
+        f"--install-version {shlex.quote(version)}"
+    )
+
+
 def _project_source_add_exception_payload(
     exc: Exception,
     *,
@@ -5399,14 +5414,19 @@ def _project_source_add_exception_payload(
     file_path: Optional[str],
     display_name: Optional[str],
     overwrite_existing: bool,
+    service_payload: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     error_text = str(exc)
+    service_status = service_payload.get("status") if service_payload else None
     status = "source_add_failed"
-    if "remove/delete action" in error_text:
+    if service_status == "project_source_mutation_gate_closed":
+        status = "project_source_mutation_gate_closed"
+    elif "remove/delete action" in error_text:
         status = "overwrite_remove_failed"
     elif "already exists" in error_text.lower():
         status = "source_already_exists"
-    return {
+
+    payload: dict[str, Any] = {
         "ok": False,
         "action": "source_add",
         "status": status,
@@ -5419,6 +5439,31 @@ def _project_source_add_exception_payload(
         "operator_review_required": status == "overwrite_remove_failed",
         "error": error_text,
     }
+    if service_payload:
+        payload["service_status"] = service_status
+        if service_payload.get("runtime") is not None:
+            payload["runtime"] = service_payload.get("runtime")
+        if service_payload.get("release_blocking") is not None:
+            payload["release_blocking"] = service_payload.get("release_blocking")
+
+    if status == "project_source_mutation_gate_closed":
+        recommended = _candidate_validation_command_from_file(file_path)
+        payload.update({
+            "classification": "expected_safety_gate",
+            "operator_action": "use_auth_only_validation_or_explicitly_enable_the_mutation_gate_for_a_guarded_diagnostic",
+            "recovery_hint": (
+                "This release slice intentionally keeps ChatGPT Project Source mutation disabled. "
+                "Do not use pbsa/pb src add for standard-browser Cloudflare validation."
+            ),
+            "project_source_required_for_standard_browser_validation": False,
+            "mutation_gate_env": "PROMPTBRANCH_ALLOW_PROJECT_SOURCE_MUTATION=1",
+            "next_safe_commands": [cmd for cmd in [
+                recommended,
+                "./scripts/pb-browser-cloudflare-validation.sh --skip-bootstrap",
+                "./scripts/docker-browser-parity-guarded-project-source-test.sh  # diagnostic only; enables the explicit mutation gate",
+            ] if cmd],
+        })
+    return payload
 
 
 async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespace) -> int:
@@ -5475,6 +5520,7 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
                 file_path=file_path,
                 display_name=display_name,
                 overwrite_existing=overwrite_existing,
+                service_payload=service_payload,
             )
     if result.get("ok") and not getattr(args, "no_post_mutation_wait_idle", False):
         idle_result = await _wait_for_browser_idle(

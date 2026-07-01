@@ -485,8 +485,19 @@ Decision: provide a single operator script that runs the full Cloudflare validat
 
 Consequence: operators can validate the working Cloudflare path with `scripts/docker-bonnetjes-cloudflare-validation.sh` before any downstream Project Source mutation slice.
 
-### v0.1.103.10.5 — standard browser profile ownership guard
+### v0.1.103.10.6 — standard browser profile ownership guard
 
 Decision: standard browser validation must prepare `.pb_profile/browser/default` before host Chrome or Docker uses it. Empty non-writable bind-mount placeholders may be removed and recreated by the host user; non-empty non-writable profiles must fail fast with an explicit ownership repair instruction.
 
 Consequence: the validation path fails before Chrome profile corruption risk and avoids silently running host Chrome against a root-owned profile. Project Source mutation remains disabled and the Cloudflare-safe browser envelope is unchanged.
+
+### v0.1.103.10.6 — keep source-add gate closed and repair the CLI guidance
+
+Decision: keep Project Source mutation disabled for the standard-browser auth-only validation slice. Do not tell operators to solve `pbsa` failures by enabling mutation for release validation. Instead, preserve the service gate status in the CLI payload and point candidate ZIP validation to `pb-browser-cloudflare-validation.sh --install-artifact`.
+
+Rationale: this prevents authority drift from an auth-readiness/Cloudflare validation slice into ChatGPT Project Source mutation while still giving a clear next command when old release habits invoke `pbsa`.
+
+
+### v0.1.103.10.7 — reject generated caches in release transport ZIPs
+
+Decision: a candidate ZIP containing `.pytest_cache/`, `__pycache__/`, `.pyc`, or similar generated cache entries must not be installed or adopted. The packaging repair for `v0.1.103.10.7` keeps behavior unchanged and only provides a clean release transport artifact.

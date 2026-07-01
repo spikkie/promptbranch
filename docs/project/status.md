@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip
-active candidate version: v0.1.103.10.5
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip
-next normal slice: v0.1.103.10.5 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
+active candidate version: v0.1.103.10.7
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
+next normal slice: v0.1.103.10.7 — standard browser profile default
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -813,12 +813,33 @@ Adds one operator workflow for standard browser Cloudflare validation: optional 
 
 Control-surface tokens: v0.1.103.10.4 chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip standard browser profile default
 
-## v0.1.103.10.5 candidate status
+## v0.1.103.10.7 candidate status
 
-`v0.1.103.10.5` repairs the failed standard browser validation bootstrap observed after `v0.1.103.10.4`. The standard profile path `.pb_profile/browser/default` can be created as `root:root` when Docker creates the bind-mount target before host Chrome bootstrap. The bootstrap now removes and recreates an empty non-writable placeholder, while non-empty non-writable profiles fail fast with an explicit ownership repair command.
+`v0.1.103.10.7` repairs the failed standard browser validation bootstrap observed after `v0.1.103.10.4`. The standard profile path `.pb_profile/browser/default` can be created as `root:root` when Docker creates the bind-mount target before host Chrome bootstrap. The bootstrap now removes and recreates an empty non-writable placeholder, while non-empty non-writable profiles fail fast with an explicit ownership repair command.
 
 Next safe action:
 
 ```bash
-./scripts/pb-browser-cloudflare-validation.sh --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip --install-version v0.1.103.10.5
+./scripts/pb-browser-cloudflare-validation.sh --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip --install-version v0.1.103.10.7
+```
+
+## v0.1.103.10.7 candidate status
+
+`v0.1.103.10.7` is a packaging repair after release import rejected `v0.1.103.10.6` with `generated_cache_entries_present` because `.pytest_cache/` was present inside the ZIP. The slice behavior remains unchanged: standard browser profile default, ownership guard, and source-add gate guidance are preserved. Project Source mutation remains out of scope.
+
+Operator command:
+
+```bash
+ver=v0.1.103.10.7
+zip="$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip"
+timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
+  --install-from-zip "$zip" \
+  --version "$ver" \
+  --auth-only-validation \
+  --skip-tests \
+  --adopt-after-validation \
+  --skip-docker-logs \
+  --prune-release-logs \
+  --release-log-keep 12 \
+  2>&1 | tee ~/tmp/release_control.$ver.auth_only.adopt.log
 ```

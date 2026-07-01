@@ -444,4 +444,7 @@ Last release: v0.1.102
 
 | DOD-147 | Bonnetjes Cloudflare parity profile hygiene is documented and build-context safe | in_progress | `.dockerignore`; `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`; `docs/bonnetjes-cloudflare-parity-test-procedure.md`; safe no-artifact export | v0.1.103.9 |
 | DOD-148 | standard browser Cloudflare validation can be run as one operator workflow | in_progress | `scripts/docker-bonnetjes-cloudflare-validation.sh`; `docs/bonnetjes-cloudflare-one-shot-validation.md` | v0.1.103.10.4 |
-| DOD-149 | standard browser profile bootstrap repairs empty Docker-created root-owned placeholders and fails fast on non-empty non-writable profiles | in_progress | `scripts/pb-browser-profile-bootstrap.sh`; `scripts/docker-browser-parity-cloudflare-check.sh`; focused shell-script tests | v0.1.103.10.5 |
+| DOD-149 | standard browser profile bootstrap repairs empty Docker-created root-owned placeholders and fails fast on non-empty non-writable profiles | in_progress | `scripts/pb-browser-profile-bootstrap.sh`; `scripts/docker-browser-parity-cloudflare-check.sh`; focused shell-script tests | v0.1.103.10.6 |
+| DOD-150 | source-add mutation gate failure preserves operator-safe auth-only validation guidance | in_progress | `promptbranch_cli.py`; `tests/test_standard_browser_source_add_gate.py` | v0.1.103.10.6 |
+
+| DOD-151 | standard browser auth-only release candidate ZIP is clean of generated cache entries before import | in_progress | release import plan rejects `.pytest_cache/`; `v0.1.103.10.7` clean candidate packaging evidence | v0.1.103.10.7 |
