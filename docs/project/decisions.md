@@ -563,3 +563,10 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.21.zip
 Promptbranch service and visible Docker browser bootstrap paths declare Docker shared-memory sizing to avoid Chrome crashes caused by default small `/dev/shm` mounts.
 
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
+
+
+## Decision — v0.1.103.10.23 API coverage semantic assertions
+
+`pb test api` must fail semantically unsuccessful HTTP 200 responses. This repair is report/assertion-only and does not change browser/session architecture.
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.23.zip

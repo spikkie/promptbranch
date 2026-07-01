@@ -86,6 +86,11 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 
 `v0.1.103.10.21 — pb test api classification cleanup`: narrow API coverage classification logic so passed/clear responses do not carry misleading failure classifications. No browser/session architecture changes.
 
-## Active repair — v0.1.103.10.22
+## Active repair — v0.1.103.10.23
 
-`v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation`: add explicit shared-memory sizing for Docker Chrome compose/bootstrap paths; no browser/session architecture changes.
+`v0.1.103.10.23 — pb test api asserts response body success`: enforce response-body semantic success checks in the API coverage runner; no browser/session architecture changes.
+
+
+## Active repair slice — v0.1.103.10.23
+
+`v0.1.103.10.23 — pb test api asserts response body success` tightens `pb test api` assertions so HTTP 200 alone is insufficient. `/v1/ask` must report `ok=true` and include the expected token; Project Source add must prove persistence; auth-readiness must prove logged-in/no-challenge; debug-rate-limit must be clear; read endpoints must report `ok=true`. No browser/session architecture changes.

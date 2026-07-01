@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
-active candidate version: v0.1.103.10.22
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
-next normal slice: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.23.zip
+active candidate version: v0.1.103.10.23
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.23.zip
+next normal slice: v0.1.103.10.23 — pb test api asserts response body success
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1881,6 +1881,11 @@ Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatg
 
 `v0.1.103.10.21 — pb test api classification cleanup` is report-only: no endpoint ordering, browser/session architecture, Project Source mutation semantics, or held-session reuse behavior changes. It fixes false-positive classifications in `pb test api` reports.
 
-## Active repair slice — v0.1.103.10.22
+## Active repair slice — v0.1.103.10.23
 
-`v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation` adds explicit Docker shared-memory sizing for the Promptbranch service compose container and the visible Docker Chrome bootstrap container. It targets Chrome/Patchright `exit_code=132` crashes with `No space left on device (28)` while keeping browser/session behavior unchanged.
+`v0.1.103.10.23 — pb test api asserts response body success` tightens `pb test api` assertions so HTTP 200 alone is insufficient. `/v1/ask` must report `ok=true` and include the expected token; Project Source add must prove persistence; auth-readiness must prove logged-in/no-challenge; debug-rate-limit must be clear; read endpoints must report `ok=true`. No browser/session architecture changes.
+
+
+## Active repair slice — v0.1.103.10.23
+
+`v0.1.103.10.23 — pb test api asserts response body success` tightens `pb test api` assertions so HTTP 200 alone is insufficient. `/v1/ask` must report `ok=true` and include the expected token; Project Source add must prove persistence; auth-readiness must prove logged-in/no-challenge; debug-rate-limit must be clear; read endpoints must report `ok=true`. No browser/session architecture changes.

@@ -138,6 +138,37 @@ def _classify_response(status: int | None, payload: Any | None, error: str | Non
     return None
 
 
+
+
+def _payload_bool(payload: Any | None, key: str) -> bool | None:
+    value = _nested_get(payload, key)
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _payload_status(payload: Any | None) -> str:
+    return str(_nested_get(payload, "status") or "").strip()
+
+
+def _answer_text(payload: Any | None) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("answer_text", "text", "final_answer", "response_text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    answer = payload.get("answer")
+    if isinstance(answer, str):
+        return answer
+    if isinstance(answer, dict):
+        for key in ("text", "answer_text", "content"):
+            value = answer.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return ""
+
+
 def _summarize_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"type": type(payload).__name__, "repr": repr(payload)[:500]}
@@ -260,6 +291,76 @@ class ApiRunner:
                 step.response_summary = {}
             step.response_summary["classification"] = classification
 
+    def _mark_semantic_failure(self, step: Step, reason: str, *, classification: str | None = None) -> None:
+        if step.response_summary is None:
+            step.response_summary = {}
+        step.response_summary["semantic_error"] = reason
+        step.status = "failed"
+        step.ok = False
+        step.error = reason
+        if classification:
+            step.classification = classification
+            step.response_summary["classification"] = classification
+
+    def _require_body_ok(self, step: Step, payload: Any | None, label: str) -> None:
+        if not step.ok:
+            return
+        if _nested_get(payload, "ok") is not True:
+            self._mark_semantic_failure(step, f"{label} response body did not report ok=true")
+
+    def _require_debug_rate_limit_clear(self, step: Step, payload: Any | None) -> None:
+        if not step.ok:
+            return
+        self._require_body_ok(step, payload, "debug_rate_limit")
+        if not step.ok:
+            return
+        if _payload_status(payload) != "clear":
+            self._mark_semantic_failure(step, "debug_rate_limit status was not clear", classification="rate_limited")
+
+    def _require_auth_readiness_ready(self, step: Step, payload: Any | None) -> None:
+        if not step.ok:
+            return
+        checks = {
+            "ok": _nested_get(payload, "ok") is True,
+            "logged_in": _payload_bool(payload, "logged_in") is True,
+            "challenge_detected": _payload_bool(payload, "challenge_detected") is False,
+            "release_blocking": _payload_bool(payload, "release_blocking") is False,
+        }
+        failed = [name for name, passed in checks.items() if not passed]
+        if failed:
+            classification = "auth_challenge_or_cloudflare" if "challenge_detected" in failed or "release_blocking" in failed else None
+            self._mark_semantic_failure(step, "auth_readiness semantic checks failed: " + ", ".join(failed), classification=classification)
+
+    def _require_source_add_success(self, step: Step, payload: Any | None) -> None:
+        if not step.ok:
+            return
+        ok = _nested_get(payload, "ok") is True
+        added = _nested_get(payload, "project_source_mutated") is True or str(_nested_get(payload, "action") or "") == "add"
+        persisted = _nested_get(payload, "persistence_verified") is True
+        failed = []
+        if not ok:
+            failed.append("ok=true")
+        if not added:
+            failed.append("project_source_mutated=true or action=add")
+        if not persisted:
+            failed.append("persistence_verified=true")
+        if failed:
+            self._mark_semantic_failure(step, "project source add semantic checks failed: missing " + ", ".join(failed))
+
+    def _require_ask_success(self, step: Step, payload: Any | None) -> None:
+        if not step.ok:
+            return
+        ok = _nested_get(payload, "ok") is True
+        answer_text = _answer_text(payload)
+        token_observed = bool(self.args.ask_token and self.args.ask_token in answer_text)
+        failed = []
+        if not ok:
+            failed.append("ok=true")
+        if not token_observed:
+            failed.append(f"expected token {self.args.ask_token!r} observed in answer_text")
+        if failed:
+            self._mark_semantic_failure(step, "ask semantic checks failed: missing " + ", ".join(failed))
+
     def request(
         self,
         name: str,
@@ -381,18 +482,22 @@ class ApiRunner:
         # proved that auth-readiness keep-open poisons later projects/chats/
         # sources calls with browser_context_unavailable_held_auth_session_active.
         if self.args.include_browser:
-            self.request("login_check", "POST", "/v1/login-check", category="browser", json_body=self._browser_body(keep_open=False))
+            login_step, login_payload = self.request("login_check", "POST", "/v1/login-check", category="browser", json_body=self._browser_body(keep_open=False))
+            if login_step.ok and _nested_get(login_payload, "logged_in") is not True:
+                self._mark_semantic_failure(login_step, "login_check response body did not report logged_in=true")
         else:
             self.skip("login_check", "POST", "/v1/login-check", "browser", "--no-browser")
 
-        self.request("projects_list", "GET", "/v1/projects", category="projects", query=self._browser_query())
-        self.request(
+        projects_list_step, projects_list_payload = self.request("projects_list", "GET", "/v1/projects", category="projects", query=self._browser_query())
+        self._require_body_ok(projects_list_step, projects_list_payload, "projects_list")
+        projects_resolve_step, projects_resolve_payload = self.request(
             "projects_resolve",
             "POST",
             "/v1/projects/resolve",
             category="projects",
             json_body={"name": self.args.project_name, "keep_open": False, "project_url": self.project_url},
         )
+        self._require_body_ok(projects_resolve_step, projects_resolve_payload, "projects_resolve")
         self.skip("projects_create", "POST", "/v1/projects/create", "dangerous", "creates a real ChatGPT Project")
         self.skip("projects_ensure", "POST", "/v1/projects/ensure", "dangerous", "may create a real ChatGPT Project")
         self.request(
@@ -409,27 +514,33 @@ class ApiRunner:
             expected_statuses=[200, 400, 403, 423],
         )
 
-        self.request("chats_list", "GET", "/v1/chats", category="chats", query=self._browser_query())
-        self.request("chats_debug_light", "GET", "/v1/chats/debug", category="chats", query=self._browser_query(scroll_rounds=1, wait_ms=100, include_history="false"))
+        chats_list_step, chats_list_payload = self.request("chats_list", "GET", "/v1/chats", category="chats", query=self._browser_query())
+        self._require_body_ok(chats_list_step, chats_list_payload, "chats_list")
+        chats_debug_step, chats_debug_payload = self.request("chats_debug_light", "GET", "/v1/chats/debug", category="chats", query=self._browser_query(scroll_rounds=1, wait_ms=100, include_history="false"))
+        self._require_body_ok(chats_debug_step, chats_debug_payload, "chats_debug_light")
         if self.conversation_url:
-            self.request(
+            chats_get_step, chats_get_payload = self.request(
                 "chats_get",
                 "POST",
                 "/v1/chats/get",
                 category="chats",
                 json_body={"conversation_url": self.conversation_url, "keep_open": False, "project_url": self.project_url},
             )
+            self._require_body_ok(chats_get_step, chats_get_payload, "chats_get")
         else:
             self.skip("chats_get", "POST", "/v1/chats/get", "chats", "no conversation_url in state or arguments")
         self.skip("chats_download_artifact", "POST", "/v1/chats/download-artifact", "artifact", "requires known artifact URL/filename")
 
-        self.request("debug_rate_limit", "GET", "/v1/debug/rate-limit", category="debug", query=self._browser_query(probe_backend="false", wait_ms=100))
-        self.request("project_source_capabilities", "GET", "/v1/project-source-capabilities", category="sources", query=self._browser_query())
-        self.request("project_sources_list", "GET", "/v1/project-sources", category="sources", query=self._browser_query())
+        rate_step, rate_payload = self.request("debug_rate_limit", "GET", "/v1/debug/rate-limit", category="debug", query=self._browser_query(probe_backend="false", wait_ms=100))
+        self._require_debug_rate_limit_clear(rate_step, rate_payload)
+        source_caps_step, source_caps_payload = self.request("project_source_capabilities", "GET", "/v1/project-source-capabilities", category="sources", query=self._browser_query())
+        self._require_body_ok(source_caps_step, source_caps_payload, "project_source_capabilities")
+        sources_list_step, sources_list_payload = self.request("project_sources_list", "GET", "/v1/project-sources", category="sources", query=self._browser_query())
+        self._require_body_ok(sources_list_step, sources_list_payload, "project_sources_list")
 
         if self.args.source_file and self.args.allow_source_add:
             source_path = Path(self.args.source_file)
-            self.request(
+            source_add_step, source_add_payload = self.request(
                 "project_sources_add_file",
                 "POST",
                 "/v1/project-sources",
@@ -445,6 +556,7 @@ class ApiRunner:
                 },
                 timeout=max(self.args.timeout_seconds, 300.0),
             )
+            self._require_source_add_success(source_add_step, source_add_payload)
         else:
             self.skip(
                 "project_sources_add_file",
@@ -493,7 +605,7 @@ class ApiRunner:
 
         if self.args.include_ask:
             target = self.conversation_url or self.project_url
-            self.request(
+            ask_step, ask_payload = self.request(
                 "ask",
                 "POST",
                 "/v1/ask",
@@ -508,17 +620,19 @@ class ApiRunner:
                 },
                 timeout=max(self.args.timeout_seconds, self.args.ask_timeout_seconds + 15),
             )
+            self._require_ask_success(ask_step, ask_payload)
         else:
             self.skip("ask", "POST", "/v1/ask", "ask", "--no-ask")
 
         if self.args.include_browser:
-            self.request(
+            auth_step, auth_payload = self.request(
                 "auth_readiness",
                 "POST",
                 "/v1/auth-readiness",
                 category="browser",
                 json_body=self._browser_body(keep_open=self._should_keep_auth_session_open()),
             )
+            self._require_auth_readiness_ready(auth_step, auth_payload)
         else:
             self.skip("auth_readiness", "POST", "/v1/auth-readiness", "browser", "--no-browser")
 

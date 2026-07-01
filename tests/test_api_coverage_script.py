@@ -72,3 +72,88 @@ def test_api_coverage_classifies_actual_rate_limit_and_challenge() -> None:
     assert _classify_response(429, {"detail": "Too many requests"}, "HTTP Error 429") == "rate_limited"
     assert _classify_response(200, {"ok": False, "status": "auth_challenge", "challenge_detected": True, "release_blocking": True}, None) == "auth_challenge_or_cloudflare"
 
+
+
+def _api_runner_for_unit_tests():
+    from promptbranch.api_coverage_test import ApiRunner, build_parser
+
+    args = build_parser().parse_args([
+        "--no-browser",
+        "--no-ask",
+        "--state-file",
+        "/tmp/promptbranch-api-coverage-missing-state.json",
+    ])
+    return ApiRunner(args)
+
+
+def test_api_coverage_semantic_failure_for_ask_without_ok_or_token() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="ask", method="POST", path="/v1/ask", category="ask", status="passed", ok=True, http_status=200)
+    runner._require_ask_success(
+        step,
+        {
+            "ok": False,
+            "status": "submit_causality_not_confirmed",
+            "answer_text": "",
+        },
+    )
+    assert not step.ok
+    assert step.status == "failed"
+    assert "ok=true" in str(step.error)
+    assert "expected token" in str(step.error)
+
+
+def test_api_coverage_semantic_pass_for_ask_token_observed() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="ask", method="POST", path="/v1/ask", category="ask", status="passed", ok=True, http_status=200)
+    runner._require_ask_success(step, {"ok": True, "status": "completed", "answer_text": "API_ASK_OK"})
+    assert step.ok
+    assert step.status == "passed"
+    assert step.error is None
+
+
+def test_api_coverage_semantic_source_add_requires_persistence() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="project_sources_add_file", method="POST", path="/v1/project-sources", category="mutation", status="passed", ok=True, http_status=200)
+    runner._require_source_add_success(step, {"ok": True, "action": "add", "persistence_verified": False})
+    assert not step.ok
+    assert "persistence_verified=true" in str(step.error)
+
+
+def test_api_coverage_semantic_auth_readiness_requires_no_challenge() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="auth_readiness", method="POST", path="/v1/auth-readiness", category="browser", status="passed", ok=True, http_status=200)
+    runner._require_auth_readiness_ready(
+        step,
+        {"ok": True, "logged_in": True, "challenge_detected": True, "release_blocking": True},
+    )
+    assert not step.ok
+    assert step.classification == "auth_challenge_or_cloudflare"
+
+
+def test_api_coverage_semantic_debug_rate_limit_requires_clear() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="debug_rate_limit", method="GET", path="/v1/debug/rate-limit", category="debug", status="passed", ok=True, http_status=200)
+    runner._require_debug_rate_limit_clear(step, {"ok": True, "status": "rate_limited"})
+    assert not step.ok
+    assert step.classification == "rate_limited"
+
+
+def test_api_coverage_semantic_read_endpoint_requires_body_ok() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="project_sources_list", method="GET", path="/v1/project-sources", category="sources", status="passed", ok=True, http_status=200)
+    runner._require_body_ok(step, {"ok": False, "status": "not_ready"}, "project_sources_list")
+    assert not step.ok
+    assert "ok=true" in str(step.error)
