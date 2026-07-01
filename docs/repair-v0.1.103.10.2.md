@@ -1,4 +1,4 @@
-# v0.1.103.10.2 — Auth-only release-control path
+# v0.1.103.10.3 — Auth-only release-control path
 
 ## Goal
 
@@ -20,7 +20,7 @@ Close the Bonnetjes Cloudflare validation line without enabling Project Source m
 ## Operator command
 
 ```bash
-ver=v0.1.103.10.2
+ver=v0.1.103.10.3
 zip="$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip"
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
@@ -41,7 +41,7 @@ timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
 - Bonnetjes Cloudflare validation passes
 - no Project Source mutation occurs
 - local artifact state/registry are adopted
-- `pb artifact current --all --json` points to `v0.1.103.10.2`
+- `pb artifact current --all --json` points to `v0.1.103.10.3`
 
 ## Out of scope
 

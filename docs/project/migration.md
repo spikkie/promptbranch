@@ -732,6 +732,6 @@ Project Source mutation.
 
 `v0.1.103.9` requires no state migration. Operators should stop using stale `.pb_profile_docker` for Cloudflare diagnosis and instead create a clean timestamped Bonnetjes profile with `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`. Browser profiles must remain bind mounts and are excluded from Docker build context by `.dockerignore`.
 
-## v0.1.103.10.2 migration
+## v0.1.103.10.3 migration
 
 No state migration. Operators may use `scripts/docker-bonnetjes-cloudflare-validation.sh` to create a fresh timestamped profile and validate the Docker Bonnetjes Cloudflare path. Browser profiles remain local bind-mounted state and must not be committed or packaged.

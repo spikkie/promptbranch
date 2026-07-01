@@ -2245,7 +2245,7 @@ def run(name: str, cmd: list[str]) -> None:
     if completed.returncode != 0:
         errors.append(f"{name} failed with rc={completed.returncode}")
 
-run("py_compile", ["python3", "-m", "py_compile", "promptbranch_browser_auth/client.py", "promptbranch_service.py", "promptbranch_version.py"])
+run("py_compile", ["python3", "-m", "py_compile", "promptbranch_browser_auth/client.py", "promptbranch_service_client.py", "promptbranch_version.py", "promptbranch_cli.py", "promptbranch_project_control.py"])
 run("bash_n", ["bash", "-n", "scripts/docker-bonnetjes-cloudflare-validation.sh", "scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh", "scripts/docker-bonnetjes-cloudflare-check.sh", "scripts/docker-browser-parity-cloudflare-check.sh", "scripts/docker-browser-parity-export-challenge-artifacts.sh", "docker/run-chatgpt-service-in-container.sh"])
 run("no_tracked_profiles_debug_or_zips", ["bash", "-lc", "test -z \"$(git ls-files | grep -E '^\\.pb_profile|^debug_artifacts|\\.zip$' || true)\""])
 run("no_history_profiles_weights_debug_or_zips", ["bash", "-lc", "test -z \"$(git rev-list --objects --all | grep -E '\\.zip$|\\.pb_profile|weights\\.bin|debug_artifacts' || true)\""])
