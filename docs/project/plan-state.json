@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.9.zip",
-  "active_candidate_version": "v0.1.103.9",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.zip",
+  "active_candidate_version": "v0.1.103.10",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Bonnetjes Cloudflare parity profile hygiene",
+  "active_slice": "Bonnetjes Cloudflare one-shot validation script",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.9.zip",
-  "next_normal_slice": "Bonnetjes Cloudflare parity profile hygiene",
-  "next_normal_version": "v0.1.103.9",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.zip",
+  "next_normal_slice": "Bonnetjes Cloudflare one-shot validation script",
+  "next_normal_version": "v0.1.103.10",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -38,6 +38,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "version": "v0.1.103.10",
+      "kind": "repair/diagnostic",
+      "status": "candidate",
+      "summary": "Adds one-shot Bonnetjes Cloudflare validation script combining optional install, clean visible login bootstrap, Docker parity check, and strict validation; no Project Source mutation."
+    },
     {
       "version": "v0.1.103.9",
       "kind": "repair/diagnostic",
@@ -81,10 +87,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "lock in Bonnetjes Cloudflare parity profile hygiene, build-context exclusions, clean logged-in profile bootstrap, and safe no-artifact evidence export without Project Source mutation",
-      "slice": "Bonnetjes Cloudflare parity profile hygiene",
+      "scope": "provide one operator validation workflow for install, visible clean-login profile bootstrap, Docker Bonnetjes Cloudflare parity check, and strict auth-ready validation without Project Source mutation",
+      "slice": "Bonnetjes Cloudflare one-shot validation script",
       "status": "active",
-      "version": "v0.1.103.9"
+      "version": "v0.1.103.10"
     },
     {
       "release_mode": "normal",
@@ -128,5 +134,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.9"
+  "updated_for": "v0.1.103.10"
 }

@@ -66,3 +66,5 @@ The release-config guard now validates `.promptbranch-release.yml` as a repo-loc
 ## v0.1.66 release doctor candidate precheck
 
 The release doctor now has a config-aware candidate ZIP precheck. `pb release doctor --artifact ZIP --version VERSION --json` reports `release_config` and `candidate_artifact` sections without running lifecycle hooks or mutating artifact/source/Git state.
+
+- [Bonnetjes Cloudflare one-shot validation](bonnetjes-cloudflare-one-shot-validation.md)
