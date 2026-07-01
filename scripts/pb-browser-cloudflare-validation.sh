@@ -23,6 +23,7 @@ fresh_profile=0
 skip_bootstrap=0
 bootstrap_mode="${PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE:-docker}"
 target_url="${PROMPTBRANCH_BROWSER_VALIDATION_URL:-${CHATGPT_PROJECT_URL:-}}"
+bootstrap_url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
 
@@ -44,7 +45,8 @@ Options:
   --reuse-profile            Reuse selected profile. This is the default.
   --skip-bootstrap           Do not open a browser; use an already logged-in profile.
   --docker-bootstrap         Open Chrome inside Docker on the host display. Default.
-  --url URL                  URL for bootstrap/auth-readiness. Default: current state conversation/project URL.
+  --url URL                  URL for auth-readiness validation. Default: current state conversation/project URL.
+  --bootstrap-url URL        URL for visible browser bootstrap. Default: https://chatgpt.com/.
   --host-bootstrap           Compatibility mode: open host Chrome directly.
   --max-wait-seconds N       Cloudflare check timeout. Default: 300.
   --poll-seconds N           Cloudflare check polling interval. Default: 10.
@@ -58,6 +60,7 @@ Environment equivalents:
   PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS
   PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host
   PROMPTBRANCH_BROWSER_VALIDATION_URL
+  PROMPTBRANCH_BROWSER_BOOTSTRAP_URL
 
 Success criteria:
   - docker profile mode is standard-browser
@@ -146,6 +149,10 @@ while [[ $# -gt 0 ]]; do
       target_url="${2:-}"
       shift 2
       ;;
+    --bootstrap-url)
+      bootstrap_url="${2:-}"
+      shift 2
+      ;;
     --host-bootstrap)
       bootstrap_mode="host"
       shift
@@ -172,6 +179,13 @@ done
 
 if [[ -z "${target_url}" ]]; then
   target_url="$(resolve_state_url)"
+fi
+if [[ -z "${bootstrap_url}" ]]; then
+  # Manual Docker/host bootstrap is only used to establish the browser trust/session state.
+  # Keep this default stable and generic; project/conversation scope is validated later by
+  # docker-browser-parity-cloudflare-check against target_url.  Direct project URLs can
+  # still be tested explicitly with --bootstrap-url or PROMPTBRANCH_BROWSER_BOOTSTRAP_URL.
+  bootstrap_url="https://chatgpt.com/"
 fi
 
 case "${max_wait_seconds}" in
@@ -203,6 +217,7 @@ log "poll_seconds=${poll_seconds}"
 log "skip_bootstrap=${skip_bootstrap}"
 log "bootstrap_mode=${bootstrap_mode}"
 log "target_url=${target_url}"
+log "bootstrap_url=${bootstrap_url}"
 log "fresh_profile=${fresh_profile}"
 
 if [[ -n "${install_artifact}" ]]; then
@@ -223,7 +238,7 @@ if [[ -n "${install_artifact}" ]]; then
 fi
 
 if [[ "${skip_bootstrap}" == "0" ]]; then
-  bootstrap_args=(--profile-dir "${profile_dir}" --url "${target_url}")
+  bootstrap_args=(--profile-dir "${profile_dir}" --url "${bootstrap_url}")
   if [[ "${fresh_profile}" == "1" ]]; then
     bootstrap_args+=(--fresh)
   else

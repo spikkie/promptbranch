@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
-active candidate version: v0.1.103.10.15
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
-next normal slice: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
+active candidate version: v0.1.103.10.16
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
+next normal slice: v0.1.103.10.16 — split Docker bootstrap URL from project-scoped auth target
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1842,3 +1842,12 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip
 Scope: keep `pbsa` on the project `?tab=sources` route before Add source lookup. If Sources navigation escapes to a generic conversation, recover via direct sources URL or fail closed with structured diagnostics.
 
 Validation target: auth-only adoption, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip` must reach Add source lookup on the project Sources route or fail without generic-conversation ambiguity.
+
+
+## v0.1.103.10.16 — split Docker bootstrap URL from project-scoped auth target
+
+`v0.1.103.10.16` keeps Docker visible browser bootstrap on a stable generic URL by default while preserving the current Promptbranch project/conversation URL for Docker auth-readiness validation. This repairs the `v0.1.103.10.15` auth-only adoption failure where bootstrap opened the project conversation URL directly and Chrome exited before validation could run.
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip
+
+Validation target: auth-only adoption must show `bootstrap_url=https://chatgpt.com/` and `target_url=<current project conversation URL>`, then `pbsa chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip` may be retried.

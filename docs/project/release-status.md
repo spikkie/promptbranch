@@ -410,3 +410,7 @@ Control-surface slice token: v0.1.103.10.11 — Docker-originated visible browse
 <!-- v0.1.103.10.15 — pbsa project-sources route preservation: chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip -->
 
 Control-surface slice token: v0.1.103.10.15 — pbsa preserves Project Sources route before Add source lookup
+
+| v0.1.103.10.16 | repair | split Docker bootstrap URL from project-scoped auth target | candidate | focused script/version/control-surface tests before operator live auth-only validation; adoption pending | DOD-160 in_progress; DOD-148..DOD-159 preserved | pending |
+
+| v0.1.103.10.16 | repair | v0.1.103.10.16 — split Docker bootstrap URL from project-scoped auth target | chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip candidate | focused script/version/control-surface tests before operator live auth-only validation; adoption pending | DOD-160 in_progress; DOD-148..DOD-159 preserved | pending |

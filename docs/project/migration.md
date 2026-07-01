@@ -779,3 +779,8 @@ No data migration is required. Operators may reuse `.pb_profile/browser/default`
 ## v0.1.103.10.15 repair mapping
 
 `v0.1.103.10.15` maps the live HTTP 500 from `pbsa` into the standard browser repair line. The failure was caused by preflight launching a second persistent context while a held project-scoped auth session already owned `/app/profile`. The repair reuses compatible held sessions and keeps Project Source mutation gated by explicit operator intent.
+
+
+## v0.1.103.10.16 repair mapping
+
+The repair maps the live auth-only adoption failure from `v0.1.103.10.15` into a URL-role split: visible Docker bootstrap uses a stable generic URL by default, while Docker auth-readiness still validates the current Promptbranch project/conversation target.

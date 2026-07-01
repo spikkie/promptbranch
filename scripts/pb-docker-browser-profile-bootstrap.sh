@@ -16,7 +16,7 @@ cd "${repo_root}"
 standard_profile_dir="${repo_root}/.pb_profile/browser/default"
 profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"
 fresh=0
-url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-${CHATGPT_PROJECT_URL:-}}"
+url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
 image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}"
 container_profile_dir="/app/profile"
 container_name="promptbranch-docker-browser-bootstrap-$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -34,7 +34,7 @@ Options:
   --profile-dir PATH  Host browser profile directory. Default: ./.pb_profile/browser/default.
   --fresh             Delete/recreate selected profile before opening Docker Chrome.
   --reuse             Reuse selected profile. Default.
-  --url URL           URL to open. Default: current state conversation/project URL, CHATGPT_PROJECT_URL, or https://chatgpt.com/.
+  --url URL           URL to open. Default: https://chatgpt.com/. Project URLs are supported when passed explicitly.
   --image IMAGE       Docker image. Default: promptbranch-service:local.
   --help              Show this help.
 
@@ -128,7 +128,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${url}" ]]; then
-  url="$(resolve_state_url)"
+  # Keep visible Docker bootstrap stable and generic by default.  Auth/project
+  # scope is checked by the subsequent parity validation.  Pass --url explicitly
+  # when a project URL must be opened for diagnosis.
+  url="https://chatgpt.com/"
 fi
 
 if [[ -z "${profile_dir}" ]]; then

@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip",
-  "active_candidate_version": "v0.1.103.10.15",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip",
+  "active_candidate_version": "v0.1.103.10.16",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.15 \u2014 pbsa preserves Project Sources route before Add source lookup",
+  "active_slice": "v0.1.103.10.16 \u2014 split Docker bootstrap URL from project-scoped auth target",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.15.zip",
-  "next_normal_slice": "v0.1.103.10.15 \u2014 pbsa preserves Project Sources route before Add source lookup",
-  "next_normal_version": "v0.1.103.10.15",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.16.zip",
+  "next_normal_slice": "v0.1.103.10.16 \u2014 split Docker bootstrap URL from project-scoped auth target",
+  "next_normal_version": "v0.1.103.10.16",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -129,10 +129,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "keep Project Source add on the Project Sources route and avoid generic conversation escape before Add source lookup",
-      "slice": "v0.1.103.10.15 \u2014 pbsa preserves Project Sources route before Add source lookup",
+      "scope": "keep visible Docker bootstrap stable on generic ChatGPT while auth-readiness validates the current project/conversation target",
+      "slice": "v0.1.103.10.16 \u2014 split Docker bootstrap URL from project-scoped auth target",
       "status": "active",
-      "version": "v0.1.103.10.15"
+      "version": "v0.1.103.10.16"
     },
     {
       "release_mode": "normal",
@@ -176,5 +176,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.15"
+  "updated_for": "v0.1.103.10.16"
 }
