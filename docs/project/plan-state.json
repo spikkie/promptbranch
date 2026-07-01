@@ -1,8 +1,8 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip",
-  "active_candidate_version": "v0.1.103.10.4",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip",
+  "active_candidate_version": "v0.1.103.10.5",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
   "active_slice": "standard browser profile default",
   "architecture_goal": "controlled problem-solving loop",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip",
   "next_normal_slice": "standard browser profile default",
-  "next_normal_version": "v0.1.103.10.4",
+  "next_normal_version": "v0.1.103.10.5",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -39,10 +39,10 @@
   ],
   "release_history": [
     {
-      "version": "v0.1.103.10.4",
+      "version": "v0.1.103.10.5",
       "kind": "repair/diagnostic",
       "status": "candidate",
-      "summary": "Adds one-shot standard browser Cloudflare validation script combining optional install, clean visible login bootstrap, Docker parity check, and strict validation; no Project Source mutation."
+      "summary": "Repairs standard browser profile ownership/writability handling so empty Docker-created root-owned bind-mount placeholders do not block host Chrome bootstrap; no Project Source mutation."
     },
     {
       "version": "v0.1.103.9",
@@ -90,7 +90,7 @@
       "scope": "provide one operator validation workflow for install, visible clean-login profile bootstrap, Docker standard-browser Cloudflare check, and strict auth-ready validation without Project Source mutation",
       "slice": "standard browser profile default",
       "status": "active",
-      "version": "v0.1.103.10.4"
+      "version": "v0.1.103.10.5"
     },
     {
       "release_mode": "normal",
@@ -134,5 +134,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.4"
+  "updated_for": "v0.1.103.10.5"
 }

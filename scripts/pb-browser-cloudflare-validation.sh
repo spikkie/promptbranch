@@ -36,7 +36,7 @@ One-shot standard browser Cloudflare validation phase:
 
 Options:
   --install-artifact ZIP     Optional candidate ZIP to install first.
-  --install-version VERSION  Version used with --install-artifact, for example v0.1.103.10.4.
+  --install-version VERSION  Version used with --install-artifact, for example v0.1.103.10.5.
   --profile-dir PATH         Browser profile directory. Default: ./.pb_profile/browser/default.
   --fresh-profile            Delete and recreate the selected profile before host Chrome bootstrap.
   --reuse-profile            Reuse selected profile. This is the default.

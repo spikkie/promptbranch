@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip
-active candidate version: v0.1.103.10.4
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip
-next normal slice: v0.1.103.10.4 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip
+active candidate version: v0.1.103.10.5
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip
+next normal slice: v0.1.103.10.5 — standard browser profile default
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -812,3 +812,13 @@ Control-surface token: Passive auth-readiness runtime-client wiring repair
 Adds one operator workflow for standard browser Cloudflare validation: optional install, visible clean-login profile bootstrap, Docker standard-browser Cloudflare check, and strict `validation-summary.json` verification. Project Source mutation remains out of scope.
 
 Control-surface tokens: v0.1.103.10.4 chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip standard browser profile default
+
+## v0.1.103.10.5 candidate status
+
+`v0.1.103.10.5` repairs the failed standard browser validation bootstrap observed after `v0.1.103.10.4`. The standard profile path `.pb_profile/browser/default` can be created as `root:root` when Docker creates the bind-mount target before host Chrome bootstrap. The bootstrap now removes and recreates an empty non-writable placeholder, while non-empty non-writable profiles fail fast with an explicit ownership repair command.
+
+Next safe action:
+
+```bash
+./scripts/pb-browser-cloudflare-validation.sh --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip --install-version v0.1.103.10.5
+```

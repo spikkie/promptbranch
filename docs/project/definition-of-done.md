@@ -444,3 +444,4 @@ Last release: v0.1.102
 
 | DOD-147 | Bonnetjes Cloudflare parity profile hygiene is documented and build-context safe | in_progress | `.dockerignore`; `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh`; `docs/bonnetjes-cloudflare-parity-test-procedure.md`; safe no-artifact export | v0.1.103.9 |
 | DOD-148 | standard browser Cloudflare validation can be run as one operator workflow | in_progress | `scripts/docker-bonnetjes-cloudflare-validation.sh`; `docs/bonnetjes-cloudflare-one-shot-validation.md` | v0.1.103.10.4 |
+| DOD-149 | standard browser profile bootstrap repairs empty Docker-created root-owned placeholders and fails fast on non-empty non-writable profiles | in_progress | `scripts/pb-browser-profile-bootstrap.sh`; `scripts/docker-browser-parity-cloudflare-check.sh`; focused shell-script tests | v0.1.103.10.5 |

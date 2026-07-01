@@ -167,9 +167,51 @@ PY_GUARD
 
 assert_host_profile_not_in_docker_build_context | tee "${out_dir}/host-profile-build-context-guard.json"
 
-if [[ -n "${PROMPTBRANCH_HOST_PROFILE_DIR:-}" ]]; then
-  mkdir -p -- "${PROMPTBRANCH_HOST_PROFILE_DIR}"
-fi
+prepare_bind_mount_profile_dir() {
+  local raw_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${repo_root}/.pb_profile/browser/default}"
+  local dir
+  if [[ "${raw_dir}" == /* ]]; then
+    dir="${raw_dir}"
+  else
+    dir="${repo_root}/${raw_dir}"
+  fi
+  local parent
+  parent="$(dirname "${dir}")"
+  mkdir -p -- "${parent}"
+
+  if [[ -e "${dir}" && ! -d "${dir}" ]]; then
+    echo "ERROR: host browser profile path exists but is not a directory: ${dir}" | tee -a "${out_dir}/run.log"
+    exit 66
+  fi
+
+  if [[ -d "${dir}" && ! -w "${dir}" ]]; then
+    if rmdir -- "${dir}" 2>/dev/null; then
+      echo "Repaired empty non-writable browser profile placeholder: ${dir}" | tee -a "${out_dir}/run.log"
+    else
+      cat <<MSG | tee -a "${out_dir}/run.log"
+ERROR: host browser profile directory is not writable: ${dir}
+Docker/Chrome needs this bind-mounted profile to be writable by the host user.
+Likely cause: Docker created the bind-mount target as root before host bootstrap.
+Repair ownership first, for example:
+  sudo chown -R $(id -u):$(id -g) "${dir}"
+MSG
+      exit 21
+    fi
+  fi
+
+  mkdir -p -- "${dir}"
+  if [[ ! -w "${dir}" ]]; then
+    cat <<MSG | tee -a "${out_dir}/run.log"
+ERROR: host browser profile directory is still not writable after preparation: ${dir}
+Repair ownership first, for example:
+  sudo chown -R $(id -u):$(id -g) "${dir}"
+MSG
+    exit 21
+  fi
+  export PROMPTBRANCH_HOST_PROFILE_DIR="${dir}"
+}
+
+prepare_bind_mount_profile_dir
 
 {
   printf '== docker browser parity Cloudflare check ==\n'

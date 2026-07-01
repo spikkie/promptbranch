@@ -735,3 +735,13 @@ Project Source mutation.
 ## v0.1.103.10.4 migration
 
 No state migration. Operators may use `scripts/docker-bonnetjes-cloudflare-validation.sh` to create a fresh timestamped profile and validate the Docker Bonnetjes Cloudflare path. Browser profiles remain local bind-mounted state and must not be committed or packaged.
+
+## v0.1.103.10.5 migration
+
+No state migration is required. If `.pb_profile/browser/default` is an empty non-writable Docker-created placeholder, the bootstrap can recreate it as the host user. If it contains existing browser state and is not writable, operators must repair ownership explicitly, for example:
+
+```bash
+sudo chown -R $(id -u):$(id -g) .pb_profile/browser/default
+```
+
+Browser profiles remain local bind-mounted state and must not be committed or packaged.

@@ -328,7 +328,7 @@ Repair base candidate preserved: chatgpt_claudecode_workflow-2_v0.1.99.zip
 
 | v0.1.103.9 | repair/diagnostic | Bonnetjes Cloudflare parity profile hygiene | candidate | focused local validation only; live clean logged-in profile path operator-proven before packaging | DOD-147 in_progress | pending |
 
-## v0.1.103.10.4
+## v0.1.103.10.5
 
 Status: candidate only, not accepted/current.
 
@@ -336,12 +336,20 @@ Scope: one-shot standard browser Cloudflare validation workflow.
 
 Validation focus: script syntax, focused shell-script tests, control-surface validation, artifact hygiene.
 
-Control-surface tokens: v0.1.103.10.4 chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip standard browser profile default
+Control-surface tokens: v0.1.103.10.5 chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip standard browser profile default
 
-## v0.1.103.10.4
+## v0.1.103.10.5
 
 Status: candidate.
 
 Purpose: auth-only hygiene compile path repair after `v0.1.103.10.2` installed successfully but adoption was blocked by a stale `promptbranch_service.py` compile target.
 
 Scope remains auth-only. Project Source mutation remains out of scope.
+
+## v0.1.103.10.5
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.5 | repair | standard browser profile ownership repair | candidate | focused shell-script/profile guard tests pending operator live Cloudflare validation | DOD-149 added; DOD-148 preserved in progress | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.5 chatgpt_claudecode_workflow-2_v0.1.103.10.5.zip standard browser profile ownership repair

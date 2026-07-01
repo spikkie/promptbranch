@@ -3222,6 +3222,28 @@ def test_docker_bonnetjes_clean_login_profile_bootstrap_documents_manual_phase()
     assert "http://localhost:8000/v1/login-check" not in script
 
 
+def test_standard_browser_profile_bootstrap_repairs_empty_root_owned_placeholder() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "pb-browser-profile-bootstrap.sh").read_text(encoding="utf-8")
+
+    assert "prepare_profile_dir_for_host_chrome" in script
+    assert 'rmdir -- "${dir}"' in script
+    assert "Repaired empty non-writable browser profile placeholder" in script
+    assert "sudo chown -R $(id -u):$(id -g)" in script
+    assert "Failed to create a ProcessSingleton" not in script
+
+
+def test_docker_cloudflare_check_prepares_bind_mount_profile_before_compose() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "docker-browser-parity-cloudflare-check.sh").read_text(encoding="utf-8")
+
+    assert "prepare_bind_mount_profile_dir" in script
+    assert 'export PROMPTBRANCH_HOST_PROFILE_DIR="${dir}"' in script
+    assert "docker compose -f docker-compose.chatgpt-service.yml up -d --build" in script
+    assert script.index("prepare_bind_mount_profile_dir") < script.index("docker compose -f docker-compose.chatgpt-service.yml up -d --build")
+    assert "Repaired empty non-writable browser profile placeholder" in script
+
+
 def test_docker_bonnetjes_cloudflare_validation_wraps_install_bootstrap_and_check() -> None:
     root = Path(__file__).resolve().parents[1]
     script_path = root / "scripts" / "docker-bonnetjes-cloudflare-validation.sh"

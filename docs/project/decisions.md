@@ -484,3 +484,9 @@ Consequence: operators use `scripts/docker-bonnetjes-clean-login-profile-bootstr
 Decision: provide a single operator script that runs the full Cloudflare validation phase: optional candidate install, visible clean-login profile bootstrap, Docker Bonnetjes Cloudflare parity check, and strict summary validation.
 
 Consequence: operators can validate the working Cloudflare path with `scripts/docker-bonnetjes-cloudflare-validation.sh` before any downstream Project Source mutation slice.
+
+### v0.1.103.10.5 — standard browser profile ownership guard
+
+Decision: standard browser validation must prepare `.pb_profile/browser/default` before host Chrome or Docker uses it. Empty non-writable bind-mount placeholders may be removed and recreated by the host user; non-empty non-writable profiles must fail fast with an explicit ownership repair instruction.
+
+Consequence: the validation path fails before Chrome profile corruption risk and avoids silently running host Chrome against a root-owned profile. Project Source mutation remains disabled and the Cloudflare-safe browser envelope is unchanged.
