@@ -142,6 +142,33 @@ PY_STAGE
 
 manifest_json="$(docker exec "${CID}" cat /tmp/pb-challenge-artifacts/manifest.json 2>/dev/null || true)"
 if [[ -z "${manifest_json}" ]]; then
+  # Some successful no-challenge runs have no files to export. Treat this as a
+  # clean no-op instead of failing the auth-only validation path. Only use this
+  # fallback when the source directory truly has no matching challenge files.
+  matching_count="$(docker exec "${CID}" sh -lc 'find /app/debug_artifacts -maxdepth 1 -type f -name "auth_readiness_auth_challenge_detected_*" 2>/dev/null | wc -l' 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "${matching_count:-}" == "0" ]]; then
+    python3 - "${dest_real}" "${max_files}" "${max_bytes}" <<'PY_NO_STAGED_NO_MATCH'
+from __future__ import annotations
+import json
+import sys
+payload = {
+    'ok': True,
+    'status': 'no_matching_artifacts',
+    'source_dir': '/app/debug_artifacts',
+    'stage_dir': '/tmp/pb-challenge-artifacts',
+    'pattern': 'auth_readiness_auth_challenge_detected_*',
+    'max_files': int(sys.argv[2]),
+    'max_bytes': int(sys.argv[3]),
+    'file_count': 0,
+    'total_bytes': 0,
+    'entries': [],
+    'host_destination': sys.argv[1],
+    'note': 'no matching challenge artifacts; missing staging manifest treated as clean no-op',
+}
+print(json.dumps(payload, indent=2, sort_keys=True))
+PY_NO_STAGED_NO_MATCH
+    exit 0
+  fi
   json_error missing_staged_manifest "missing /tmp/pb-challenge-artifacts/manifest.json after staging"
   exit 2
 fi

@@ -69,6 +69,7 @@ allow_dirty=0
 skip_commit=0
 skip_push=0
 skip_source_add="${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}"
+auth_only_validation="${PROMPTBRANCH_RELEASE_AUTH_ONLY_VALIDATION:-0}"
 skip_install=0
 skip_chown=0
 skip_service=0
@@ -130,6 +131,9 @@ Options:
       --skip-commit           Skip git add/commit/push.
       --no-push               Commit but do not git push.
       --skip-source-add       Skip promptbranch src add.
+      --auth-only-validation  Run the Bonnetjes Cloudflare auth-only release validation path.
+                              Implies --skip-source-add and never enables Project Source mutation.
+                              With --adopt-after-validation, adopts the ZIP with pb artifact adopt --local-only.
       --skip-install          Skip pipx reinstall from generated ZIP.
       --skip-chown            Skip ownership normalization of .pb_profile and debug_artifacts.
       --skip-service          Skip ./run_chatgpt_service.sh.
@@ -324,7 +328,7 @@ args_include_skip_source_add() {
   while [[ $# -gt 0 ]]; do
     arg="$1"
     case "${arg}" in
-      --skip-source-add)
+      --skip-source-add|--auth-only-validation)
         return 0
         ;;
       --)
@@ -528,6 +532,7 @@ while [[ $# -gt 0 ]]; do
     --skip-commit) skip_commit=1; shift ;;
     --no-push) skip_push=1; shift ;;
     --skip-source-add) skip_source_add=1; shift ;;
+    --auth-only-validation) auth_only_validation=1; skip_source_add=1; shift ;;
     --skip-install) skip_install=1; shift ;;
     --skip-chown) skip_chown=1; shift ;;
     --skip-service) skip_service=1; shift ;;
@@ -651,8 +656,8 @@ fi
 if [[ ${adopt_if_green} -eq 1 && ${skip_tests} -eq 1 ]]; then
   fail "--adopt-if-green requires --tests-only to run the full test/report block"
 fi
-if [[ ${adopt_after_validation} -eq 1 && ${skip_tests} -eq 1 ]]; then
-  fail "--adopt-after-validation requires --run-tests or --run-all-tests"
+if [[ ${adopt_after_validation} -eq 1 && ${skip_tests} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
+  fail "--adopt-after-validation requires --run-tests or --run-all-tests unless --auth-only-validation is selected"
 fi
 if [[ ${adopt_after_validation} -eq 1 && ${tests_only} -eq 1 ]]; then
   fail "--adopt-after-validation is only supported with the full release workflow; use --tests-only --adopt-if-green for tests-only adoption"
@@ -1772,7 +1777,11 @@ if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" !
   ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
   promptbranch src add "${artifact_zip}"
 else
-  echo "Source add skipped: --skip-source-add"
+  if [[ ${auth_only_validation} -eq 1 ]]; then
+    echo "Source add skipped: --auth-only-validation"
+  else
+    echo "Source add skipped: --skip-source-add"
+  fi
 fi
 
 # Restore ownership of generated repo-local state if needed.
@@ -2209,12 +2218,142 @@ verify_validation_reports_green() {
   fi
 }
 
+
+auth_only_validation_log="${release_log_dir}/bonnetjes_auth_only_validation.${ver}.log"
+auth_only_validation_summary_json="${release_log_dir}/bonnetjes_auth_only_validation_summary.${ver}.json"
+auth_only_validation_hygiene_json="${release_log_dir}/bonnetjes_auth_only_hygiene.${ver}.json"
+
+run_auth_only_hygiene_checks() {
+  echo "== Auth-only hygiene checks =="
+  python3 - "${auth_only_validation_hygiene_json}" <<'INNERPY'
+from __future__ import annotations
+import json
+import subprocess
+from pathlib import Path
+
+checks: dict[str, object] = {}
+errors: list[str] = []
+
+def run(name: str, cmd: list[str]) -> None:
+    completed = subprocess.run(cmd, text=True, capture_output=True)
+    checks[name] = {
+        "cmd": cmd,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout[-4000:],
+        "stderr": completed.stderr[-4000:],
+    }
+    if completed.returncode != 0:
+        errors.append(f"{name} failed with rc={completed.returncode}")
+
+run("py_compile", ["python3", "-m", "py_compile", "promptbranch_browser_auth/client.py", "promptbranch_service.py", "promptbranch_version.py"])
+run("bash_n", ["bash", "-n", "scripts/docker-bonnetjes-cloudflare-validation.sh", "scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh", "scripts/docker-bonnetjes-cloudflare-check.sh", "scripts/docker-browser-parity-cloudflare-check.sh", "scripts/docker-browser-parity-export-challenge-artifacts.sh", "docker/run-chatgpt-service-in-container.sh"])
+run("no_tracked_profiles_debug_or_zips", ["bash", "-lc", "test -z \"$(git ls-files | grep -E '^\\.pb_profile|^debug_artifacts|\\.zip$' || true)\""])
+run("no_history_profiles_weights_debug_or_zips", ["bash", "-lc", "test -z \"$(git rev-list --objects --all | grep -E '\\.zip$|\\.pb_profile|weights\\.bin|debug_artifacts' || true)\""])
+run("dockerignore_profile_debug_zip_rules", ["bash", "-lc", "grep -q '^\\.pb_profile\\*' .dockerignore && grep -q '^\\.pb_profile_\\*' .dockerignore && grep -q '^debug_artifacts/' .dockerignore && grep -q '^\\*\\.zip$' .dockerignore"])
+
+payload = {
+    "ok": not errors,
+    "action": "release_control_auth_only_hygiene",
+    "status": "passed" if not errors else "failed",
+    "checks": checks,
+    "errors": errors,
+}
+Path(__import__('sys').argv[1]).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(payload, indent=2, sort_keys=True))
+raise SystemExit(0 if not errors else 2)
+INNERPY
+}
+
+run_auth_only_validation() {
+  echo "== Auth-only Bonnetjes Cloudflare validation =="
+  run_auth_only_hygiene_checks || return $?
+  local validation_start_epoch
+  validation_start_epoch="$(date +%s)"
+  ./scripts/docker-bonnetjes-cloudflare-validation.sh \
+    --max-wait-seconds 300 \
+    --poll-seconds 10 \
+    2>&1 | tee "${auth_only_validation_log}"
+  local validation_rc=${PIPESTATUS[0]}
+  if [[ ${validation_rc} -ne 0 ]]; then
+    return "${validation_rc}"
+  fi
+  python3 - "${repo_root}" "${validation_start_epoch}" "${auth_only_validation_summary_json}" <<'INNERPY'
+from __future__ import annotations
+import json
+import sys
+from pathlib import Path
+repo = Path(sys.argv[1])
+start_epoch = int(sys.argv[2])
+out = Path(sys.argv[3])
+base = repo / 'debug_artifacts' / 'docker-browser-parity' / 'bonnetjes-validation'
+candidates = []
+if base.exists():
+    for path in base.glob('*/validation-summary.json'):
+        try:
+            if int(path.stat().st_mtime) >= start_epoch - 2:
+                candidates.append(path)
+        except OSError:
+            pass
+if not candidates:
+    raise SystemExit('no Bonnetjes validation-summary.json found for auth-only validation')
+candidates.sort(key=lambda p: p.stat().st_mtime)
+summary_path = candidates[-1]
+payload = json.loads(summary_path.read_text(encoding='utf-8'))
+if payload.get('ok') is not True or payload.get('status') != 'passed':
+    raise SystemExit(f'Bonnetjes validation did not pass: {payload!r}')
+checks = payload.get('checks') if isinstance(payload.get('checks'), dict) else {}
+required = {
+    'cloudflare_cleared': True,
+    'auth_ready': True,
+    'logged_in': True,
+    'challenge_detected': False,
+    'composer_visible': True,
+    'project_source_mutation_allowed': False,
+}
+errors = [f'{key} expected {expected!r} got {checks.get(key)!r}' for key, expected in required.items() if checks.get(key) is not expected]
+if errors:
+    raise SystemExit('; '.join(errors))
+payload['release_control_auth_only_summary_path'] = str(summary_path)
+out.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+print(json.dumps(payload, indent=2, sort_keys=True))
+INNERPY
+}
+
+verify_auth_only_validation_green() {
+  json_file_is_ok_true "${auth_only_validation_hygiene_json}"
+  json_file_is_ok_true "${auth_only_validation_summary_json}"
+  python3 - "${auth_only_validation_summary_json}" <<'INNERPY'
+import json
+import sys
+from pathlib import Path
+payload = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+if payload.get('status') != 'passed':
+    raise SystemExit(f"auth-only validation status is not passed: {payload.get('status')!r}")
+checks = payload.get('checks') if isinstance(payload.get('checks'), dict) else {}
+required = {
+    'cloudflare_cleared': True,
+    'auth_ready': True,
+    'logged_in': True,
+    'challenge_detected': False,
+    'composer_visible': True,
+    'project_source_mutation_allowed': False,
+}
+for key, expected in required.items():
+    if checks.get(key) is not expected:
+        raise SystemExit(f"auth-only validation check {key} expected {expected!r} got {checks.get(key)!r}")
+INNERPY
+}
+
 adopt_after_validation_if_green() {
   echo "== Adopt after validation =="
   if [[ ${workflow_rc} -ne 0 ]]; then
     fail "--adopt-after-validation refused adoption because validation failed with exit_code=${workflow_rc}"
   fi
-  verify_validation_reports_green
+  if [[ ${auth_only_validation} -eq 1 ]]; then
+    verify_auth_only_validation_green
+  else
+    verify_validation_reports_green
+  fi
   adopt_current_artifact
 }
 
@@ -2225,7 +2364,11 @@ adopt_current_artifact() {
   local adopt_json="${release_log_dir}/pb_artifact_adopt.${ver}.json"
   local current_json="${release_log_dir}/pb_artifact_current.${ver}.json"
 
-  echo "== Adopt current Project Source artifact =="
+  if [[ ${auth_only_validation} -eq 1 ]]; then
+    echo "== Adopt current local artifact (auth-only validation) =="
+  else
+    echo "== Adopt current Project Source artifact =="
+  fi
   echo "artifact: ${artifact_zip}"
   echo "local_zip: ${local_zip}"
 
@@ -2235,18 +2378,30 @@ adopt_current_artifact() {
   pb artifact verify "${local_zip}" --json | tee "${verify_json}"
   json_file_is_ok_true "${verify_json}"
 
-  echo "+ pb src list --json"
-  pb src list --json | tee "${src_list_json}"
-  json_file_is_ok_true "${src_list_json}"
-  verify_source_list_mentions_artifact "${src_list_json}"
+  if [[ ${auth_only_validation} -eq 1 ]]; then
+    python3 - "${src_list_json}" <<'INNERPY_LOCAL_SRC'
+import json
+import sys
+from pathlib import Path
+Path(sys.argv[1]).write_text(json.dumps({"ok": True, "status": "skipped_auth_only_validation", "project_source_required": False, "project_source_mutated": False}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY_LOCAL_SRC
+    echo "+ pb artifact adopt ${artifact_zip} --local-only --local-path ${local_zip} --json"
+    pb artifact adopt "${artifact_zip}" --local-only --local-path "${local_zip}" --json | tee "${adopt_json}"
+  else
+    echo "+ pb src list --json"
+    pb src list --json | tee "${src_list_json}"
+    json_file_is_ok_true "${src_list_json}"
+    verify_source_list_mentions_artifact "${src_list_json}"
 
-  echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --json"
-  pb artifact adopt "${artifact_zip}" --from-project-source --local-path "${local_zip}" --json | tee "${adopt_json}"
-  python3 - "${adopt_json}" <<'INNERPY'
+    echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --json"
+    pb artifact adopt "${artifact_zip}" --from-project-source --local-path "${local_zip}" --json | tee "${adopt_json}"
+  fi
+  python3 - "${adopt_json}" "${auth_only_validation}" <<'INNERPY'
 import json
 import sys
 from pathlib import Path
 path = Path(sys.argv[1])
+auth_only = sys.argv[2] == "1"
 raw = path.read_text(encoding="utf-8", errors="replace")
 idx = raw.find("{")
 if idx < 0:
@@ -2254,13 +2409,21 @@ if idx < 0:
 payload = json.loads(raw[idx:])
 if payload.get("ok") is not True:
     raise SystemExit("artifact adopt did not return ok:true")
-if payload.get("status") != "adopted":
-    raise SystemExit(f"artifact adopt status is not adopted: {payload.get('status')!r}")
-for key in ("source_verified", "artifact_registry_updated", "state_artifact_updated", "state_source_updated"):
+expected_status = "adopted_local" if auth_only else "adopted"
+if payload.get("status") != expected_status:
+    raise SystemExit(f"artifact adopt status is not {expected_status}: {payload.get('status')!r}")
+required_true = ["artifact_registry_updated", "state_artifact_updated", "state_source_updated"]
+if not auth_only:
+    required_true.insert(0, "source_verified")
+for key in required_true:
     if payload.get(key) is not True:
         raise SystemExit(f"artifact adopt field {key} is not true")
+if auth_only and payload.get("source_verified") not in (False, None):
+    raise SystemExit("auth-only local adoption unexpectedly source-verified Project Sources")
 if payload.get("project_source_mutated") is not False:
     raise SystemExit("artifact adopt unexpectedly mutated Project Sources")
+if auth_only and payload.get("adoption_mode") != "local_only":
+    raise SystemExit(f"auth-only adoption_mode is not local_only: {payload.get('adoption_mode')!r}")
 INNERPY
 
   echo "+ pb artifact current --json"
@@ -4538,6 +4701,16 @@ if [[ ${skip_tests} -eq 0 ]]; then
 
   set -e
   stop_test_session_log
+fi
+
+if [[ ${auth_only_validation} -eq 1 ]]; then
+  set +e
+  run_auth_only_validation
+  auth_only_validation_rc=$?
+  set -e
+  if [[ ${auth_only_validation_rc} -ne 0 ]]; then
+    workflow_rc=${auth_only_validation_rc}
+  fi
 fi
 
 if [[ ${skip_tests} -eq 1 && ${adopt_current} -eq 1 ]]; then

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip
-active candidate version: v0.1.103.10.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip
-next normal slice: v0.1.103.10.1 — Bonnetjes Cloudflare one-shot validation script
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.2.zip
+active candidate version: v0.1.103.10.2
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.2.zip
+next normal slice: v0.1.103.10.2 — Bonnetjes auth-only release-control path
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -807,8 +807,8 @@ Control-surface token: Passive auth-readiness runtime-client wiring repair
 
 `v0.1.103.9` keeps the proven Bonnetjes Cloudflare parity mode and adds profile/build-context hygiene. It documents the clean anonymous and clean logged-in Cloudflare test procedure, adds a visible host Chrome bootstrap script, prevents repository-local browser profiles from entering Docker build context, and fixes no-artifact evidence export. Project Source mutation remains out of scope.
 
-## v0.1.103.10.1 candidate status
+## v0.1.103.10.2 candidate status
 
 Adds one operator workflow for Bonnetjes Cloudflare validation: optional install, visible clean-login profile bootstrap, Docker Bonnetjes Cloudflare parity check, and strict `validation-summary.json` verification. Project Source mutation remains out of scope.
 
-Control-surface tokens: v0.1.103.10.1 chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip Bonnetjes Cloudflare one-shot validation script
+Control-surface tokens: v0.1.103.10.2 chatgpt_claudecode_workflow-2_v0.1.103.10.2.zip Bonnetjes auth-only release-control path

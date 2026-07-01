@@ -3243,3 +3243,20 @@ def test_docker_bonnetjes_cloudflare_validation_wraps_install_bootstrap_and_chec
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
     assert "docker cp" not in script
+
+
+def test_release_control_declares_auth_only_validation_path() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "--auth-only-validation" in script
+    assert "auth_only_validation=1; skip_source_add=1" in script
+    assert "run_auth_only_validation" in script
+    assert "verify_auth_only_validation_green" in script
+    assert "pb artifact adopt \"${artifact_zip}\" --local-only --local-path \"${local_zip}\" --json" in script
+    assert "skipped_auth_only_validation" in script
+
+
+def test_docker_challenge_exporter_returns_no_matching_artifacts_without_manifest() -> None:
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "docker-browser-parity-export-challenge-artifacts.sh").read_text(encoding="utf-8")
+    assert "status': 'no_matching_artifacts'" in script
+    assert "missing staging manifest treated as clean no-op" in script
+    assert "matching_count" in script
