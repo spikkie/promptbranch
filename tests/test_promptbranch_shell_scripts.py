@@ -3222,3 +3222,24 @@ def test_docker_bonnetjes_clean_login_profile_bootstrap_documents_manual_phase()
     assert "docker-browser-parity-cloudflare-check.sh" in script
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
+
+
+def test_docker_bonnetjes_cloudflare_validation_wraps_install_bootstrap_and_check() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "docker-bonnetjes-cloudflare-validation.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert script_path.exists()
+    assert "One-shot Bonnetjes Cloudflare validation" in script
+    assert "--install-artifact" in script
+    assert "pb release install" in script
+    assert "docker-bonnetjes-clean-login-profile-bootstrap.sh" in script
+    assert "docker-browser-parity-cloudflare-check.sh" in script
+    assert "bonnetjes-cloudflare-parity" in script
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
+    assert "validation-summary.json" in script
+    assert "cloudflare_cleared_auth_ready" in script
+    assert "project_source_mutation_allowed" in script
+    assert "http://localhost:8000/v1/project-sources" not in script
+    assert "http://localhost:8000/v1/login-check" not in script
+    assert "docker cp" not in script
