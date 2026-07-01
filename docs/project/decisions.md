@@ -479,7 +479,7 @@ Decision: The Bonnetjes Cloudflare parity path is the supported Docker auth diag
 
 Consequence: operators use `scripts/docker-bonnetjes-clean-login-profile-bootstrap.sh` and `scripts/docker-browser-parity-cloudflare-check.sh` for clean logged-in Cloudflare checks. Project Source mutation remains out of scope.
 
-### v0.1.103.10 — One-shot Bonnetjes Cloudflare validation
+### v0.1.103.10.1 — One-shot Bonnetjes Cloudflare validation
 
 Decision: provide a single operator script that runs the full Cloudflare validation phase: optional candidate install, visible clean-login profile bootstrap, Docker Bonnetjes Cloudflare parity check, and strict summary validation.
 

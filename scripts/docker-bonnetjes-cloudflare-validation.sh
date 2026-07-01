@@ -36,7 +36,7 @@ One-shot Bonnetjes Cloudflare validation phase:
 
 Options:
   --install-artifact ZIP     Optional candidate ZIP to install first.
-  --install-version VERSION  Version used with --install-artifact, for example v0.1.103.10.
+  --install-version VERSION  Version used with --install-artifact, for example v0.1.103.10.1.
   --profile-dir PATH         Profile directory to create/reuse. Default: ./.pb_profile_bonnetjes_manual_<UTC timestamp>.
   --reuse-profile            Do not remove the profile before opening host Chrome.
   --skip-bootstrap           Do not open host Chrome; use an already logged-in profile from --profile-dir/PROMPTBRANCH_HOST_PROFILE_DIR.

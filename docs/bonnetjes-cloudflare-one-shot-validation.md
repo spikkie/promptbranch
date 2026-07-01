@@ -1,6 +1,6 @@
 # Bonnetjes Cloudflare one-shot validation
 
-Version: v0.1.103.10
+Version: v0.1.103.10.1
 
 This is the operator validation phase for the Docker Bonnetjes Cloudflare parity path.
 
@@ -36,8 +36,8 @@ When validating a ZIP candidate from an already working tree:
 
 ```bash
 ./scripts/docker-bonnetjes-cloudflare-validation.sh \
-  --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.zip \
-  --install-version v0.1.103.10
+  --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip \
+  --install-version v0.1.103.10.1
 ```
 
 The script stores evidence under:
@@ -112,3 +112,7 @@ rm -rf .pb_profile_bonnetjes_manual_*
 ```
 
 Profiles are excluded from Docker build context by `.dockerignore` and from Git by `.gitignore`.
+
+## v0.1.103.10.1 closure note
+
+`v0.1.103.10.1` keeps the `v0.1.103.10` validation flow unchanged and records it as the tested active candidate after repository hygiene cleanup. Browser profiles and debug artifacts must remain local-only state and must never enter Git history or Docker build context.

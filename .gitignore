@@ -54,9 +54,6 @@ promptbranch-project-list.json
 # Kubernetes render output
 helm-chart/charts/
 .pb_profile_bonnetjes_clean/
-.pb_profile_bonnetjes_manual_*/
-.dockerignore:
+# Promptbranch browser profiles - never commit
 .pb_profile*
 .pb_profile_*
-debug_artifacts/
-*.zip

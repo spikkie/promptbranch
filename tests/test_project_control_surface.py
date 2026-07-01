@@ -30,6 +30,15 @@ def read_doc(name: str) -> str:
     return (PROJECT_DOCS / name).read_text(encoding="utf-8")
 
 
+
+
+def test_project_control_surface_accepts_deep_repair_version() -> None:
+    from promptbranch_project_control import VERSION_RE
+
+    assert VERSION_RE.match("v0.1.103.10.1")
+    assert VERSION_RE.match("v0.1.104")
+    assert VERSION_RE.match("v0.1.104.13.9")
+
 def test_project_control_surface_required_files_exist() -> None:
     missing = [name for name in REQUIRED_FILES if not (PROJECT_DOCS / name).is_file()]
     assert missing == []
@@ -50,7 +59,7 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "v0.1.102" in text
     assert "accepted/current" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.102.zip" in text
-    assert "v0.1.103.10" in text
+    assert "v0.1.103.10.1" in text
     assert "Bonnetjes Cloudflare one-shot validation script" in text
     assert "candidate" in text
 
@@ -68,7 +77,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.102.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.103.10.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip" in text
     assert "Bonnetjes Cloudflare one-shot validation script" in text
 
 
@@ -131,9 +140,9 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.102"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.102.zip"
-    assert data["active_candidate_version"] == "v0.1.103.10"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.zip"
-    assert data["next_normal_version"] == "v0.1.103.10"
+    assert data["active_candidate_version"] == "v0.1.103.10.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip"
+    assert data["next_normal_version"] == "v0.1.103.10.1"
     assert data["active_slice"] == "Bonnetjes Cloudflare one-shot validation script"
     assert data["next_planned_version_after_acceptance"] == "v0.1.104"
     assert data["next_planned_slice_after_acceptance"] == "Sandbox mutation verification and rollback evidence gate"
@@ -148,7 +157,7 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.102"
-    assert payload["active_candidate_version"] == "v0.1.103.10"
+    assert payload["active_candidate_version"] == "v0.1.103.10.1"
     assert payload["next_normal_slice"] == "Bonnetjes Cloudflare one-shot validation script"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
@@ -166,7 +175,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -191,7 +200,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.103.10", "v0.1.104", "v0.1.105", "v0.1.106", "v0.1.107"]:
+    for version in ["v0.1.103.10.1", "v0.1.104", "v0.1.105", "v0.1.106", "v0.1.107"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -200,7 +209,7 @@ def test_project_next_slice_payload_is_derived_from_validated_control_surface() 
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.102.zip"
-    assert payload["next_normal_version"] == "v0.1.103.10"
+    assert payload["next_normal_version"] == "v0.1.103.10.1"
     assert payload["next_normal_slice"] == "Bonnetjes Cloudflare one-shot validation script"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.104"
     assert payload["next_slice_after_acceptance"] == "Sandbox mutation verification and rollback evidence gate"
@@ -220,7 +229,7 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.103.10"
+    assert payload["next_normal_version"] == "v0.1.103.10.1"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.104"
 
 

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
+VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 PLAN_STATE_REL = Path("docs/project/plan-state.json")
 REQUIRED_DOCS = (
     Path("docs/project/mvp.md"),
