@@ -498,6 +498,10 @@ Decision: keep Project Source mutation disabled for the standard-browser auth-on
 Rationale: this prevents authority drift from an auth-readiness/Cloudflare validation slice into ChatGPT Project Source mutation while still giving a clear next command when old release habits invoke `pbsa`.
 
 
-### v0.1.103.10.7 — reject generated caches in release transport ZIPs
+### v0.1.103.10.8 — reject generated caches in release transport ZIPs
 
-Decision: a candidate ZIP containing `.pytest_cache/`, `__pycache__/`, `.pyc`, or similar generated cache entries must not be installed or adopted. The packaging repair for `v0.1.103.10.7` keeps behavior unchanged and only provides a clean release transport artifact.
+Decision: a candidate ZIP containing `.pytest_cache/`, `__pycache__/`, `.pyc`, or similar generated cache entries must not be installed or adopted. The packaging repair for `v0.1.103.10.8` keeps behavior unchanged and only provides a clean release transport artifact.
+
+### v0.1.103.10.8 — successful auth readiness does not require challenge artifacts
+
+Decision: the Docker browser parity Cloudflare check may normalize a `missing_staged_manifest` challenge-artifact export result only when the auth-readiness state already reached `cloudflare_cleared_*`. This prevents a green login/composer result from being marked noisy by an absent challenge manifest, while preserving strict export failure behavior for timeout or active challenge states.

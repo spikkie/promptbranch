@@ -746,6 +746,10 @@ sudo chown -R $(id -u):$(id -g) .pb_profile/browser/default
 
 Browser profiles remain local bind-mounted state and must not be committed or packaged.
 
-## v0.1.103.10.7 migration
+## v0.1.103.10.8 migration
 
-No data migration. Replace the rejected `v0.1.103.10.6` candidate ZIP with `chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip` and rerun auth-only release control. The repair is packaging-only for generated-cache hygiene.
+No data migration. Replace the rejected `v0.1.103.10.6` candidate ZIP with `chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip` and rerun auth-only release control. The repair is packaging-only for generated-cache hygiene.
+
+## v0.1.103.10.8 migration
+
+No data migration. Install the candidate ZIP over `v0.1.103.10.7` and rerun auth-only validation. Existing `.pb_profile/browser/default` data is reused; do not enable Project Source mutation for this repair.

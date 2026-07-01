@@ -18,8 +18,8 @@ def test_source_add_gate_closed_payload_preserves_safe_validation_command() -> N
     payload = _project_source_add_exception_payload(
         RuntimeError("403 error for POST http://localhost:8000/v1/project-sources"),
         source_kind="file",
-        file_path="chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip",
-        display_name="chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip",
+        file_path="chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip",
+        display_name="chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip",
         overwrite_existing=True,
         service_payload=service_payload,
     )
@@ -32,8 +32,8 @@ def test_source_add_gate_closed_payload_preserves_safe_validation_command() -> N
     assert payload["runtime"]["project_source_mutation_allowed"] is False
     assert payload["next_safe_commands"][0] == (
         "./scripts/pb-browser-cloudflare-validation.sh "
-        "--install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip "
-        "--install-version v0.1.103.10.7"
+        "--install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip "
+        "--install-version v0.1.103.10.8"
     )
 
 

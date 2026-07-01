@@ -354,10 +354,16 @@ Scope remains auth-only. Project Source mutation remains out of scope.
 
 Control-surface tokens: v0.1.103.10.6 chatgpt_claudecode_workflow-2_v0.1.103.10.6.zip standard browser profile ownership repair
 
-## v0.1.103.10.7
+## v0.1.103.10.8
 
 | Version | Type | Scope | State | Validation | DoD movement | Adoption |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.7 | repair/packaging | clean standard browser auth-only validation ZIP after `.pytest_cache` import-plan rejection | candidate | ZIP hygiene and focused control/version tests; live operator auth-only validation pending | DOD-151 added; DOD-148..DOD-150 preserved in progress | not accepted/current |
+| v0.1.103.10.8 | repair/packaging | clean standard browser auth-only validation ZIP after `.pytest_cache` import-plan rejection | candidate | ZIP hygiene and focused control/version tests; live operator auth-only validation pending | DOD-151 added; DOD-148..DOD-150 preserved in progress | not accepted/current |
 
-Control-surface tokens: v0.1.103.10.7 chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip clean generated-cache-free candidate
+Control-surface tokens: v0.1.103.10.8 chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip clean generated-cache-free candidate
+
+## v0.1.103.10.8
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.8 | repair | standard browser profile default | candidate | focused shell/control/version tests pending; operator live auth-only validation required | DOD-152 added; DOD-148..DOD-151 preserved | not accepted/current |

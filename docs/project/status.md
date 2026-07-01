@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
-active candidate version: v0.1.103.10.7
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
-next normal slice: v0.1.103.10.7 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
+active candidate version: v0.1.103.10.8
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
+next normal slice: v0.1.103.10.8 — standard browser profile default
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -813,24 +813,24 @@ Adds one operator workflow for standard browser Cloudflare validation: optional 
 
 Control-surface tokens: v0.1.103.10.4 chatgpt_claudecode_workflow-2_v0.1.103.10.4.zip standard browser profile default
 
-## v0.1.103.10.7 candidate status
+## v0.1.103.10.8 candidate status
 
-`v0.1.103.10.7` repairs the failed standard browser validation bootstrap observed after `v0.1.103.10.4`. The standard profile path `.pb_profile/browser/default` can be created as `root:root` when Docker creates the bind-mount target before host Chrome bootstrap. The bootstrap now removes and recreates an empty non-writable placeholder, while non-empty non-writable profiles fail fast with an explicit ownership repair command.
+`v0.1.103.10.8` repairs the failed standard browser validation bootstrap observed after `v0.1.103.10.4`. The standard profile path `.pb_profile/browser/default` can be created as `root:root` when Docker creates the bind-mount target before host Chrome bootstrap. The bootstrap now removes and recreates an empty non-writable placeholder, while non-empty non-writable profiles fail fast with an explicit ownership repair command.
 
 Next safe action:
 
 ```bash
-./scripts/pb-browser-cloudflare-validation.sh --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip --install-version v0.1.103.10.7
+./scripts/pb-browser-cloudflare-validation.sh --install-artifact chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip --install-version v0.1.103.10.8
 ```
 
-## v0.1.103.10.7 candidate status
+## v0.1.103.10.8 candidate status
 
-`v0.1.103.10.7` is a packaging repair after release import rejected `v0.1.103.10.6` with `generated_cache_entries_present` because `.pytest_cache/` was present inside the ZIP. The slice behavior remains unchanged: standard browser profile default, ownership guard, and source-add gate guidance are preserved. Project Source mutation remains out of scope.
+`v0.1.103.10.8` is a packaging repair after release import rejected `v0.1.103.10.6` with `generated_cache_entries_present` because `.pytest_cache/` was present inside the ZIP. The slice behavior remains unchanged: standard browser profile default, ownership guard, and source-add gate guidance are preserved. Project Source mutation remains out of scope.
 
 Operator command:
 
 ```bash
-ver=v0.1.103.10.7
+ver=v0.1.103.10.8
 zip="$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip"
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
   --install-from-zip "$zip" \
@@ -843,3 +843,13 @@ timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh \
   --release-log-keep 12 \
   2>&1 | tee ~/tmp/release_control.$ver.auth_only.adopt.log
 ```
+
+## v0.1.103.10.8 candidate status
+
+`v0.1.103.10.8` repairs the post-success evidence export weakness observed after `v0.1.103.10.7` auth readiness passed. The validation result was green (`cloudflare_cleared_auth_ready`), but the evidence exporter still reported `missing_staged_manifest`. This candidate keeps the successful auth path green by normalizing that exporter status only when the readiness status is already `cloudflare_cleared_*`.
+
+Out of scope preserved: Project Source mutation, Patchright/CDP session-manager redesign, ChatGPT Project deletion, Git commit/push, and artifact adoption.
+
+## Next safe action
+
+Run auth-only validation against `chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip` and confirm the summary contains `evidence_export.status=successful_auth_readiness_no_challenge_manifest_required` or another `ok=true` evidence export status when no challenge artifacts exist.

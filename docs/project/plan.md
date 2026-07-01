@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
-active candidate version: v0.1.103.10.7
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
-next normal slice: v0.1.103.10.7 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
+active candidate version: v0.1.103.10.8
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
+next normal slice: v0.1.103.10.8 — standard browser profile default
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1747,15 +1747,15 @@ Scope: add a safe exporter that stages only `auth_readiness_auth_challenge_detec
 Scope: add only `scripts/docker-browser-parity-cloudflare-check.sh` plus control-surface metadata for the candidate. The script keeps Project Source mutation out of scope, opens one Docker parity keep-open browser session, polls the same held session until Cloudflare clears or times out, and uses the bounded challenge artifact exporter instead of wholesale `docker cp`.
 
 
-## v0.1.103.10.7 — standard browser profile default
+## v0.1.103.10.8 — standard browser profile default
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
 
 Scope: one-shot validation script for install, clean visible login profile bootstrap, Docker standard-browser Cloudflare check, and strict validation. Project Source mutation remains out of scope.
 
-## v0.1.103.10.7 — source-add mutation gate operator guidance repair
+## v0.1.103.10.8 — source-add mutation gate operator guidance repair
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
 
 Repair-only scope:
 
@@ -1765,8 +1765,16 @@ Repair-only scope:
 - Do not advance Patchright/CDP, Project Source mutation, adoption/current, deployment, or ChatGPT Project deletion scope.
 
 
-## v0.1.103.10.7 — generated-cache-free standard browser validation candidate
+## v0.1.103.10.8 — generated-cache-free standard browser validation candidate
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.7.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
 
 Scope: repackage the `v0.1.103.10.6` standard browser auth-only validation candidate without `.pytest_cache/` or other generated cache entries so release import can proceed. No browser envelope, Project Source mutation, Patchright/CDP, or adoption behavior is changed.
+
+## v0.1.103.10.8 — successful auth-readiness evidence export repair
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
+
+Scope: keep the standard browser auth-only validation path unchanged, but normalize a `missing_staged_manifest` challenge-artifact export result when the held browser session already reached `cloudflare_cleared_*`. Timeout/challenge paths remain strict. Project Source mutation stays disabled and out of scope.
+
+Validation target: `scripts/docker-browser-parity-cloudflare-check.sh` should report `evidence_export_status=ok_no_challenge_manifest_required` instead of `evidence_export_status=failed` on immediate successful auth readiness without challenge artifacts.

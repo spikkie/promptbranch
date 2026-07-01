@@ -406,7 +406,56 @@ if [[ "${export_evidence}" == "1" ]]; then
       ./scripts/docker-browser-parity-export-challenge-artifacts.sh > "${evidence_export_json}"; then
     printf 'evidence_export_status=ok\n' | tee -a "${out_dir}/run.log"
   else
-    printf 'evidence_export_status=failed\n' | tee -a "${out_dir}/run.log"
+    # A successful auth-readiness run can clear immediately without producing
+    # auth_readiness_auth_challenge_detected_* artifacts. In that case the
+    # absence of a staged challenge manifest is not release-blocking evidence;
+    # normalize only the successful Cloudflare/auth path and keep timeout or
+    # challenge paths strict.
+    if [[ "${status}" == cloudflare_cleared_* ]]; then
+      if python3 - "${evidence_export_json}" "${export_dest}" "${status}" <<'PY_NORMALIZE_EXPORT'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+host_destination = sys.argv[2]
+readiness_status = sys.argv[3]
+try:
+    original = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+except Exception as exc:
+    original = {'ok': False, 'status': 'unparseable_export_result', 'error': str(exc)}
+
+if original.get('status') == 'missing_staged_manifest':
+    payload = {
+        'ok': True,
+        'status': 'successful_auth_readiness_no_challenge_manifest_required',
+        'readiness_status': readiness_status,
+        'host_destination': host_destination,
+        'source_dir': '/app/debug_artifacts',
+        'stage_dir': '/tmp/pb-challenge-artifacts',
+        'pattern': 'auth_readiness_auth_challenge_detected_*',
+        'file_count': 0,
+        'total_bytes': 0,
+        'entries': [],
+        'original_export': original,
+        'note': 'auth readiness was already green; no challenge artifact manifest is required for successful validation',
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    raise SystemExit(0)
+
+print(json.dumps(original, indent=2, sort_keys=True))
+raise SystemExit(1)
+PY_NORMALIZE_EXPORT
+      then
+        printf 'evidence_export_status=ok_no_challenge_manifest_required\n' | tee -a "${out_dir}/run.log"
+      else
+        printf 'evidence_export_status=failed\n' | tee -a "${out_dir}/run.log"
+      fi
+    else
+      printf 'evidence_export_status=failed\n' | tee -a "${out_dir}/run.log"
+    fi
   fi
 fi
 

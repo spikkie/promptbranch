@@ -3173,6 +3173,9 @@ def test_docker_browser_parity_cloudflare_check_is_kiss_and_non_mutating() -> No
     assert "host_profile_would_enter_docker_build_context" in script
     assert "cloudflare_timeout" in script
     assert "cloudflare_cleared_auth_ready" in script
+    assert "successful_auth_readiness_no_challenge_manifest_required" in script
+    assert "evidence_export_status=ok_no_challenge_manifest_required" in script
+    assert "missing_staged_manifest" in script
     assert "cloudflare_cleared_not_auth_ready" in script
     assert "docker cp" not in script
     assert "curl -sS -o" in script
