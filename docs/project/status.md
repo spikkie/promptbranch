@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
-active candidate version: v0.1.103.10.8
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
-next normal slice: v0.1.103.10.8 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
+active candidate version: v0.1.103.10.9
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
+next normal slice: v0.1.103.10.9 — pb ask reuses held auth-ready browser session
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -853,3 +853,15 @@ Out of scope preserved: Project Source mutation, Patchright/CDP session-manager 
 ## Next safe action
 
 Run auth-only validation against `chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip` and confirm the summary contains `evidence_export.status=successful_auth_readiness_no_challenge_manifest_required` or another `ok=true` evidence export status when no challenge artifacts exist.
+
+## v0.1.103.10.9 candidate status
+
+`v0.1.103.10.9` repairs the first `pb ask` smoke failure after standard-browser auth-readiness went green. The auth-readiness path held a logged-in browser session, but `pb ask` opened a second persistent context against the same `/app/profile`, cleared `Singleton*` lock artifacts, and then hit a Cloudflare challenge. This repair makes `pb ask` probe and reuse a compatible held auth-ready session before launching a new context.
+
+Expected next validation:
+
+```bash
+pb ask "Reply with exactly the single token PB_ASK_OK and nothing else."
+```
+
+Expected evidence: `held_session_reused=true` in service result/log evidence and final answer `PB_ASK_OK`.

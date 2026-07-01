@@ -505,3 +505,7 @@ Decision: a candidate ZIP containing `.pytest_cache/`, `__pycache__/`, `.pyc`, o
 ### v0.1.103.10.8 — successful auth readiness does not require challenge artifacts
 
 Decision: the Docker browser parity Cloudflare check may normalize a `missing_staged_manifest` challenge-artifact export result only when the auth-readiness state already reached `cloudflare_cleared_*`. This prevents a green login/composer result from being marked noisy by an absent challenge manifest, while preserving strict export failure behavior for timeout or active challenge states.
+
+### v0.1.103.10.9 — ask must not compete with a held auth-ready profile session
+
+Decision: when a standard-browser auth-readiness run keeps a browser context alive, `pb ask` must first probe and reuse that held session if the profile, browser driver, and channel are compatible. It must not clear `SingletonLock`, `SingletonSocket`, or `SingletonCookie` while the held session is active. If the held session is challenged, stale, or invalid, the safe behavior is to close it and fail fast with recovery guidance rather than silently opening a second competing persistent context.

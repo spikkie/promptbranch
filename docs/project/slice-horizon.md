@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.8 | standard browser profile default | active | One operator validation workflow for install, clean visible login profile bootstrap, Docker standard-browser Cloudflare check, and strict auth-ready validation | Project Source mutation, deployment, artifact adoption |
+| v0.1.103.10.9 | pb ask reuses held auth-ready browser session | active | Reuse the held standard-browser auth-readiness session for pb ask without Singleton* cleanup or competing browser contexts | Project Source mutation, host-CDP session manager, deployment, artifact adoption |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -24,3 +24,7 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 ## v0.1.103.10.8 active repair horizon
 
 `v0.1.103.10.8` is the active Docker parity repair horizon for the standard browser profile default. It remains candidate-only and keeps Project Source mutation out of scope.
+
+## v0.1.103.10.9 active repair horizon
+
+`v0.1.103.10.9` is the active standard-browser repair horizon after auth-readiness passed but `pb ask` opened a competing profile context. It remains candidate-only and keeps Project Source mutation plus v0.1.104.x host-CDP work out of scope.

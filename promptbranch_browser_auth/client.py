@@ -1197,6 +1197,67 @@ class ChatGPTBrowserClient:
                 return None
             return session
 
+    def _auth_readiness_session_key_parts(self) -> tuple[str, str]:
+        return (
+            f"{self._profile_key}|",
+            f"|{self.driver_name}|{self.config.browser_channel or 'default'}",
+        )
+
+    def _auth_readiness_session_is_compatible(self, key: str, session: dict[str, Any]) -> bool:
+        if bool(session.get("closed")):
+            return False
+        prefix, suffix = self._auth_readiness_session_key_parts()
+        return key.startswith(prefix) and key.endswith(suffix)
+
+    async def _compatible_held_auth_readiness_session(self) -> tuple[str | None, dict[str, Any] | None, str]:
+        """Return an active held auth session for this profile/driver/channel.
+
+        The exact key includes the configured project URL.  In standard-browser
+        validation the held auth-readiness probe may be created on
+        https://chatgpt.com/ while a following ask targets a concrete Project or
+        conversation URL.  Reuse is still safe when the profile, driver, and
+        browser channel match; the ask operation will navigate the held page to
+        its target URL before submitting.
+        """
+
+        preferred_key = self._auth_readiness_session_key()
+        now = time.monotonic()
+        expired: list[tuple[str, dict[str, Any]]] = []
+        async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+            exact = _AUTH_READINESS_HELD_SESSIONS.get(preferred_key)
+            if exact is not None and self._auth_readiness_session_is_compatible(preferred_key, exact):
+                expires_at = float(exact.get("expires_at_monotonic") or 0.0)
+                if expires_at and expires_at <= now:
+                    _AUTH_READINESS_HELD_SESSIONS.pop(preferred_key, None)
+                    expired.append((preferred_key, exact))
+                else:
+                    return preferred_key, exact, "exact_project_url"
+
+            for key, session in list(_AUTH_READINESS_HELD_SESSIONS.items()):
+                if not self._auth_readiness_session_is_compatible(key, session):
+                    continue
+                expires_at = float(session.get("expires_at_monotonic") or 0.0)
+                if expires_at and expires_at <= now:
+                    _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+                    expired.append((key, session))
+                    continue
+                return key, session, "compatible_profile_driver_channel"
+
+        for key, session in expired:
+            await self._close_auth_readiness_held_session(session, reason="ttl_expired")
+        return None, None, "none"
+
+    async def _any_active_held_auth_readiness_session_for_profile(self) -> tuple[str | None, dict[str, Any] | None]:
+        key, session, _match = await self._compatible_held_auth_readiness_session()
+        return key, session
+
+    async def _remove_held_auth_readiness_session(self, key: str, session: dict[str, Any], *, reason: str) -> None:
+        async with _AUTH_READINESS_HELD_SESSIONS_LOCK:
+            current = _AUTH_READINESS_HELD_SESSIONS.get(key)
+            if current is session:
+                _AUTH_READINESS_HELD_SESSIONS.pop(key, None)
+        await self._close_auth_readiness_held_session(session, reason=reason)
+
     async def _capture_auth_readiness_observation_artifacts(self, page: Any, result: dict[str, Any]) -> dict[str, Any]:
         if not bool(result.get("challenge_detected")):
             return result
@@ -1566,6 +1627,18 @@ class ChatGPTBrowserClient:
             expect_json=expect_json,
             keep_open=keep_open,
         )
+        held_result = await self._try_ask_question_with_held_auth_ready_session(
+            prompt=prompt,
+            file_path=file_path,
+            attachment_paths=attachment_paths,
+            conversation_url=conversation_url,
+            expect_json=expect_json,
+            keep_open=keep_open,
+            service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=prefer_button_submit,
+        )
+        if held_result is not None:
+            return held_result
         return await self._run_with_context(
             operation_name="ask_question",
             operation=self._ask_question_operation,
@@ -1578,6 +1651,132 @@ class ChatGPTBrowserClient:
             service_timeout_seconds=service_timeout_seconds,
             prefer_button_submit=prefer_button_submit,
         )
+
+    async def _try_ask_question_with_held_auth_ready_session(
+        self,
+        *,
+        prompt: str,
+        file_path: Optional[str],
+        attachment_paths: Optional[list[str]],
+        conversation_url: str | None,
+        expect_json: bool,
+        keep_open: bool,
+        service_timeout_seconds: Optional[float],
+        prefer_button_submit: bool,
+    ) -> dict[str, Any] | None:
+        session_key, session, match_mode = await self._compatible_held_auth_readiness_session()
+        if session is None or session_key is None:
+            self._log(
+                "ask",
+                "no held auth-readiness session available before ask; launching normal browser context",
+                profile_dir=self.config.profile_dir,
+                driver=self.driver_name,
+                browser_channel=self.config.browser_channel or "default",
+            )
+            return None
+
+        context = session.get("context")
+        page = session.get("page")
+        if context is None or page is None:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="ask_reuse_missing_context_or_page")
+            return {
+                "ok": False,
+                "action": "ask",
+                "status": "held_auth_ready_session_invalid",
+                "error": "held auth-readiness session had no context/page; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_invalid",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "release_blocking": True,
+            }
+
+        try:
+            state = await self._probe_auth_readiness_state(page)
+            status = self._auth_readiness_status_from_state(state)
+            session_status = self._auth_readiness_result_from_state(
+                state,
+                action="ask_preflight_held_auth_readiness_session_status",
+                held_session=session,
+            )
+            session_status = self._attach_rate_limit_telemetry(session_status)
+        except Exception as exc:
+            await self._remove_held_auth_readiness_session(session_key, session, reason="ask_preflight_probe_failed")
+            return {
+                "ok": False,
+                "action": "ask",
+                "status": "held_auth_ready_session_probe_failed",
+                "error": f"held auth-readiness session probe failed before ask: {type(exc).__name__}: {exc}",
+                "error_type": type(exc).__name__,
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "release_blocking": True,
+            }
+
+        if not (
+            status == "auth_preflight_ready"
+            and bool(session_status.get("composer_visible"))
+            and bool(session_status.get("logged_in"))
+            and not bool(session_status.get("challenge_detected"))
+        ):
+            await self._remove_held_auth_readiness_session(session_key, session, reason=f"ask_preflight_{status}")
+            return {
+                "ok": False,
+                "action": "ask",
+                "status": "held_auth_ready_session_not_ready",
+                "error": "held auth-readiness session was challenged/stale before ask; closed it instead of launching a competing browser context",
+                "error_type": "held_auth_ready_session_not_ready",
+                "profile_dir": self.config.profile_dir,
+                "held_session_reused": False,
+                "held_session_closed": True,
+                "held_session_status": session_status,
+                "release_blocking": True,
+                "recovery_hint": "Run the standard browser auth-readiness bootstrap/check again before retrying pb ask.",
+            }
+
+        self._log(
+            "ask",
+            "reusing held auth-readiness browser session for ask_question",
+            session_key=session_key,
+            match_mode=match_mode,
+            profile_dir=self.config.profile_dir,
+            target_url=conversation_url or self.config.project_url,
+        )
+
+        try:
+            result = await self._ask_question_operation(
+                context=context,
+                page=page,
+                prompt=prompt,
+                file_path=file_path,
+                attachment_paths=attachment_paths,
+                conversation_url=conversation_url,
+                expect_json=expect_json,
+                keep_open=keep_open,
+                service_timeout_seconds=service_timeout_seconds,
+                prefer_button_submit=prefer_button_submit,
+            )
+            if isinstance(result, dict):
+                result.setdefault("held_session_reused", True)
+                result.setdefault("held_session_match_mode", match_mode)
+                result.setdefault("held_session_key", session_key)
+                result.setdefault("held_session_status", session_status)
+                result = self._attach_rate_limit_telemetry(result)
+            self._log("result", "ask_question completed via held auth-readiness session", result_type=type(result).__name__)
+            return result
+        except Exception as exc:
+            current_url = await self._safe_page_url(page)
+            self._log(
+                "error",
+                "ask_question failed while reusing held auth-readiness session",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                current_url=current_url,
+                session_key=session_key,
+            )
+            await self._dump_failure_artifacts(page, "ask_question_held_session", exc)
+            raise
 
     async def list_projects(
         self,
@@ -2084,6 +2283,27 @@ class ChatGPTBrowserClient:
                     f"browser_launch_failed: {type(exc).__name__}: {exc}",
                     payload=payload,
                 ) from exc
+            held_key, _held_session = await self._any_active_held_auth_readiness_session_for_profile()
+            if _held_session is not None:
+                payload = self._browser_launch_failure_payload(exc, retry_attempted=False)
+                payload.update({
+                    "status": "browser_context_unavailable_held_auth_session_active",
+                    "held_auth_readiness_session_active": True,
+                    "held_auth_readiness_session_key": held_key,
+                    "recovery_hint": "Use the held auth-ready session or close it cleanly before launching another persistent context; singleton cleanup is unsafe while it is active.",
+                })
+                self._log(
+                    "driver",
+                    "browser persistent context launch failed while held auth-readiness session is active; refusing singleton cleanup",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    session_key=held_key,
+                    status="browser_context_unavailable_held_auth_session_active",
+                )
+                raise BrowserContextUnavailableError(
+                    "browser_context_unavailable_held_auth_session_active: refusing to clear Singleton* while held auth-readiness session is active",
+                    payload=payload,
+                ) from exc
             removed = self._clear_profile_singleton_locks()
             self._log(
                 "driver",
@@ -2113,7 +2333,17 @@ class ChatGPTBrowserClient:
     async def _run_with_context(self, operation_name: str, operation, **kwargs) -> Any:
         respect_history_rate_limit_cooldown = bool(kwargs.pop('respect_history_rate_limit_cooldown', True))
         Path(self.config.profile_dir).mkdir(parents=True, exist_ok=True)
-        self._clear_profile_singleton_locks()
+        held_key, _held_session = await self._any_active_held_auth_readiness_session_for_profile()
+        if _held_session is not None:
+            self._log(
+                'driver',
+                'skipping profile singleton cleanup because held auth-readiness session is active',
+                operation=operation_name,
+                session_key=held_key,
+                profile_dir=self.config.profile_dir,
+            )
+        else:
+            self._clear_profile_singleton_locks()
         if respect_history_rate_limit_cooldown:
             await self._respect_rate_limit_cooldown()
         else:

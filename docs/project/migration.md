@@ -753,3 +753,7 @@ No data migration. Replace the rejected `v0.1.103.10.6` candidate ZIP with `chat
 ## v0.1.103.10.8 migration
 
 No data migration. Install the candidate ZIP over `v0.1.103.10.7` and rerun auth-only validation. Existing `.pb_profile/browser/default` data is reused; do not enable Project Source mutation for this repair.
+
+## v0.1.103.10.9 migration
+
+No data migration. Operators should stop any hanging `pb ask`, restart the Docker service if necessary, rerun auth-readiness to create a clean held session, then retry the `pb ask` smoke after installing this candidate. Project Source mutation remains disabled by default.

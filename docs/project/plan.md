@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
-active candidate version: v0.1.103.10.8
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
-next normal slice: v0.1.103.10.8 — standard browser profile default
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
+active candidate version: v0.1.103.10.9
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
+next normal slice: v0.1.103.10.9 — pb ask reuses held auth-ready browser session
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1778,3 +1778,9 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.8.zip
 Scope: keep the standard browser auth-only validation path unchanged, but normalize a `missing_staged_manifest` challenge-artifact export result when the held browser session already reached `cloudflare_cleared_*`. Timeout/challenge paths remain strict. Project Source mutation stays disabled and out of scope.
 
 Validation target: `scripts/docker-browser-parity-cloudflare-check.sh` should report `evidence_export_status=ok_no_challenge_manifest_required` instead of `evidence_export_status=failed` on immediate successful auth readiness without challenge artifacts.
+
+## v0.1.103.10.9 — pb ask reuses held auth-ready browser session
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip
+
+Plan: keep the standard-browser repair line narrow. Reuse the existing held auth-readiness browser session for `pb ask` when profile/driver/channel match, do a quick readiness probe before submission, and fail fast if the held session is challenged or stale. Do not introduce the later host-CDP browser session manager and do not enable Project Source mutation.

@@ -367,3 +367,13 @@ Control-surface tokens: v0.1.103.10.8 chatgpt_claudecode_workflow-2_v0.1.103.10.
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
 | v0.1.103.10.8 | repair | standard browser profile default | candidate | focused shell/control/version tests pending; operator live auth-only validation required | DOD-152 added; DOD-148..DOD-151 preserved | not accepted/current |
+
+## v0.1.103.10.9
+
+| Version | Type | Scope | State | Validation | DoD impact | Adoption |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.9 | repair | pb ask reuses held auth-ready browser session | candidate | focused held-session reuse tests and control-surface validation required | DOD-153 added; DOD-148..DOD-152 preserved | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.9 chatgpt_claudecode_workflow-2_v0.1.103.10.9.zip held auth-ready session reuse pb ask singleton cleanup guard
+
+Control-surface slice token: v0.1.103.10.9 — pb ask reuses held auth-ready browser session
