@@ -517,3 +517,6 @@ Decision: when `pb ask` reuses an auth-readiness-held browser page that is alrea
 ### v0.1.103.10.11 — standard profile should be bootstrapped by Docker Chrome when Docker fingerprint is challenged
 
 Decision: auth-only standard-browser validation may use a Docker-launched visible Chrome bootstrap by default. Host Chrome bootstrap remains a compatibility option, but Docker-originated trust is preferred when Docker/Patchright receives Cloudflare despite a host-created profile. Project Source mutation remains disabled.
+| ADR-PROJ-156 | 2026-07-01 | Held-session `pb ask` reuse must still honor the current project/conversation scope | v0.1.103.10.11 proved generic ChatGPT ask could work but created a conversation outside Promptbranch3 when state targeted a `/g/.../c/...` URL | A visible composer alone is insufficient; project-scoped targets require matching project/conversation URL or fail-fast project-scope navigation diagnostics |
+
+<!-- v0.1.103.10.12 -->

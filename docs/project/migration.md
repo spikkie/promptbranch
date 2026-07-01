@@ -765,3 +765,8 @@ No data migration. Install the candidate ZIP, rerun auth-only validation, then r
 ## v0.1.103.10.11 migration
 
 No data migration is required. Operators may reuse `.pb_profile/browser/default`, but when Docker auth-readiness reports `Just a moment...`, run the Docker visual bootstrap so Chrome inside the Promptbranch image writes the profile state through the `/app/profile` bind mount.
+
+
+## v0.1.103.10.12 repair mapping
+
+`v0.1.103.10.12` maps the observed generic-ChatGPT false-green from Docker held-session ask into the standard browser repair line. It preserves Project Source mutation disabled and records that project-scoped ask must target the state conversation/project URL.

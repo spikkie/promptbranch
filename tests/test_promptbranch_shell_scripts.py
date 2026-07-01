@@ -3298,6 +3298,9 @@ def test_docker_browser_profile_bootstrap_runs_chrome_inside_container() -> None
     assert "XAUTHORITY=/tmp/.docker.xauth" in script
     assert "PROMPTBRANCH_HOST_PROFILE_DIR" in script
     assert ".pb_profile/browser/default" in script
+    assert "resolve_state_url" in script
+    assert "PROMPTBRANCH_BROWSER_BOOTSTRAP_URL" in script
+    assert "current_conversation_url" in script
     assert "PROMPTBRANCH_DOCKER_BOOTSTRAP_EXTRA_ARGS" in script
     assert "http://localhost:8000/v1/project-sources" not in script
     assert "http://localhost:8000/v1/login-check" not in script
@@ -3313,5 +3316,9 @@ def test_standard_browser_validation_defaults_to_docker_visual_bootstrap() -> No
     assert "pb-docker-browser-profile-bootstrap.sh" in script
     assert "visible Docker Chrome login bootstrap" in script
     assert "bootstrap_mode=${bootstrap_mode}" in script
+    assert "target_url=${target_url}" in script
     assert "PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host" in script
+    assert "PROMPTBRANCH_BROWSER_VALIDATION_URL" in script
+    assert 'CHATGPT_PROJECT_URL="${target_url}"' in script
+    assert '--url "${target_url}"' in script
     assert script.index("pb-docker-browser-profile-bootstrap.sh") < script.index("docker-browser-parity-cloudflare-check.sh")

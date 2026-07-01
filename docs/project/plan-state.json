@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip",
-  "active_candidate_version": "v0.1.103.10.11",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip",
+  "active_candidate_version": "v0.1.103.10.12",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "Docker-originated visible browser profile bootstrap",
+  "active_slice": "pb ask preserves current project conversation scope",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip",
-  "next_normal_slice": "v0.1.103.10.11 \u2014 Docker-originated visible browser profile bootstrap",
-  "next_normal_version": "v0.1.103.10.11",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip",
+  "next_normal_slice": "v0.1.103.10.12 \u2014 pb ask preserves current project conversation scope",
+  "next_normal_version": "v0.1.103.10.12",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -39,9 +39,15 @@
   ],
   "release_history": [
     {
+      "version": "v0.1.103.10.12",
+      "kind": "repair/browser-routing",
+      "status": "candidate",
+      "summary": "Repairs pb ask so held-session reuse may not submit from generic ChatGPT when state targets a project conversation; Docker bootstrap/auth-readiness can target the current state URL."
+    },
+    {
       "version": "v0.1.103.10.11",
       "kind": "repair/browser-bootstrap",
-      "status": "candidate",
+      "status": "accepted_current",
       "summary": "Adds a Docker-launched visible Chrome bootstrap path so the standard profile can be trusted using the same Docker browser fingerprint that auth-readiness and pb ask use."
     },
     {
@@ -110,11 +116,11 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.103.10.11",
-      "slice": "v0.1.103.10.11 \u2014 Docker-originated visible browser profile bootstrap",
+      "version": "v0.1.103.10.12",
+      "slice": "v0.1.103.10.12 \u2014 pb ask preserves current project conversation scope",
       "status": "active",
       "release_mode": "repair",
-      "scope": "bootstrap the standard profile using visible Chrome launched from the Promptbranch Docker image and mounted as /app/profile"
+      "scope": "preserve Promptbranch project/conversation scope during pb ask while reusing Docker-authenticated held browser sessions"
     },
     {
       "release_mode": "normal",
@@ -158,5 +164,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.10"
+  "updated_for": "v0.1.103.10.12"
 }

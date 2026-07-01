@@ -455,3 +455,5 @@ Last release: v0.1.102
 | DOD-154 | pb ask sends through the held auth-ready current page without target conversation navigation | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_held_auth_session_reuse.py`; held auth-ready ask sets `navigation_mode=held_auth_ready_current_page` and skips direct project conversation URL navigation | v0.1.103.10.10 |
 
 | DOD-155 | standard profile can be bootstrapped by a visible Docker-launched Chrome fingerprint | in_progress | `scripts/pb-docker-browser-profile-bootstrap.sh`; `scripts/pb-browser-cloudflare-validation.sh`; validation defaults to Docker visual bootstrap and preserves host bootstrap as compatibility mode | v0.1.103.10.11 |
+
+| DOD-156 | `pb ask` preserves current Promptbranch project/conversation scope while reusing held auth-ready browser sessions | in_progress | `promptbranch_browser_auth/client.py`, `scripts/pb-docker-browser-profile-bootstrap.sh`, `scripts/pb-browser-cloudflare-validation.sh`, `tests/test_held_auth_session_reuse.py`, `tests/test_promptbranch_shell_scripts.py`; live project-scoped `pb ask` validation pending | v0.1.103.10.12 |

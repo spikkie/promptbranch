@@ -22,6 +22,7 @@ profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"
 fresh_profile=0
 skip_bootstrap=0
 bootstrap_mode="${PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE:-docker}"
+target_url="${PROMPTBRANCH_BROWSER_VALIDATION_URL:-${CHATGPT_PROJECT_URL:-}}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
 
@@ -43,6 +44,7 @@ Options:
   --reuse-profile            Reuse selected profile. This is the default.
   --skip-bootstrap           Do not open a browser; use an already logged-in profile.
   --docker-bootstrap         Open Chrome inside Docker on the host display. Default.
+  --url URL                  URL for bootstrap/auth-readiness. Default: current state conversation/project URL.
   --host-bootstrap           Compatibility mode: open host Chrome directly.
   --max-wait-seconds N       Cloudflare check timeout. Default: 300.
   --poll-seconds N           Cloudflare check polling interval. Default: 10.
@@ -55,6 +57,7 @@ Environment equivalents:
   PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS
   PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS
   PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host
+  PROMPTBRANCH_BROWSER_VALIDATION_URL
 
 Success criteria:
   - docker profile mode is standard-browser
@@ -65,6 +68,48 @@ Success criteria:
   - release_blocking=false
   - Project Source mutation remains disabled
 HELP
+}
+
+resolve_state_url() {
+  python3 - "${repo_root}/.pb_profile/.promptbranch_state.json" <<'PY_RESOLVE_URL'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print('https://chatgpt.com/')
+    raise SystemExit(0)
+try:
+    payload = json.loads(path.read_text(encoding='utf-8'))
+except Exception:
+    print('https://chatgpt.com/')
+    raise SystemExit(0)
+current = payload.get('current') if isinstance(payload.get('current'), dict) else {}
+for key in ('conversation_url', 'current_conversation_url'):
+    value = current.get(key) if isinstance(current, dict) else None
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('conversation_url', 'current_conversation_url'):
+    value = payload.get(key)
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('project_home_url', 'current_project_home_url'):
+    value = current.get(key) if isinstance(current, dict) else None
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('project_home_url', 'current_project_home_url'):
+    value = payload.get(key)
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+print('https://chatgpt.com/')
+PY_RESOLVE_URL
 }
 
 while [[ $# -gt 0 ]]; do
@@ -97,6 +142,10 @@ while [[ $# -gt 0 ]]; do
       bootstrap_mode="docker"
       shift
       ;;
+    --url)
+      target_url="${2:-}"
+      shift 2
+      ;;
     --host-bootstrap)
       bootstrap_mode="host"
       shift
@@ -120,6 +169,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "${target_url}" ]]; then
+  target_url="$(resolve_state_url)"
+fi
 
 case "${max_wait_seconds}" in
   ''|*[!0-9]*) echo "ERROR: max wait must be an integer: ${max_wait_seconds}" >&2; exit 64 ;;
@@ -149,6 +202,7 @@ log "max_wait_seconds=${max_wait_seconds}"
 log "poll_seconds=${poll_seconds}"
 log "skip_bootstrap=${skip_bootstrap}"
 log "bootstrap_mode=${bootstrap_mode}"
+log "target_url=${target_url}"
 log "fresh_profile=${fresh_profile}"
 
 if [[ -n "${install_artifact}" ]]; then
@@ -169,7 +223,7 @@ if [[ -n "${install_artifact}" ]]; then
 fi
 
 if [[ "${skip_bootstrap}" == "0" ]]; then
-  bootstrap_args=(--profile-dir "${profile_dir}")
+  bootstrap_args=(--profile-dir "${profile_dir}" --url "${target_url}")
   if [[ "${fresh_profile}" == "1" ]]; then
     bootstrap_args+=(--fresh)
   else
@@ -215,6 +269,7 @@ rm -f \
 log "== Docker standard browser Cloudflare check =="
 check_start_epoch="$(date +%s)"
 check_rc=0
+CHATGPT_PROJECT_URL="${target_url}" \
 PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser \
 PROMPTBRANCH_HOST_PROFILE_DIR="${profile_dir}" \
 PROMPTBRANCH_PROFILE_DIR=/app/profile \

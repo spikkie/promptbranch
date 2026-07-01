@@ -11,7 +11,7 @@ from promptbranch_browser_auth.client import (
 from promptbranch_browser_auth.config import ChatGPTBrowserConfig
 
 
-def _client(tmp_path: Path, *, project_url: str = "https://chatgpt.com/g/demo/project") -> ChatGPTBrowserClient:
+def _client(tmp_path: Path, *, project_url: str = "https://chatgpt.com/g/g-p-demo/project") -> ChatGPTBrowserClient:
     return ChatGPTBrowserClient(
         ChatGPTBrowserConfig(
             project_url=project_url,
@@ -32,7 +32,7 @@ def teardown_function() -> None:
 
 
 def test_ask_reuses_compatible_held_auth_ready_session_without_clearing_singletons(tmp_path, monkeypatch) -> None:
-    client = _client(tmp_path, project_url="https://chatgpt.com/g/demo/c/chat-1")
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/c/chat-1")
     now = time.monotonic()
     session_key = f"{client._profile_key}|https://chatgpt.com/|{client.driver_name}|chrome"
     page = object()
@@ -67,7 +67,7 @@ def test_ask_reuses_compatible_held_auth_ready_session_without_clearing_singleto
         return {
             "ok": True,
             "answer": "PB_ASK_OK",
-            "conversation_url": "https://chatgpt.com/g/demo/c/chat-1",
+            "conversation_url": "https://chatgpt.com/g/g-p-demo/c/chat-1",
             "ask_phase_timings": {},
         }
 
@@ -164,8 +164,8 @@ def test_run_with_context_skips_singleton_cleanup_when_held_session_is_active(tm
     assert cleared == []
 
 
-def test_ask_operation_sends_through_held_current_page_without_target_navigation(tmp_path, monkeypatch) -> None:
-    client = _client(tmp_path, project_url="https://chatgpt.com/g/demo/c/chat-1")
+def test_ask_operation_sends_through_held_project_page_without_target_navigation(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/c/chat-1")
     page = object()
     context = object()
     hydration_calls: list[dict[str, object]] = []
@@ -177,7 +177,7 @@ def test_ask_operation_sends_through_held_current_page_without_target_navigation
             "composer_visible": True,
             "logged_in": True,
             "auth_visible": True,
-            "current_url": "https://chatgpt.com/",
+            "current_url": "https://chatgpt.com/g/g-p-demo/c/chat-1",
             "title": "ChatGPT",
         }
 
@@ -185,7 +185,7 @@ def test_ask_operation_sends_through_held_current_page_without_target_navigation
         raise AssertionError("held auth-ready ask must not run ensure_logged_in/navigation precheck")
 
     async def forbidden_goto(*_args, **_kwargs):  # pragma: no cover - must not be called
-        raise AssertionError("held auth-ready ask must not navigate to the target conversation URL")
+        raise AssertionError("held project-scoped ask must not navigate when already on the target conversation")
 
     async def fake_hydration(*_args, **kwargs):
         hydration_calls.append(kwargs)
@@ -208,7 +208,7 @@ def test_ask_operation_sends_through_held_current_page_without_target_navigation
                 prompt="hello",
                 file_path=None,
                 attachment_paths=None,
-                conversation_url="https://chatgpt.com/g/demo/c/chat-1",
+                conversation_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
                 expect_json=False,
                 keep_open=False,
                 service_timeout_seconds=None,
@@ -220,8 +220,90 @@ def test_ask_operation_sends_through_held_current_page_without_target_navigation
         assert str(exc) == "stop after navigation decision"
 
     assert hydration_calls
-    assert hydration_calls[0]["target_url"] == "https://chatgpt.com/"
+    assert hydration_calls[0]["target_url"] == "https://chatgpt.com/g/g-p-demo/c/chat-1"
     evidence = hydration_calls[0]["navigation_evidence"]
     assert evidence["mode"] == "held_auth_ready_current_page"
     assert evidence["skipped"] is True
-    assert evidence["requested_target_url"] == "https://chatgpt.com/g/demo/c/chat-1"
+    assert evidence["requested_target_url"] == "https://chatgpt.com/g/g-p-demo/c/chat-1"
+    assert evidence["scope_reason"] == "current_page_matches_project_conversation"
+
+
+def test_ask_operation_refuses_generic_held_page_when_project_navigation_is_challenged(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/c/chat-1")
+    page = object()
+    context = object()
+    probes: list[str] = []
+    navigations: list[str] = []
+
+    async def fake_probe(probe_page):
+        assert probe_page is page
+        probes.append("probe")
+        if len(probes) == 1:
+            return {
+                "challenge_detected": False,
+                "composer_visible": True,
+                "logged_in": True,
+                "auth_visible": True,
+                "current_url": "https://chatgpt.com/",
+                "title": "ChatGPT",
+            }
+        return {
+            "challenge_detected": True,
+            "composer_visible": False,
+            "logged_in": False,
+            "current_url": "https://chatgpt.com/g/g-p-demo/c/chat-1?__cf_chl_rt_tk=x",
+            "title": "Just a moment...",
+        }
+
+    async def forbidden_ensure_logged_in(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("held auth-ready ask must not run ensure_logged_in/navigation precheck")
+
+    async def fake_goto(_page, target_url, *, label):
+        navigations.append(target_url)
+        return {"mode": "goto", "skipped": False, "current_url": target_url, "label": label}
+
+    async def forbidden_hydration(*_args, **_kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("challenged project navigation must fail before hydration/submit")
+
+    monkeypatch.setattr(client, "_probe_auth_readiness_state", fake_probe)
+    monkeypatch.setattr(client, "ensure_logged_in", forbidden_ensure_logged_in)
+    monkeypatch.setattr(client, "_goto", fake_goto)
+    monkeypatch.setattr(client, "_ensure_target_conversation_hydrated", forbidden_hydration)
+
+    result = asyncio.run(
+        client._ask_question_operation(
+            context=context,
+            page=page,
+            prompt="hello",
+            file_path=None,
+            attachment_paths=None,
+            conversation_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
+            expect_json=False,
+            keep_open=False,
+            service_timeout_seconds=None,
+            prefer_button_submit=False,
+            reuse_current_page_if_ready=True,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "project_scope_navigation_challenged"
+    assert result["held_scope_evidence"]["reason"] == "current_page_not_project_scoped"
+    assert navigations == ["https://chatgpt.com/g/g-p-demo/c/chat-1"]
+
+
+def test_ask_target_scope_requires_same_project_conversation(tmp_path) -> None:
+    client = _client(tmp_path, project_url="https://chatgpt.com/g/g-p-demo/c/chat-1")
+
+    assert client._ask_target_scope_evidence(
+        current_url="https://chatgpt.com/",
+        target_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
+    )["matches"] is False
+    assert client._ask_target_scope_evidence(
+        current_url="https://chatgpt.com/g/g-p-demo/c/chat-2",
+        target_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
+    )["reason"] == "current_page_wrong_project_conversation"
+    assert client._ask_target_scope_evidence(
+        current_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
+        target_url="https://chatgpt.com/g/g-p-demo/c/chat-1",
+    )["matches"] is True

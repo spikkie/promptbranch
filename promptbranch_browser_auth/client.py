@@ -3043,6 +3043,8 @@ class ChatGPTBrowserClient:
         requested_target_url = target_url
         using_held_current_page = False
         held_current_page_status: dict[str, Any] | None = None
+        held_scope_evidence: dict[str, Any] | None = None
+        project_scope_navigation_check_required = False
 
         phase_started = time.monotonic()
         if reuse_current_page_if_ready:
@@ -3060,17 +3062,35 @@ class ChatGPTBrowserClient:
                 and not bool(held_current_page_status.get("challenge_detected"))
             ):
                 current_url = held_current_page_status.get("current_url") or await self._safe_page_url(page)
-                if isinstance(current_url, str) and current_url.strip():
-                    target_url = current_url.strip()
-                using_held_current_page = True
-                self._log(
-                    "ask",
-                    "using held auth-ready current page for ask; skipping target navigation",
-                    current_url=target_url,
-                    requested_target_url=requested_target_url,
-                    composer_visible=held_current_page_status.get("composer_visible"),
-                    logged_in=held_current_page_status.get("logged_in"),
+                held_scope_evidence = self._ask_target_scope_evidence(
+                    current_url=str(current_url or ''),
+                    target_url=str(requested_target_url or ''),
                 )
+                if held_scope_evidence.get("matches") is True:
+                    if isinstance(current_url, str) and current_url.strip():
+                        target_url = current_url.strip()
+                    using_held_current_page = True
+                    self._log(
+                        "ask",
+                        "using held auth-ready current page for ask; skipping target navigation",
+                        current_url=target_url,
+                        requested_target_url=requested_target_url,
+                        composer_visible=held_current_page_status.get("composer_visible"),
+                        logged_in=held_current_page_status.get("logged_in"),
+                        scope_reason=held_scope_evidence.get("reason"),
+                    )
+                else:
+                    project_scope_navigation_check_required = bool(held_scope_evidence.get("target_project_scoped"))
+                    self._log(
+                        "ask",
+                        "held auth-ready current page is outside requested target scope; navigating within held session",
+                        current_url=current_url,
+                        requested_target_url=requested_target_url,
+                        scope_reason=held_scope_evidence.get("reason"),
+                        target_project_scoped=held_scope_evidence.get("target_project_scoped"),
+                        target_conversation_id=held_scope_evidence.get("target_conversation_id"),
+                        current_conversation_id=held_scope_evidence.get("current_conversation_id"),
+                    )
             else:
                 phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
                 result = {
@@ -3097,7 +3117,8 @@ class ChatGPTBrowserClient:
                 "mode": "held_auth_ready_current_page",
                 "skipped": True,
                 "refresh_required": False,
-                "reason": "held_auth_ready_current_page_has_visible_composer",
+                "reason": "held_auth_ready_current_page_matches_requested_scope",
+                "scope_reason": held_scope_evidence.get("reason") if isinstance(held_scope_evidence, dict) else None,
                 "requested_target_url": requested_target_url,
                 "current_url": target_url,
             }
@@ -3109,11 +3130,73 @@ class ChatGPTBrowserClient:
             phase_timings["navigation_skipped"] = navigation_evidence.get("skipped")
             phase_timings["navigation_refresh_required"] = navigation_evidence.get("refresh_required")
             phase_timings["navigation_reason"] = navigation_evidence.get("reason")
+            phase_timings["navigation_scope_reason"] = navigation_evidence.get("scope_reason")
             phase_timings["requested_target_url"] = navigation_evidence.get("requested_target_url")
             phase_timings["effective_target_url"] = navigation_evidence.get("current_url") or target_url
         phase_timings["held_auth_ready_current_page_used"] = bool(using_held_current_page)
         if held_current_page_status is not None:
             phase_timings["held_current_page_status"] = held_current_page_status.get("status")
+        if held_scope_evidence is not None:
+            phase_timings["held_scope_match"] = held_scope_evidence.get("matches")
+            phase_timings["held_scope_reason"] = held_scope_evidence.get("reason")
+            phase_timings["held_scope_target_project_scoped"] = held_scope_evidence.get("target_project_scoped")
+            phase_timings["held_scope_target_conversation_id"] = held_scope_evidence.get("target_conversation_id")
+            phase_timings["held_scope_current_conversation_id"] = held_scope_evidence.get("current_conversation_id")
+
+        if project_scope_navigation_check_required:
+            post_nav_state = await self._probe_auth_readiness_state(page)
+            post_nav_status = self._auth_readiness_status_from_state(post_nav_state)
+            post_nav_result = self._auth_readiness_result_from_state(
+                post_nav_state,
+                action="ask_project_scope_post_navigation_status",
+                held_session=None,
+            )
+            phase_timings["project_scope_post_navigation_status"] = post_nav_status
+            phase_timings["project_scope_post_navigation_url"] = post_nav_result.get("current_url")
+            if bool(post_nav_result.get("challenge_detected")) or post_nav_status.startswith("auth_challenge"):
+                phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+                result = {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "project_scope_navigation_challenged",
+                    "error": "navigating the held auth-ready session to the requested project scope triggered a Cloudflare challenge; refusing to submit outside the project",
+                    "error_type": "project_scope_navigation_challenged",
+                    "requested_target_url": requested_target_url,
+                    "current_url": post_nav_result.get("current_url"),
+                    "held_scope_evidence": held_scope_evidence,
+                    "post_navigation_status": post_nav_result,
+                    "partial_result": True,
+                    "release_blocking": True,
+                    "recovery_hint": "Run Docker browser bootstrap against the current project conversation/home URL, then retry pb ask.",
+                    "ask_phase_timings": phase_timings,
+                }
+                self._record_ask_progress(**result)
+                return result
+            post_scope = self._ask_target_scope_evidence(
+                current_url=str(post_nav_result.get("current_url") or await self._safe_page_url(page)),
+                target_url=str(requested_target_url or ''),
+            )
+            phase_timings["project_scope_post_navigation_match"] = post_scope.get("matches")
+            phase_timings["project_scope_post_navigation_reason"] = post_scope.get("reason")
+            if post_scope.get("matches") is not True:
+                phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+                result = {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "project_scope_navigation_mismatch",
+                    "error": "navigation completed without challenge but did not land in the requested project/conversation scope; refusing to submit",
+                    "error_type": "project_scope_navigation_mismatch",
+                    "requested_target_url": requested_target_url,
+                    "current_url": post_nav_result.get("current_url"),
+                    "held_scope_evidence": held_scope_evidence,
+                    "post_navigation_scope_evidence": post_scope,
+                    "post_navigation_status": post_nav_result,
+                    "partial_result": True,
+                    "release_blocking": True,
+                    "ask_phase_timings": phase_timings,
+                }
+                self._record_ask_progress(**result)
+                return result
 
         phase_started = time.monotonic()
         hydration = await self._ensure_target_conversation_hydrated(
@@ -13196,6 +13279,76 @@ class ChatGPTBrowserClient:
         if not project_slug or not conversation_id:
             return None
         return urljoin(self._chatgpt_home_url(), f'g/{project_slug}/c/{conversation_id}')
+
+    def _conversation_id_from_any_url(self, url: str) -> Optional[str]:
+        path = urlparse(str(url or '')).path or ''
+        parts = [part for part in path.split('/') if part]
+        if len(parts) >= 2 and parts[-2] == 'c':
+            return parts[-1]
+        return None
+
+    def _is_project_scoped_url(self, url: str) -> bool:
+        return bool(self._extract_project_id_from_url(url) and self._project_home_url_from_url(url))
+
+    def _is_project_scoped_conversation_url(self, url: str) -> bool:
+        return self._is_project_scoped_url(url) and bool(self._conversation_id_from_any_url(url))
+
+    def _ask_target_scope_evidence(self, *, current_url: str, target_url: str) -> dict[str, Any]:
+        current_url_s = str(current_url or '').strip()
+        target_url_s = str(target_url or '').strip()
+        current_project_key = self._project_identity_key_from_url(current_url_s) if current_url_s else ''
+        target_project_key = self._project_identity_key_from_url(target_url_s) if target_url_s else ''
+        current_conversation_id = self._conversation_id_from_any_url(current_url_s) if current_url_s else None
+        target_conversation_id = self._conversation_id_from_any_url(target_url_s) if target_url_s else None
+        target_project_scoped = self._is_project_scoped_url(target_url_s)
+        current_project_scoped = self._is_project_scoped_url(current_url_s)
+        target_project_conversation = self._is_project_scoped_conversation_url(target_url_s)
+
+        reason = 'target_scope_not_required'
+        matches = True
+        if target_project_conversation:
+            if not current_project_scoped:
+                matches = False
+                reason = 'current_page_not_project_scoped'
+            elif current_project_key != target_project_key:
+                matches = False
+                reason = 'current_page_wrong_project'
+            elif current_conversation_id != target_conversation_id:
+                matches = False
+                reason = 'current_page_wrong_project_conversation'
+            else:
+                reason = 'current_page_matches_project_conversation'
+        elif target_project_scoped:
+            if not current_project_scoped:
+                matches = False
+                reason = 'current_page_not_project_scoped'
+            elif current_project_key != target_project_key:
+                matches = False
+                reason = 'current_page_wrong_project'
+            else:
+                reason = 'current_page_matches_project'
+        elif self._is_conversation_url(target_url_s):
+            # A generic /c/<id> target still needs the same conversation id; do not
+            # submit from the root composer and silently create a new chat.
+            if not target_conversation_id or current_conversation_id != target_conversation_id:
+                matches = False
+                reason = 'current_page_wrong_conversation'
+            else:
+                reason = 'current_page_matches_conversation'
+
+        return {
+            'matches': matches,
+            'reason': reason,
+            'current_url': current_url_s,
+            'target_url': target_url_s,
+            'target_project_scoped': target_project_scoped,
+            'current_project_scoped': current_project_scoped,
+            'target_project_conversation': target_project_conversation,
+            'target_project_key': target_project_key or None,
+            'current_project_key': current_project_key or None,
+            'target_conversation_id': target_conversation_id,
+            'current_conversation_id': current_conversation_id,
+        }
 
     def _project_identity_key_from_url(self, url: str) -> str:
         project_id = self._extract_project_id_from_url(url)

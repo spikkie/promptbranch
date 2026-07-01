@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip
-active candidate version: v0.1.103.10.11
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip
-next normal slice: v0.1.103.10.11 — Docker-originated visible browser profile bootstrap
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
+active candidate version: v0.1.103.10.12
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
+next normal slice: v0.1.103.10.12 — pb ask preserves current project conversation scope
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1791,8 +1791,8 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.10.zip
 
 Plan: extend the `v0.1.103.10.9` held-session repair. Reusing the held session is not sufficient if the ask operation then navigates to the target conversation URL and triggers Cloudflare. When the held page is already logged in with a visible composer, skip target navigation and submit through the current auth-ready page. Preserve Project Source mutation disabled and keep v0.1.104.x host-CDP work out of scope.
 
-## v0.1.103.10.11 — Docker-originated visible browser profile bootstrap
+## v0.1.103.10.12 — pb ask preserves current project conversation scope
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.11.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.12.zip
 
 Plan: add `scripts/pb-docker-browser-profile-bootstrap.sh`, which opens Chrome inside the Promptbranch Docker image on the host X11 display while bind-mounting `.pb_profile/browser/default` as `/app/profile`. Make the one-shot auth-only validation default to this Docker visual bootstrap, while preserving `--host-bootstrap` and `--skip-bootstrap`. This addresses the observed mismatch where a host-created profile can still receive `Just a moment...` in the Docker browser context. Project Source mutation remains disabled.

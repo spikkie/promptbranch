@@ -16,7 +16,7 @@ cd "${repo_root}"
 standard_profile_dir="${repo_root}/.pb_profile/browser/default"
 profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"
 fresh=0
-url="${CHATGPT_PROJECT_URL:-https://chatgpt.com/}"
+url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-${CHATGPT_PROJECT_URL:-}}"
 image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}"
 container_profile_dir="/app/profile"
 container_name="promptbranch-docker-browser-bootstrap-$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -34,7 +34,7 @@ Options:
   --profile-dir PATH  Host browser profile directory. Default: ./.pb_profile/browser/default.
   --fresh             Delete/recreate selected profile before opening Docker Chrome.
   --reuse             Reuse selected profile. Default.
-  --url URL           URL to open. Default: https://chatgpt.com/ or CHATGPT_PROJECT_URL.
+  --url URL           URL to open. Default: current state conversation/project URL, CHATGPT_PROJECT_URL, or https://chatgpt.com/.
   --image IMAGE       Docker image. Default: promptbranch-service:local.
   --help              Show this help.
 
@@ -49,6 +49,48 @@ Manual steps in the Chrome window:
   3. Confirm the ChatGPT composer is visible.
   4. Close Chrome completely.
 HELP
+}
+
+resolve_state_url() {
+  python3 - "${repo_root}/.pb_profile/.promptbranch_state.json" <<'PY_RESOLVE_URL'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print('https://chatgpt.com/')
+    raise SystemExit(0)
+try:
+    payload = json.loads(path.read_text(encoding='utf-8'))
+except Exception:
+    print('https://chatgpt.com/')
+    raise SystemExit(0)
+current = payload.get('current') if isinstance(payload.get('current'), dict) else {}
+for key in ('conversation_url', 'current_conversation_url'):
+    value = current.get(key) if isinstance(current, dict) else None
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('conversation_url', 'current_conversation_url'):
+    value = payload.get(key)
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('project_home_url', 'current_project_home_url'):
+    value = current.get(key) if isinstance(current, dict) else None
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+for key in ('project_home_url', 'current_project_home_url'):
+    value = payload.get(key)
+    if isinstance(value, str) and value.startswith('https://chatgpt.com/'):
+        print(value)
+        raise SystemExit(0)
+print('https://chatgpt.com/')
+PY_RESOLVE_URL
 }
 
 while [[ $# -gt 0 ]]; do
@@ -84,6 +126,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "${url}" ]]; then
+  url="$(resolve_state_url)"
+fi
 
 if [[ -z "${profile_dir}" ]]; then
   profile_dir="${standard_profile_dir}"
