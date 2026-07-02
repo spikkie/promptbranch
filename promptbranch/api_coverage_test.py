@@ -223,8 +223,8 @@ class ApiRunner:
         self.project_url = args.project_url or self._state_value(
             "current_project_home_url", "project_home_url", "project_url", fallback="https://chatgpt.com/"
         )
-        self.conversation_url = args.conversation_url or self._state_value(
-            "current_conversation_url", "conversation_url", fallback=""
+        self.conversation_url = args.conversation_url or self._current_state_value(
+            "conversation_url", "current_conversation_url", fallback=""
         )
         self.preflight: dict[str, Any] = {
             "browser_profile_busy": False,
@@ -233,12 +233,16 @@ class ApiRunner:
             "probes": [],
         }
 
-    def _state_value(self, *keys: str, fallback: str = "") -> str:
+    def _read_state_payload(self) -> dict[str, Any]:
         state_path = Path(self.args.state_file or ".pb_profile/.promptbranch_state.json")
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except Exception:
-            return fallback
+            return {}
+        return state if isinstance(state, dict) else {}
+
+    def _state_value(self, *keys: str, fallback: str = "") -> str:
+        state = self._read_state_payload()
         for key in keys:
             value = state.get(key)
             if isinstance(value, str) and value.strip():
@@ -250,6 +254,33 @@ class ApiRunner:
                 if isinstance(value, str) and value.strip():
                     return value.strip()
         return fallback
+
+    def _current_state_value(self, *keys: str, fallback: str = "") -> str:
+        """Return state.current values before legacy top-level state values.
+
+        Conversation state schema v2 keeps the current operator-selected task
+        under ``current.conversation_url`` while legacy/top-level
+        ``conversation_url`` may still reference an older task.  API coverage
+        ask must target the same current task as normal ``pb ask`` and must
+        preserve query parameters exactly as stored.
+        """
+        state = self._read_state_payload()
+        current = state.get("current")
+        if isinstance(current, dict):
+            for key in keys:
+                value = current.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        for key in keys:
+            value = state.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return fallback
+
+    def _ask_conversation_url(self) -> str:
+        if self.args.conversation_url:
+            return str(self.args.conversation_url).strip()
+        return self._current_state_value("conversation_url", "current_conversation_url", fallback=self.conversation_url or "")
 
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         headers = dict(extra or {})
@@ -758,7 +789,7 @@ class ApiRunner:
             self.skip("project_sources_remove", "POST", "/v1/project-sources/remove", "mutation", "requires --allow-source-remove and --remove-source-name")
 
         if self.args.include_ask:
-            target = self.conversation_url or self.project_url
+            target = self._ask_conversation_url() or self.project_url
             ask_step, ask_payload = self.request(
                 "ask",
                 "POST",

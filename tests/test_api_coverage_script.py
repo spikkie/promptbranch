@@ -292,3 +292,53 @@ def test_cli_test_api_explicit_transport_overrides_service_config(monkeypatch, t
     assert cmd[cmd.index("--base-url") + 1] == "http://explicit.invalid"
     assert cmd[cmd.index("--token") + 1] == "explicit-token"
     assert "configured-token" not in cmd
+
+
+def test_api_coverage_prefers_current_conversation_url_over_legacy_top_level(tmp_path) -> None:
+    from promptbranch.api_coverage_test import ApiRunner, build_parser
+
+    state_file = tmp_path / "state.json"
+    current_url = "https://chatgpt.com/g/g-p-project/c/current-task?tab=sources&x=1=2"
+    stale_url = "https://chatgpt.com/g/g-p-project/c/stale-task?tab=sources"
+    state_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "project_home_url": "https://chatgpt.com/g/g-p-project/project",
+                "conversation_url": stale_url,
+                "current": {
+                    "project_home_url": "https://chatgpt.com/g/g-p-project/project",
+                    "conversation_url": current_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = build_parser().parse_args(["--no-browser", "--no-ask", "--state-file", str(state_file)])
+    runner = ApiRunner(args)
+
+    assert runner.conversation_url == current_url
+    assert runner._ask_conversation_url() == current_url
+    assert "x=1=2" in runner._ask_conversation_url()
+
+
+def test_api_coverage_explicit_conversation_url_overrides_current_state(tmp_path) -> None:
+    from promptbranch.api_coverage_test import ApiRunner, build_parser
+
+    state_file = tmp_path / "state.json"
+    current_url = "https://chatgpt.com/g/g-p-project/c/current-task?tab=sources"
+    explicit_url = "https://chatgpt.com/g/g-p-project/c/explicit-task?tab=sources&keep=1=2"
+    state_file.write_text(json.dumps({"current": {"conversation_url": current_url}}), encoding="utf-8")
+    args = build_parser().parse_args([
+        "--no-browser",
+        "--no-ask",
+        "--state-file",
+        str(state_file),
+        "--conversation-url",
+        explicit_url,
+    ])
+    runner = ApiRunner(args)
+
+    assert runner.conversation_url == explicit_url
+    assert runner._ask_conversation_url() == explicit_url
+    assert "keep=1=2" in runner._ask_conversation_url()
