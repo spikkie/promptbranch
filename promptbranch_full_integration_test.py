@@ -204,6 +204,20 @@ def _expand_step_token(token: str) -> tuple[str, ...]:
 
 
 
+def _test_suite_login_check_enabled_by_default() -> bool:
+    return _env_flag("PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK", False)
+
+
+def _requested_login_check_explicitly(requested_only: Sequence[str]) -> bool:
+    for token in requested_only:
+        try:
+            if "login_check" in _expand_step_token(token):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def resolve_step_selection(
     *,
     only_values: Sequence[str],
@@ -217,6 +231,9 @@ def resolve_step_selection(
     if invalid:
         allowed = ", ".join(sorted(ALLOWED_STEP_TOKENS))
         raise ValueError(f"Unknown step selector(s): {', '.join(sorted(set(invalid)))}. Allowed values: {allowed}")
+
+    login_requested_explicitly = _requested_login_check_explicitly(requested_only)
+    login_check_default_enabled = _test_suite_login_check_enabled_by_default()
 
     enabled = set(CANONICAL_STEP_ORDER if not requested_only else ())
     if requested_only:
@@ -234,8 +251,14 @@ def resolve_step_selection(
         # existing --project-url are not owned by this run and are retained.
         enabled.add("project_remove_cleanup")
 
-    if enabled - {"project_remove_cleanup", *LOCAL_ONLY_STEPS}:
-        enabled.add("login_check")
+    # v0.1.103.10.32: Browser/full validation relies on the normal auto-login
+    # flow used by real operations.  The old forced login_check navigated to
+    # generic https://chatgpt.com/ and could trigger a Cloudflare challenge even
+    # when the current project/conversation session was otherwise healthy.  Keep
+    # the step available for explicit diagnostics, but do not add/run it by
+    # default.
+    if "login_check" in enabled and not (login_requested_explicitly or login_check_default_enabled):
+        enabled.discard("login_check")
 
     if enabled & SOURCE_FLOW_STEPS:
         enabled.add("project_source_capabilities")

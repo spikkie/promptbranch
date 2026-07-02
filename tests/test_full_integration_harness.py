@@ -240,7 +240,6 @@ def test_resolve_step_selection_expands_aliases_and_forces_login_and_capabilitie
     )
     assert selection.requested_only == ("source_add_text", "ask")
     assert selection.enabled_steps == (
-        "login_check",
         "project_source_capabilities",
         "project_source_add_text",
         "ask_question",
@@ -256,7 +255,6 @@ def test_resolve_step_selection_supports_source_overwrite_file_alias() -> None:
         keep_project=False,
     )
     assert selection.enabled_steps == (
-        "login_check",
         "project_source_capabilities",
         "project_source_overwrite_file",
     )
@@ -279,7 +277,7 @@ def test_resolve_step_selection_skips_cleanup_when_keep_project_enabled() -> Non
     )
     assert "project_remove_cleanup" not in selection.enabled_steps
     assert "mcp_smoke" in selection.enabled_steps
-    assert "login_check" in selection.enabled_steps
+    assert "login_check" not in selection.enabled_steps
 
 
 @pytest.mark.parametrize("token", ["does-not-exist", "source_add_text,unknown"])
@@ -299,10 +297,16 @@ def test_resolve_step_selection_supports_project_list_debug() -> None:
         skip_values=[],
         keep_project=False,
     )
-    assert selection.enabled_steps == (
-        "login_check",
-        "project_list_debug",
+    assert selection.enabled_steps == ("project_list_debug",)
+
+
+def test_resolve_step_selection_keeps_explicit_login_diagnostic() -> None:
+    selection = resolve_step_selection(
+        only_values=["login"],
+        skip_values=[],
+        keep_project=False,
     )
+    assert selection.enabled_steps == ("login_check",)
 
 
 def test_resolve_step_selection_supports_mcp_smoke_without_login() -> None:
@@ -385,10 +389,7 @@ def test_resolve_step_selection_supports_task_message_flow_aliases() -> None:
         skip_values=[],
         keep_project=False,
     )
-    assert selection.enabled_steps == (
-        "login_check",
-        "task_message_flow",
-    )
+    assert selection.enabled_steps == ("task_message_flow",)
 
 
 def test_task_messages_payload_groups_mapping_payload() -> None:

@@ -803,6 +803,10 @@ No user migration required. Re-run `pb test api --json`; use `--hold-auth-sessio
 Docker Chrome runtime paths now use explicit shared-memory sizing. Override with `PROMPTBRANCH_DOCKER_SHM_SIZE` if the default is unsuitable.
 
 
-## v0.1.103.10.31 migration note
+## v0.1.103.10.32 migration note
 
 No operator migration required. `pb test api` now checks response-body success semantics in addition to HTTP status codes.
+## Migration note — v0.1.103.10.32 full/browser validation skips generic-root login check
+
+`v0.1.103.10.32` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
+
