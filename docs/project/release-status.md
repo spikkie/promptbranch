@@ -459,48 +459,48 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 
 
-## v0.1.103.10.33
+## v0.1.103.10.34
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.33 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-167 | n/a |
+| v0.1.103.10.34 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-167 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
-control token: v0.1.103.10.33 — release-control auth bootstrap before live operations
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip
+control token: v0.1.103.10.34 — release-control auth bootstrap before live operations
 
-## v0.1.103.10.33
+## v0.1.103.10.34
 
 | version | kind | scope | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.33 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
+| v0.1.103.10.34 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
-control token: v0.1.103.10.33 — release-control auth bootstrap before live operations
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip
+control token: v0.1.103.10.34 — release-control auth bootstrap before live operations
 
-## v0.1.103.10.33
+## v0.1.103.10.34
 
 | version | type | slice | status | validation | dod | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| v0.1.103.10.33 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
+| v0.1.103.10.34 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
-control token: v0.1.103.10.33 — release-control auth bootstrap before live operations
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip
+control token: v0.1.103.10.34 — release-control auth bootstrap before live operations
 
-## v0.1.103.10.33
+## v0.1.103.10.34
 
 | version | type | scope | status | validation | DOD | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.33 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-170 | login_check remains explicit diagnostic only; no browser/session architecture changes |
+| v0.1.103.10.34 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-170 | login_check remains explicit diagnostic only; no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
-control token: v0.1.103.10.33 — release-control auth bootstrap before live operations
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip
+control token: v0.1.103.10.34 — release-control auth bootstrap before live operations
 
 
-## v0.1.103.10.33
+## v0.1.103.10.34
 
 | version | type | summary | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.33 | repair | release-control auth bootstrap before live operations | candidate | focused tests pending/live install pending | DOD-171 | every release-control live path runs auth bootstrap before Project Source add or tests; no browser/session architecture changes |
+| v0.1.103.10.34 | repair | release-control auth bootstrap before live operations | candidate | focused tests pending/live install pending | DOD-171 | every release-control live path runs auth bootstrap before Project Source add or tests; no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
-control token: v0.1.103.10.33 — release-control auth bootstrap before live operations
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip
+control token: v0.1.103.10.34 — release-control auth bootstrap before live operations

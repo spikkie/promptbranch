@@ -1091,10 +1091,109 @@ print("https://chatgpt.com/")
 INNERPY
 }
 
+release_control_wait_for_no_held_auth_session() {
+  local phase="${1:-release_control}"
+  local bootstrap_url="${2:-}"
+  local wait_log="${release_log_dir}/release_control_auth_bootstrap_release_wait.${phase}.${ver}.log"
+  local max_wait="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_RELEASE_WAIT_SECONDS:-90}"
+  local poll_seconds="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_RELEASE_POLL_SECONDS:-2}"
+
+  echo "== Release-control auth bootstrap release wait (${phase}) =="
+  echo "auth_bootstrap_release_wait_url: ${bootstrap_url}"
+  echo "auth_bootstrap_release_wait_seconds: ${max_wait}"
+  echo "output -> ${wait_log}"
+  python3 - "${service_base_url}" "${HOME}/.config/promptbranch/config.json" "${max_wait}" "${poll_seconds}" "${bootstrap_url}" <<'INNERPY' 2>&1 | tee "${wait_log}"
+from __future__ import annotations
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+base_url, config_path, max_wait_s, poll_s, target_url = sys.argv[1:6]
+max_wait = int(max_wait_s)
+poll = float(poll_s)
+token = os.environ.get("CHATGPT_SERVICE_TOKEN", "")
+if not token:
+    try:
+        cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+        token = str(cfg.get("service_token") or "")
+    except Exception:
+        token = ""
+
+def status_url() -> str:
+    url = base_url.rstrip("/") + "/v1/auth-readiness/session/status"
+    if target_url:
+        return url + "?" + urllib.parse.urlencode({"project_url": target_url})
+    return url
+
+def fetch() -> tuple[int | None, dict]:
+    req = urllib.request.Request(status_url())
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, json.loads(body) if body else {}
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.loads(exc.read().decode("utf-8", errors="replace"))
+        except Exception:
+            payload = {"error": str(exc)}
+        return exc.code, payload
+    except Exception as exc:
+        return None, {"error": f"{type(exc).__name__}: {exc}"}
+
+start = time.time()
+last: dict = {}
+last_code: int | None = None
+while True:
+    elapsed = time.time() - start
+    code, payload = fetch()
+    last = payload
+    last_code = code
+    held = payload.get("held_session") if isinstance(payload.get("held_session"), dict) else {}
+    active = bool(held.get("active"))
+    status = payload.get("status")
+    print(json.dumps({
+        "elapsed_seconds": round(elapsed, 3),
+        "http_status": code,
+        "status": status,
+        "held_session_active": active,
+        "current_url": payload.get("current_url"),
+    }, sort_keys=True), flush=True)
+    if status == "no_held_auth_readiness_session" or active is False:
+        print(json.dumps({
+            "ok": True,
+            "status": "held_auth_session_released",
+            "elapsed_seconds": round(elapsed, 3),
+            "http_status": code,
+            "target_url": target_url,
+        }, indent=2, sort_keys=True))
+        raise SystemExit(0)
+    if elapsed >= max_wait:
+        print(json.dumps({
+            "ok": False,
+            "status": "held_auth_session_release_timeout",
+            "elapsed_seconds": round(elapsed, 3),
+            "http_status": last_code,
+            "target_url": target_url,
+            "last_status": last,
+        }, indent=2, sort_keys=True))
+        raise SystemExit(1)
+    time.sleep(poll)
+INNERPY
+  return "${PIPESTATUS[0]}"
+}
+
 pb_auth_bootstrap() {
   local phase="${1:-release_control}"
   local bootstrap_log="${release_log_dir}/release_control_auth_bootstrap.${phase}.${ver}.log"
   local bootstrap_url
+  local bootstrap_keep_open_seconds="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_KEEP_OPEN_SECONDS:-1}"
 
   if [[ ${auth_only_validation} -eq 1 ]]; then
     echo "Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path."
@@ -1115,6 +1214,7 @@ pb_auth_bootstrap() {
   echo "output -> ${bootstrap_log}"
   PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}" \
   PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}" \
+  PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${bootstrap_keep_open_seconds}" \
   ./scripts/pb-browser-cloudflare-validation.sh \
     --url "${bootstrap_url}" \
     --bootstrap-url "${bootstrap_url}" \
@@ -1122,6 +1222,9 @@ pb_auth_bootstrap() {
     --poll-seconds 10 \
     2>&1 | tee "${bootstrap_log}"
   local bootstrap_rc=${PIPESTATUS[0]}
+  if [[ ${bootstrap_rc} -eq 0 ]]; then
+    release_control_wait_for_no_held_auth_session "${phase}" "${bootstrap_url}" || return $?
+  fi
   python3 - "${release_auth_bootstrap_json}" "${phase}" "${bootstrap_rc}" "${bootstrap_url}" "${bootstrap_log}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone

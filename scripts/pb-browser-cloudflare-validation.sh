@@ -288,7 +288,7 @@ CHATGPT_PROJECT_URL="${target_url}" \
 PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser \
 PROMPTBRANCH_HOST_PROFILE_DIR="${profile_dir}" \
 PROMPTBRANCH_PROFILE_DIR=/app/profile \
-PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${max_wait_seconds}" \
+PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-${max_wait_seconds}}" \
 ./scripts/docker-browser-parity-cloudflare-check.sh \
   --max-wait-seconds "${max_wait_seconds}" \
   --poll-seconds "${poll_seconds}" \

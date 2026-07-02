@@ -3327,6 +3327,7 @@ def test_standard_browser_validation_defaults_to_docker_visual_bootstrap() -> No
     assert 'CHATGPT_PROJECT_URL="${target_url}"' in script
     assert '--url "${bootstrap_url}"' in script
     assert 'bootstrap_url="https://chatgpt.com/"' in script
+    assert 'PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-${max_wait_seconds}}"' in script
     assert script.index("pb-docker-browser-profile-bootstrap.sh") < script.index("docker-browser-parity-cloudflare-check.sh")
 
 def test_release_control_auth_bootstrap_before_live_operations() -> None:
@@ -3341,3 +3342,7 @@ def test_release_control_auth_bootstrap_before_live_operations() -> None:
     assert 'pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"' in script
     assert 'Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path.' in script
     assert 'promptbranch.release_control.auth_bootstrap' in script
+    assert 'release_control_wait_for_no_held_auth_session()' in script
+    assert 'PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_KEEP_OPEN_SECONDS:-1' in script
+    assert 'held_auth_session_released' in script
+    assert 'held_auth_session_release_timeout' in script

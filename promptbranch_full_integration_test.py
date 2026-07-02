@@ -251,7 +251,7 @@ def resolve_step_selection(
         # existing --project-url are not owned by this run and are retained.
         enabled.add("project_remove_cleanup")
 
-    # v0.1.103.10.33: Browser/full validation relies on the normal auto-login
+    # v0.1.103.10.34: Browser/full validation relies on the normal auto-login
     # flow used by real operations.  The old forced login_check navigated to
     # generic https://chatgpt.com/ and could trigger a Cloudflare challenge even
     # when the current project/conversation session was otherwise healthy.  Keep
