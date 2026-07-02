@@ -3328,3 +3328,16 @@ def test_standard_browser_validation_defaults_to_docker_visual_bootstrap() -> No
     assert '--url "${bootstrap_url}"' in script
     assert 'bootstrap_url="https://chatgpt.com/"' in script
     assert script.index("pb-docker-browser-profile-bootstrap.sh") < script.index("docker-browser-parity-cloudflare-check.sh")
+
+def test_release_control_auth_bootstrap_before_live_operations() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'pb_auth_bootstrap()' in script
+    assert 'release_control_resolve_auth_bootstrap_url()' in script
+    assert 'PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}"' in script
+    assert 'PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}"' in script
+    assert 'pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"' in script
+    assert 'pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"' in script
+    assert 'Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path.' in script
+    assert 'promptbranch.release_control.auth_bootstrap' in script

@@ -86,11 +86,11 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 
 `v0.1.103.10.21 — pb test api classification cleanup`: narrow API coverage classification logic so passed/clear responses do not carry misleading failure classifications. No browser/session architecture changes.
 
-## Active repair — v0.1.103.10.32
+## Active repair — v0.1.103.10.33
 
-`v0.1.103.10.32 — full/browser validation skips generic-root login check`: enforce response-body semantic success checks in the API coverage runner; no browser/session architecture changes.
+`v0.1.103.10.33 — release-control auth bootstrap before live operations`: enforce response-body semantic success checks in the API coverage runner; no browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.32
+## Active repair slice — v0.1.103.10.33
 
-`v0.1.103.10.32 — full/browser validation skips generic-root login check` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.33 — release-control auth bootstrap before live operations` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.

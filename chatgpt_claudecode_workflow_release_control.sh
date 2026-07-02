@@ -758,6 +758,7 @@ fi
 test_session_logging_mode="none"
 service_log="${release_log_dir}/promptbranch-service.${ver_plain}.log"
 service_start_log="${release_log_dir}/promptbranch-service-start.${ver_plain}.log"
+release_auth_bootstrap_json="${release_log_dir}/release_control_auth_bootstrap.${ver}.json"
 service_pid_file="${release_log_dir}/promptbranch-service-start.${ver_plain}.pid"
 all_tests_summary_json="${release_log_dir}/pb_test.all.${ver}.summary.json"
 live_profile_preflight_json="${release_log_dir}/pb_test.live_profile_preflight.${ver}.json"
@@ -1039,6 +1040,111 @@ normalize_generated_ownership() {
     need_cmd sudo
     sudo chown -R "${owner_user}:${owner_group}" "${chown_targets[@]}"
   fi
+
+}
+
+release_control_resolve_auth_bootstrap_url() {
+  python3 - "${repo_root}/.pb_profile/.promptbranch_state.json" "${service_base_url}" <<'INNERPY'
+from __future__ import annotations
+import json
+import sys
+from pathlib import Path
+state_path = Path(sys.argv[1])
+service_base_url = sys.argv[2]
+
+def good(value: object) -> str | None:
+    if isinstance(value, str) and value.startswith("https://chatgpt.com/"):
+        return value
+    return None
+try:
+    payload = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+except Exception:
+    payload = {}
+current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
+for source in (current, payload):
+    if not isinstance(source, dict):
+        continue
+    for key in ("conversation_url", "current_conversation_url"):
+        value = good(source.get(key))
+        if value:
+            print(value)
+            raise SystemExit(0)
+for source in (current, payload):
+    if not isinstance(source, dict):
+        continue
+    for key in ("project_home_url", "current_project_home_url", "project_url", "current_project_url"):
+        value = good(source.get(key))
+        if value:
+            print(value)
+            raise SystemExit(0)
+try:
+    import urllib.request
+    with urllib.request.urlopen(service_base_url.rstrip("/") + "/healthz", timeout=2.0) as response:
+        data = json.loads(response.read().decode("utf-8", errors="replace"))
+    value = good(data.get("project_url"))
+    if value:
+        print(value)
+        raise SystemExit(0)
+except Exception:
+    pass
+print("https://chatgpt.com/")
+INNERPY
+}
+
+pb_auth_bootstrap() {
+  local phase="${1:-release_control}"
+  local bootstrap_log="${release_log_dir}/release_control_auth_bootstrap.${phase}.${ver}.log"
+  local bootstrap_url
+
+  if [[ ${auth_only_validation} -eq 1 ]]; then
+    echo "Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path."
+    return 0
+  fi
+  if [[ ${skip_service} -eq 1 ]]; then
+    echo "Release-control auth bootstrap skipped for ${phase}: --skip-service/tests-only/adopt-current path."
+    return 0
+  fi
+  if [[ ! -x "./scripts/pb-browser-cloudflare-validation.sh" ]]; then
+    echo "ERROR: auth bootstrap script missing or not executable: ./scripts/pb-browser-cloudflare-validation.sh" >&2
+    return 1
+  fi
+
+  bootstrap_url="$(release_control_resolve_auth_bootstrap_url)"
+  echo "== Release-control auth bootstrap (${phase}) =="
+  echo "auth_bootstrap_url: ${bootstrap_url}"
+  echo "output -> ${bootstrap_log}"
+  PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}" \
+  PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}" \
+  ./scripts/pb-browser-cloudflare-validation.sh \
+    --url "${bootstrap_url}" \
+    --bootstrap-url "${bootstrap_url}" \
+    --max-wait-seconds 300 \
+    --poll-seconds 10 \
+    2>&1 | tee "${bootstrap_log}"
+  local bootstrap_rc=${PIPESTATUS[0]}
+  python3 - "${release_auth_bootstrap_json}" "${phase}" "${bootstrap_rc}" "${bootstrap_url}" "${bootstrap_log}" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+out, phase, rc, url, log = sys.argv[1:6]
+payload = {
+    "schema": "promptbranch.release_control.auth_bootstrap",
+    "schema_version": "1.0",
+    "source_kind": "release_control_auth_bootstrap",
+    "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "ok": int(rc) == 0,
+    "status": "passed" if int(rc) == 0 else "failed",
+    "phase": phase,
+    "target_url": url,
+    "log": log,
+    "exit_code": int(rc),
+}
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
+  return "${bootstrap_rc}"
 }
 
 printf '\n== Release control ==\n'
@@ -1775,6 +1881,7 @@ ensure_service_before_source_add() {
 # mutation after the operator explicitly selected --skip-source-add.
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
   ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
+  pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
   promptbranch src add "${artifact_zip}"
 else
   if [[ ${auth_only_validation} -eq 1 ]]; then
@@ -4674,6 +4781,7 @@ INNERPY
 }
 
 if [[ ${skip_tests} -eq 0 ]]; then
+  pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"
   start_test_session_log
   set +e
 

@@ -565,16 +565,21 @@ Promptbranch service and visible Docker browser bootstrap paths declare Docker s
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 
 
-## Decision — v0.1.103.10.32 API coverage semantic assertions
+## Decision — v0.1.103.10.33 API coverage semantic assertions
 
 `pb test api` must fail semantically unsuccessful HTTP 200 responses. This repair is report/assertion-only and does not change browser/session architecture.
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.32.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.33.zip
 
-## Decision — v0.1.103.10.32 pb test api service config token
+## Decision — v0.1.103.10.33 pb test api service config token
 
 `pb test api` now uses the normal Promptbranch CLI service configuration path for host-side service transport defaults. When `--base-url` is absent, it maps `service_base_url` from `~/.config/promptbranch/config.json` to the API coverage runner base URL. When `--token` is absent, it maps `service_token` from the same config to the runner token. The token is not printed in JSON reports, logs, or summaries. This keeps `.env` out of the API coverage token handoff and preserves the v0.1.103.10.25 ask-submit repair, held-session preflight, browser/session architecture, and Project Source mutation behavior.
-## Decision — v0.1.103.10.32 full/browser validation skips generic-root login check
+## Decision — v0.1.103.10.33 full/browser validation skips generic-root login check
 
-`v0.1.103.10.32` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
+`v0.1.103.10.33` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
 
+
+
+## Decision — v0.1.103.10.33 release-control auth bootstrap before live operations
+
+`v0.1.103.10.33` adds a release-control `pb_auth_bootstrap` phase that runs the existing standard browser Cloudflare/auth validation flow before Project Source add and before test execution. The bootstrap resolves the current Promptbranch state URL first and uses it for both validation and browser bootstrap, avoiding generic root navigation where possible. Auth-only validation remains the dedicated bootstrap-only path. No browser/session architecture or Project Source endpoint behavior changes.
