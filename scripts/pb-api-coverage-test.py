@@ -226,6 +226,12 @@ class ApiRunner:
         self.conversation_url = args.conversation_url or self._state_value(
             "current_conversation_url", "conversation_url", fallback=""
         )
+        self.preflight: dict[str, Any] = {
+            "browser_profile_busy": False,
+            "held_auth_readiness_session_active": False,
+            "checked": False,
+            "probes": [],
+        }
 
     def _state_value(self, *keys: str, fallback: str = "") -> str:
         state_path = Path(self.args.state_file or ".pb_profile/.promptbranch_state.json")
@@ -290,6 +296,150 @@ class ApiRunner:
             if step.response_summary is None:
                 step.response_summary = {}
             step.response_summary["classification"] = classification
+
+    def _raw_json_get(self, path: str, query: dict[str, Any] | None = None) -> tuple[int | None, Any | None, str | None, str]:
+        url = self._url(path, query)
+        req = urllib.request.Request(url, method="GET", headers=self._headers())
+        try:
+            with urllib.request.urlopen(req, timeout=min(self.args.timeout_seconds, 30.0)) as resp:
+                status = int(resp.status)
+                payload = _json_loads_maybe(resp.read())
+            return status, payload, None, url
+        except urllib.error.HTTPError as exc:
+            raw = exc.read() if hasattr(exc, "read") else b""
+            payload = _json_loads_maybe(raw or str(exc).encode("utf-8"))
+            return int(exc.code), payload, str(exc), url
+        except Exception as exc:  # pragma: no cover - defensive live-run reporting
+            return None, None, f"{type(exc).__name__}: {exc}", url
+
+    def _held_session_payload_active(self, payload: Any | None) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        held = payload.get("held_session")
+        if isinstance(held, dict) and held.get("active") is True:
+            return True
+        status = str(payload.get("status") or "").strip()
+        if status and status != "no_held_auth_readiness_session" and payload.get("action") == "auth_readiness_session_status":
+            # auth_readiness_session_status returns no_held_auth_readiness_session
+            # for an empty slot.  Any other status means the status endpoint found
+            # a session/probe for the checked key.
+            return True
+        return False
+
+    def _preflight_check_held_auth_sessions(self) -> None:
+        """Detect held auth sessions before browser-owning API coverage.
+
+        The status endpoint key includes project URL.  Live v0.1.103.10.23
+        evidence showed ``project_url=/project`` could report no held session
+        while a compatible held session for the same profile existed under the
+        conversation/default service key.  Probe all known scopes and record a
+        single preflight result so the runner can fail early instead of running
+        many doomed browser-owning endpoints.
+        """
+
+        probes: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        candidates: list[tuple[str, str | None]] = [
+            ("default_service", None),
+            ("project_url", self.project_url),
+            ("conversation_url", self.conversation_url or None),
+        ]
+        busy = False
+        for label, project_url in candidates:
+            query = {"project_url": project_url} if project_url else None
+            key = (label, project_url or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            status, payload, error, url = self._raw_json_get("/v1/auth-readiness/session/status", query=query)
+            active = self._held_session_payload_active(payload)
+            busy = busy or active
+            probe = {
+                "label": label,
+                "project_url": project_url,
+                "url": url,
+                "http_status": status,
+                "active": active,
+                "classification": _classify_response(status, payload, error),
+                "response_summary": _summarize_payload(payload) if payload is not None else None,
+                "error": error,
+            }
+            probes.append(probe)
+
+        self.preflight = {
+            "browser_profile_busy": busy,
+            "held_auth_readiness_session_active": busy,
+            "checked": True,
+            "reuse_held_session": bool(self.args.reuse_held_session),
+            "probes": probes,
+        }
+
+    def _record_held_session_preflight_failure(self) -> None:
+        self.steps.append(
+            Step(
+                name="held_auth_session_preflight",
+                method="GET",
+                path="/v1/auth-readiness/session/status",
+                category="preflight",
+                status="failed",
+                ok=False,
+                expected_statuses=[200],
+                classification="browser_profile_busy",
+                error="held auth-readiness session is active before browser-owning API coverage; rerun after releasing the held session or use --reuse-held-session",
+                response_summary={
+                    "preflight": {
+                        "browser_profile_busy": True,
+                        "held_auth_readiness_session_active": True,
+                        "reuse_held_session": bool(self.args.reuse_held_session),
+                    }
+                },
+            )
+        )
+
+    def _skip_due_preflight_busy(self, name: str, method: str, path: str, category: str) -> None:
+        self.skip(name, method, path, category, "preflight.browser_profile_busy=true; browser-owning API coverage skipped to avoid repeated held-session failures")
+
+    def _finish_after_held_session_preflight_failure(self) -> dict[str, Any]:
+        self._record_held_session_preflight_failure()
+        self._skip_due_preflight_busy("login_check", "POST", "/v1/login-check", "browser")
+        self._skip_due_preflight_busy("projects_list", "GET", "/v1/projects", "projects")
+        self._skip_due_preflight_busy("projects_resolve", "POST", "/v1/projects/resolve", "projects")
+        self.skip("projects_create", "POST", "/v1/projects/create", "dangerous", "creates a real ChatGPT Project")
+        self.skip("projects_ensure", "POST", "/v1/projects/ensure", "dangerous", "may create a real ChatGPT Project")
+        self.request(
+            "projects_remove_guard",
+            "POST",
+            "/v1/projects/remove",
+            category="guard",
+            json_body={
+                "project_name": self.args.project_name,
+                "project_url": self.project_url,
+                "allow_ephemeral_test_cleanup": False,
+                "keep_open": False,
+            },
+            expected_statuses=[200, 400, 403, 423],
+        )
+        self._skip_due_preflight_busy("chats_list", "GET", "/v1/chats", "chats")
+        self._skip_due_preflight_busy("chats_debug_light", "GET", "/v1/chats/debug", "chats")
+        self._skip_due_preflight_busy("chats_get", "POST", "/v1/chats/get", "chats")
+        self.skip("chats_download_artifact", "POST", "/v1/chats/download-artifact", "artifact", "requires known artifact URL/filename")
+        self._skip_due_preflight_busy("debug_rate_limit", "GET", "/v1/debug/rate-limit", "debug")
+        self._skip_due_preflight_busy("project_source_capabilities", "GET", "/v1/project-source-capabilities", "sources")
+        self._skip_due_preflight_busy("project_sources_list", "GET", "/v1/project-sources", "sources")
+        self._skip_due_preflight_busy("project_sources_add_file", "POST", "/v1/project-sources", "mutation")
+        self.skip(
+            "project_sources_add_gate_closed",
+            "POST",
+            "/v1/project-sources",
+            "guard",
+            "skipped by default because non-standard service modes may allow mutation; use --include-source-gate-test after confirming standard-browser gate mode",
+        )
+        self.skip("project_sources_remove", "POST", "/v1/project-sources/remove", "mutation", "requires --allow-source-remove and --remove-source-name")
+        self._skip_due_preflight_busy("ask", "POST", "/v1/ask", "ask")
+        self._skip_due_preflight_busy("auth_readiness", "POST", "/v1/auth-readiness", "browser")
+        self.skip("test_suite_run", "POST", "/v1/test-suite/run", "heavy", "use pb test browser/full explicitly; skipped by API coverage by default")
+        self.request("ui_test_suite", "GET", "/ui/test-suite", category="status")
+        return self.report()
 
     def _mark_semantic_failure(self, step: Step, reason: str, *, classification: str | None = None) -> None:
         if step.response_summary is None:
@@ -476,6 +626,10 @@ class ApiRunner:
         self.request("docker_browser_runtime", "GET", "/v1/docker/browser-runtime", category="status")
         self.request("browser_status", "GET", "/v1/browser/status", category="status")
         self.request("auth_readiness_session_status", "GET", "/v1/auth-readiness/session/status", category="status", query={"project_url": self.project_url})
+
+        self._preflight_check_held_auth_sessions()
+        if self.preflight.get("browser_profile_busy") and not self.args.reuse_held_session:
+            return self._finish_after_held_session_preflight_failure()
 
         # Serial browser mode deliberately avoids holding an auth-readiness
         # session before unrelated browser-owning endpoints.  v0.1.103.10.19
@@ -666,6 +820,7 @@ class ApiRunner:
                 "skipped": len(skipped),
                 "browser_profile_busy": sum(1 for s in self.steps if s.classification == "browser_profile_busy"),
             },
+            "preflight": self.preflight,
             "by_category": by_category,
             "steps": [s.__dict__ for s in self.steps],
         }

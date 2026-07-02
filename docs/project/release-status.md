@@ -459,11 +459,20 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 
 
-## v0.1.103.10.23
+## v0.1.103.10.24
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.23 | repair | pb test api asserts response body success | candidate | focused tests pending/live install pending | DOD-167 | n/a |
+| v0.1.103.10.24 | repair | pb test api held-session preflight consistency | candidate | focused tests pending/live install pending | DOD-167 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.23.zip
-control token: v0.1.103.10.23 — pb test api asserts response body success
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.24.zip
+control token: v0.1.103.10.24 — pb test api held-session preflight consistency
+
+## v0.1.103.10.24
+
+| version | kind | scope | status | validation | dod | notes |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.24 | repair | pb test api held-session preflight consistency | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
+
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.24.zip
+control token: v0.1.103.10.24 — pb test api held-session preflight consistency

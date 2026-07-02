@@ -157,3 +157,46 @@ def test_api_coverage_semantic_read_endpoint_requires_body_ok() -> None:
     runner._require_body_ok(step, {"ok": False, "status": "not_ready"}, "project_sources_list")
     assert not step.ok
     assert "ok=true" in str(step.error)
+
+
+def test_api_coverage_preflight_detects_held_session_payload_active() -> None:
+    runner = _api_runner_for_unit_tests()
+    assert runner._held_session_payload_active({"ok": False, "status": "no_held_auth_readiness_session", "held_session": {"active": False}}) is False
+    assert runner._held_session_payload_active({"ok": True, "action": "auth_readiness_session_status", "status": "auth_preflight_ready", "held_session": {"active": True}}) is True
+    assert runner._held_session_payload_active({"ok": True, "action": "auth_readiness_session_status", "status": "auth_preflight_ready"}) is True
+
+
+def test_api_coverage_report_includes_preflight_state() -> None:
+    runner = _api_runner_for_unit_tests()
+    payload = runner.report()
+    assert "preflight" in payload
+    assert payload["preflight"]["browser_profile_busy"] is False
+    assert payload["preflight"]["checked"] is False
+
+
+def test_api_coverage_fail_early_when_preflight_busy_without_reuse() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    runner.preflight = {
+        "browser_profile_busy": True,
+        "held_auth_readiness_session_active": True,
+        "checked": True,
+        "reuse_held_session": False,
+        "probes": [],
+    }
+
+    def fake_request(name, method, path, **kwargs):
+        step = Step(name=name, method=method, path=path, category=kwargs.get("category", "status"), status="passed", ok=True, http_status=200)
+        runner.steps.append(step)
+        return step, {"ok": True}
+
+    runner.request = fake_request  # type: ignore[method-assign]
+    payload = runner._finish_after_held_session_preflight_failure()
+    assert payload["ok"] is False
+    assert payload["preflight"]["browser_profile_busy"] is True
+    assert payload["counts"]["browser_profile_busy"] == 1
+    names = {step["name"]: step for step in payload["steps"]}
+    assert names["held_auth_session_preflight"]["status"] == "failed"
+    assert names["login_check"]["status"] == "skipped"
+    assert names["projects_list"]["skip_reason"].startswith("preflight.browser_profile_busy=true")
