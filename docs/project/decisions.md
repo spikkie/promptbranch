@@ -565,12 +565,12 @@ Promptbranch service and visible Docker browser bootstrap paths declare Docker s
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 
 
-## Decision — v0.1.103.10.26 API coverage semantic assertions
+## Decision — v0.1.103.10.27 API coverage semantic assertions
 
 `pb test api` must fail semantically unsuccessful HTTP 200 responses. This repair is report/assertion-only and does not change browser/session architecture.
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.26.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.27.zip
 
-## Decision — v0.1.103.10.26 pb test api service config token
+## Decision — v0.1.103.10.27 pb test api service config token
 
 `pb test api` now uses the normal Promptbranch CLI service configuration path for host-side service transport defaults. When `--base-url` is absent, it maps `service_base_url` from `~/.config/promptbranch/config.json` to the API coverage runner base URL. When `--token` is absent, it maps `service_token` from the same config to the runner token. The token is not printed in JSON reports, logs, or summaries. This keeps `.env` out of the API coverage token handoff and preserves the v0.1.103.10.25 ask-submit repair, held-session preflight, browser/session architecture, and Project Source mutation behavior.

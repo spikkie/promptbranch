@@ -4321,6 +4321,161 @@ def test_submit_prompt_prompt_file_button_prepare_only_does_not_press_keyboard_a
     assert result["submit_variant_comparison_result"] == "keyboard_fallback_after_button_dispatch_disabled"
 
 
+def test_submit_prompt_text_button_prepare_only_can_promote_keyboard_fallback(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    class DummyKeyboard:
+        def __init__(self) -> None:
+            self.pressed: list[str] = []
+
+        async def press(self, key: str):
+            self.pressed.append(key)
+
+    class DummyButton:
+        async def count(self):
+            return 1
+
+        async def is_visible(self, timeout=None):
+            return True
+
+        async def is_enabled(self, timeout=None):
+            return True
+
+        async def get_attribute(self, name: str):
+            if name == "data-testid":
+                return "send-button"
+            if name == "aria-label":
+                return "Send prompt"
+            return None
+
+        async def click(self):
+            return None
+
+    class DummyLocator:
+        @property
+        def first(self):
+            return DummyButton()
+
+        def nth(self, index: int):
+            return DummyButton()
+
+        async def count(self):
+            return 1
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.keyboard = DummyKeyboard()
+
+        def locator(self, selector):
+            return DummyLocator()
+
+        async def wait_for_timeout(self, ms: int):
+            return None
+
+    async def fake_composer_state(page, *, prompt=None):
+        return {
+            "contains_prompt_prefix": True,
+            "text_length": len(prompt or ""),
+            "submit_button": {"visible": True, "enabled": True, "send_ready": True},
+        }
+
+    async def fake_count_assistant(page):
+        return 0
+
+    async def first_confirmation(page, *, before_assistant_count, before_user_turn_state=None, prompt=None, timeout_ms=3000, poll_interval_ms=250, submit_network_observer=None):
+        return {
+            "status": "submit_confirmation_not_observed",
+            "confirmed": False,
+            "confirmed_by": [],
+            "confirmation_mode": "submit_prepare_only_then_idle_without_commit_timeout",
+            "causal_confirmation_required": True,
+            "causal_confirmation_verified": False,
+            "causal_confirmation_reason": "prepare_only_then_idle_without_commit",
+            "network_submit_request_observed": False,
+            "network_submit_request_status": "prepare_only_then_idle_without_commit",
+            "submit_network_evidence": {
+                "status": "prepare_only_then_idle_without_commit",
+                "prepare_request_observed": True,
+                "prepare_only_then_idle_without_commit": True,
+                "prepare_token_set_not_consumed": True,
+                "message_request_observed": False,
+                "message_request_count": 0,
+            },
+            "backend_task_message_evidence": {"post_prepare_commit_found": False},
+        }
+
+    async def fake_after_composer(page, *, prompt=None):
+        return {
+            "snapshot_mode": "post_submit_minimal",
+            "skipped": False,
+            "text_length": 0,
+            "submit_button": {"idle_visible": True},
+        }
+
+    async def retry_variant(page, *, prompt, before_assistant_count, before_user_turn_state, variant, dispatch_key):
+        return {
+            "variant": variant,
+            "dispatch_key": dispatch_key,
+            "confirmed": True,
+            "network_status": "submit_network_request_observed",
+            "confirmation": {
+                "status": "submit_confirmed",
+                "confirmed": True,
+                "confirmed_by": ["backend_task_message"],
+                "confirmation_mode": "backend_commit_after_prepare",
+                "backend_task_message_found": True,
+                "backend_task_message_status": "backend_commit_after_prepare_found",
+                "causal_confirmation_required": True,
+                "causal_confirmation_verified": True,
+                "causal_confirmation_reason": "backend_commit_after_prepare",
+                "network_submit_request_observed": True,
+                "network_submit_request_status": "submit_network_request_observed",
+                "submit_network_evidence": {
+                    "status": "submit_network_request_observed",
+                    "request_marker_found": True,
+                    "message_request_observed": True,
+                    "message_request_count": 1,
+                    "prepare_only_then_idle_without_commit": False,
+                    "prepare_token_set_not_consumed": False,
+                },
+                "backend_task_message_evidence": {
+                    "post_prepare_commit_found": True,
+                    "post_prepare_commit_status": "backend_commit_after_prepare_found",
+                    "user_turn_id": "user-turn-27",
+                    "user_turn_index": 12,
+                    "conversation_id": "conversation-27",
+                },
+            },
+        }
+
+    page = DummyPage()
+    client._capture_composer_state = fake_composer_state
+    client._count_assistant_turns = fake_count_assistant
+    client._wait_for_submit_confirmation = first_confirmation
+    client._capture_post_submit_composer_state = fake_after_composer
+    client._run_keyboard_submit_variant = retry_variant
+    client._start_submit_network_observer = lambda page, prompt=None: {"observer": "network"}
+    client._stop_submit_network_observer = lambda page, observer: None
+
+    result = asyncio.run(
+        client._submit_prompt(
+            page,
+            prompt="Reply with exactly API_ASK_OK",
+            prefer_button=True,
+            allow_keyboard_fallback_after_button_prepare_failure=True,
+        )
+    )
+
+    assert result["prefer_button_submit"] is True
+    assert result["allow_keyboard_fallback_after_button_prepare_failure"] is True
+    assert result["submit_confirmed"] is True
+    assert result["submit_method"] == "button_click_then_keyboard_enter"
+    assert result["submit_keyboard_fallback_after_button_prepare_failure_promoted"] is True
+    assert result["submit_variant_comparison_result"] == "keyboard_enter_finalized_after_button_prepare_only"
+    assert result["submit_confirmed_by"] == ["backend_task_message"]
+    assert result["backend_confirmed_user_turn_id"] == "user-turn-27"
+    assert result["backend_confirmed_user_turn_index"] == 12
+
 
 def test_submit_failure_diagnostics_flatten_prepare_token_not_consumed(tmp_path: Path) -> None:
     client = _make_client(tmp_path)

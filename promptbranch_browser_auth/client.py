@@ -3662,6 +3662,7 @@ class ChatGPTBrowserClient:
             page,
             prompt=prompt,
             prefer_button=bool(prefer_button_submit or upload_paths),
+            allow_keyboard_fallback_after_button_prepare_failure=bool(prefer_button_submit and not upload_paths),
         )
         if isinstance(submit_evidence, dict):
             # Keep the originating submit policy on the causal evidence object so
@@ -12314,7 +12315,14 @@ class ChatGPTBrowserClient:
             "answer_text_length": len(answer_text),
         }
 
-    async def _submit_prompt(self, page: Any, *, prompt: str | None = None, prefer_button: bool = False) -> dict[str, Any]:
+    async def _submit_prompt(
+        self,
+        page: Any,
+        *,
+        prompt: str | None = None,
+        prefer_button: bool = False,
+        allow_keyboard_fallback_after_button_prepare_failure: bool = False,
+    ) -> dict[str, Any]:
         """Submit the current composer content with phase-level timing.
 
         v0.0.278.13 keeps the v0.0.278.9 accounting invariant while
@@ -12361,6 +12369,7 @@ class ChatGPTBrowserClient:
         evidence: dict[str, Any] = {
             "status": "submit_not_attempted",
             "prefer_button_submit": bool(prefer_button),
+            "allow_keyboard_fallback_after_button_prepare_failure": bool(allow_keyboard_fallback_after_button_prepare_failure),
             "clicked": False,
             "enter_fallback_used": False,
             "submit_method": None,
@@ -12767,13 +12776,13 @@ class ChatGPTBrowserClient:
                 "classification": "composer_cleared_idle_without_backend_commit" if composer_cleared_idle_without_commit else None,
             }
             if method == "button" and not evidence.get("submit_confirmed") and bool(primary_network.get("prepare_only_then_idle_without_commit") or primary_network.get("prepare_token_set_not_consumed")):
-                if prefer_button:
-                    # Prompt-file asks are button-first and fail-closed: once a
-                    # visible/enabled send button was clicked, do not press
-                    # keyboard Enter as a post-dispatch fallback/comparison.
-                    # The original bug was a lost submit-causality boundary; a
-                    # second dispatch after prepare-only would make the emitted
-                    # JSON ambiguous for unattended workflows.
+                if prefer_button and not allow_keyboard_fallback_after_button_prepare_failure:
+                    # Attachment/prompt-file asks remain button-first and fail-closed:
+                    # once a visible/enabled send button was clicked, do not press
+                    # keyboard Enter as a post-dispatch fallback/comparison.  The
+                    # original bug was a lost submit-causality boundary; a second
+                    # dispatch after prepare-only would make attachment JSON
+                    # ambiguous for unattended workflows.
                     evidence["submit_variant_comparison"] = {
                         "enabled": False,
                         "attempted": False,
@@ -12798,6 +12807,54 @@ class ChatGPTBrowserClient:
                     if isinstance(keyboard_enter, dict):
                         evidence["submit_variant_keyboard_enter_status"] = keyboard_enter.get("network_status") or keyboard_enter.get("confirmation_mode") or keyboard_enter.get("status")
                         evidence["submit_variant_keyboard_enter_confirmed"] = bool(keyboard_enter.get("confirmed"))
+                        evidence["submit_keyboard_fallback_after_button_prepare_failure_used"] = bool(keyboard_enter.get("confirmed"))
+                        retry_confirmation = keyboard_enter.get("confirmation") if isinstance(keyboard_enter.get("confirmation"), dict) else {}
+                        retry_network = retry_confirmation.get("submit_network_evidence") if isinstance(retry_confirmation.get("submit_network_evidence"), dict) else {}
+                        retry_backend = retry_confirmation.get("backend_task_message_evidence") if isinstance(retry_confirmation.get("backend_task_message_evidence"), dict) else {}
+                        if keyboard_enter.get("confirmed") and isinstance(retry_confirmation, dict):
+                            retry_confirmed_by = list(retry_confirmation.get("confirmed_by") or [])
+                            evidence.update({
+                                "status": "button_click_then_keyboard_enter_confirmed",
+                                "submit_method": "button_click_then_keyboard_enter",
+                                "submit_dispatch_method": "button_click_then_keyboard_enter",
+                                "submit_confirmed": True,
+                                "submit_confirmed_by": retry_confirmed_by,
+                                "submit_confirmation": retry_confirmation,
+                                "submit_confirmation_mode": retry_confirmation.get("confirmation_mode"),
+                                "submit_causal_confirmation_required": retry_confirmation.get("causal_confirmation_required"),
+                                "submit_causal_confirmation_verified": retry_confirmation.get("causal_confirmation_verified", True),
+                                "submit_causal_confirmation_reason": retry_confirmation.get("causal_confirmation_reason") or "keyboard_enter_after_button_prepare_failure",
+                                "submit_backend_task_message_found": bool(
+                                    retry_confirmation.get("backend_task_message_found")
+                                    or retry_backend.get("post_prepare_commit_found")
+                                    or "backend_task_message" in retry_confirmed_by
+                                ),
+                                "submit_backend_task_message_status": retry_confirmation.get("backend_task_message_status") or retry_backend.get("post_prepare_commit_status"),
+                                "submit_backend_detail_http_status": retry_confirmation.get("backend_detail_http_status") or retry_backend.get("backend_detail_http_status") or retry_backend.get("http_status"),
+                                "submit_backend_detail_http_statuses": retry_confirmation.get("backend_detail_http_statuses") or retry_backend.get("backend_detail_http_statuses"),
+                                "submit_network_request_observed": bool(
+                                    retry_confirmation.get("network_submit_request_observed")
+                                    or retry_network.get("request_observed")
+                                    or retry_network.get("request_marker_found")
+                                    or retry_network.get("message_request_observed")
+                                ),
+                                "submit_network_request_status": retry_confirmation.get("network_submit_request_status") or retry_network.get("status"),
+                                "submit_network_request_marker_found": retry_network.get("request_marker_found"),
+                                "submit_network_response_observed": retry_network.get("response_observed"),
+                                "submit_network_response_status": retry_network.get("response_status"),
+                                "submit_message_request_observed": retry_network.get("message_request_observed"),
+                                "submit_message_request_count": retry_network.get("message_request_count"),
+                                "submit_prepare_only": retry_network.get("prepare_only"),
+                                "submit_prepare_token_set_not_consumed": retry_network.get("prepare_token_set_not_consumed"),
+                                "submit_prepare_only_then_idle_without_commit": retry_network.get("prepare_only_then_idle_without_commit"),
+                                "submit_keyboard_fallback_after_button_prepare_failure_promoted": True,
+                                "backend_task_message_evidence": retry_backend or evidence.get("backend_task_message_evidence"),
+                                "submit_network_evidence": retry_network or evidence.get("submit_network_evidence"),
+                            })
+                            if retry_backend.get("user_turn_id") or retry_backend.get("backend_confirmed_user_turn_id"):
+                                evidence["backend_confirmed_user_turn_id"] = retry_backend.get("user_turn_id") or retry_backend.get("backend_confirmed_user_turn_id")
+                            if retry_backend.get("user_turn_index") is not None or retry_backend.get("backend_confirmed_user_turn_index") is not None:
+                                evidence["backend_confirmed_user_turn_index"] = retry_backend.get("user_turn_index") if retry_backend.get("user_turn_index") is not None else retry_backend.get("backend_confirmed_user_turn_index")
             self._log(
                 "submit",
                 "submit confirmed without waiting for user-turn DOM",

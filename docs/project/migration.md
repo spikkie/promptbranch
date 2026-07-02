@@ -803,6 +803,6 @@ No user migration required. Re-run `pb test api --json`; use `--hold-auth-sessio
 Docker Chrome runtime paths now use explicit shared-memory sizing. Override with `PROMPTBRANCH_DOCKER_SHM_SIZE` if the default is unsuitable.
 
 
-## v0.1.103.10.26 migration note
+## v0.1.103.10.27 migration note
 
 No operator migration required. `pb test api` now checks response-body success semantics in addition to HTTP status codes.

@@ -482,7 +482,7 @@ Last release: v0.1.102
 
 | DOD-166 | Docker Chrome shared-memory sizing is explicit for service and visual bootstrap paths | in_progress | `docker-compose.chatgpt-service.yml` sets `shm_size`; `scripts/pb-docker-browser-profile-bootstrap.sh` passes `--shm-size`; default can be overridden with `PROMPTBRANCH_DOCKER_SHM_SIZE`. | v0.1.103.10.22 |
 
-| DOD-167 | pb test api reads service config token | in_progress | HTTP 200 alone is not enough; ask requires token, source add requires persistence, auth readiness requires logged-in/no-challenge, debug rate-limit requires clear status, and project/chat/source read endpoints require ok=true. | v0.1.103.10.26 |
+| DOD-167 | repair /v1/ask submit causality endpoint path | in_progress | HTTP 200 alone is not enough; ask requires token, source add requires persistence, auth readiness requires logged-in/no-challenge, debug rate-limit requires clear status, and project/chat/source read endpoints require ok=true. | v0.1.103.10.27 |
 
-| DOD-168 | pb test api reads service config token | in_progress | API coverage uses button-first ask submission, keeps strict /v1/ask semantic checks, and reports missing API_ASK_OK with accurate not-observed wording while preserving held-session preflight behavior. | v0.1.103.10.26 |
-| DOD-169 | pb test api reads service config token | in_progress | API coverage uses the normal Promptbranch CLI service config for base URL/token defaults, keeps .env out of scope, and never prints the token in JSON reports, logs, or summaries. | v0.1.103.10.26 |
+| DOD-168 | repair /v1/ask submit causality endpoint path | in_progress | API coverage uses button-first ask submission, keeps strict /v1/ask semantic checks, and reports missing API_ASK_OK with accurate not-observed wording while preserving held-session preflight behavior. | v0.1.103.10.27 |
+| DOD-169 | repair /v1/ask submit causality endpoint path | in_progress | API coverage uses the normal Promptbranch CLI service config for base URL/token defaults, keeps .env out of scope, and never prints the token in JSON reports, logs, or summaries. | v0.1.103.10.27 |
