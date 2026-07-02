@@ -459,29 +459,29 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 
 
-## v0.1.103.10.28
+## v0.1.103.10.29
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.28 | repair | repair pb test api ask conversation target | candidate | focused tests pending/live install pending | DOD-167 | n/a |
+| v0.1.103.10.29 | repair | expose or auto-handle compatible held auth session in pb test api | candidate | focused tests pending/live install pending | DOD-167 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.28.zip
-control token: v0.1.103.10.28 — repair pb test api ask conversation target
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.29.zip
+control token: v0.1.103.10.29 — expose or auto-handle compatible held auth session in pb test api
 
-## v0.1.103.10.28
+## v0.1.103.10.29
 
 | version | kind | scope | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.28 | repair | repair pb test api ask conversation target | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
+| v0.1.103.10.29 | repair | expose or auto-handle compatible held auth session in pb test api | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.28.zip
-control token: v0.1.103.10.28 — repair pb test api ask conversation target
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.29.zip
+control token: v0.1.103.10.29 — expose or auto-handle compatible held auth session in pb test api
 
-## v0.1.103.10.28
+## v0.1.103.10.29
 
 | version | type | slice | status | validation | dod | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| v0.1.103.10.28 | repair | repair pb test api ask conversation target | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
+| v0.1.103.10.29 | repair | expose or auto-handle compatible held auth session in pb test api | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.28.zip
-control token: v0.1.103.10.28 — repair pb test api ask conversation target
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.29.zip
+control token: v0.1.103.10.29 — expose or auto-handle compatible held auth session in pb test api

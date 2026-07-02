@@ -30,6 +30,8 @@ def test_cli_exposes_test_api_command() -> None:
     assert 'test_subparsers.add_parser("api"' in text
     assert 'async def cmd_test_api' in text
     assert 'args.test_command == "api"' in text
+    assert '--reuse-held-session' in text
+    assert '--no-auto-reuse-compatible-held-session' in text
 
 
 def test_api_coverage_module_help_is_install_safe() -> None:
@@ -293,6 +295,87 @@ def test_cli_test_api_explicit_transport_overrides_service_config(monkeypatch, t
     assert cmd[cmd.index("--token") + 1] == "explicit-token"
     assert "configured-token" not in cmd
 
+
+
+def test_cli_test_api_forwards_reuse_held_session_flags(monkeypatch) -> None:
+    import promptbranch_cli
+
+    captured: dict[str, list[str]] = {}
+
+    class Completed:
+        returncode = 0
+
+    def fake_run(cmd):
+        captured["cmd"] = list(cmd)
+        return Completed()
+
+    monkeypatch.setattr(promptbranch_cli.subprocess, "run", fake_run)
+    exit_code = promptbranch_cli.main([
+        "test",
+        "api",
+        "--reuse-held-session",
+        "--no-auto-reuse-compatible-held-session",
+    ])
+
+    assert exit_code == 0
+    assert "--reuse-held-session" in captured["cmd"]
+    assert "--no-auto-reuse-compatible-held-session" in captured["cmd"]
+
+
+def test_api_coverage_auto_reuses_compatible_held_session() -> None:
+    from promptbranch.api_coverage_test import ApiRunner, build_parser
+
+    selected = "https://chatgpt.com/g/g-p-project/c/current-task?tab=sources"
+    args = build_parser().parse_args([
+        "--no-browser",
+        "--no-ask",
+        "--conversation-url",
+        selected,
+        "--state-file",
+        "/tmp/promptbranch-api-coverage-missing-state.json",
+    ])
+    runner = ApiRunner(args)
+
+    def fake_get(path, query=None):
+        project_url = (query or {}).get("project_url")
+        if project_url == "https://chatgpt.com/":
+            return 200, {"ok": False, "status": "no_held_auth_readiness_session", "held_session": {"active": False}}, None, "url"
+        return 200, {"ok": True, "action": "auth_readiness_session_status", "status": "auth_preflight_ready", "current_url": selected}, None, "url"
+
+    runner._raw_json_get = fake_get  # type: ignore[method-assign]
+    runner._preflight_check_held_auth_sessions()
+
+    assert runner.preflight["browser_profile_busy"] is True
+    assert runner.preflight["compatible_held_auth_readiness_session_active"] is True
+    assert runner.preflight["auto_reuse_applied"] is True
+    assert runner.preflight["reuse_held_session"] is True
+
+
+def test_api_coverage_does_not_auto_reuse_incompatible_held_session() -> None:
+    from promptbranch.api_coverage_test import ApiRunner, build_parser
+
+    selected = "https://chatgpt.com/g/g-p-project/c/current-task?tab=sources"
+    stale = "https://chatgpt.com/g/g-p-project/c/stale-task?tab=sources"
+    args = build_parser().parse_args([
+        "--no-browser",
+        "--no-ask",
+        "--conversation-url",
+        selected,
+        "--state-file",
+        "/tmp/promptbranch-api-coverage-missing-state.json",
+    ])
+    runner = ApiRunner(args)
+
+    def fake_get(path, query=None):
+        return 200, {"ok": True, "action": "auth_readiness_session_status", "status": "auth_preflight_ready", "current_url": stale}, None, "url"
+
+    runner._raw_json_get = fake_get  # type: ignore[method-assign]
+    runner._preflight_check_held_auth_sessions()
+
+    assert runner.preflight["browser_profile_busy"] is True
+    assert runner.preflight["compatible_held_auth_readiness_session_active"] is False
+    assert runner.preflight["auto_reuse_applied"] is False
+    assert runner.preflight["reuse_held_session"] is False
 
 def test_api_coverage_prefers_current_conversation_url_over_legacy_top_level(tmp_path) -> None:
     from promptbranch.api_coverage_test import ApiRunner, build_parser

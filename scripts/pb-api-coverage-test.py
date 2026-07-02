@@ -169,6 +169,36 @@ def _answer_text(payload: Any | None) -> str:
     return ""
 
 
+
+
+def _chatgpt_conversation_identity(url: str | None) -> str:
+    """Return a stable ChatGPT conversation identity for compatibility checks.
+
+    ChatGPT conversation URLs can carry transient query strings such as
+    ``?tab=sources``.  A held auth-readiness session is compatible with API
+    coverage only when it is visibly on the same conversation path as the
+    selected ask target.  Ignore query/fragment for identity, but do not
+    broaden project pages into conversation compatibility.
+    """
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+    except Exception:
+        return raw.split("#", 1)[0].split("?", 1)[0]
+    host = (parsed.netloc or "").lower()
+    path = parsed.path or ""
+    if "/c/" not in path:
+        return ""
+    return f"{host}{path}" if host else path
+
+
+def _same_chatgpt_conversation(left: str | None, right: str | None) -> bool:
+    left_id = _chatgpt_conversation_identity(left)
+    right_id = _chatgpt_conversation_identity(right)
+    return bool(left_id and right_id and left_id == right_id)
+
 def _summarize_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"type": type(payload).__name__, "repr": repr(payload)[:500]}
@@ -229,6 +259,9 @@ class ApiRunner:
         self.preflight: dict[str, Any] = {
             "browser_profile_busy": False,
             "held_auth_readiness_session_active": False,
+            "compatible_held_auth_readiness_session_active": False,
+            "auto_reuse_compatible_held_session": bool(getattr(args, "auto_reuse_compatible_held_session", True)),
+            "auto_reuse_applied": False,
             "checked": False,
             "probes": [],
         }
@@ -376,6 +409,9 @@ class ApiRunner:
             ("conversation_url", self.conversation_url or None),
         ]
         busy = False
+        active_probe_count = 0
+        compatible_active_probe_count = 0
+        selected_conversation_url = self._ask_conversation_url() or self.conversation_url or ""
         for label, project_url in candidates:
             query = {"project_url": project_url} if project_url else None
             key = (label, project_url or "")
@@ -384,24 +420,40 @@ class ApiRunner:
             seen.add(key)
             status, payload, error, url = self._raw_json_get("/v1/auth-readiness/session/status", query=query)
             active = self._held_session_payload_active(payload)
+            summary = _summarize_payload(payload) if payload is not None else None
+            current_url = summary.get("current_url") if isinstance(summary, dict) else None
+            compatible = bool(active and _same_chatgpt_conversation(str(current_url or ""), selected_conversation_url))
             busy = busy or active
+            if active:
+                active_probe_count += 1
+                if compatible:
+                    compatible_active_probe_count += 1
             probe = {
                 "label": label,
                 "project_url": project_url,
                 "url": url,
                 "http_status": status,
                 "active": active,
+                "compatible_with_selected_conversation": compatible,
                 "classification": _classify_response(status, payload, error),
-                "response_summary": _summarize_payload(payload) if payload is not None else None,
+                "response_summary": summary,
                 "error": error,
             }
             probes.append(probe)
 
+        compatible_busy = bool(active_probe_count and active_probe_count == compatible_active_probe_count)
+        auto_reuse_enabled = bool(getattr(self.args, "auto_reuse_compatible_held_session", True))
+        auto_reuse_applied = bool(busy and compatible_busy and auto_reuse_enabled and not self.args.reuse_held_session)
         self.preflight = {
             "browser_profile_busy": busy,
             "held_auth_readiness_session_active": busy,
+            "compatible_held_auth_readiness_session_active": compatible_busy,
+            "auto_reuse_compatible_held_session": auto_reuse_enabled,
+            "auto_reuse_applied": auto_reuse_applied,
             "checked": True,
-            "reuse_held_session": bool(self.args.reuse_held_session),
+            "reuse_held_session": bool(self.args.reuse_held_session or auto_reuse_applied),
+            "reuse_held_session_requested": bool(self.args.reuse_held_session),
+            "selected_conversation_url": selected_conversation_url,
             "probes": probes,
         }
 
@@ -422,6 +474,9 @@ class ApiRunner:
                         "browser_profile_busy": True,
                         "held_auth_readiness_session_active": True,
                         "reuse_held_session": bool(self.args.reuse_held_session),
+                        "compatible_held_auth_readiness_session_active": bool(self.preflight.get("compatible_held_auth_readiness_session_active")),
+                        "auto_reuse_compatible_held_session": bool(self.preflight.get("auto_reuse_compatible_held_session")),
+                        "auto_reuse_applied": bool(self.preflight.get("auto_reuse_applied")),
                     }
                 },
             )
@@ -659,7 +714,7 @@ class ApiRunner:
         self.request("auth_readiness_session_status", "GET", "/v1/auth-readiness/session/status", category="status", query={"project_url": self.project_url})
 
         self._preflight_check_held_auth_sessions()
-        if self.preflight.get("browser_profile_busy") and not self.args.reuse_held_session:
+        if self.preflight.get("browser_profile_busy") and not self.preflight.get("reuse_held_session"):
             return self._finish_after_held_session_preflight_failure()
 
         # Serial browser mode deliberately avoids holding an auth-readiness
@@ -877,7 +932,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--step-delay-seconds", type=float, default=0.0)
     parser.add_argument("--hold-auth-session", action="store_true", help="Leave the final auth-readiness session open. Off by default to avoid self-conflicts.")
-    parser.add_argument("--reuse-held-session", action="store_true", help="Reserved mode for endpoints that can intentionally reuse an active held auth session.")
+    parser.add_argument("--reuse-held-session", action="store_true", help="Reuse an active held auth-readiness session instead of failing API coverage preflight.")
+    parser.add_argument("--no-auto-reuse-compatible-held-session", dest="auto_reuse_compatible_held_session", action="store_false", help="Disable automatic reuse when a held auth-readiness session is already on the selected conversation.")
     parser.add_argument("--serial-browser-mode", action="store_true", default=True, help="Run browser-owning endpoints one at a time without holding auth-readiness between unrelated calls. Default: enabled.")
     parser.add_argument("--keep-open", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-browser", dest="include_browser", action="store_false", help="Skip browser-owning auth/login endpoints.")
@@ -892,7 +948,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--remove-source-name")
     parser.add_argument("--json", action="store_true", help="Print the full JSON report.")
     parser.add_argument("--summary", action="store_true", help="Print a compact summary even when --json is used.")
-    parser.set_defaults(include_browser=True, include_ask=True)
+    parser.set_defaults(include_browser=True, include_ask=True, auto_reuse_compatible_held_session=True)
     return parser
 
 

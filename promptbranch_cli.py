@@ -22210,6 +22210,10 @@ async def cmd_test_api(args: argparse.Namespace) -> int:
         cmd.append("--allow-source-remove")
     if getattr(args, "include_source_gate_test", False):
         cmd.append("--include-source-gate-test")
+    if getattr(args, "reuse_held_session", False):
+        cmd.append("--reuse-held-session")
+    if getattr(args, "no_auto_reuse_compatible_held_session", False):
+        cmd.append("--no-auto-reuse-compatible-held-session")
     if getattr(args, "json", False):
         cmd.append("--json")
     if getattr(args, "summary", False):
@@ -23911,6 +23915,8 @@ def make_parser() -> argparse.ArgumentParser:
     test_api.add_argument("--source-name", help="Display name for --source-file upload.")
     test_api.add_argument("--allow-source-remove", action="store_true", help="Actually test /v1/project-sources/remove with --remove-source-name.")
     test_api.add_argument("--include-source-gate-test", action="store_true", help="Attempt mutation without explicit intent and expect a 403 gate. Use only in gated standard-browser mode.")
+    test_api.add_argument("--reuse-held-session", action="store_true", help="Forward API coverage reuse of an active held auth-readiness session.")
+    test_api.add_argument("--no-auto-reuse-compatible-held-session", action="store_true", help="Disable automatic reuse when a held auth-readiness session already matches the selected conversation.")
     test_api.add_argument("--remove-source-name")
 
     test_browser = test_subparsers.add_parser("browser", help="Run the browser/project/source/task integration test profile.")
