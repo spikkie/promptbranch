@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.25.zip
-active candidate version: v0.1.103.10.25
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.25.zip
-next normal slice: v0.1.103.10.25 — repair pb test api ask submit causality
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.26.zip
+active candidate version: v0.1.103.10.26
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.26.zip
+next normal slice: v0.1.103.10.26 — pb test api reads service config token
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1881,11 +1881,11 @@ Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatg
 
 `v0.1.103.10.21 — pb test api classification cleanup` is report-only: no endpoint ordering, browser/session architecture, Project Source mutation semantics, or held-session reuse behavior changes. It fixes false-positive classifications in `pb test api` reports.
 
-## Active repair slice — v0.1.103.10.25
+## Active repair slice — v0.1.103.10.26
 
-`v0.1.103.10.25 — repair pb test api ask submit causality` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.26 — pb test api reads service config token` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.25
+## Active repair slice — v0.1.103.10.26
 
-`v0.1.103.10.25 — repair pb test api ask submit causality` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.26 — pb test api reads service config token` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.

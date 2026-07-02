@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.25.zip",
-  "active_candidate_version": "v0.1.103.10.25",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.26.zip",
+  "active_candidate_version": "v0.1.103.10.26",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.25 — repair pb test api ask submit causality",
+  "active_slice": "v0.1.103.10.26 — pb test api reads service config token",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.25.zip",
-  "next_normal_slice": "v0.1.103.10.25 — repair pb test api ask submit causality",
-  "next_normal_version": "v0.1.103.10.25",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.26.zip",
+  "next_normal_slice": "v0.1.103.10.26 — pb test api reads service config token",
+  "next_normal_version": "v0.1.103.10.26",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -149,9 +149,9 @@
     {
       "release_mode": "repair",
       "scope": "repair pb test api ask submission by using button-first /v1/ask payloads, strict API_ASK_OK answer verification, and accurate missing-token wording; no browser/session architecture changes",
-      "slice": "v0.1.103.10.25 — repair pb test api ask submit causality",
+      "slice": "v0.1.103.10.26 — pb test api reads service config token",
       "status": "active",
-      "version": "v0.1.103.10.25"
+      "version": "v0.1.103.10.26"
     },
     {
       "release_mode": "normal",

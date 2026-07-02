@@ -22160,9 +22160,26 @@ async def cmd_test_api(args: argparse.Namespace) -> int:
     # scripts are not installed by pipx/setuptools. Keeping this as a module
     # makes `pb test api` work both from a source tree and from an installed wheel.
     cmd = [sys.executable, "-m", "promptbranch.api_coverage_test"]
+
+    # v0.1.103.10.26: `pb test api` is a host-side service client too.  It
+    # must use the same normal CLI service config defaults as `pb ask` and
+    # other service-backed commands.  Operators keep the bearer token in the
+    # mapped promptbranch config volume, not in a repo .env file.  Resolve the
+    # child runner's transport flags here, without ever printing or reporting
+    # the token value.
+    resolved_base_url = (
+        getattr(args, "base_url", None)
+        or getattr(args, "service_base_url", None)
+        or os.getenv("PROMPTBRANCH_SERVICE_BASE_URL")
+        or "http://localhost:8000"
+    )
+    resolved_token = getattr(args, "token", None) or getattr(args, "service_token", None)
+    if resolved_base_url:
+        cmd.extend(["--base-url", str(resolved_base_url)])
+    if resolved_token:
+        cmd.extend(["--token", str(resolved_token)])
+
     option_map = [
-        ("base_url", "--base-url"),
-        ("token", "--token"),
         ("state_file", "--state-file"),
         ("project_url", "--project-url"),
         ("conversation_url", "--conversation-url"),
@@ -23874,8 +23891,8 @@ def make_parser() -> argparse.ArgumentParser:
     test_api = test_subparsers.add_parser("api", help="Run sequential Promptbranch container API coverage tests.")
     test_api.add_argument("--json", action="store_true", help="Emit the full API coverage report as JSON.")
     test_api.add_argument("--summary", action="store_true", help="Also print compact summary metadata.")
-    test_api.add_argument("--base-url", default=os.getenv("PROMPTBRANCH_SERVICE_BASE_URL", "http://localhost:8000"))
-    test_api.add_argument("--token", help="Bearer token override. Defaults to CHATGPT_SERVICE_TOKEN/CHATGPT_API_TOKEN.")
+    test_api.add_argument("--base-url", default=None, help="Service base URL override. Defaults to service_base_url from the normal Promptbranch CLI config, then PROMPTBRANCH_SERVICE_BASE_URL, then http://localhost:8000.")
+    test_api.add_argument("--token", default=None, help="Bearer token override. Defaults to service_token from the normal Promptbranch CLI config, without printing the token.")
     test_api.add_argument("--state-file", default=".pb_profile/.promptbranch_state.json")
     test_api.add_argument("--project-url")
     test_api.add_argument("--conversation-url")

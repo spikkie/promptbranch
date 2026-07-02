@@ -212,3 +212,83 @@ def test_api_coverage_fail_early_when_preflight_busy_without_reuse() -> None:
     assert names["held_auth_session_preflight"]["status"] == "failed"
     assert names["login_check"]["status"] == "skipped"
     assert names["projects_list"]["skip_reason"].startswith("preflight.browser_profile_busy=true")
+
+
+def test_cli_test_api_maps_service_config_to_runner_transport(monkeypatch, tmp_path, capsys) -> None:
+    import promptbranch_cli
+
+    captured: dict[str, list[str]] = {}
+
+    class Completed:
+        returncode = 0
+
+    def fake_run(cmd):
+        captured["cmd"] = list(cmd)
+        return Completed()
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "service_base_url": "http://localhost:8000",
+                "service_token": "secret-from-config",
+                "service_timeout_seconds": 300,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("CHATGPT_SERVICE_BASE_URL", raising=False)
+    monkeypatch.delenv("CHATGPT_API_BASE_URL", raising=False)
+    monkeypatch.delenv("CHATGPT_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("CHATGPT_API_TOKEN", raising=False)
+    monkeypatch.delenv("PROMPTBRANCH_SERVICE_BASE_URL", raising=False)
+    monkeypatch.setattr(promptbranch_cli.subprocess, "run", fake_run)
+
+    exit_code = promptbranch_cli.main(["--config", str(config_path), "test", "api", "--json"])
+
+    assert exit_code == 0
+    cmd = captured["cmd"]
+    assert cmd[:3] == [promptbranch_cli.sys.executable, "-m", "promptbranch.api_coverage_test"]
+    assert cmd[cmd.index("--base-url") + 1] == "http://localhost:8000"
+    assert cmd[cmd.index("--token") + 1] == "secret-from-config"
+    assert "secret-from-config" not in capsys.readouterr().out
+
+
+def test_cli_test_api_explicit_transport_overrides_service_config(monkeypatch, tmp_path) -> None:
+    import promptbranch_cli
+
+    captured: dict[str, list[str]] = {}
+
+    class Completed:
+        returncode = 0
+
+    def fake_run(cmd):
+        captured["cmd"] = list(cmd)
+        return Completed()
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"service_base_url": "http://configured.invalid", "service_token": "configured-token"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(promptbranch_cli.subprocess, "run", fake_run)
+
+    exit_code = promptbranch_cli.main(
+        [
+            "--config",
+            str(config_path),
+            "test",
+            "api",
+            "--base-url",
+            "http://explicit.invalid",
+            "--token",
+            "explicit-token",
+        ]
+    )
+
+    assert exit_code == 0
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--base-url") + 1] == "http://explicit.invalid"
+    assert cmd[cmd.index("--token") + 1] == "explicit-token"
+    assert "configured-token" not in cmd
