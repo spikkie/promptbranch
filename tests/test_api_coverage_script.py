@@ -425,3 +425,79 @@ def test_api_coverage_explicit_conversation_url_overrides_current_state(tmp_path
     assert runner.conversation_url == explicit_url
     assert runner._ask_conversation_url() == explicit_url
     assert "keep=1=2" in runner._ask_conversation_url()
+
+
+def test_api_coverage_skips_not_reuse_safe_endpoints_when_compatible_held_session_active(tmp_path) -> None:
+    from promptbranch.api_coverage_test import ApiRunner, Step, build_parser
+
+    source_file = tmp_path / "candidate.zip"
+    source_file.write_bytes(b"zip-bytes")
+    selected = "https://chatgpt.com/g/g-p-project/c/current-task?tab=sources"
+    args = build_parser().parse_args([
+        "--state-file",
+        "/tmp/promptbranch-api-coverage-missing-state.json",
+        "--conversation-url",
+        selected,
+        "--project-url",
+        "https://chatgpt.com/g/g-p-project/project",
+        "--allow-source-add",
+        "--source-file",
+        str(source_file),
+    ])
+    runner = ApiRunner(args)
+    requested: list[str] = []
+
+    def fake_preflight() -> None:
+        runner.preflight = {
+            "browser_profile_busy": True,
+            "held_auth_readiness_session_active": True,
+            "compatible_held_auth_readiness_session_active": True,
+            "auto_reuse_compatible_held_session": True,
+            "auto_reuse_applied": True,
+            "checked": True,
+            "reuse_held_session": True,
+            "reuse_held_session_requested": False,
+            "selected_conversation_url": selected,
+            "probes": [],
+        }
+
+    def fake_request(name, method, path, **kwargs):
+        requested.append(name)
+        step = Step(name=name, method=method, path=path, category=kwargs.get("category", "status"), status="passed", ok=True, http_status=200)
+        runner.steps.append(step)
+        payload = {"ok": True, "status": "completed"}
+        if name == "login_check":
+            payload["logged_in"] = True
+        elif name == "debug_rate_limit":
+            payload["status"] = "clear"
+        elif name == "project_sources_add_file":
+            payload = {"ok": True, "action": "add", "persistence_verified": True}
+        elif name == "ask":
+            payload = {"ok": True, "status": "completed", "answer_text": "API_ASK_OK"}
+        elif name == "auth_readiness":
+            payload = {"ok": True, "logged_in": True, "challenge_detected": False, "release_blocking": False}
+        return step, payload
+
+    runner._preflight_check_held_auth_sessions = fake_preflight  # type: ignore[method-assign]
+    runner.request = fake_request  # type: ignore[method-assign]
+
+    payload = runner.run()
+    names = {step["name"]: step for step in payload["steps"]}
+
+    assert payload["ok"] is True
+    assert names["login_check"]["status"] == "skipped"
+    assert names["login_check"]["skip_reason"] == "held_session_active_endpoint_not_reuse_safe"
+    assert names["projects_list"]["status"] == "skipped"
+    assert names["chats_get"]["status"] == "skipped"
+    assert names["debug_rate_limit"]["status"] == "skipped"
+    assert names["project_source_capabilities"]["status"] == "skipped"
+    assert names["project_sources_list"]["status"] == "skipped"
+    assert names["ask"]["status"] == "passed"
+    assert names["project_sources_add_file"]["status"] == "passed"
+    assert names["auth_readiness"]["status"] == "passed"
+    assert "login_check" not in requested
+    assert "projects_list" not in requested
+    assert "chats_get" not in requested
+    assert "debug_rate_limit" not in requested
+    assert "ask" in requested
+    assert "project_sources_add_file" in requested
