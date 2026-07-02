@@ -565,8 +565,8 @@ Promptbranch service and visible Docker browser bootstrap paths declare Docker s
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 
 
-## Decision — v0.1.103.10.24 API coverage semantic assertions
+## Decision — v0.1.103.10.25 API coverage semantic assertions
 
 `pb test api` must fail semantically unsuccessful HTTP 200 responses. This repair is report/assertion-only and does not change browser/session architecture.
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.24.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.25.zip

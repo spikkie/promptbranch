@@ -103,6 +103,7 @@ def test_api_coverage_semantic_failure_for_ask_without_ok_or_token() -> None:
     assert step.status == "failed"
     assert "ok=true" in str(step.error)
     assert "expected token" in str(step.error)
+    assert "not observed" in str(step.error)
 
 
 def test_api_coverage_semantic_pass_for_ask_token_observed() -> None:
@@ -114,6 +115,17 @@ def test_api_coverage_semantic_pass_for_ask_token_observed() -> None:
     assert step.ok
     assert step.status == "passed"
     assert step.error is None
+
+
+
+
+def test_api_coverage_ask_uses_button_submit_payload() -> None:
+    module = Path(__file__).resolve().parents[1] / "promptbranch" / "api_coverage_test.py"
+    script = Path(__file__).resolve().parents[1] / "scripts" / "pb-api-coverage-test.py"
+    for path in (module, script):
+        text = path.read_text(encoding="utf-8")
+        assert '"prefer_button_submit": "true"' in text
+        assert 'expected token {self.args.ask_token!r} not observed in answer_text' in text
 
 
 def test_api_coverage_semantic_source_add_requires_persistence() -> None:

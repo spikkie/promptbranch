@@ -507,7 +507,7 @@ class ApiRunner:
         if not ok:
             failed.append("ok=true")
         if not token_observed:
-            failed.append(f"expected token {self.args.ask_token!r} observed in answer_text")
+            failed.append(f"expected token {self.args.ask_token!r} not observed in answer_text")
         if failed:
             self._mark_semantic_failure(step, "ask semantic checks failed: missing " + ", ".join(failed))
 
@@ -768,6 +768,7 @@ class ApiRunner:
                     "prompt": f"Reply with exactly the single token {self.args.ask_token} and nothing else.",
                     "expect_json": "false",
                     "keep_open": "false",
+                    "prefer_button_submit": "true",
                     "project_url": self.project_url,
                     "conversation_url": target,
                     "service_timeout_seconds": str(self.args.ask_timeout_seconds),
