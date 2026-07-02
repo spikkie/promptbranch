@@ -554,13 +554,36 @@ class ApiRunner:
         if _nested_get(payload, "ok") is not True:
             self._mark_semantic_failure(step, f"{label} response body did not report ok=true")
 
+    def _mark_semantic_skip(self, step: Step, reason: str, *, classification: str | None = None) -> None:
+        if step.response_summary is None:
+            step.response_summary = {}
+        step.response_summary["semantic_warning"] = reason
+        step.status = "skipped"
+        step.ok = True
+        step.error = None
+        step.skip_reason = reason
+        if classification:
+            step.classification = classification
+            step.response_summary["classification"] = classification
+
     def _require_debug_rate_limit_clear(self, step: Step, payload: Any | None) -> None:
         if not step.ok:
+            return
+        if not isinstance(payload, dict):
+            self._mark_semantic_failure(step, "debug_rate_limit response body was malformed")
+            return
+        status = _payload_status(payload)
+        if status == "rate_limited" or _nested_get(payload, "rate_limited") is True:
+            self._mark_semantic_skip(
+                step,
+                "rate_limit_debug_rate_limited_non_blocking",
+                classification="rate_limited",
+            )
             return
         self._require_body_ok(step, payload, "debug_rate_limit")
         if not step.ok:
             return
-        if _payload_status(payload) != "clear":
+        if status != "clear":
             self._mark_semantic_failure(step, "debug_rate_limit status was not clear", classification="rate_limited")
 
     def _require_auth_readiness_ready(self, step: Step, payload: Any | None) -> None:

@@ -459,29 +459,29 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 
 
-## v0.1.103.10.30
+## v0.1.103.10.31
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.30 | repair | held-session-aware API coverage routing | candidate | focused tests pending/live install pending | DOD-167 | n/a |
+| v0.1.103.10.31 | repair | rate-limit debug non-blocking API coverage | candidate | focused tests pending/live install pending | DOD-167 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.30.zip
-control token: v0.1.103.10.30 — held-session-aware API coverage routing
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.31.zip
+control token: v0.1.103.10.31 — rate-limit debug non-blocking API coverage
 
-## v0.1.103.10.30
+## v0.1.103.10.31
 
 | version | kind | scope | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.30 | repair | held-session-aware API coverage routing | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
+| v0.1.103.10.31 | repair | rate-limit debug non-blocking API coverage | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.30.zip
-control token: v0.1.103.10.30 — held-session-aware API coverage routing
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.31.zip
+control token: v0.1.103.10.31 — rate-limit debug non-blocking API coverage
 
-## v0.1.103.10.30
+## v0.1.103.10.31
 
 | version | type | slice | status | validation | dod | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| v0.1.103.10.30 | repair | held-session-aware API coverage routing | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
+| v0.1.103.10.31 | repair | rate-limit debug non-blocking API coverage | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.30.zip
-control token: v0.1.103.10.30 — held-session-aware API coverage routing
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.31.zip
+control token: v0.1.103.10.31 — rate-limit debug non-blocking API coverage

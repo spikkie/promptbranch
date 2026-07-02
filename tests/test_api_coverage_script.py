@@ -153,14 +153,26 @@ def test_api_coverage_semantic_auth_readiness_requires_no_challenge() -> None:
     assert step.classification == "auth_challenge_or_cloudflare"
 
 
-def test_api_coverage_semantic_debug_rate_limit_requires_clear() -> None:
+def test_api_coverage_semantic_debug_rate_limit_rate_limited_is_non_blocking_skip() -> None:
     from promptbranch.api_coverage_test import Step
 
     runner = _api_runner_for_unit_tests()
     step = Step(name="debug_rate_limit", method="GET", path="/v1/debug/rate-limit", category="debug", status="passed", ok=True, http_status=200)
-    runner._require_debug_rate_limit_clear(step, {"ok": True, "status": "rate_limited"})
-    assert not step.ok
+    runner._require_debug_rate_limit_clear(step, {"ok": False, "status": "rate_limited"})
+    assert step.ok
+    assert step.status == "skipped"
+    assert step.skip_reason == "rate_limit_debug_rate_limited_non_blocking"
     assert step.classification == "rate_limited"
+
+
+def test_api_coverage_semantic_debug_rate_limit_malformed_response_fails() -> None:
+    from promptbranch.api_coverage_test import Step
+
+    runner = _api_runner_for_unit_tests()
+    step = Step(name="debug_rate_limit", method="GET", path="/v1/debug/rate-limit", category="debug", status="passed", ok=True, http_status=200)
+    runner._require_debug_rate_limit_clear(step, {"raw_text": "not json", "raw_text_length": 8})
+    assert not step.ok
+    assert "ok=true" in str(step.error) or "malformed" in str(step.error)
 
 
 def test_api_coverage_semantic_read_endpoint_requires_body_ok() -> None:
