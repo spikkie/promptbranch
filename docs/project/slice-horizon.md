@@ -86,22 +86,20 @@ Repair releases must keep the active normal slice fixed, set `scope_advance_allo
 
 `v0.1.103.10.21 — pb test api classification cleanup`: narrow API coverage classification logic so passed/clear responses do not carry misleading failure classifications. No browser/session architecture changes.
 
-## Active repair — v0.1.103.10.39
+## Active repair — v0.1.103.10.40
 
-`v0.1.103.10.39 — missing live seed profile is non-blocking for run-all release validation`: enforce response-body semantic success checks in the API coverage runner; no browser/session architecture changes.
+`v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation`: enforce response-body semantic success checks in the API coverage runner; no browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.39
+## Active repair slice — v0.1.103.10.40
 
-`v0.1.103.10.39 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
-## Active repair slice — v0.1.103.10.39
+## Active repair slice — v0.1.103.10.40
 
-`v0.1.103.10.39 — missing live seed profile is non-blocking for run-all release validation` remains inside the `v0.1.103.10.x` repair line and does not advance browser/session architecture.
+`v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation` remains inside the `v0.1.103.10.x` repair line and does not advance browser/session architecture.
 
-Control-surface active slice token: v0.1.103.10.39 — release-control auth bootstrap accepts project-page readiness for source-add preflight
-## v0.1.103.10.39 active repair horizon
+Control-surface active slice token: v0.1.103.10.40 — release-control auth bootstrap accepts project-page readiness for source-add preflight
+## v0.1.103.10.40 active repair horizon
 
-`v0.1.103.10.39` remains inside the release-control auth-bootstrap repair horizon. It changes only phase-aware URL selection for `pre_tests` and preserves the standard browser/profile/session architecture.
-
-Control-surface active slice token: v0.1.103.10.39 — run-all live tests auto-seed from Docker standard browser profile
+`v0.1.103.10.40` remains inside the release-control auth-bootstrap repair horizon. It changes only phase-aware URL selection for `pre_tests` and preserves the standard browser/profile/session architecture.

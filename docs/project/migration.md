@@ -803,23 +803,29 @@ No user migration required. Re-run `pb test api --json`; use `--hold-auth-sessio
 Docker Chrome runtime paths now use explicit shared-memory sizing. Override with `PROMPTBRANCH_DOCKER_SHM_SIZE` if the default is unsuitable.
 
 
-## v0.1.103.10.39 migration note
+## v0.1.103.10.40 migration note
 
 No operator migration required. `pb test api` now checks response-body success semantics in addition to HTTP status codes.
-## Migration note — v0.1.103.10.39 full/browser validation skips generic-root login check
+## Migration note — v0.1.103.10.40 full/browser validation skips generic-root login check
 
-`v0.1.103.10.39` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
+`v0.1.103.10.40` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
 
 
 
-## Migration note — v0.1.103.10.39 release-control clears auth bootstrap held session explicitly
+## Migration note — v0.1.103.10.40 release-control clears auth bootstrap held session explicitly
 
 Release-control now performs an auth bootstrap before live Project Source or test operations. Operators should continue using `--run-all-tests --adopt-after-validation` for full adoption; `--auth-only-validation` remains available for bootstrap-only checks.
 
-## Migration note — v0.1.103.10.39
+## Migration note — v0.1.103.10.40
 
 No data migration. Operators may continue without `.pb_profile_local_debug`; release-control will skip dependent live-only steps as non-blocking when the seed profile is absent. To run live-only tests explicitly, create and authenticate `.pb_profile_local_debug` before the release run.
 
-## v0.1.103.10.39 migration
+## v0.1.103.10.40 migration
 
-No manual state migration is required when `.pb_profile/browser/default` exists and is authenticated. During `--run-all-tests`, release-control can create `.pb_profile_local_debug` from that Docker standard browser profile. Operators who intentionally want a separate live seed may still provide `PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR` and/or `PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_SOURCE_DIR`.
+No repository data migration. Operators must bootstrap live browser profiles explicitly before full adoption:
+
+```bash
+./scripts/pb-docker-live-profile-bootstrap.sh --fresh --url <Promptbranch conversation URL>
+```
+
+The accepted standard profile `.pb_profile/browser/default` is not copied into live seed or pool profiles.

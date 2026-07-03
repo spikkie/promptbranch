@@ -1265,8 +1265,7 @@ class ChatGPTBrowserClient:
             if self.config.disable_fedcm:
                 browser_args.extend([
                     "--disable-features=FedCm,FedCmAutoReauthn,FedCmWithoutThirdPartyCookies,FedCmIdpSigninStatusEnabled,FedCmIdpSigninStatusMetrics",
-                    "--disable-blink-features=FedCm",
-                ])
+                    ])
             ignore_default_args = []
             if self.config.filter_no_sandbox:
                 ignore_default_args.extend(["--no-sandbox", "--disable-setuid-sandbox"])

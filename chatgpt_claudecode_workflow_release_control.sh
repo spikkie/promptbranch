@@ -777,8 +777,25 @@ validation_evidence_dir="${release_log_dir}/validation_evidence"
 full_direct_validation_evidence_json="${validation_evidence_dir}/full_direct.${ver}.json"
 live_profile_seed_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR:-./.pb_profile_local_debug}"
 live_profile_seed_display="${live_profile_seed_dir}"
-live_profile_seed_source_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_SOURCE_DIR:-./.pb_profile/browser/default}"
-live_profile_seed_source_display="${live_profile_seed_source_dir}"
+live_profile_pool_name="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_POOL:-release-live}"
+live_profile_pool_size="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_POOL_SIZE:-1}"
+live_profile_pool_slot_index="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_POOL_SLOT_INDEX:-1}"
+live_profile_pool_slot_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SLOT_DIR:-}"
+if [[ -z "${live_profile_pool_slot_dir}" ]]; then
+  live_profile_pool_slot_dir="$(python3 - "${live_profile_seed_dir}" "${live_profile_pool_name}" "${live_profile_pool_slot_index}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import re
+import sys
+seed = Path(sys.argv[1])
+pool = sys.argv[2]
+slot_index = int(sys.argv[3])
+safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", pool or "default").strip("._-") or "default"
+print(str(seed.parent / f"{seed.name}_pools" / safe / "slots" / f"slot-{slot_index}"))
+INNERPY
+)"
+fi
+live_profile_pool_slot_display="${live_profile_pool_slot_dir}"
 run_all_live_seed_profile_missing=0
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
@@ -1444,7 +1461,6 @@ printf 'run_all_tests:  %s\n' "${run_all_tests}"
 printf 'run_failing_tests:  %s\n' "${run_failing_tests}"
 printf 'run_all_strict_source_kind_matrix: %s\n' "${run_all_strict_source_kind_matrix}"
 printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
-printf 'live_seed_source_dir: %s\n' "${live_profile_seed_source_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   unique_project_delete_frozen_retained\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
@@ -4857,151 +4873,129 @@ run_all_sanitize_live_seed_profile() {
     -delete 2>/dev/null || true
 }
 
-run_all_seed_live_profile_from_standard_profile() {
-  local seed_dir="$1"
-  local source_dir="$2"
-  local seed_status_json="$3"
-  python3 - "${seed_dir}" "${source_dir}" "${seed_status_json}" <<'INNERPY'
+run_all_write_live_profile_missing_json() {
+  local out_path="$1"
+  local status="$2"
+  local profile_dir="$3"
+  local label="$4"
+  python3 - "${out_path}" "${status}" "${profile_dir}" "${label}" "${repo_root}" "${run_all_shared_project_url:-}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
-import fnmatch
 import json
-import shutil
 import sys
-
-seed = Path(sys.argv[1])
-source = Path(sys.argv[2])
-out = Path(sys.argv[3])
-
-def emit(payload: dict, code: int) -> None:
-    payload.setdefault("action", "release_control_live_profile_seed_preflight")
-    payload.setdefault("generated_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps(payload, indent=2, sort_keys=True))
-    raise SystemExit(code)
-
-if seed.exists():
-    emit({
-        "ok": True,
-        "status": "seed_profile_already_present",
-        "seed_profile_dir": str(seed),
-        "source_profile_dir": str(source),
-    }, 0)
-
-if not source.is_dir():
-    emit({
-        "ok": False,
-        "status": "profile_seed_missing_and_standard_profile_unavailable",
-        "seed_profile_dir": str(seed),
-        "source_profile_dir": str(source),
-        "recommendation": "Create/authenticate the Docker standard browser profile at .pb_profile/browser/default, then rerun --run-all-tests.",
-    }, 78)
-
-exclude_names = {
-    "SingletonLock",
-    "SingletonSocket",
-    "SingletonCookie",
-    "DevToolsActivePort",
-    "chrome_debug.log",
+out = Path(sys.argv[1])
+status = sys.argv[2]
+profile_dir = sys.argv[3]
+label = sys.argv[4]
+repo_root = Path(sys.argv[5])
+url = sys.argv[6] or "https://chatgpt.com/"
+payload = {
+    "ok": False,
+    "action": "release_control_live_profile_preflight",
+    "status": status,
+    "profile_label": label,
+    "profile_dir": profile_dir,
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "recommendation": "Bootstrap and authenticate the exact Docker live profile before running --run-all-tests.",
+    "bootstrap_commands": [
+        f"./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir {profile_dir} --url {url}",
+        "./scripts/pb-docker-live-profile-bootstrap.sh",
+    ],
 }
-exclude_patterns = {"*.lock", "*.tmp", "BrowserMetrics*.pma"}
-
-def ignore(_dir: str, names: list[str]) -> set[str]:
-    ignored: set[str] = set()
-    for name in names:
-        if name in exclude_names or any(fnmatch.fnmatch(name, pattern) for pattern in exclude_patterns):
-            ignored.add(name)
-    return ignored
-
-tmp = seed.with_name(seed.name + ".tmp-run-all-seed")
-if tmp.exists():
-    shutil.rmtree(tmp)
-seed.parent.mkdir(parents=True, exist_ok=True)
-try:
-    shutil.copytree(source, tmp, ignore=ignore, symlinks=True)
-    if seed.exists():
-        shutil.rmtree(seed)
-    tmp.rename(seed)
-except Exception as exc:
-    if tmp.exists():
-        shutil.rmtree(tmp, ignore_errors=True)
-    emit({
-        "ok": False,
-        "status": "profile_seed_copy_failed",
-        "seed_profile_dir": str(seed),
-        "source_profile_dir": str(source),
-        "error": str(exc),
-    }, 78)
-
-emit({
-    "ok": True,
-    "status": "seeded_from_standard_browser_profile",
-    "seed_profile_dir": str(seed),
-    "source_profile_dir": str(source),
-    "excluded_volatile_entries": sorted(exclude_names),
-    "recommendation": "Run-all live tests will now use this copied Docker standard browser profile seed.",
-}, 0)
+out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(payload, indent=2, sort_keys=True))
 INNERPY
+}
+
+run_all_validate_live_profile_dir() {
+  local profile_dir="$1"
+  local status_json="$2"
+  local label="$3"
+  if [[ ! -d "${profile_dir}" ]]; then
+    run_all_write_live_profile_missing_json "${status_json}" "${label}_missing" "${profile_dir}" "${label}"
+    return 78
+  fi
+  if [[ ! -w "${profile_dir}" ]]; then
+    run_all_write_live_profile_missing_json "${status_json}" "${label}_not_writable" "${profile_dir}" "${label}"
+    return 77
+  fi
+  run_all_sanitize_live_seed_profile "${profile_dir}"
+  return 0
 }
 
 run_all_validate_live_seed_profile() {
   local seed_dir="$1"
   local seed_status_json="$2"
-  if [[ ! -d "${seed_dir}" ]]; then
-    echo "live_profile_seed_missing: ${seed_dir}"
-    echo "live_profile_seed_source_dir: ${live_profile_seed_source_display}"
-    if run_all_seed_live_profile_from_standard_profile "${seed_dir}" "${live_profile_seed_source_dir}" "${seed_status_json}"; then
-      echo "live_profile_seed_status: seeded_from_standard_browser_profile"
-    else
-      return 78
-    fi
+  run_all_validate_live_profile_dir "${seed_dir}" "${seed_status_json}" "live_profile_seed"
+}
+
+run_all_validate_live_pool_slot_profile() {
+  local slot_dir="$1"
+  local status_json="$2"
+  run_all_validate_live_profile_dir "${slot_dir}" "${status_json}" "live_profile_pool_slot"
+}
+
+run_all_login_check_profile() {
+  local label="$1"
+  local profile_dir="$2"
+  local log_path="$3"
+  local rc=0
+  echo "+ pb --profile-dir ${profile_dir} login-check 2>&1 | tee -a ${log_path}"
+  pb --profile-dir "${profile_dir}" login-check 2>&1 | tee -a "${log_path}"
+  rc=${PIPESTATUS[0]}
+  if [[ ${rc} -ne 0 ]]; then
+    cat <<MSG | tee -a "${log_path}" >&2
+ERROR: ${label} login-check failed with ${rc}.
+Bootstrap this exact profile before rerunning --run-all-tests:
+  ./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir "${profile_dir}" --url "${run_all_shared_project_url:-https://chatgpt.com/}"
+MSG
   fi
-  run_all_sanitize_live_seed_profile "${seed_dir}"
-  return 0
+  return ${rc}
 }
 
 run_all_live_profile_preflight() {
   local rc=0
   echo "== pb test-all step: live_profile_preflight =="
   echo "live_profile_seed_dir: ${live_profile_seed_display}"
+  echo "live_profile_pool_name: ${live_profile_pool_name}"
+  echo "live_profile_pool_size: ${live_profile_pool_size}"
+  echo "live_profile_pool_slot_dir: ${live_profile_pool_slot_display}"
+  echo "live_profile_strategy: explicit_bootstrapped_profiles_no_copy_no_refresh"
   run_all_live_seed_profile_missing=0
-  if run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"; then
-    :
-  else
-    rc=$?
-    if [[ ${rc} -eq 78 ]]; then
-      run_all_live_seed_profile_missing=1
-      echo "ERROR: live profile seed is missing and could not be seeded from the Docker standard browser profile; --run-all-tests must execute live-only tests." >&2
-      write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing_and_standard_profile_unavailable" "false" "78" "${live_profile_preflight_raw_log}"
-      workflow_rc=78
-      return ${rc}
-    fi
-    echo "WARN: live profile seed invalid; live browser steps will be skipped." >&2
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_invalid" "false" "${rc}" "${live_profile_preflight_raw_log}"
+  : > "${live_profile_preflight_raw_log}"
+  run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"
+  rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    echo "ERROR: live seed profile is missing or invalid; --run-all-tests cannot skip live-only tests." >&2
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_unavailable" "false" "${rc}" "${live_profile_preflight_raw_log}"
     workflow_rc=${rc}
     return ${rc}
   fi
-  echo "+ pb --profile-dir ${live_profile_seed_dir} login-check 2>&1 | tee ${live_profile_preflight_raw_log}"
-  pb --profile-dir "${live_profile_seed_dir}" login-check 2>&1 | tee "${live_profile_preflight_raw_log}"
-  rc=${PIPESTATUS[0]}
-  if [[ ${rc} -ne 0 && ${run_all_live_preflight_retried_after_service_recovery} -eq 0 ]] && run_all_log_has_browser_read_timeout "${live_profile_preflight_raw_log}"; then
-    run_all_live_preflight_retried_after_service_recovery=1
-    if run_all_recover_service_after_browser_read_timeout "live_profile_preflight" "${live_profile_preflight_raw_log}"; then
-      echo "== pb test-all step: live_profile_preflight retry after service recovery ==" | tee -a "${live_profile_preflight_raw_log}"
-      echo "+ pb --profile-dir ${live_profile_seed_dir} login-check 2>&1 | tee -a ${live_profile_preflight_raw_log}"
-      pb --profile-dir "${live_profile_seed_dir}" login-check 2>&1 | tee -a "${live_profile_preflight_raw_log}"
-      rc=${PIPESTATUS[0]}
-    fi
-  fi
-  if [[ ${rc} -eq 0 ]]; then
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified" "true" "0" "${live_profile_preflight_raw_log}"
-  else
-    echo "WARN: live profile preflight failed with ${rc}; live browser steps will be skipped to avoid login/passkey traps." >&2
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
+  run_all_validate_live_pool_slot_profile "${live_profile_pool_slot_dir}" "${live_profile_preflight_raw_log}"
+  rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    echo "ERROR: live profile pool slot is missing or invalid; bootstrap the exact release-live slot instead of copying profiles." >&2
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_pool_slot_unavailable" "false" "${rc}" "${live_profile_preflight_raw_log}"
     workflow_rc=${rc}
+    return ${rc}
   fi
-  return ${rc}
+  run_all_login_check_profile "live_profile_seed" "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"
+  rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    workflow_rc=${rc}
+    return ${rc}
+  fi
+  run_all_login_check_profile "live_profile_pool_slot" "${live_profile_pool_slot_dir}" "${live_profile_preflight_raw_log}"
+  rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_pool_slot_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    workflow_rc=${rc}
+    return ${rc}
+  fi
+  write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified_explicit_live_profiles" "true" "0" "${live_profile_preflight_raw_log}"
+  return 0
 }
 
 record_all_test_skipped_step() {
@@ -5117,26 +5111,19 @@ run_all_live_validation_steps() {
 
   if run_all_live_profile_preflight; then
     if run_all_ensure_shared_live_project; then
-      run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
-      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
-      run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool release-live --profile-pool-size 1 --profile-pool-seed-dir "${live_profile_seed_dir}" --profile-pool-refresh --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
     else
       record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
       record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"
       record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
     fi
   else
-    if [[ ${run_all_live_seed_profile_missing} -eq 1 ]]; then
-      record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing_and_standard_profile_unavailable"
-      record_all_test_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"
-      record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing_and_standard_profile_unavailable"
-      record_all_test_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"
-    else
-      record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
-      record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
-      record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
-      record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
-    fi
+    record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
+    record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
+    record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
+    record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
   fi
   run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
   run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json

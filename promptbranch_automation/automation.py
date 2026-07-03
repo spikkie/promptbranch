@@ -185,7 +185,7 @@ class ChatGPTAutomation:
             else save_screenshot
         )
         self.disable_fedcm = (
-            _env_flag("CHATGPT_DISABLE_FEDCM", True)
+            _env_flag("CHATGPT_DISABLE_FEDCM", False)
             if disable_fedcm is None
             else disable_fedcm
         )

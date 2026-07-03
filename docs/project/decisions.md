@@ -565,40 +565,42 @@ Promptbranch service and visible Docker browser bootstrap paths declare Docker s
 control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 
 
-## Decision — v0.1.103.10.39 API coverage semantic assertions
+## Decision — v0.1.103.10.40 API coverage semantic assertions
 
 `pb test api` must fail semantically unsuccessful HTTP 200 responses. This repair is report/assertion-only and does not change browser/session architecture.
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.39.zip
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip
 
-## Decision — v0.1.103.10.39 pb test api service config token
+## Decision — v0.1.103.10.40 pb test api service config token
 
 `pb test api` now uses the normal Promptbranch CLI service configuration path for host-side service transport defaults. When `--base-url` is absent, it maps `service_base_url` from `~/.config/promptbranch/config.json` to the API coverage runner base URL. When `--token` is absent, it maps `service_token` from the same config to the runner token. The token is not printed in JSON reports, logs, or summaries. This keeps `.env` out of the API coverage token handoff and preserves the v0.1.103.10.25 ask-submit repair, held-session preflight, browser/session architecture, and Project Source mutation behavior.
-## Decision — v0.1.103.10.39 full/browser validation skips generic-root login check
+## Decision — v0.1.103.10.40 full/browser validation skips generic-root login check
 
-`v0.1.103.10.39` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
+`v0.1.103.10.40` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
 
 
 
-## Decision — v0.1.103.10.39 release-control clears auth bootstrap held session explicitly
+## Decision — v0.1.103.10.40 release-control clears auth bootstrap held session explicitly
 
-`v0.1.103.10.39` adds a release-control `pb_auth_bootstrap` phase that runs the existing standard browser Cloudflare/auth validation flow before Project Source add and before test execution. The bootstrap resolves the current Promptbranch state URL first and uses it for both validation and browser bootstrap, avoiding generic root navigation where possible. Auth-only validation remains the dedicated bootstrap-only path. No browser/session architecture or Project Source endpoint behavior changes.
+`v0.1.103.10.40` adds a release-control `pb_auth_bootstrap` phase that runs the existing standard browser Cloudflare/auth validation flow before Project Source add and before test execution. The bootstrap resolves the current Promptbranch state URL first and uses it for both validation and browser bootstrap, avoiding generic root navigation where possible. Auth-only validation remains the dedicated bootstrap-only path. No browser/session architecture or Project Source endpoint behavior changes.
 
-## Decision — v0.1.103.10.39 missing live seed profile is non-blocking
+## Decision — v0.1.103.10.40 missing live seed profile is non-blocking
 
 Decision: absence of `.pb_profile_local_debug` must not fail `--run-all-tests` adoption when release-blocking validation has already passed. The live-only steps depend on an optional local seed profile and are now recorded as non-blocking skips with reason `live_profile_seed_missing`. Existing blocking behavior remains for a present-but-invalid live seed profile, full direct validation, Project Source add, import smoke, and artifact guard.
 
-## Decision — v0.1.103.10.39 source-add auth preflight may accept project page readiness
+## Decision — v0.1.103.10.40 source-add auth preflight may accept project page readiness
 
 Decision: `pre_source_add` release-control auth bootstrap may accept a logged-in, Cloudflare-clear ChatGPT project home page (`/project`) even when no chat composer is visible. This exception is explicit and phase-scoped via `PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY=1`. Normal ask/live/conversation validation continues to require composer readiness.
 
 Rationale: Project Source add requires authenticated project context, not a conversation composer. Failing before Project Source add on a valid project page is over-strict and blocks the release path without improving safety.
-### v0.1.103.10.39 — pre_tests auth bootstrap must prefer current conversation scope
+### v0.1.103.10.40 — pre_tests auth bootstrap must prefer current conversation scope
 
 Decision: `pre_tests` auth bootstrap should not target the project home page when a current project conversation URL is recorded. The project home page can prove login/project visibility, but it does not necessarily expose a composer. Composer validation remains meaningful only on conversation-scoped URLs.
 
 Consequence: release-control resolves `pre_tests` through conversation state first and keeps `/project` page readiness as a documented fallback rather than the default strict-composer target.
 
-### v0.1.103.10.39 — Docker/Patchright remains the browser architecture; host-CDP/session-manager is aborted
+### v0.1.103.10.40 — all-in-Docker browser direction and explicit live profiles
 
-Decision: continue improving the Docker/Patchright path and do not use the host-CDP/session-manager direction for this line. `--run-all-tests` must run the live-only browser tests. If `.pb_profile_local_debug` is missing, release-control seeds it from `.pb_profile/browser/default`; if that standard Docker browser profile is also unavailable, the live phase is release-blocking instead of skipped.
+Decision: abort the host-CDP/session-manager direction for this line. Promptbranch browser automation continues with the Docker/Patchright path only. Live `--run-all-tests` profiles must be explicitly bootstrapped in the exact profile directories that the tests use; copied profile slots are not trusted for Cloudflare-sensitive validation.
+
+Consequence: release-control fails fast when `.pb_profile_local_debug` or `.pb_profile_local_debug_pools/release-live/slots/slot-1` is missing or unauthenticated, and it reports the Docker bootstrap command instead of skipping live tests.

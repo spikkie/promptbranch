@@ -268,7 +268,7 @@ class ServiceInfo(BaseModel):
     profile_dir_write_probe_ok: bool = False
     profile_dir_write_probe_error: Optional[str] = None
     project_source_mutation_allowed: bool = False
-    disable_fedcm: bool = True
+    disable_fedcm: bool = False
     filter_no_sandbox: bool = False
     challenge_wait_timeout_ms: Optional[int] = None
     auth_readiness_keep_open_seconds: Optional[int] = None
@@ -432,7 +432,7 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             use_patchright=_env_flag("CHATGPT_USE_PATCHRIGHT", True),
             browser_channel=os.getenv("CHATGPT_BROWSER_CHANNEL", "chrome"),
             password_file=os.getenv("CHATGPT_PASSWORD_FILE"),
-            disable_fedcm=_env_flag("CHATGPT_DISABLE_FEDCM", True),
+            disable_fedcm=_env_flag("CHATGPT_DISABLE_FEDCM", False),
             filter_no_sandbox=_env_flag("CHATGPT_FILTER_NO_SANDBOX", False),
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),

@@ -3401,20 +3401,39 @@ def test_release_control_pre_tests_prefers_current_conversation_url_before_compo
     assert "if not composer_ready and not project_page_ready_accepted:" in validation_script
 
 
-def test_release_control_missing_live_seed_profile_autoseeds_from_standard_profile_static() -> None:
-    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+def test_release_control_run_all_live_profiles_are_explicit_bootstrapped_not_copied_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    bootstrap = (root / "scripts" / "pb-docker-live-profile-bootstrap.sh").read_text(encoding="utf-8")
 
-    assert "live_profile_seed_source_dir" in script
-    assert "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_SOURCE_DIR" in script
-    assert "run_all_seed_live_profile_from_standard_profile" in script
-    assert "seeded_from_standard_browser_profile" in script
-    assert "Run-all live tests will now use this copied Docker standard browser profile seed" in script
-    assert "profile_seed_missing_and_standard_profile_unavailable" in script
-    assert "--run-all-tests must execute live-only tests" in script
-    assert 'record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
-    assert 'record_all_test_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
-    assert 'record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
-    assert 'record_all_test_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
-    assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "true" "0"' in script
-    assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "false" "78"' in script
-    assert "full_direct" in script and "import_smoke" in script and "artifact_guard" in script
+    assert "live_profile_strategy: explicit_bootstrapped_profiles_no_copy_no_refresh" in script
+    assert "live_profile_pool_slot_dir" in script
+    assert "run_all_validate_live_pool_slot_profile" in script
+    assert "live_profile_pool_slot_unavailable" in script
+    assert "live_profile_pool_slot_not_authenticated" in script
+    assert "Bootstrap this exact profile before rerunning --run-all-tests" in script
+    assert "--profile-pool-refresh" not in script
+    assert 'profile_seed_missing" "true" "0' not in script
+    assert 'record_all_test_nonblocking_skipped_step "ask_live"' not in script
+    assert 'pb test ask-live --profile-pool "${live_profile_pool_name}"' in script
+    assert 'pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}"' in script
+    assert 'pb test release-live --profile-pool "${live_profile_pool_name}"' in script
+
+    assert "pb-docker-live-profile-bootstrap.sh" in bootstrap
+    assert ".pb_profile_local_debug" in bootstrap
+    assert ".pb_profile_local_debug_pools" in bootstrap
+    assert "No profile copying is performed" in bootstrap
+    assert "pb-docker-browser-profile-bootstrap.sh --profile-dir" in bootstrap
+
+
+def test_normal_browser_launches_do_not_use_unsupported_blink_fedcm_flag() -> None:
+    root = Path(__file__).resolve().parents[1]
+    browser_client = (root / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    compat_client = (root / "chatgpt_browser_auth" / "client.py").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+    docker_runner = (root / "docker" / "run-chatgpt-service-in-container.sh").read_text(encoding="utf-8")
+
+    assert "--disable-blink-features=FedCm" not in browser_client
+    assert "--disable-blink-features=FedCm" not in compat_client
+    assert "CHATGPT_DISABLE_FEDCM: ${CHATGPT_DISABLE_FEDCM:-0}" in compose
+    assert 'export CHATGPT_DISABLE_FEDCM="${CHATGPT_DISABLE_FEDCM:-0}"' in docker_runner

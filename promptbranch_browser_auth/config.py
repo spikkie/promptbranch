@@ -27,7 +27,7 @@ class ChatGPTBrowserConfig:
     save_trace: bool = True
     save_html: bool = True
     save_screenshot: bool = True
-    disable_fedcm: bool = True
+    disable_fedcm: bool = False
     filter_no_sandbox: bool = True
     extra_browser_args: Sequence[str] = field(default_factory=tuple)
     min_context_spacing_seconds: float = 8.0

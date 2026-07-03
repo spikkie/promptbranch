@@ -61,7 +61,7 @@ CHATGPT_HEADLESS = str(settings.get("CHATGPT_HEADLESS", "0")).strip().lower() in
 CHATGPT_USE_PATCHRIGHT = str(settings.get("CHATGPT_USE_PATCHRIGHT", "1")).strip().lower() in {"1", "true", "yes", "on"}
 CHATGPT_BROWSER_CHANNEL = settings.get("CHATGPT_BROWSER_CHANNEL", "chrome")
 CHATGPT_PASSWORD_FILE = settings.get("CHATGPT_PASSWORD_FILE")
-CHATGPT_DISABLE_FEDCM = str(settings.get("CHATGPT_DISABLE_FEDCM", "1")).strip().lower() in {"1", "true", "yes", "on"}
+CHATGPT_DISABLE_FEDCM = str(settings.get("CHATGPT_DISABLE_FEDCM", "0")).strip().lower() in {"1", "true", "yes", "on"}
 CHATGPT_FILTER_NO_SANDBOX = str(settings.get("CHATGPT_FILTER_NO_SANDBOX", "0")).strip().lower() in {"1", "true", "yes", "on"}
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")

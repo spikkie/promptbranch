@@ -454,7 +454,7 @@ class ChatGPTAutomationSettings:
     use_patchright: bool
     browser_channel: Optional[str] = None
     password_file: Optional[str] = None
-    disable_fedcm: bool = True
+    disable_fedcm: bool = False
     filter_no_sandbox: bool = True
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
