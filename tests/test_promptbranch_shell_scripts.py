@@ -596,6 +596,7 @@ def test_release_control_import_plan_validates_candidate_without_mutating_repo(t
     assert payload["would_install"] is True
     assert ".git" in payload["preserved_paths"]
     assert "debug_artifacts" in payload["preserved_paths"]
+    assert ".pb_profile_local_debug_pools" in payload["preserved_paths"]
     assert "stale.txt" in payload["would_remove_root_entries_sample"]
     assert (repo / "stale.txt").read_text(encoding="utf-8") == "keep until real import\n"
     assert not (repo / "fresh.txt").exists()
@@ -1672,15 +1673,17 @@ def test_release_control_run_all_has_rate_limit_retry_policy_declared():
     assert "retry after rate-limit cooldown" in script
 
 
-def test_release_control_import_plan_preserves_live_seed_but_not_pool():
+def test_release_control_import_plan_preserves_live_seed_and_live_pool():
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"' in script
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in script
     assert '! -name ".pb_profile_local_debug"' in script
+    assert '! -name ".pb_profile_local_debug_pools"' in script
     assert "--exclude='.pb_profile_local_debug/'" in script
-    assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", "profile", "debug_artifacts"]' in script
-    assert ".pb_profile_local_debug_pools" not in 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,profile,debug_artifacts"'
+    assert "--exclude='.pb_profile_local_debug_pools/'" in script
+    assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]' in script
+    assert 'protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}' in script
 
 
 def test_release_control_run_all_defaults_text_source_to_compatibility_probe():

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip
-active candidate version: v0.1.103.10.40
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip
-next normal slice: v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
+active candidate version: v0.1.103.10.41
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
+next normal slice: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1881,18 +1881,18 @@ Validation target: auth-only adoption, project-scoped `pb ask`, then `pbsa chatg
 
 `v0.1.103.10.21 — pb test api classification cleanup` is report-only: no endpoint ordering, browser/session architecture, Project Source mutation semantics, or held-session reuse behavior changes. It fixes false-positive classifications in `pb test api` reports.
 
-## Active repair slice — v0.1.103.10.40
+## Active repair slice — v0.1.103.10.41
 
-`v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.40
+## Active repair slice — v0.1.103.10.41
 
-`v0.1.103.10.40 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
-## Active repair slice — v0.1.103.10.40
+## Active repair slice — v0.1.103.10.41
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip`
 
 KISS scope:
 
@@ -1902,7 +1902,7 @@ KISS scope:
 4. Preserve full direct/full localhost validation, Project Source add, import smoke, and artifact guard as release-blocking.
 5. Make no browser/session architecture changes.
 
-## v0.1.103.10.40 — release-control auth bootstrap accepts project-page readiness for source-add preflight
+## v0.1.103.10.41 — release-control auth bootstrap accepts project-page readiness for source-add preflight
 
 Scope:
 
@@ -1913,9 +1913,9 @@ Scope:
 5. Keep `composer_visible=true` required for ask/live/conversation validation.
 6. Preserve Project Source add, full direct/full localhost validation, import smoke, and artifact guard as release-blocking.
 7. No browser/session architecture changes.
-## v0.1.103.10.40 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
+## v0.1.103.10.41 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip`
 
 Repair-only scope:
 
@@ -1927,9 +1927,9 @@ Repair-only scope:
 - Preserve Project Source add and full direct/full localhost validation as release-blocking.
 - Do not change browser/session architecture.
 
-## v0.1.103.10.40 — explicit Docker live profile bootstrap
+## v0.1.103.10.41 — explicit Docker live profile bootstrap
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.40.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip`
 
 Scope:
 
@@ -1940,4 +1940,15 @@ Scope:
 - Make missing or unauthenticated live profiles release-blocking for `--run-all-tests`.
 - Remove the unsupported `--disable-blink-features=FedCm` flag from normal browser launches.
 
-Control-surface active slice token: v0.1.103.10.40 — explicit Docker live profile bootstrap, no copied live pool trust
+Control-surface active slice token: v0.1.103.10.41 — preserve Docker live profile pool across release ZIP import
+
+## v0.1.103.10.41 — preserve Docker live profile pool across release ZIP import
+
+Scope:
+
+- Preserve `.pb_profile_local_debug_pools/` during release ZIP import.
+- Keep `.pb_profile_local_debug/` preserved.
+- Keep explicit Docker live profile bootstrap from `v0.1.103.10.40`.
+- Keep missing/challenged live profiles release-blocking for `--run-all-tests`.
+- Do not copy `.pb_profile/browser/default` into live profiles.
+- Do not revive host-CDP/session-manager.
