@@ -1045,39 +1045,144 @@ normalize_generated_ownership() {
 }
 
 release_control_resolve_auth_bootstrap_url() {
-  python3 - "${repo_root}/.pb_profile/.promptbranch_state.json" "${service_base_url}" <<'INNERPY'
+  local phase="${1:-release_control}"
+  python3 - "${repo_root}/.pb_profile/.promptbranch_state.json" "${service_base_url}" "${phase}" <<'INNERPY'
 from __future__ import annotations
 import json
+import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
+
 state_path = Path(sys.argv[1])
 service_base_url = sys.argv[2]
+phase = sys.argv[3]
+
 
 def good(value: object) -> str | None:
     if isinstance(value, str) and value.startswith("https://chatgpt.com/"):
         return value
     return None
+
+
+def parsed_parts(value: str) -> list[str]:
+    return [part for part in urlparse(value).path.split("/") if part]
+
+
+def is_project_conversation_url(value: str) -> bool:
+    parts = parsed_parts(value)
+    return len(parts) >= 4 and parts[0] == "g" and parts[2] == "c"
+
+
+def is_project_page_url(value: str) -> bool:
+    parts = parsed_parts(value)
+    return len(parts) >= 3 and parts[0] == "g" and parts[2] == "project"
+
+
+def project_home_identity(value: str | None) -> str | None:
+    candidate = good(value)
+    if not candidate:
+        return None
+    parts = parsed_parts(candidate)
+    if len(parts) >= 2 and parts[0] == "g":
+        return f"https://chatgpt.com/g/{parts[1]}/project"
+    return None
+
 try:
     payload = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
 except Exception:
     payload = {}
+if not isinstance(payload, dict):
+    payload = {}
+
 current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
-for source in (current, payload):
-    if not isinstance(source, dict):
-        continue
-    for key in ("conversation_url", "current_conversation_url"):
+task = payload.get("task") if isinstance(payload.get("task"), dict) else {}
+workspace = payload.get("workspace") if isinstance(payload.get("workspace"), dict) else {}
+projects = payload.get("projects") if isinstance(payload.get("projects"), dict) else {}
+
+sources: list[dict] = []
+for source in (current, task, workspace, payload):
+    if isinstance(source, dict):
+        sources.append(source)
+for value in projects.values():
+    if isinstance(value, dict):
+        sources.append(value)
+
+conversation_keys = (
+    "conversation_url",
+    "current_conversation_url",
+    "task_conversation_url",
+)
+project_keys = (
+    "project_home_url",
+    "current_project_home_url",
+    "resolved_project_home_url",
+    "project_url",
+    "current_project_url",
+    "url",
+)
+
+# Operator override for recovery/diagnostics. It must still be a project conversation
+# when used for pre_tests so composer validation remains meaningful.
+override = good(os.environ.get("PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_URL"))
+if phase == "pre_tests" and override:
+    if is_project_conversation_url(override):
+        print(override)
+        raise SystemExit(0)
+    print(f"ERROR: PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_URL is not a project conversation URL: {override}", file=sys.stderr)
+    raise SystemExit(65)
+
+home_candidates: list[str] = []
+for source in sources:
+    for key in project_keys:
+        value = good(source.get(key))
+        if value and value not in home_candidates:
+            home_candidates.append(value)
+for source in sources:
+    for key in conversation_keys:
         value = good(source.get(key))
         if value:
-            print(value)
-            raise SystemExit(0)
-for source in (current, payload):
-    if not isinstance(source, dict):
-        continue
-    for key in ("project_home_url", "current_project_home_url", "project_url", "current_project_url"):
+            home = project_home_identity(value)
+            if home and home not in home_candidates:
+                home_candidates.append(home)
+
+conversation_candidates: list[str] = []
+for source in sources:
+    for key in conversation_keys:
         value = good(source.get(key))
-        if value:
+        if value and is_project_conversation_url(value) and value not in conversation_candidates:
+            conversation_candidates.append(value)
+# Also accept task-list cache entries as a last state-backed source; this preserves
+# query strings on remembered conversation_url values and avoids falling back to
+# /project when a current/known task URL is already recorded under the project entry.
+for source in sources:
+    cache = source.get("task_list_cache") if isinstance(source.get("task_list_cache"), dict) else {}
+    tasks = cache.get("tasks") if isinstance(cache.get("tasks"), list) else []
+    for item in tasks:
+        if not isinstance(item, dict):
+            continue
+        value = good(item.get("conversation_url"))
+        if value and is_project_conversation_url(value) and value not in conversation_candidates:
+            conversation_candidates.append(value)
+
+if phase == "pre_tests":
+    preferred_homes = {project_home_identity(value) for value in home_candidates if project_home_identity(value)}
+    for value in conversation_candidates:
+        home = project_home_identity(value)
+        if not preferred_homes or home in preferred_homes:
             print(value)
             raise SystemExit(0)
+    for value in conversation_candidates:
+        print(value)
+        raise SystemExit(0)
+
+for value in conversation_candidates:
+    print(value)
+    raise SystemExit(0)
+for value in home_candidates:
+    if is_project_page_url(value):
+        print(value)
+        raise SystemExit(0)
 try:
     import urllib.request
     with urllib.request.urlopen(service_base_url.rstrip("/") + "/healthz", timeout=2.0) as response:
@@ -1088,7 +1193,20 @@ try:
         raise SystemExit(0)
 except Exception:
     pass
+if phase == "pre_tests":
+    print("ERROR: pre_tests auth bootstrap could not resolve a current project conversation URL; falling back to project page only if service health exposes one.", file=sys.stderr)
 print("https://chatgpt.com/")
+INNERPY
+}
+
+release_control_url_is_project_page() {
+  python3 - "${1:-}" <<'INNERPY'
+from __future__ import annotations
+import sys
+from urllib.parse import urlparse
+url = sys.argv[1]
+parts = [part for part in urlparse(url).path.split('/') if part]
+raise SystemExit(0 if len(parts) >= 3 and parts[0] == 'g' and parts[2] == 'project' else 1)
 INNERPY
 }
 
@@ -1247,13 +1365,20 @@ pb_auth_bootstrap() {
     return 1
   fi
 
-  bootstrap_url="$(release_control_resolve_auth_bootstrap_url)"
+  bootstrap_url="$(release_control_resolve_auth_bootstrap_url "${phase}")"
   local allow_project_page_ready=0
+  local project_page_fallback=0
   if [[ "${phase}" == "pre_source_add" ]]; then
     allow_project_page_ready=1
+  elif [[ "${phase}" == "pre_tests" ]] && release_control_url_is_project_page "${bootstrap_url}"; then
+    project_page_fallback="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_PROJECT_PAGE_FALLBACK:-1}"
+    if [[ "${project_page_fallback}" == "1" ]]; then
+      allow_project_page_ready=1
+    fi
   fi
   echo "== Release-control auth bootstrap (${phase}) =="
   echo "auth_bootstrap_url: ${bootstrap_url}"
+  echo "pre_tests_project_page_fallback: ${project_page_fallback}"
   echo "allow_project_page_ready: ${allow_project_page_ready}"
   echo "output -> ${bootstrap_log}"
   PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}" \

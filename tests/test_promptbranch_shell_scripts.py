@@ -3336,6 +3336,7 @@ def test_release_control_auth_bootstrap_before_live_operations() -> None:
 
     assert 'pb_auth_bootstrap()' in script
     assert 'release_control_resolve_auth_bootstrap_url()' in script
+    assert 'bootstrap_url="$(release_control_resolve_auth_bootstrap_url "${phase}")"' in script
     assert 'PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}"' in script
     assert 'PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}"' in script
     assert 'pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"' in script
@@ -3371,16 +3372,33 @@ def test_release_control_pre_source_add_accepts_project_page_auth_ready_without_
     assert "PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY=1" in validation_script
 
 
-def test_release_control_keeps_composer_required_outside_pre_source_add() -> None:
+def test_release_control_pre_tests_prefers_current_conversation_url_before_composer_validation() -> None:
     root = Path(__file__).resolve().parents[1]
     release_script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    validation_script = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+
+    assert 'bootstrap_url="$(release_control_resolve_auth_bootstrap_url "${phase}")"' in release_script
+    assert 'phase = sys.argv[3]' in release_script
+    assert 'if phase == "pre_tests":' in release_script
+    assert 'PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_URL' in release_script
+    assert 'is_project_conversation_url(value)' in release_script
+    assert 'print(value)' in release_script
+    assert 'current_conversation_url' in release_script
+    assert 'task_list_cache' in release_script
+    assert 'pre_tests_project_page_fallback: ${project_page_fallback}' in release_script
 
     assert 'local allow_project_page_ready=0' in release_script
-    assert 'pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"' in release_script
-    assert 'allow_project_page_ready=1' in release_script
-    assert '''if [[ "${phase}" == "pre_source_add" ]]; then
-    allow_project_page_ready=1
-  fi''' in release_script
+    assert 'if [[ "${phase}" == "pre_source_add" ]]; then' in release_script
+    assert 'elif [[ "${phase}" == "pre_tests" ]] && release_control_url_is_project_page "${bootstrap_url}"; then' in release_script
+    assert 'PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_PROJECT_PAGE_FALLBACK:-1' in release_script
+    assert 'PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY="${allow_project_page_ready}"' in release_script
+
+    # The validation script only relaxes composer readiness for /project URLs;
+    # conversation URLs still require composer_visible=true.
+    assert "target_is_project_page = parsed_target.path.rstrip('/').endswith('/project')" in validation_script
+    assert "project_page_ready_accepted = (" in validation_script
+    assert "target_is_project_page" in validation_script
+    assert "if not composer_ready and not project_page_ready_accepted:" in validation_script
 
 
 def test_release_control_missing_live_seed_profile_is_nonblocking_static() -> None:

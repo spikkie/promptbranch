@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip",
-  "active_candidate_version": "v0.1.103.10.37",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.38.zip",
+  "active_candidate_version": "v0.1.103.10.38",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
+  "active_slice": "v0.1.103.10.38 \u2014 release-control pre_tests auth bootstrap targets current conversation URL before requiring composer",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip",
-  "next_normal_slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
-  "next_normal_version": "v0.1.103.10.37",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.38.zip",
+  "next_normal_slice": "v0.1.103.10.38 \u2014 release-control pre_tests auth bootstrap targets current conversation URL before requiring composer",
+  "next_normal_version": "v0.1.103.10.38",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -38,6 +38,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "version": "v0.1.103.10.38",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Resolves pre_tests auth bootstrap to a current project conversation URL before composer validation, while preserving pre_source_add project-page readiness and held-session clear behavior."
+    },
     {
       "version": "v0.1.103.10.37",
       "kind": "repair",
@@ -154,10 +160,10 @@
   "rolling_slice_horizon": [
     {
       "release_mode": "repair",
-      "scope": "make browser/full validation skip the generic-root login_check by default, relying on normal auto-login/session operations while keeping login_check available as an explicit diagnostic; no browser/session architecture or Project Source mutation changes",
-      "slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
+      "scope": "pre_tests auth bootstrap resolves a current project conversation URL before requiring composer; project-page readiness remains allowed for pre_source_add and documented fallback only; no browser/session architecture changes",
+      "slice": "v0.1.103.10.38 \u2014 release-control pre_tests auth bootstrap targets current conversation URL before requiring composer",
       "status": "active",
-      "version": "v0.1.103.10.37"
+      "version": "v0.1.103.10.38"
     },
     {
       "release_mode": "normal",
@@ -201,6 +207,6 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.37",
+  "updated_for": "v0.1.103.10.38",
   "last_updated": "2026-07-01"
 }
