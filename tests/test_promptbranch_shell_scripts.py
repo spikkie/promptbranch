@@ -3349,3 +3349,19 @@ def test_release_control_auth_bootstrap_before_live_operations() -> None:
     assert 'PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_KEEP_OPEN_SECONDS:-1' in script
     assert 'held_auth_session_released' in script
     assert 'held_auth_session_release_timeout' in script
+
+
+
+def test_release_control_missing_live_seed_profile_is_nonblocking_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_live_seed_profile_missing=0" in script
+    assert 'write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing" "true" "0"' in script
+    assert "record_all_test_nonblocking_skipped_step" in script
+    assert 'record_all_test_nonblocking_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing"' in script
+    assert 'record_all_test_nonblocking_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing"' in script
+    assert 'record_all_test_nonblocking_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing"' in script
+    assert 'record_all_test_nonblocking_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing"' in script
+    assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "true" "0"' in script
+    assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "false" "78"' in script
+    assert "full_direct" in script and "import_smoke" in script and "artifact_guard" in script

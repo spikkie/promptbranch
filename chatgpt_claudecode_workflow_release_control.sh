@@ -777,6 +777,7 @@ validation_evidence_dir="${release_log_dir}/validation_evidence"
 full_direct_validation_evidence_json="${validation_evidence_dir}/full_direct.${ver}.json"
 live_profile_seed_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR:-./.pb_profile_local_debug}"
 live_profile_seed_display="${live_profile_seed_dir}"
+run_all_live_seed_profile_missing=0
 
 if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 ]]; then
   [[ -f "${download_zip}" ]] || fail "Download ZIP not found. Expected ${downloads_dir}/${artifact_zip} or ${downloads_dir}/${ver}.zip; use --install-from-zip ZIP or --skip-zip-import."
@@ -4755,12 +4756,19 @@ run_all_live_profile_preflight() {
   local rc=0
   echo "== pb test-all step: live_profile_preflight =="
   echo "live_profile_seed_dir: ${live_profile_seed_display}"
+  run_all_live_seed_profile_missing=0
   if run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"; then
     :
   else
     rc=$?
-    echo "WARN: live profile seed missing or invalid; live browser steps will be skipped." >&2
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    if [[ ${rc} -eq 78 ]]; then
+      run_all_live_seed_profile_missing=1
+      echo "WARN: live profile seed missing; live-only browser steps will be skipped as non-blocking because full direct validation remains release-blocking." >&2
+      write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing" "true" "0" "${live_profile_preflight_raw_log}"
+      return ${rc}
+    fi
+    echo "WARN: live profile seed invalid; live browser steps will be skipped." >&2
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_invalid" "false" "${rc}" "${live_profile_preflight_raw_log}"
     workflow_rc=${rc}
     return ${rc}
   fi
@@ -4792,6 +4800,13 @@ record_all_test_skipped_step() {
   local reason="$3"
   write_all_test_json_step "$step_name" "$step_log" "$reason" "false" "78" "${live_profile_preflight_raw_log}"
   workflow_rc=78
+}
+
+record_all_test_nonblocking_skipped_step() {
+  local step_name="$1"
+  local step_log="$2"
+  local reason="$3"
+  write_all_test_json_step "$step_name" "$step_log" "$reason" "true" "0" "${live_profile_preflight_raw_log}"
 }
 
 run_all_extract_project_url_from_log() {
@@ -4901,10 +4916,17 @@ run_all_live_validation_steps() {
       record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
     fi
   else
-    record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
+    if [[ ${run_all_live_seed_profile_missing} -eq 1 ]]; then
+      record_all_test_nonblocking_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing"
+      record_all_test_nonblocking_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing"
+      record_all_test_nonblocking_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing"
+      record_all_test_nonblocking_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing"
+    else
+      record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
+      record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
+      record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
+      record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
+    fi
   fi
   run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
   run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
