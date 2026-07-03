@@ -3342,6 +3342,9 @@ def test_release_control_auth_bootstrap_before_live_operations() -> None:
     assert 'pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"' in script
     assert 'Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path.' in script
     assert 'promptbranch.release_control.auth_bootstrap' in script
+    assert 'release_control_clear_auth_bootstrap_held_session()' in script
+    assert 'strategy: docker_compose_restart_service' in script
+    assert 'clear in-memory held auth-readiness session after successful auth bootstrap while preserving browser profile on disk' in script
     assert 'release_control_wait_for_no_held_auth_session()' in script
     assert 'PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_KEEP_OPEN_SECONDS:-1' in script
     assert 'held_auth_session_released' in script

@@ -803,15 +803,15 @@ No user migration required. Re-run `pb test api --json`; use `--hold-auth-sessio
 Docker Chrome runtime paths now use explicit shared-memory sizing. Override with `PROMPTBRANCH_DOCKER_SHM_SIZE` if the default is unsuitable.
 
 
-## v0.1.103.10.34 migration note
+## v0.1.103.10.35 migration note
 
 No operator migration required. `pb test api` now checks response-body success semantics in addition to HTTP status codes.
-## Migration note — v0.1.103.10.34 full/browser validation skips generic-root login check
+## Migration note — v0.1.103.10.35 full/browser validation skips generic-root login check
 
-`v0.1.103.10.34` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
+`v0.1.103.10.35` disables the forced `login_check` step in browser/full validation by default. The suite now relies on the same auto-login/session path used by real browser operations, avoiding generic `https://chatgpt.com/` root navigation that can trigger a challenge. The login check endpoint and explicit diagnostic step remain available via `--only login` or `PROMPTBRANCH_TEST_ENABLE_LOGIN_CHECK=1`. No browser/session architecture or Project Source mutation behavior changes.
 
 
 
-## Migration note — v0.1.103.10.34 release-control auth bootstrap before live operations
+## Migration note — v0.1.103.10.35 release-control clears auth bootstrap held session explicitly
 
 Release-control now performs an auth bootstrap before live Project Source or test operations. Operators should continue using `--run-all-tests --adopt-after-validation` for full adoption; `--auth-only-validation` remains available for bootstrap-only checks.

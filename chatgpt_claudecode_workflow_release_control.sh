@@ -1091,6 +1091,44 @@ print("https://chatgpt.com/")
 INNERPY
 }
 
+release_control_clear_auth_bootstrap_held_session() {
+  local phase="${1:-release_control}"
+  local clear_log="${release_log_dir}/release_control_auth_bootstrap_clear_held_session.${phase}.${ver}.log"
+
+  echo "== Release-control auth bootstrap held-session clear (${phase}) =="
+  echo "output -> ${clear_log}"
+  (
+    echo "phase: ${phase}"
+    echo "strategy: docker_compose_restart_service"
+    echo "compose_project_name: ${compose_project_name}"
+    echo "compose_service_name: ${compose_service_name}"
+    echo "service_base_url: ${service_base_url}"
+    echo "expected_version: ${ver#v}"
+    echo "reason: clear in-memory held auth-readiness session after successful auth bootstrap while preserving browser profile on disk"
+    if [[ "${phase}" == "pre_source_add" ]]; then
+      echo "+ docker compose restart ${compose_service_name}"
+      run_pre_source_add_docker_compose restart "${compose_service_name}" || exit $?
+      local deadline=$((SECONDS + service_timeout_seconds))
+      while (( SECONDS < deadline )); do
+        if pre_source_add_service_version_ready >/dev/null 2>>"${clear_log}.health.stderr"; then
+          echo "service_version_verified: ${ver#v}"
+          exit 0
+        fi
+        sleep 2
+      done
+      echo "ERROR: service version did not become ready after held-session clear restart" >&2
+      cat "${pre_source_add_service_health_json}" >&2 2>/dev/null || true
+      exit 1
+    else
+      echo "+ docker compose restart ${compose_service_name}"
+      run_docker_compose restart "${compose_service_name}" || exit $?
+      wait_for_promptbranch_service_version || exit $?
+      echo "service_version_verified: ${ver#v}"
+    fi
+  ) 2>&1 | tee "${clear_log}"
+  return "${PIPESTATUS[0]}"
+}
+
 release_control_wait_for_no_held_auth_session() {
   local phase="${1:-release_control}"
   local bootstrap_url="${2:-}"
@@ -1223,6 +1261,7 @@ pb_auth_bootstrap() {
     2>&1 | tee "${bootstrap_log}"
   local bootstrap_rc=${PIPESTATUS[0]}
   if [[ ${bootstrap_rc} -eq 0 ]]; then
+    release_control_clear_auth_bootstrap_held_session "${phase}" || return $?
     release_control_wait_for_no_held_auth_session "${phase}" "${bootstrap_url}" || return $?
   fi
   python3 - "${release_auth_bootstrap_json}" "${phase}" "${bootstrap_rc}" "${bootstrap_url}" "${bootstrap_log}" <<'INNERPY'

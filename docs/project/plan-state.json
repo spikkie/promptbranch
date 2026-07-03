@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip",
-  "active_candidate_version": "v0.1.103.10.34",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.35.zip",
+  "active_candidate_version": "v0.1.103.10.35",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.34 — release-control auth bootstrap before live operations",
+  "active_slice": "v0.1.103.10.35 — release-control clears auth bootstrap held session explicitly",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.34.zip",
-  "next_normal_slice": "v0.1.103.10.34 — release-control auth bootstrap before live operations",
-  "next_normal_version": "v0.1.103.10.34",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.35.zip",
+  "next_normal_slice": "v0.1.103.10.35 — release-control clears auth bootstrap held session explicitly",
+  "next_normal_version": "v0.1.103.10.35",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -149,9 +149,9 @@
     {
       "release_mode": "repair",
       "scope": "make browser/full validation skip the generic-root login_check by default, relying on normal auto-login/session operations while keeping login_check available as an explicit diagnostic; no browser/session architecture or Project Source mutation changes",
-      "slice": "v0.1.103.10.34 — release-control auth bootstrap before live operations",
+      "slice": "v0.1.103.10.35 — release-control clears auth bootstrap held session explicitly",
       "status": "active",
-      "version": "v0.1.103.10.34"
+      "version": "v0.1.103.10.35"
     },
     {
       "release_mode": "normal",
