@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
-active candidate version: v0.1.103.10.43
-next normal slice: v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip
+active candidate version: v0.1.103.10.45
+next normal slice: v0.1.103.10.45 — repair package version surface for Docker build context coherence
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -551,12 +551,12 @@ Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10
 
 Control-surface tokens: v0.1.103.10.43 chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip docker_live_profile_challenged no manual-login wait
 
-## v0.1.103.10.44
+## v0.1.103.10.45
 
 | Version | Type | Slice | Status | Validation | Acceptance |
 |---|---|---|---|---|---|
-| v0.1.103.10.44 | repair | repair release-live challenge fail-fast logging and stop live cascade | candidate | focused static/syntax/import-plan validation before operator run-all adoption | not accepted/current |
+| v0.1.103.10.45 | repair | repair release-live challenge fail-fast logging and stop live cascade | candidate | focused static/syntax/import-plan validation before operator run-all adoption | not accepted/current |
 
-Control-surface tokens: v0.1.103.10.44 chatgpt_claudecode_workflow-2_v0.1.103.10.44.zip docker_live_profile_challenged no live cascade after ask_live challenge
+Control-surface tokens: v0.1.103.10.45 chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip docker_live_profile_challenged no live cascade after ask_live challenge
 
-Control-surface active slice token: v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade
+Control-surface active slice token: v0.1.103.10.45 — repair package version surface for Docker build context coherence

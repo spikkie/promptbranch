@@ -843,6 +843,6 @@ No data migration. Existing explicitly bootstrapped Docker live profiles remain 
 
 No operator state migration is required. Existing manually bootstrapped `.pb_profile_local_debug` and `.pb_profile_local_debug_pools/release-live/slots/slot-1` profiles remain the live validation authority. The behavioral change is that release-control live steps set fail-fast challenge mode, so Cloudflare/Just-a-moment pages now return `docker_live_profile_challenged` immediately instead of waiting for manual login.
 
-## Migration note — v0.1.103.10.44
+## Migration note — v0.1.103.10.45
 
-`v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade` keeps the Docker-only live validation architecture. Challenge detection in release-live mode now logs with `challenge_stage` instead of a duplicate `_log(stage=...)` keyword, returns structured `docker_live_profile_challenged`, and prevents later live browser steps from opening once `ask_live` has already proven the live slot is challenged.
+`v0.1.103.10.45 — repair package version surface for Docker build context coherence` keeps the Docker-only live validation architecture. Challenge detection in release-live mode now logs with `challenge_stage` instead of a duplicate `_log(stage=...)` keyword, returns structured `docker_live_profile_challenged`, and prevents later live browser steps from opening once `ask_live` has already proven the live slot is challenged.

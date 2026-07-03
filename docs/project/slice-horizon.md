@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.44 | repair release-live challenge fail-fast logging and stop live cascade | active | Keep all-in-Docker live validation, return structured docker_live_profile_challenged without TypeError, and skip remaining live browser steps after ask_live challenge | host-CDP/session-manager, copied-profile trust, browser architecture redesign, Project deletion |
+| v0.1.103.10.45 | repair package version surface for Docker build context coherence | active | Keep all-in-Docker live validation and repair version coherence across VERSION, promptbranch_version.py, and pyproject.toml without weakening Docker stale-context guards | host-CDP/session-manager, copied-profile trust, browser architecture redesign, Project deletion |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -108,6 +108,6 @@ Control-surface active slice token: v0.1.103.10.42 — release-control auth boot
 
 `v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait` preserves the explicit Docker live-profile and `/c/...` conversation URL repairs while making Cloudflare/Just-a-moment terminal for release-live validation. The browser context closes and release-control records `docker_live_profile_challenged` instead of waiting for manual login.
 
-## Active repair — v0.1.103.10.44
+## Active repair — v0.1.103.10.45
 
-`v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade` preserves the release-live fail-fast intent from `v0.1.103.10.43` but repairs the duplicate `_log(stage=...)` bug and stops live-step cascades after `ask_live` detects a challenged Docker profile.
+`v0.1.103.10.45 — repair package version surface for Docker build context coherence` preserves the release-live fail-fast intent from `v0.1.103.10.43` but repairs the duplicate `_log(stage=...)` bug and stops live-step cascades after `ask_live` detects a challenged Docker profile.
