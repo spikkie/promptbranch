@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
-active candidate version: v0.1.103.10.42
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
-next normal slice: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
+active candidate version: v0.1.103.10.43
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
+next normal slice: v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -986,3 +986,7 @@ Control-surface active slice token: v0.1.103.10.42 — preserve Docker live prof
 ## v0.1.103.10.42 candidate status
 
 `v0.1.103.10.42` repairs the live ask target semantics from `v0.1.103.10.41`: `live_project_ensure` may return `/project`, but `ask_live` requires a `/c/...` conversation URL. Release-control now creates/opens a live conversation after project ensure, refuses to run ask/live steps against `/project`, and stops release-control retries when the Docker live profile is Cloudflare-challenged.
+
+## v0.1.103.10.43 candidate status
+
+`v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait` is a repair-only candidate. It preserves the all-in-Docker direction, explicit Docker live profile bootstrap, live pool preservation, and `/c/...` live conversation URL routing from `v0.1.103.10.40` through `v0.1.103.10.42`. The narrow repair is terminal Cloudflare handling for release-live browser operations: when a Docker live profile lands on `Just a moment...` or otherwise reports `challenge_detected=true`, the browser client returns `docker_live_profile_challenged` and closes the context instead of waiting up to 600 seconds for manual login/human verification. No host-CDP/session-manager or copied-profile trust is reintroduced.

@@ -614,3 +614,8 @@ Rationale: `v0.1.103.10.40` correctly stopped copying live profiles, but install
 ### v0.1.103.10.42 — live ask requires `/c/...`, not `/project`
 
 Decision: release-control must not pass a Project home URL directly to `ask_live`. A live Project page can be authenticated without showing a composer, so release-control creates/opens a conversation after `live_project_ensure` and passes that conversation URL to the live ask/artifact/release gates. Docker live profile Cloudflare challenge evidence is classified as `docker_live_profile_challenged` and not retried by release-control.
+
+
+### v0.1.103.10.43 — release-live Cloudflare challenge is terminal
+
+Release-live browser validation must not ask the operator to prove humanity inside an automation-owned headed Chrome window. If the Docker live profile reaches a Cloudflare/Just-a-moment challenge, release-live mode now fails fast with `docker_live_profile_challenged`, closes the browser context, and records a structured release-control failure. Manual-login waits remain for explicit bootstrap/login workflows, not for release-control live validation.

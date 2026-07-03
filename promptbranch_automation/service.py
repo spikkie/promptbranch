@@ -455,6 +455,7 @@ class ChatGPTAutomationSettings:
     browser_channel: Optional[str] = None
     password_file: Optional[str] = None
     disable_fedcm: bool = False
+    fail_fast_on_challenge: bool = False
     filter_no_sandbox: bool = True
     max_retries: int = 2
     retry_backoff_seconds: float = 2.0
@@ -811,6 +812,7 @@ class ChatGPTAutomationService:
             browser_channel=self.settings.browser_channel,
             password_file=self.settings.password_file,
             disable_fedcm=self.settings.disable_fedcm,
+            fail_fast_on_challenge=self.settings.fail_fast_on_challenge,
             filter_no_sandbox=self.settings.filter_no_sandbox,
             clear_singleton_locks=self.settings.clear_singleton_locks,
             slow_mo_ms=self.settings.slow_mo_ms,

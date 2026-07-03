@@ -134,6 +134,7 @@ class ChatGPTAutomation:
         save_html: Optional[bool] = None,
         save_screenshot: Optional[bool] = None,
         disable_fedcm: Optional[bool] = None,
+        fail_fast_on_challenge: Optional[bool] = None,
         filter_no_sandbox: Optional[bool] = None,
         password_file: Optional[str] = None,
         min_context_spacing_seconds: Optional[float] = None,
@@ -188,6 +189,12 @@ class ChatGPTAutomation:
             _env_flag("CHATGPT_DISABLE_FEDCM", False)
             if disable_fedcm is None
             else disable_fedcm
+        )
+        self.fail_fast_on_challenge = (
+            _env_flag("CHATGPT_FAIL_FAST_ON_CHALLENGE", False)
+            or _env_flag("PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE", False)
+            if fail_fast_on_challenge is None
+            else bool(fail_fast_on_challenge)
         )
         self.filter_no_sandbox = (
             _env_flag("CHATGPT_FILTER_NO_SANDBOX", True)
@@ -273,6 +280,7 @@ class ChatGPTAutomation:
                 save_html=self.save_html,
                 save_screenshot=self.save_screenshot,
                 disable_fedcm=self.disable_fedcm,
+                fail_fast_on_challenge=self.fail_fast_on_challenge,
                 filter_no_sandbox=self.filter_no_sandbox,
                 min_context_spacing_seconds=self.min_context_spacing_seconds,
                 conversation_history_rate_limit_cooldown_seconds=self.conversation_history_rate_limit_cooldown_seconds,

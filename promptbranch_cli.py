@@ -1618,6 +1618,8 @@ def build_service(args: argparse.Namespace) -> ChatGPTAutomationService:
         browser_channel=args.browser_channel,
         password_file=args.password_file,
         disable_fedcm=not args.enable_fedcm,
+        fail_fast_on_challenge=_env_flag("CHATGPT_FAIL_FAST_ON_CHALLENGE", False)
+        or _env_flag("PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE", False),
         filter_no_sandbox=not args.keep_no_sandbox,
         max_retries=args.max_retries,
         retry_backoff_seconds=args.retry_backoff_seconds,
@@ -20887,10 +20889,13 @@ async def _run_ask_live_step_once(
             prefer_button_submit=prefer_button_submit,
         )
     except Exception as exc:
+        status = "ask_failed"
+        if isinstance(exc, (AuthChallengeRequiredError, BotChallengeError)):
+            status = "docker_live_profile_challenged"
         return {
             "name": name,
             "ok": False,
-            "status": "ask_failed",
+            "status": status,
             "error": str(exc),
             "error_type": exc.__class__.__name__,
             "duration_seconds": round(time.monotonic() - started, 3),
@@ -20901,6 +20906,16 @@ async def _run_ask_live_step_once(
     raw_answer_text = _ask_live_answer_text(response)
     response_ok = not (isinstance(response, dict) and response.get("ok") is False)
     response_status = str(response.get("status") or "") if isinstance(response, dict) else ""
+    response_challenge_type = str(response.get("challenge_type") or "") if isinstance(response, dict) else ""
+    response_error_type = str(response.get("error_type") or "") if isinstance(response, dict) else ""
+    docker_live_challenged = bool(
+        not response_ok
+        and (
+            response_status == "docker_live_profile_challenged"
+            or response_challenge_type == "docker_live_profile_challenged"
+            or response_error_type in {"BotChallengeError", "AuthChallengeRequiredError"}
+        )
+    )
     streaming_timeout_answer_visible = bool(
         not response_ok
         and response_status in {"submit_confirmed_answer_timeout", "assistant_response_timeout"}
@@ -20926,6 +20941,8 @@ async def _run_ask_live_step_once(
         status = "verified_with_recovered_rate_limit"
     elif streaming_timeout_answer_visible and functionally_ok:
         status = "verified_with_streaming_timeout"
+    elif docker_live_challenged:
+        status = "docker_live_profile_challenged"
     elif not response_ok:
         status = "ask_failed"
     elif not in_expected_project:
@@ -20959,6 +20976,8 @@ async def _run_ask_live_step_once(
         "rate_limit_recovered": rate_limit_recovered,
         "streaming_timeout_answer_visible": streaming_timeout_answer_visible,
         "response_status": response_status,
+        "response_challenge_type": response_challenge_type,
+        "response_error_type": response_error_type,
         "partial_answer_text_preview": raw_answer_text[:240] if streaming_timeout_answer_visible else "",
         "functional_status": "verified" if functionally_ok else status,
         "prefer_button_submit": submit_evidence.get("prefer_button_submit") if isinstance(submit_evidence, dict) else None,

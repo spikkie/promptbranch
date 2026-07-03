@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.9.zip
-active candidate version: v0.1.103.9
-next normal slice: v0.1.103.9 — Bonnetjes Cloudflare parity profile hygiene
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
+active candidate version: v0.1.103.10.43
+next normal slice: v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -542,3 +542,11 @@ Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10
 | v0.1.103.10.42 | repair | live ask targets `/c/...` and fails fast on Cloudflare challenge | candidate | focused tests and import-plan pending/passed in candidate build | not accepted/current |
 
 Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip live conversation URL for run-all live steps
+
+## v0.1.103.10.43
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.43 | repair | release live browser challenge fails fast without manual-login wait | candidate | focused static/syntax/import-plan validation before operator run-all adoption | DOD-179 added; DOD-176..DOD-178 preserved | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.43 chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip docker_live_profile_challenged no manual-login wait

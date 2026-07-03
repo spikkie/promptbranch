@@ -837,3 +837,8 @@ No data migration is required. Existing `.pb_profile_local_debug_pools/` state i
 ## v0.1.103.10.42 migration
 
 No data migration. Existing explicitly bootstrapped Docker live profiles remain local state. Rerun `--run-all-tests`; release-control will create/open a conversation inside the retained live Project before live ask steps.
+
+
+## v0.1.103.10.43 migration
+
+No operator state migration is required. Existing manually bootstrapped `.pb_profile_local_debug` and `.pb_profile_local_debug_pools/release-live/slots/slot-1` profiles remain the live validation authority. The behavioral change is that release-control live steps set fail-fast challenge mode, so Cloudflare/Just-a-moment pages now return `docker_live_profile_challenged` immediately instead of waiting for manual login.

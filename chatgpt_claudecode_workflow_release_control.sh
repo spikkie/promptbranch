@@ -5146,7 +5146,8 @@ run_all_ensure_shared_live_conversation() {
   fi
 
   echo "+ pb --profile-dir ${live_profile_seed_dir} ask --new-task --retries 0 <bootstrap prompt> 2>&1 | tee -a ${run_all_project_ensure_log}"
-  pb --profile-dir "${live_profile_seed_dir}" ask --new-task --retries 0 "Reply with exactly the single token ${sentinel} and nothing else." 2>&1 | tee -a "${run_all_project_ensure_log}"
+  PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
+    pb --profile-dir "${live_profile_seed_dir}" ask --new-task --retries 0 "Reply with exactly the single token ${sentinel} and nothing else." 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   rc=${command_rc}
 
@@ -5236,9 +5237,9 @@ run_all_live_validation_steps() {
         record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_conversation_url_missing"
         record_all_test_skipped_step "release_live" "${release_live_log}" "live_conversation_url_missing"
       else
-        run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-        run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-        run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+        run_all_json_step "ask_live" "${ask_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+        run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+        run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
       fi
     else
       record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"

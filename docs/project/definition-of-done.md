@@ -498,3 +498,4 @@ Last release: v0.1.102
 | DOD-176 | run-all live tests use explicitly bootstrapped Docker live profiles and do not trust copied live pool slots | in_progress | `scripts/pb-docker-live-profile-bootstrap.sh`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell-script tests | v0.1.103.10.42 |
 | DOD-177 | release ZIP import preserves explicitly bootstrapped Docker live profile pool state | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; `tests/test_promptbranch_shell_scripts.py` | v0.1.103.10.42 |
 | DOD-178 | run-all live ask uses a conversation URL and refuses `/project` ask/live execution | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; focused shell-script tests | v0.1.103.10.42 |
+| DOD-179 | release-live Cloudflare challenge fails fast without manual-login wait | in_progress | `promptbranch_browser_auth/client.py`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell-script tests | v0.1.103.10.43 |

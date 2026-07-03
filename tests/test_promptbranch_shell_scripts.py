@@ -3463,6 +3463,9 @@ def test_release_control_run_all_live_steps_use_conversation_url_not_project_pag
 def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -> None:
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    browser_client = (root / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    automation = (root / "promptbranch_automation" / "automation.py").read_text(encoding="utf-8")
+    cli = (root / "promptbranch_cli.py").read_text(encoding="utf-8")
 
     assert "run_all_log_has_cloudflare_challenge" in script
     assert "docker_live_profile_challenged" in script
@@ -3470,3 +3473,10 @@ def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -
     assert "Just a moment|__cf_chl" in script
     assert 'if [[ ${step_rc} -ne 0 ]] && [[ "${step_name}" == "ask_live"' in script
     assert "--retries 0 --json" in script
+    assert "PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1" in script
+    assert "_raise_fail_fast_challenge_if_configured" in browser_client
+    assert "refusing manual-login wait" in browser_client
+    assert 'challenge_type="docker_live_profile_challenged"' in browser_client
+    assert "CHATGPT_FAIL_FAST_ON_CHALLENGE" in automation
+    assert "PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE" in automation
+    assert 'status = "docker_live_profile_challenged"' in cli

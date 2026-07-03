@@ -6,7 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
-| v0.1.103.10.17 | pbsa reuses held session for remembered overwrite removal | active | Keep one Docker browser owner for Project Source overwrite remove/add and avoid competing persistent contexts | direct API mutation without intent, host-CDP session manager, deployment, artifact adoption |
+| v0.1.103.10.43 | release live browser challenge fails fast without manual-login wait | active | Keep all-in-Docker live validation, detect Cloudflare/Just-a-moment as docker_live_profile_challenged, and avoid manual-login waits | host-CDP/session-manager, copied-profile trust, browser architecture redesign, Project deletion |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |
 | v0.1.106 | Controlled correction promotion decision record | planned | Record whether correction workflows may move beyond sandbox fixtures | unapproved mutation, deployment |
@@ -103,3 +103,7 @@ Control-surface active slice token: v0.1.103.10.42 — release-control auth boot
 ## v0.1.103.10.42 active repair horizon
 
 `v0.1.103.10.42` remains inside the release-control auth-bootstrap repair horizon. It changes only phase-aware URL selection for `pre_tests` and preserves the standard browser/profile/session architecture.
+
+## Active repair — v0.1.103.10.43
+
+`v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait` preserves the explicit Docker live-profile and `/c/...` conversation URL repairs while making Cloudflare/Just-a-moment terminal for release-live validation. The browser context closes and release-control records `docker_live_profile_challenged` instead of waiting for manual login.

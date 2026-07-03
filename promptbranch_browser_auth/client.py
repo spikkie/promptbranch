@@ -6921,10 +6921,34 @@ class ChatGPTBrowserClient:
             await self._pause_for_keep_open("Source removed. Press Enter to close the browser... ")
         return result
 
+    async def _raise_fail_fast_challenge_if_configured(self, page: Any, *, stage: str) -> None:
+        if not bool(getattr(self.config, "fail_fast_on_challenge", False)):
+            return
+        current_url = await self._safe_page_url(page)
+        current_title = await self._safe_page_title(page)
+        if not self._looks_like_challenge(current_url, current_title):
+            return
+        self._log(
+            "auth",
+            "fail-fast challenge detected; refusing manual-login wait",
+            stage=stage,
+            current_url=current_url,
+            title=current_title,
+            status="docker_live_profile_challenged",
+        )
+        raise AuthChallengeRequiredError(
+            "Docker live profile hit a Cloudflare/browser challenge; release-live mode must fail fast instead of waiting for manual login.",
+            challenge_type="docker_live_profile_challenged",
+            page_url=current_url,
+            page_title=current_title,
+            text_preview=await self._visible_text_preview(page),
+        )
+
     async def ensure_logged_in(self, page: Any, context: Any) -> bool:
         self._log("auth", "checking login state")
         await self._goto(page, self.config.project_url, label="initial-auth-check")
         await self._wait_for_challenge_resolution(page, label="initial-auth-check")
+        await self._raise_fail_fast_challenge_if_configured(page, stage="initial-auth-check")
         if await self._is_logged_in(page):
             self._log("auth", "session already active")
             return True
@@ -6991,6 +7015,7 @@ class ChatGPTBrowserClient:
                     "No active session was found in the browser profile after the page settled. "
                     "Run the login test once with --headed to establish a persistent session."
                 )
+            await self._raise_fail_fast_challenge_if_configured(page, stage="no-login-button")
             self._log("auth", "no login button found; waiting for manual login in headed mode")
             return await self._wait_for_manual_login(page)
 
@@ -7962,6 +7987,7 @@ class ChatGPTBrowserClient:
                 if hasattr(page, "is_closed") and page.is_closed():
                     self._log("manual-login", "chatgpt page is closed during manual-login poll", iteration=iteration)
                     raise AuthenticationError("ChatGPT page closed while waiting for manual login.")
+                await self._raise_fail_fast_challenge_if_configured(page, stage="manual-login-poll")
                 if await self._is_logged_in(page):
                     self._log("manual-login", "manual login detected", iteration=iteration)
                     return True
