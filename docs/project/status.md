@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.36.zip
-active candidate version: v0.1.103.10.36
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.36.zip
-next normal slice: v0.1.103.10.36 — missing live seed profile is non-blocking for run-all release validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip
+active candidate version: v0.1.103.10.37
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip
+next normal slice: v0.1.103.10.37 — missing live seed profile is non-blocking for run-all release validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -942,17 +942,23 @@ Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` repairs 
 
 Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` keeps endpoint behavior unchanged and narrows API coverage report classification to actual failure/warning fields. It removes misleading `browser_profile_busy`, `rate_limited`, and `auth_challenge_or_cloudflare` labels from successful clear responses.
 
-## Active repair slice — v0.1.103.10.36
+## Active repair slice — v0.1.103.10.37
 
-`v0.1.103.10.36 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.37 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.36
+## Active repair slice — v0.1.103.10.37
 
-`v0.1.103.10.36 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.37 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
-## Active repair slice — v0.1.103.10.36
+## Active repair slice — v0.1.103.10.37
 
-`v0.1.103.10.36 — missing live seed profile is non-blocking for run-all release validation` keeps the successful `v0.1.103.10.35` auth bootstrap/session-clear behavior and repairs the remaining adoption blocker from the uploaded `release_control.v0.1.103.10.35.full.adopt.log`. When `.pb_profile_local_debug` is absent, live-only browser steps are recorded as non-blocking skips while full direct/full localhost validation, Project Source add, import smoke, and artifact guard remain release-blocking.
+`v0.1.103.10.37 — missing live seed profile is non-blocking for run-all release validation` keeps the successful `v0.1.103.10.35` auth bootstrap/session-clear behavior and repairs the remaining adoption blocker from the uploaded `release_control.v0.1.103.10.35.full.adopt.log`. When `.pb_profile_local_debug` is absent, live-only browser steps are recorded as non-blocking skips while full direct/full localhost validation, Project Source add, import smoke, and artifact guard remain release-blocking.
 
 Next safe action after installing the candidate is a full validation/adoption run with `--run-all-tests --adopt-after-validation`.
+
+## v0.1.103.10.37 candidate status
+
+`v0.1.103.10.37` repairs the new `v0.1.103.10.36` full-adoption blocker where pre-source-add auth bootstrap reached a logged-in, Cloudflare-clear project page but failed strict validation because the project home page did not expose a composer. Release-control now allows project-page readiness only for `pre_source_add`; ask/live/conversation validation still requires composer readiness.
+
+Control-surface active slice token: v0.1.103.10.37 — release-control auth bootstrap accepts project-page readiness for source-add preflight

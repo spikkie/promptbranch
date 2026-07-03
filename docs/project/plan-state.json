@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.36.zip",
-  "active_candidate_version": "v0.1.103.10.36",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip",
+  "active_candidate_version": "v0.1.103.10.37",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.36 \u2014 missing live seed profile is non-blocking for run-all release validation",
+  "active_slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.36.zip",
-  "next_normal_slice": "v0.1.103.10.36 \u2014 missing live seed profile is non-blocking for run-all release validation",
-  "next_normal_version": "v0.1.103.10.36",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.37.zip",
+  "next_normal_slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
+  "next_normal_version": "v0.1.103.10.37",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -39,10 +39,10 @@
   ],
   "release_history": [
     {
-      "version": "v0.1.103.10.36",
+      "version": "v0.1.103.10.37",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Makes missing .pb_profile_local_debug live seed profile a non-blocking skip for live-only run-all steps while preserving full direct/full localhost validation, Project Source add, import smoke, and artifact guard as release-blocking."
+      "summary": "Allows pre_source_add auth bootstrap to accept logged-in project-page readiness without a composer while keeping composer readiness required for conversation/ask/live validation."
     },
     {
       "kind": "repair/api-coverage-test-runner",
@@ -155,9 +155,9 @@
     {
       "release_mode": "repair",
       "scope": "make browser/full validation skip the generic-root login_check by default, relying on normal auto-login/session operations while keeping login_check available as an explicit diagnostic; no browser/session architecture or Project Source mutation changes",
-      "slice": "v0.1.103.10.36 \u2014 missing live seed profile is non-blocking for run-all release validation",
+      "slice": "v0.1.103.10.37 \u2014 release-control auth bootstrap accepts project-page readiness for source-add preflight",
       "status": "active",
-      "version": "v0.1.103.10.36"
+      "version": "v0.1.103.10.37"
     },
     {
       "release_mode": "normal",
@@ -201,6 +201,6 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.36",
+  "updated_for": "v0.1.103.10.37",
   "last_updated": "2026-07-01"
 }

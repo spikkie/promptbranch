@@ -3352,6 +3352,37 @@ def test_release_control_auth_bootstrap_before_live_operations() -> None:
 
 
 
+def test_release_control_pre_source_add_accepts_project_page_auth_ready_without_composer() -> None:
+    root = Path(__file__).resolve().parents[1]
+    release_script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    validation_script = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+
+    assert 'local allow_project_page_ready=0' in release_script
+    assert 'if [[ "${phase}" == "pre_source_add" ]]; then' in release_script
+    assert 'allow_project_page_ready=1' in release_script
+    assert 'PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY="${allow_project_page_ready}"' in release_script
+    assert 'allow_project_page_ready: ${allow_project_page_ready}' in release_script
+
+    assert 'allow_project_page_ready = sys.argv[5].strip().lower()' in validation_script
+    assert "target_is_project_page = parsed_target.path.rstrip('/').endswith('/project')" in validation_script
+    assert "last.get('project_page_visible') is True" in validation_script
+    assert "if not composer_ready and not project_page_ready_accepted:" in validation_script
+    assert "errors.append('composer_visible is not true')" in validation_script
+    assert "PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY=1" in validation_script
+
+
+def test_release_control_keeps_composer_required_outside_pre_source_add() -> None:
+    root = Path(__file__).resolve().parents[1]
+    release_script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'local allow_project_page_ready=0' in release_script
+    assert 'pb_auth_bootstrap "pre_tests" || fail "release-control auth bootstrap failed before tests"' in release_script
+    assert 'allow_project_page_ready=1' in release_script
+    assert '''if [[ "${phase}" == "pre_source_add" ]]; then
+    allow_project_page_ready=1
+  fi''' in release_script
+
+
 def test_release_control_missing_live_seed_profile_is_nonblocking_static() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 

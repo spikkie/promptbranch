@@ -1248,11 +1248,17 @@ pb_auth_bootstrap() {
   fi
 
   bootstrap_url="$(release_control_resolve_auth_bootstrap_url)"
+  local allow_project_page_ready=0
+  if [[ "${phase}" == "pre_source_add" ]]; then
+    allow_project_page_ready=1
+  fi
   echo "== Release-control auth bootstrap (${phase}) =="
   echo "auth_bootstrap_url: ${bootstrap_url}"
+  echo "allow_project_page_ready: ${allow_project_page_ready}"
   echo "output -> ${bootstrap_log}"
   PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}" \
   PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}" \
+  PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY="${allow_project_page_ready}" \
   PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${bootstrap_keep_open_seconds}" \
   ./scripts/pb-browser-cloudflare-validation.sh \
     --url "${bootstrap_url}" \

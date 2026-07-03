@@ -26,6 +26,7 @@ target_url="${PROMPTBRANCH_BROWSER_VALIDATION_URL:-${CHATGPT_PROJECT_URL:-}}"
 bootstrap_url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
+allow_project_page_ready="${PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY:-0}"
 
 usage() {
   cat <<'HELP'
@@ -69,6 +70,11 @@ Success criteria:
   - logged_in=true
   - composer_visible=true
   - release_blocking=false
+
+  Release-control may set PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY=1
+  for pre_source_add bootstrap only. In that mode, a logged-in /project page with
+  Cloudflare clear may satisfy source-add preflight even when no chat composer is
+  visible. Normal ask/live/conversation validation still requires a composer.
   - Project Source mutation remains disabled
 HELP
 }
@@ -80,6 +86,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 path = Path(sys.argv[1])
 if not path.exists():
@@ -219,6 +226,7 @@ log "bootstrap_mode=${bootstrap_mode}"
 log "target_url=${target_url}"
 log "bootstrap_url=${bootstrap_url}"
 log "fresh_profile=${fresh_profile}"
+log "allow_project_page_ready=${allow_project_page_ready}"
 
 if [[ -n "${install_artifact}" ]]; then
   if [[ -z "${install_version}" ]]; then
@@ -300,6 +308,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 repo = Path(sys.argv[1])
 start_epoch = int(sys.argv[2])
@@ -328,17 +337,20 @@ printf '%s\n' "${summary_path}" > "${validation_dir}/cloudflare-summary.path"
 cp "${summary_path}" "${validation_dir}/cloudflare-summary.json"
 
 log "== strict validation =="
-python3 - "${validation_dir}" "${profile_dir}" "${summary_path}" "${check_rc}" <<'PY'
+python3 - "${validation_dir}" "${profile_dir}" "${summary_path}" "${check_rc}" "${allow_project_page_ready}" "${target_url}" <<'PY'
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 validation_dir = Path(sys.argv[1])
 profile_dir = sys.argv[2]
 summary_path = Path(sys.argv[3])
 check_rc = int(sys.argv[4])
+allow_project_page_ready = sys.argv[5].strip().lower() in {'1', 'true', 'yes'}
+target_url = sys.argv[6]
 payload = json.loads(summary_path.read_text(encoding='utf-8'))
 runtime = payload.get('runtime') or {}
 last = payload.get('last_session_status') or {}
@@ -360,7 +372,19 @@ require(runtime.get('profile_dir') == '/app/profile', f"profile_dir is {runtime.
 require(runtime.get('project_source_mutation_allowed') is False, 'project_source_mutation_allowed is not false')
 require(last.get('challenge_detected') is False, 'challenge_detected is not false')
 require(last.get('logged_in') is True, 'logged_in is not true')
-require(last.get('composer_visible') is True, 'composer_visible is not true')
+
+parsed_target = urlparse(target_url)
+target_is_project_page = parsed_target.path.rstrip('/').endswith('/project')
+project_page_ready_accepted = (
+    allow_project_page_ready
+    and target_is_project_page
+    and last.get('project_page_visible') is True
+    and last.get('logged_in') is True
+    and last.get('challenge_detected') is False
+)
+composer_ready = last.get('composer_visible') is True
+if not composer_ready and not project_page_ready_accepted:
+    errors.append('composer_visible is not true')
 require(last.get('release_blocking') is False, 'last release_blocking is not false')
 result = {
     'ok': not errors,
@@ -374,6 +398,10 @@ result = {
         'logged_in': last.get('logged_in'),
         'challenge_detected': last.get('challenge_detected'),
         'composer_visible': last.get('composer_visible'),
+        'project_page_visible': last.get('project_page_visible'),
+        'allow_project_page_ready': allow_project_page_ready,
+        'target_is_project_page': target_is_project_page,
+        'project_page_ready_accepted': project_page_ready_accepted,
         'project_source_mutation_allowed': runtime.get('project_source_mutation_allowed'),
         'standard_browser_mode': runtime.get('standard_browser_mode'),
     },
