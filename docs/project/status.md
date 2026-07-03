@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-active candidate version: v0.1.103.10.41
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-next normal slice: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+active candidate version: v0.1.103.10.42
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+next normal slice: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -942,32 +942,32 @@ Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` repairs 
 
 Candidate slice `v0.1.103.10.21 — pb test api classification cleanup` keeps endpoint behavior unchanged and narrows API coverage report classification to actual failure/warning fields. It removes misleading `browser_profile_busy`, `rate_limited`, and `auth_challenge_or_cloudflare` labels from successful clear responses.
 
-## Active repair slice — v0.1.103.10.41
+## Active repair slice — v0.1.103.10.42
 
-`v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
 
-## Active repair slice — v0.1.103.10.41
+## Active repair slice — v0.1.103.10.42
 
-`v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
+`v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation` adds a `pb test api` held-session preflight that detects an active held auth-readiness session across default, project, and conversation scopes; without `--reuse-held-session`, it fails early with `preflight.browser_profile_busy=true` instead of running doomed browser-owning endpoint calls. No browser/session architecture changes.
 
-## Active repair slice — v0.1.103.10.41
+## Active repair slice — v0.1.103.10.42
 
-`v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation` keeps the successful `v0.1.103.10.35` auth bootstrap/session-clear behavior and repairs the remaining adoption blocker from the uploaded `release_control.v0.1.103.10.35.full.adopt.log`. When `.pb_profile_local_debug` is absent, live-only browser steps are recorded as non-blocking skips while full direct/full localhost validation, Project Source add, import smoke, and artifact guard remain release-blocking.
+`v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation` keeps the successful `v0.1.103.10.35` auth bootstrap/session-clear behavior and repairs the remaining adoption blocker from the uploaded `release_control.v0.1.103.10.35.full.adopt.log`. When `.pb_profile_local_debug` is absent, live-only browser steps are recorded as non-blocking skips while full direct/full localhost validation, Project Source add, import smoke, and artifact guard remain release-blocking.
 
 Next safe action after installing the candidate is a full validation/adoption run with `--run-all-tests --adopt-after-validation`.
 
-## v0.1.103.10.41 candidate status
+## v0.1.103.10.42 candidate status
 
-`v0.1.103.10.41` repairs the new `v0.1.103.10.36` full-adoption blocker where pre-source-add auth bootstrap reached a logged-in, Cloudflare-clear project page but failed strict validation because the project home page did not expose a composer. Release-control now allows project-page readiness only for `pre_source_add`; ask/live/conversation validation still requires composer readiness.
+`v0.1.103.10.42` repairs the new `v0.1.103.10.36` full-adoption blocker where pre-source-add auth bootstrap reached a logged-in, Cloudflare-clear project page but failed strict validation because the project home page did not expose a composer. Release-control now allows project-page readiness only for `pre_source_add`; ask/live/conversation validation still requires composer readiness.
 
-Control-surface active slice token: v0.1.103.10.41 — release-control auth bootstrap accepts project-page readiness for source-add preflight
+Control-surface active slice token: v0.1.103.10.42 — release-control auth bootstrap accepts project-page readiness for source-add preflight
 
-Control-surface active slice token: v0.1.103.10.41 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
+Control-surface active slice token: v0.1.103.10.42 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
 
-## v0.1.103.10.41 candidate status
+## v0.1.103.10.42 candidate status
 
-`v0.1.103.10.41` makes `--run-all-tests` require explicit, manually authenticated live browser profiles instead of copying `.pb_profile/browser/default` into live test profiles. The all-in-Docker browser direction is retained and host-CDP/session-manager work remains aborted/out of scope.
+`v0.1.103.10.42` makes `--run-all-tests` require explicit, manually authenticated live browser profiles instead of copying `.pb_profile/browser/default` into live test profiles. The all-in-Docker browser direction is retained and host-CDP/session-manager work remains aborted/out of scope.
 
 Required live bootstrap before adoption:
 
@@ -977,8 +977,12 @@ Required live bootstrap before adoption:
 
 Release-control validates `.pb_profile_local_debug` and `.pb_profile_local_debug_pools/release-live/slots/slot-1` before live steps. Missing or challenged profiles are release-blocking.
 
-Control-surface active slice token: v0.1.103.10.41 — preserve Docker live profile pool across release ZIP import
+Control-surface active slice token: v0.1.103.10.42 — preserve Docker live profile pool across release ZIP import
 
-## v0.1.103.10.41 candidate status
+## v0.1.103.10.42 candidate status
 
-`v0.1.103.10.41` repairs the `v0.1.103.10.40` release-import lifecycle blocker. The explicit Docker live profile pool `.pb_profile_local_debug_pools/release-live/slots/slot-1` must survive `--install-from-zip`; release import now preserves `.pb_profile_local_debug_pools/` alongside `.pb_profile_local_debug/`. Missing live profiles remain release-blocking for `--run-all-tests`.
+`v0.1.103.10.42` repairs the `v0.1.103.10.40` release-import lifecycle blocker. The explicit Docker live profile pool `.pb_profile_local_debug_pools/release-live/slots/slot-1` must survive `--install-from-zip`; release import now preserves `.pb_profile_local_debug_pools/` alongside `.pb_profile_local_debug/`. Missing live profiles remain release-blocking for `--run-all-tests`.
+
+## v0.1.103.10.42 candidate status
+
+`v0.1.103.10.42` repairs the live ask target semantics from `v0.1.103.10.41`: `live_project_ensure` may return `/project`, but `ask_live` requires a `/c/...` conversation URL. Release-control now creates/opens a live conversation after project ensure, refuses to run ask/live steps against `/project`, and stops release-control retries when the Docker live profile is Cloudflare-challenged.

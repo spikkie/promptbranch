@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip",
-  "active_candidate_version": "v0.1.103.10.41",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip",
+  "active_candidate_version": "v0.1.103.10.42",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.41 \u2014 preserve Docker live profile pool across release ZIP import",
+  "active_slice": "v0.1.103.10.42 \u2014 preserve Docker live profile pool across release ZIP import",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,9 +20,9 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip",
-  "next_normal_slice": "v0.1.103.10.41 \u2014 preserve Docker live profile pool across release ZIP import",
-  "next_normal_version": "v0.1.103.10.41",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip",
+  "next_normal_slice": "v0.1.103.10.42 \u2014 preserve Docker live profile pool across release ZIP import",
+  "next_normal_version": "v0.1.103.10.42",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -39,19 +39,25 @@
   ],
   "release_history": [
     {
-      "version": "v0.1.103.10.41",
+      "version": "v0.1.103.10.42",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Live ask uses a conversation URL instead of /project and release-control fails fast on Docker live profile Cloudflare challenges."
+    },
+    {
+      "version": "v0.1.103.10.42",
       "kind": "repair",
       "status": "candidate",
       "summary": "Preserve .pb_profile_local_debug_pools across release ZIP import so explicitly bootstrapped Docker release-live slots survive install."
     },
     {
-      "version": "v0.1.103.10.41",
+      "version": "v0.1.103.10.42",
       "kind": "repair",
       "status": "candidate",
       "summary": "Requires explicit Docker-authenticated live profiles for run-all live tests and removes normal FedCM blink-disable fingerprint noise."
     },
     {
-      "version": "v0.1.103.10.41",
+      "version": "v0.1.103.10.42",
       "kind": "repair",
       "status": "candidate",
       "summary": "Resolves pre_tests auth bootstrap to a current project conversation URL before composer validation, while preserving pre_source_add project-page readiness and held-session clear behavior."
@@ -171,10 +177,10 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.103.10.41",
+      "version": "v0.1.103.10.42",
       "status": "active",
       "release_mode": "repair",
-      "slice": "v0.1.103.10.41 \u2014 preserve Docker live profile pool across release ZIP import",
+      "slice": "v0.1.103.10.42 \u2014 preserve Docker live profile pool across release ZIP import",
       "scope": "all-in-Docker browser path only; live run-all profiles must be manually bootstrapped in exact seed and release-live slot directories; no host-CDP/session-manager work"
     },
     {
@@ -219,6 +225,6 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.41",
+  "updated_for": "v0.1.103.10.42",
   "last_updated": "2026-07-01"
 }

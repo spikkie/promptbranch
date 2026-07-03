@@ -765,6 +765,7 @@ live_profile_preflight_json="${release_log_dir}/pb_test.live_profile_preflight.$
 live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_preflight.${ver}.log"
 run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver}.log"
 run_all_shared_project_url=""
+run_all_shared_conversation_url=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
 run_all_release_validation_groups_passed_primary=0
@@ -4343,6 +4344,11 @@ run_all_json_step() {
     echo "WARN: recovered rate-limit evidence detected for ${step_name}; functional verification passed, so release-control will not retry the whole step." | tee -a "${step_log}" >&2
     step_rc=0
   fi
+  if [[ ${step_rc} -ne 0 ]] && [[ "${step_name}" == "ask_live" || "${step_name}" == "visual_artifact_roundtrip" || "${step_name}" == "release_live" ]] && run_all_log_has_cloudflare_challenge "${step_log}"; then
+    echo "status: docker_live_profile_challenged" | tee -a "${step_log}" >&2
+    echo "ERROR: Docker live profile hit a Cloudflare/Just-a-moment challenge; not retrying this live browser step." | tee -a "${step_log}" >&2
+    attempt=${run_all_rate_limit_retries}
+  fi
   while [[ ${step_rc} -ne 0 && ${attempt} -lt ${run_all_rate_limit_retries} ]] && run_all_log_has_rate_limit_evidence "${step_log}"; do
     attempt=$((attempt + 1))
     if ! run_all_rate_limit_cooldown_sleep "${step_name}" "${step_log}"; then
@@ -5053,6 +5059,115 @@ print(url.strip())
 INNERPY
 }
 
+run_all_url_is_conversation_url() {
+  local url="$1"
+  python3 - "$url" <<'INNERPY'
+from __future__ import annotations
+import sys
+import urllib.parse
+url = str(sys.argv[1] or "").strip()
+if not url:
+    raise SystemExit(1)
+parsed = urllib.parse.urlparse(url)
+parts = [part for part in parsed.path.split('/') if part]
+raise SystemExit(0 if 'c' in parts else 1)
+INNERPY
+}
+
+run_all_extract_conversation_url_from_log() {
+  local log_path="$1"
+  python3 - "$log_path" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+import urllib.parse
+
+def is_conversation_url(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    parsed = urllib.parse.urlparse(value.strip())
+    return 'c' in [part for part in parsed.path.split('/') if part]
+
+raw = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+decoder = json.JSONDecoder()
+candidates: list[str] = []
+for idx, char in enumerate(raw):
+    if char != '{':
+        continue
+    try:
+        value, _end = decoder.raw_decode(raw[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    for key in ("conversation_url", "current_conversation_url"):
+        url = value.get(key)
+        if is_conversation_url(url):
+            candidates.append(str(url).strip())
+    response = value.get("response")
+    if isinstance(response, dict):
+        url = response.get("conversation_url")
+        if is_conversation_url(url):
+            candidates.append(str(url).strip())
+if not candidates:
+    raise SystemExit(1)
+print(candidates[-1])
+INNERPY
+}
+
+run_all_log_has_cloudflare_challenge() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  grep -Eiq 'Just a moment|__cf_chl|challenge_detected[^
+]*(true|True)|Cloudflare|auth_challenge_detected' "${log_path}"
+}
+
+run_all_ensure_shared_live_conversation() {
+  local rc=0
+  local command_rc=0
+  local extracted_conversation_url=""
+  local sentinel="LIVE_CONVERSATION_BOOTSTRAP_${ver_plain//./_}"
+
+  if run_all_url_is_conversation_url "${run_all_shared_project_url}"; then
+    run_all_shared_conversation_url="${run_all_shared_project_url}"
+    echo "shared_live_conversation_url: ${run_all_shared_conversation_url}" | tee -a "${run_all_project_ensure_log}"
+    return 0
+  fi
+
+  echo "live_conversation_strategy: create_new_task_inside_shared_live_project" | tee -a "${run_all_project_ensure_log}"
+  echo "live_conversation_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_seed_dir} use ${run_all_shared_project_url} --json 2>&1 | tee -a ${run_all_project_ensure_log}"
+  pb --profile-dir "${live_profile_seed_dir}" use "${run_all_shared_project_url}" --json 2>&1 | tee -a "${run_all_project_ensure_log}"
+  command_rc=${PIPESTATUS[0]}
+  if [[ ${command_rc} -ne 0 ]]; then
+    echo "ERROR: live_conversation_url_missing: failed to select shared live project before conversation bootstrap" | tee -a "${run_all_project_ensure_log}" >&2
+    return ${command_rc}
+  fi
+
+  echo "+ pb --profile-dir ${live_profile_seed_dir} ask --new-task --retries 0 <bootstrap prompt> 2>&1 | tee -a ${run_all_project_ensure_log}"
+  pb --profile-dir "${live_profile_seed_dir}" ask --new-task --retries 0 "Reply with exactly the single token ${sentinel} and nothing else." 2>&1 | tee -a "${run_all_project_ensure_log}"
+  command_rc=${PIPESTATUS[0]}
+  rc=${command_rc}
+
+  if extracted_conversation_url="$(run_all_extract_conversation_url_from_log "${run_all_project_ensure_log}")"; then
+    run_all_shared_conversation_url="${extracted_conversation_url}"
+    echo "shared_live_conversation_url: ${run_all_shared_conversation_url}" | tee -a "${run_all_project_ensure_log}"
+    rc=0
+  else
+    echo "ERROR: live_conversation_url_missing: live_project_ensure produced only /project and conversation bootstrap did not return /c/..." | tee -a "${run_all_project_ensure_log}" >&2
+    rc=1
+  fi
+
+  if [[ ${rc} -ne 0 ]]; then
+    if run_all_log_has_cloudflare_challenge "${run_all_project_ensure_log}"; then
+      echo "status: docker_live_profile_challenged" | tee -a "${run_all_project_ensure_log}" >&2
+    fi
+    return ${rc}
+  fi
+  return 0
+}
+
 run_all_ensure_shared_live_project() {
   local rc=0
   local command_rc=0
@@ -5078,6 +5193,10 @@ run_all_ensure_shared_live_project() {
         echo "WARN: live_project_ensure returned project_url but command exited with ${command_rc}; treating as failed because no recovered rate-limit evidence was found." | tee -a "${run_all_project_ensure_log}" >&2
         rc=${command_rc}
       fi
+    fi
+    if [[ ${rc} -eq 0 ]] && ! run_all_ensure_shared_live_conversation; then
+      echo "WARN: live_project_ensure could not establish a /c/... conversation URL for ask/live steps." | tee -a "${run_all_project_ensure_log}" >&2
+      rc=1
     fi
   else
     echo "WARN: live_project_ensure did not return a project URL." | tee -a "${run_all_project_ensure_log}" >&2
@@ -5111,9 +5230,16 @@ run_all_live_validation_steps() {
 
   if run_all_live_profile_preflight; then
     if run_all_ensure_shared_live_project; then
-      run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
-      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
-      run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_project_url}" --keep-project --json
+      if [[ -z "${run_all_shared_conversation_url}" ]] || ! run_all_url_is_conversation_url "${run_all_shared_conversation_url}"; then
+        echo "ERROR: live_conversation_url_missing: refusing to run ask/live steps against a /project URL" | tee -a "${run_all_project_ensure_log}" >&2
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "live_conversation_url_missing"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_conversation_url_missing"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "live_conversation_url_missing"
+      else
+        run_all_json_step "ask_live" "${ask_live_log}" pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+        run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+        run_all_json_step "release_live" "${release_live_log}" pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+      fi
     else
       record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
       record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"

@@ -459,78 +459,86 @@ control token: chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip
 control token: v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation
 
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-167 | n/a |
+| v0.1.103.10.42 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-167 | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | version | kind | scope | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
+| v0.1.103.10.42 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-168 | no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | version | type | slice | status | validation | dod | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| v0.1.103.10.41 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
+| v0.1.103.10.42 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-169 | no browser/session or Project Source mutation changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | version | type | scope | status | validation | DOD | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-170 | login_check remains explicit diagnostic only; no browser/session architecture changes |
+| v0.1.103.10.42 | repair | full/browser validation skips generic-root login check | candidate | focused tests pending/live install pending | DOD-170 | login_check remains explicit diagnostic only; no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | version | type | summary | status | validation | dod | notes |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | release-control clears auth bootstrap held session explicitly | candidate | focused tests pending/live install pending | DOD-171 | every release-control live path runs auth bootstrap before Project Source add or tests; no browser/session architecture changes |
+| v0.1.103.10.42 | repair | release-control clears auth bootstrap held session explicitly | candidate | focused tests pending/live install pending | DOD-171 | every release-control live path runs auth bootstrap before Project Source add or tests; no browser/session architecture changes |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | missing live seed profile is non-blocking for run-all release validation | candidate | focused tests pending/operator full adoption pending | DOD-172 added; DOD-171 preserved | n/a |
+| v0.1.103.10.42 | repair | missing live seed profile is non-blocking for run-all release validation | candidate | focused tests pending/operator full adoption pending | DOD-172 added; DOD-171 preserved | n/a |
 
-control token: chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip
-control token: v0.1.103.10.41 — missing live seed profile is non-blocking for run-all release validation
+control token: chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip
+control token: v0.1.103.10.42 — missing live seed profile is non-blocking for run-all release validation
 
-Control-surface active slice token: v0.1.103.10.41 — release-control auth bootstrap accepts project-page readiness for source-add preflight
+Control-surface active slice token: v0.1.103.10.42 — release-control auth bootstrap accepts project-page readiness for source-add preflight
 
-Control-surface active slice token: v0.1.103.10.41 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
+Control-surface active slice token: v0.1.103.10.42 — release-control pre_tests auth bootstrap targets current conversation URL before requiring composer
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Adoption |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | preserve Docker live profile pool across release ZIP import | candidate | focused static/syntax/import-plan validation before operator live bootstrap and full adoption | DOD-176 added; DOD-171..DOD-174 preserved | not accepted/current |
+| v0.1.103.10.42 | repair | preserve Docker live profile pool across release ZIP import | candidate | focused static/syntax/import-plan validation before operator live bootstrap and full adoption | DOD-176 added; DOD-171..DOD-174 preserved | not accepted/current |
 
-Control-surface token: `chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip`
-Control-surface active slice token: `v0.1.103.10.41 — preserve Docker live profile pool across release ZIP import`
+Control-surface token: `chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip`
+Control-surface active slice token: `v0.1.103.10.42 — preserve Docker live profile pool across release ZIP import`
 
-## v0.1.103.10.41
+## v0.1.103.10.42
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.41 | repair | preserve Docker live profile pool across release ZIP import | candidate | focused release-control preservation tests and import-plan pending operator live run-all validation | DOD-177 added; DOD-176 preserved | not accepted/current |
+| v0.1.103.10.42 | repair | preserve Docker live profile pool across release ZIP import | candidate | focused release-control preservation tests and import-plan pending operator live run-all validation | DOD-177 added; DOD-176 preserved | not accepted/current |
 
-Control-surface tokens: v0.1.103.10.41 chatgpt_claudecode_workflow-2_v0.1.103.10.41.zip preserve Docker live profile pool across release ZIP import
+Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip preserve Docker live profile pool across release ZIP import
+
+## v0.1.103.10.42
+
+| Version | Type | Scope | State | Validation | Adoption |
+|---|---|---|---|---|---|
+| v0.1.103.10.42 | repair | live ask targets `/c/...` and fails fast on Cloudflare challenge | candidate | focused tests and import-plan pending/passed in candidate build | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10.42.zip live conversation URL for run-all live steps

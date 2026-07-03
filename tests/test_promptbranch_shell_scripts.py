@@ -3440,3 +3440,33 @@ def test_normal_browser_launches_do_not_use_unsupported_blink_fedcm_flag() -> No
     assert "--disable-blink-features=FedCm" not in compat_client
     assert "CHATGPT_DISABLE_FEDCM: ${CHATGPT_DISABLE_FEDCM:-0}" in compose
     assert 'export CHATGPT_DISABLE_FEDCM="${CHATGPT_DISABLE_FEDCM:-0}"' in docker_runner
+
+
+def test_release_control_run_all_live_steps_use_conversation_url_not_project_page_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_ensure_shared_live_conversation" in script
+    assert "run_all_extract_conversation_url_from_log" in script
+    assert "shared_live_conversation_url" in script
+    assert "live_conversation_url_missing" in script
+    assert "create_new_task_inside_shared_live_project" in script
+    assert 'pb --profile-dir "${live_profile_seed_dir}" use "${run_all_shared_project_url}" --json' in script
+    assert 'pb --profile-dir "${live_profile_seed_dir}" ask --new-task --retries 0' in script
+    assert '--conversation-url "${run_all_shared_conversation_url}"' in script
+    assert '--conversation-url "${run_all_shared_project_url}" --keep-project --json' not in script
+    assert 'pb test ask-live --profile-pool "${live_profile_pool_name}"' in script
+    assert 'pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}"' in script
+    assert 'pb test release-live --profile-pool "${live_profile_pool_name}"' in script
+
+
+def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_log_has_cloudflare_challenge" in script
+    assert "docker_live_profile_challenged" in script
+    assert "not retrying this live browser step" in script
+    assert "Just a moment|__cf_chl" in script
+    assert 'if [[ ${step_rc} -ne 0 ]] && [[ "${step_name}" == "ask_live"' in script
+    assert "--retries 0 --json" in script
