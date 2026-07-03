@@ -3401,16 +3401,20 @@ def test_release_control_pre_tests_prefers_current_conversation_url_before_compo
     assert "if not composer_ready and not project_page_ready_accepted:" in validation_script
 
 
-def test_release_control_missing_live_seed_profile_is_nonblocking_static() -> None:
+def test_release_control_missing_live_seed_profile_autoseeds_from_standard_profile_static() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert "run_all_live_seed_profile_missing=0" in script
-    assert 'write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "profile_seed_missing" "true" "0"' in script
-    assert "record_all_test_nonblocking_skipped_step" in script
-    assert 'record_all_test_nonblocking_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing"' in script
-    assert 'record_all_test_nonblocking_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing"' in script
-    assert 'record_all_test_nonblocking_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing"' in script
-    assert 'record_all_test_nonblocking_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing"' in script
+    assert "live_profile_seed_source_dir" in script
+    assert "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_SOURCE_DIR" in script
+    assert "run_all_seed_live_profile_from_standard_profile" in script
+    assert "seeded_from_standard_browser_profile" in script
+    assert "Run-all live tests will now use this copied Docker standard browser profile seed" in script
+    assert "profile_seed_missing_and_standard_profile_unavailable" in script
+    assert "--run-all-tests must execute live-only tests" in script
+    assert 'record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
+    assert 'record_all_test_skipped_step "ask_live" "${ask_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
+    assert 'record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
+    assert 'record_all_test_skipped_step "release_live" "${release_live_log}" "live_profile_seed_missing_and_standard_profile_unavailable"' in script
     assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "true" "0"' in script
     assert 'write_all_test_json_step "$step_name" "$step_log" "$reason" "false" "78"' in script
     assert "full_direct" in script and "import_smoke" in script and "artifact_guard" in script
