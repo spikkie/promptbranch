@@ -550,3 +550,13 @@ Control-surface tokens: v0.1.103.10.42 chatgpt_claudecode_workflow-2_v0.1.103.10
 | v0.1.103.10.43 | repair | release live browser challenge fails fast without manual-login wait | candidate | focused static/syntax/import-plan validation before operator run-all adoption | DOD-179 added; DOD-176..DOD-178 preserved | not accepted/current |
 
 Control-surface tokens: v0.1.103.10.43 chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip docker_live_profile_challenged no manual-login wait
+
+## v0.1.103.10.44
+
+| Version | Type | Slice | Status | Validation | Acceptance |
+|---|---|---|---|---|---|
+| v0.1.103.10.44 | repair | repair release-live challenge fail-fast logging and stop live cascade | candidate | focused static/syntax/import-plan validation before operator run-all adoption | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.44 chatgpt_claudecode_workflow-2_v0.1.103.10.44.zip docker_live_profile_challenged no live cascade after ask_live challenge
+
+Control-surface active slice token: v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade

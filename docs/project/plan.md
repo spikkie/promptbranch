@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
-active candidate version: v0.1.103.10.43
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.43.zip
-next normal slice: v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.44.zip
+active candidate version: v0.1.103.10.44
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.44.zip
+next normal slice: v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1960,3 +1960,8 @@ Scope: preserve all-in-Docker execution and explicit live profiles; after `live_
 ## Active repair slice — v0.1.103.10.43
 
 `v0.1.103.10.43 — release live browser challenge fails fast without manual-login wait` is scoped to release-live challenge handling only. Release-control sets a live fail-fast environment for live conversation bootstrap, `ask_live`, `visual_artifact_roundtrip`, and `release_live`; the browser client converts Cloudflare/Just-a-moment detection into `docker_live_profile_challenged` before manual-login wait. The slice preserves explicit Docker live profiles, `.pb_profile_local_debug_pools` preservation, `/c/...` conversation URL targeting, `--retries 0`, and the no host-CDP/session-manager invariant.
+
+
+## Active repair slice — v0.1.103.10.44
+
+`v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade` repairs the `v0.1.103.10.43` fail-fast implementation bug where Cloudflare challenge handling called `_log()` with a duplicate `stage` argument. It preserves explicit Docker live profiles, live pool preservation, `/c/...` conversation routing, and `--retries 0`, and prevents `visual_artifact_roundtrip` / `release_live` from launching after `ask_live` returns `docker_live_profile_challenged`. No host-CDP/session-manager or copied-profile trust is reintroduced.

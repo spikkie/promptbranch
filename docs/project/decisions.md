@@ -619,3 +619,7 @@ Decision: release-control must not pass a Project home URL directly to `ask_live
 ### v0.1.103.10.43 — release-live Cloudflare challenge is terminal
 
 Release-live browser validation must not ask the operator to prove humanity inside an automation-owned headed Chrome window. If the Docker live profile reaches a Cloudflare/Just-a-moment challenge, release-live mode now fails fast with `docker_live_profile_challenged`, closes the browser context, and records a structured release-control failure. Manual-login waits remain for explicit bootstrap/login workflows, not for release-control live validation.
+
+## Decision — v0.1.103.10.44
+
+`v0.1.103.10.44 — repair release-live challenge fail-fast logging and stop live cascade` keeps the Docker-only live validation architecture. Challenge detection in release-live mode now logs with `challenge_stage` instead of a duplicate `_log(stage=...)` keyword, returns structured `docker_live_profile_challenged`, and prevents later live browser steps from opening once `ask_live` has already proven the live slot is challenged.

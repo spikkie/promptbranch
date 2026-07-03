@@ -3777,7 +3777,7 @@ class ChatGPTBrowserClient:
         self._log(
             "auth",
             "fail-fast challenge detected; refusing manual-login wait",
-            stage=stage,
+            challenge_stage=stage,
             current_url=current_url,
             title=current_title,
             status="docker_live_profile_challenged",
