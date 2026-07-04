@@ -503,4 +503,5 @@ Last release: v0.1.102
 | DOD-180 | release-live challenge fail-fast logging is structured and does not cascade live steps | in_progress | `promptbranch_browser_auth/client.py`; `chatgpt_browser_auth/client.py`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell-script tests | v0.1.103.10.45 |
 
 | DOD-181 | Package version surface is coherent across VERSION, promptbranch_version.py, and pyproject.toml | in_progress | `tests/test_promptbranch_version.py`; Docker build-context version guard | v0.1.103.10.45 |
-| DOD-182 | `docker_live_profile_challenged` is terminal for the ask-live matrix and release-control live cascade | in_progress | `promptbranch_cli.py`; `chatgpt_claudecode_workflow_release_control.sh`; focused CLI/shell tests | v0.1.103.10.46 |
+| DOD-182 | `docker_live_profile_challenged` is terminal for the ask-live matrix and release-control live cascade | in_progress | `promptbranch_cli.py`; `chatgpt_claudecode_workflow_release_control.sh`; focused CLI/shell tests | v0.1.103.10.47 |
+| DOD-183 | Mid-run Cloudflare/backend-403 challenge during response wait is terminal `docker_live_profile_challenged` and does not persist cooldown | in_progress | `promptbranch_browser_auth/client.py`; `chatgpt_browser_auth/client.py`; `tests/test_project_resolve.py` | v0.1.103.10.47 |

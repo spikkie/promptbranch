@@ -35,7 +35,7 @@ def read_doc(name: str) -> str:
 def test_project_control_surface_accepts_deep_repair_version() -> None:
     from promptbranch_project_control import VERSION_RE
 
-    assert VERSION_RE.match("v0.1.103.10.46")
+    assert VERSION_RE.match("v0.1.103.10.47")
     assert VERSION_RE.match("v0.1.104")
     assert VERSION_RE.match("v0.1.104.13.9")
 
@@ -59,7 +59,7 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "v0.1.102" in text
     assert "accepted/current" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.102.zip" in text
-    assert "v0.1.103.10.46" in text
+    assert "v0.1.103.10.47" in text
     assert "standard browser profile default" in text
     assert "candidate" in text
 
@@ -77,7 +77,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.102.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip" in text
     assert "standard browser profile default" in text
 
 
@@ -140,10 +140,10 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.102"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.102.zip"
-    assert data["active_candidate_version"] == "v0.1.103.10.46"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip"
-    assert data["next_normal_version"] == "v0.1.103.10.46"
-    assert data["active_slice"] == "v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control"
+    assert data["active_candidate_version"] == "v0.1.103.10.47"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip"
+    assert data["next_normal_version"] == "v0.1.103.10.47"
+    assert data["active_slice"] == "v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged"
     assert data["next_planned_version_after_acceptance"] == "v0.1.104"
     assert data["next_planned_slice_after_acceptance"] == "Sandbox mutation verification and rollback evidence gate"
     assert data["repair_must_not_advance_scope"] is True
@@ -157,8 +157,8 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.102"
-    assert payload["active_candidate_version"] == "v0.1.103.10.46"
-    assert payload["next_normal_slice"] == "v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control"
+    assert payload["active_candidate_version"] == "v0.1.103.10.47"
+    assert payload["next_normal_slice"] == "v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
 
@@ -175,7 +175,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -200,7 +200,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.103.10.46", "v0.1.104", "v0.1.105", "v0.1.106", "v0.1.107"]:
+    for version in ["v0.1.103.10.47", "v0.1.104", "v0.1.105", "v0.1.106", "v0.1.107"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -209,8 +209,8 @@ def test_project_next_slice_payload_is_derived_from_validated_control_surface() 
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.102.zip"
-    assert payload["next_normal_version"] == "v0.1.103.10.46"
-    assert payload["next_normal_slice"] == "v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control"
+    assert payload["next_normal_version"] == "v0.1.103.10.47"
+    assert payload["next_normal_slice"] == "v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.104"
     assert payload["next_slice_after_acceptance"] == "Sandbox mutation verification and rollback evidence gate"
     assert payload["architecture_invariants_checked"] is True
@@ -229,7 +229,7 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.103.10.46"
+    assert payload["next_normal_version"] == "v0.1.103.10.47"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.104"
 
 

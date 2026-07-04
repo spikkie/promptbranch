@@ -1005,6 +1005,17 @@ class ChatGPTBrowserClient:
         retry_after_seconds: float | None = None,
     ) -> None:
         self._record_rate_limit_event(kind='backend_api_guardrail', trigger=trigger, status=status, url=url, wait_seconds=retry_after_seconds)
+        if bool(getattr(self.config, "fail_fast_on_challenge", False)) and int(status or 0) == 403:
+            self._log(
+                'rate-limit',
+                'backend-api 403 treated as docker live profile challenge; skipping persisted cooldown',
+                trigger=trigger,
+                status=status,
+                url=url,
+                cooldown_skipped=True,
+                challenge_type="docker_live_profile_challenged",
+            )
+            return
         cooldown_seconds = retry_after_seconds
         if cooldown_seconds is None:
             cooldown_seconds = max(0.0, float(self.config.conversation_history_rate_limit_cooldown_seconds))
@@ -2683,7 +2694,14 @@ class ChatGPTBrowserClient:
                 result = self._attach_rate_limit_telemetry(result)
                 self._log("result", f"{operation_name} completed", result_type=type(result).__name__)
                 return result
+            except AuthChallengeRequiredError:
+                raise
             except Exception as exc:
+                await self._raise_fail_fast_midrun_challenge_if_configured(
+                    page,
+                    stage=f"{operation_name}-exception",
+                    exc=exc,
+                )
                 current_url = await self._safe_page_url(page)
                 self._log(
                     "error",
@@ -4152,6 +4170,15 @@ class ChatGPTBrowserClient:
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             timeout_result["ask_phase_timings"] = phase_timings
             return timeout_result
+        except AuthChallengeRequiredError:
+            raise
+        except Exception as exc:
+            await self._raise_fail_fast_midrun_challenge_if_configured(
+                page,
+                stage="response-wait-exception",
+                exc=exc,
+            )
+            raise
         if expect_json:
             answer = self._strip_response_request_nonce(answer, response_context)
         response_wait_returned = time.monotonic()
@@ -22094,6 +22121,11 @@ class ChatGPTBrowserClient:
             attempt += 1
             elapsed_s = asyncio.get_running_loop().time() - start
 
+            await self._raise_fail_fast_midrun_challenge_if_configured(
+                page,
+                stage="response-wait-poll",
+            )
+
             await self._maybe_open_new_project_conversation(
                 page,
                 response_context=response_context,
@@ -22295,7 +22327,15 @@ class ChatGPTBrowserClient:
                     breakdown["response_debug_artifact_skipped_due_to_deadline"] = True
                     last_diagnostic_dump = elapsed_s
 
-            await page.wait_for_timeout(poll_interval_ms)
+            try:
+                await page.wait_for_timeout(poll_interval_ms)
+            except Exception as exc:
+                await self._raise_fail_fast_midrun_challenge_if_configured(
+                    page,
+                    stage="response-wait-page-closed",
+                    exc=exc,
+                )
+                raise
 
         elapsed_s = asyncio.get_running_loop().time() - start
         await self._maybe_open_new_project_conversation(
@@ -22891,11 +22931,76 @@ class ChatGPTBrowserClient:
     def _looks_like_challenge(self, url: str, title: str) -> bool:
         normalized_url = (url or "").lower()
         normalized_title = (title or "").strip().lower()
-        if "__cf_chl_rt_tk=" in normalized_url:
+        if "__cf_chl_rt_tk=" in normalized_url or "__cf_chl_tk=" in normalized_url or "__cf_chl_f_tk=" in normalized_url:
             return True
         if normalized_title in {"", "just a moment...", "just a moment", "checking your browser"}:
             return True
         return any(hint.lower() in normalized_url or hint.lower() in normalized_title for hint in CLOUDFLARE_CHALLENGE_HINTS)
+
+    def _backend_api_guardrail_403_seen(self) -> bool:
+        return any(
+            isinstance(event, dict)
+            and event.get('kind') == 'backend_api_guardrail'
+            and int(event.get('status') or 0) == 403
+            for event in self._rate_limit_events
+        )
+
+    def _recent_backend_api_guardrail_events(self, *, limit: int = 8) -> list[dict[str, object]]:
+        events = [
+            dict(event)
+            for event in self._rate_limit_events
+            if isinstance(event, dict)
+            and event.get('kind') == 'backend_api_guardrail'
+            and int(event.get('status') or 0) == 403
+        ]
+        return events[-max(1, int(limit)):]
+
+    async def _raise_fail_fast_midrun_challenge_if_configured(
+        self,
+        page: Any,
+        *,
+        stage: str,
+        exc: Exception | None = None,
+    ) -> None:
+        if not bool(getattr(self.config, "fail_fast_on_challenge", False)):
+            return
+        current_url = await self._safe_page_url(page)
+        current_title = await self._safe_page_title(page)
+        normalized_url = (current_url or "").strip().lower().rstrip("/")
+        backend_403_seen = self._backend_api_guardrail_403_seen()
+        target_closed_after_guardrail = bool(
+            backend_403_seen
+            and exc is not None
+            and (type(exc).__name__ == "TargetClosedError" or "target page, context or browser has been closed" in str(exc).lower())
+        )
+        root_after_guardrail = bool(backend_403_seen and normalized_url in {"https://chatgpt.com", "https://chat.openai.com"})
+        challenge_url_or_title = self._looks_like_challenge(current_url, current_title)
+        if not (challenge_url_or_title or root_after_guardrail or target_closed_after_guardrail):
+            return
+        text_preview = await self._visible_text_preview(page)
+        guardrail_events = self._recent_backend_api_guardrail_events()
+        self._log(
+            "auth",
+            "fail-fast mid-run challenge detected; refusing cooldown/retry cascade",
+            challenge_stage=stage,
+            current_url=current_url,
+            title=current_title,
+            status="docker_live_profile_challenged",
+            challenge_type="docker_live_profile_challenged",
+            backend_api_guardrail_403_seen=backend_403_seen,
+            target_closed_after_guardrail=target_closed_after_guardrail,
+            root_after_guardrail=root_after_guardrail,
+            exception_type=type(exc).__name__ if exc is not None else None,
+            exception=str(exc) if exc is not None else None,
+            guardrail_events=guardrail_events,
+        )
+        raise AuthChallengeRequiredError(
+            "Docker live profile hit a mid-run Cloudflare/backend-403 challenge; release-live mode must fail fast instead of retrying or persisting cooldown.",
+            challenge_type="docker_live_profile_challenged",
+            page_url=current_url,
+            page_title=current_title,
+            text_preview=text_preview,
+        )
 
     async def _safe_count(self, locator: Any, selector: str) -> int:
         try:

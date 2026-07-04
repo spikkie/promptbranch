@@ -3489,3 +3489,8 @@ def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -
     assert "CHATGPT_FAIL_FAST_ON_CHALLENGE" in automation
     assert "PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE" in automation
     assert 'status = "docker_live_profile_challenged"' in cli
+    assert "fail-fast mid-run challenge detected; refusing cooldown/retry cascade" in browser_client
+    assert "backend-api 403 treated as docker live profile challenge; skipping persisted cooldown" in browser_client
+    assert "response-wait-exception" in browser_client
+    assert "response-wait-page-closed" in browser_client
+    assert "TargetClosedError" in browser_client

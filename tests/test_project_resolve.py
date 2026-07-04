@@ -9,6 +9,7 @@ import pytest
 import promptbranch_browser_auth.client as client_module
 from promptbranch_browser_auth.client import ChatGPTBrowserClient
 from promptbranch_browser_auth.config import ChatGPTBrowserConfig
+from promptbranch_browser_auth.exceptions import AuthChallengeRequiredError
 
 
 @dataclass
@@ -1376,6 +1377,87 @@ def test_note_conversation_history_rate_limit_persists_cooldown_file(tmp_path: P
     assert client._rate_limit_cooldown_path.exists() is True
     assert float(client._rate_limit_cooldown_path.read_text(encoding="utf-8")) == pytest.approx(1_030.0)
 
+
+
+
+def test_backend_api_403_does_not_persist_cooldown_in_release_live_fail_fast_mode(tmp_path: Path, monkeypatch) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    client.config.conversation_history_rate_limit_cooldown_seconds = 180.0
+    monkeypatch.setattr(client_module.time, "time", lambda: 1_000.0)
+
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/me",
+        status=403,
+    )
+
+    telemetry = client._rate_limit_telemetry_snapshot()
+    assert telemetry["backend_api_guardrail_seen"] is True
+    assert client._rate_limit_cooldown_path.exists() is False
+
+
+def test_midrun_target_closed_after_backend_403_maps_to_docker_live_profile_challenged(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/me",
+        status=403,
+    )
+
+    class ClosedPage:
+        url = "https://chatgpt.com/"
+
+        async def title(self) -> str:
+            raise RuntimeError("Target page, context or browser has been closed")
+
+        async def evaluate(self, _script: str):
+            raise RuntimeError("Target page, context or browser has been closed")
+
+    class TargetClosedError(RuntimeError):
+        pass
+
+    with pytest.raises(AuthChallengeRequiredError) as raised:
+        asyncio.run(
+            client._raise_fail_fast_midrun_challenge_if_configured(
+                ClosedPage(),
+                stage="response-wait-page-closed",
+                exc=TargetClosedError("Page.wait_for_timeout: Target page, context or browser has been closed"),
+            )
+        )
+
+    assert raised.value.challenge_type == "docker_live_profile_challenged"
+    assert "mid-run Cloudflare/backend-403 challenge" in str(raised.value)
+
+
+def test_midrun_root_after_backend_403_maps_to_docker_live_profile_challenged(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/gizmos/example",
+        status=403,
+    )
+
+    class RootPage:
+        url = "https://chatgpt.com/"
+
+        async def title(self) -> str:
+            return "ChatGPT"
+
+        async def evaluate(self, _script: str):
+            return ""
+
+    with pytest.raises(AuthChallengeRequiredError) as raised:
+        asyncio.run(
+            client._raise_fail_fast_midrun_challenge_if_configured(
+                RootPage(),
+                stage="response-wait-poll",
+            )
+        )
+
+    assert raised.value.challenge_type == "docker_live_profile_challenged"
 
 def test_respect_rate_limit_cooldown_waits_for_persisted_deadline(tmp_path: Path, monkeypatch) -> None:
     client = _make_client(tmp_path)
