@@ -1397,7 +1397,7 @@ def test_backend_api_403_does_not_persist_cooldown_in_release_live_fail_fast_mod
     assert client._rate_limit_cooldown_path.exists() is False
 
 
-def test_midrun_target_closed_after_backend_403_maps_to_docker_live_profile_challenged(tmp_path: Path) -> None:
+def test_midrun_target_closed_after_backend_403_maps_to_standard_profile_challenged(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.fail_fast_on_challenge = True
     client._note_backend_api_guardrail(
@@ -1427,11 +1427,11 @@ def test_midrun_target_closed_after_backend_403_maps_to_docker_live_profile_chal
             )
         )
 
-    assert raised.value.challenge_type == "docker_live_profile_challenged"
-    assert "mid-run Cloudflare/backend-403 challenge" in str(raised.value)
+    assert raised.value.challenge_type == "docker_standard_profile_challenged"
+    assert "Cloudflare/backend-403 guardrail" in str(raised.value)
 
 
-def test_midrun_root_after_backend_403_maps_to_docker_live_profile_challenged(tmp_path: Path) -> None:
+def test_midrun_root_after_backend_403_maps_to_standard_profile_challenged(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     client.config.fail_fast_on_challenge = True
     client._note_backend_api_guardrail(
@@ -1457,7 +1457,7 @@ def test_midrun_root_after_backend_403_maps_to_docker_live_profile_challenged(tm
             )
         )
 
-    assert raised.value.challenge_type == "docker_live_profile_challenged"
+    assert raised.value.challenge_type == "docker_standard_profile_challenged"
 
 def test_respect_rate_limit_cooldown_waits_for_persisted_deadline(tmp_path: Path, monkeypatch) -> None:
     client = _make_client(tmp_path)

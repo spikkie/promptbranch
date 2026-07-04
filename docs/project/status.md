@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip
-active candidate version: v0.1.103.10.47
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip
-next normal slice: v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip
+active candidate version: v0.1.103.10.48
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip
+next normal slice: v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -997,8 +997,13 @@ Control-surface active slice token: v0.1.103.10.42 — preserve Docker live prof
 `v0.1.103.10.45 — repair package version surface for Docker build context coherence` repairs the `v0.1.103.10.43` fail-fast implementation bug where Cloudflare challenge handling called `_log()` with a duplicate `stage` argument. It preserves explicit Docker live profiles, live pool preservation, `/c/...` conversation routing, and `--retries 0`, and prevents `visual_artifact_roundtrip` / `release_live` from launching after `ask_live` returns `docker_live_profile_challenged`. No host-CDP/session-manager or copied-profile trust is reintroduced.
 
 
-## Active repair slice — v0.1.103.10.47
+## Active repair slice — v0.1.103.10.48
 
-`v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged` preserves the Docker-only live validation line from `v0.1.103.10.40` through `v0.1.103.10.45`, then repairs the remaining mid-run challenge classification bug: backend-api 403 and Cloudflare evidence observed during response wait are classified as terminal `docker_live_profile_challenged`, `TargetClosedError` after that evidence is mapped to the same structured status, and release-live mode does not persist the conversation-history cooldown for that challenge path.
+`v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` preserves the Docker-only live validation line from `v0.1.103.10.40` through `v0.1.103.10.45`, then repairs the remaining mid-run challenge classification bug: backend-api 403 and Cloudflare evidence observed during response wait are classified as terminal `docker_live_profile_challenged`, `TargetClosedError` after that evidence is mapped to the same structured status, and release-live mode does not persist the conversation-history cooldown for that challenge path.
 
 Out of scope: host-CDP/session-manager, copied-profile trust, browser architecture redesign, and ChatGPT Project deletion.
+
+
+## Active repair slice — v0.1.103.10.48
+
+`v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` preserves the Docker-only live-validation line and extends fail-fast challenge classification beyond ask-live. Observed ChatGPT `/backend-api/...` 403 responses are diagnostic guardrail evidence only, not an operational API contract. Release-control now enables fail-fast challenge handling for full/direct, localhost/service, live preflight, project selection, and live ask paths; after a full-validation backend guardrail, remaining live browser phases are skipped and import/artifact guards still run.

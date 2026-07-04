@@ -3485,12 +3485,33 @@ def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -
     assert "refusing manual-login wait" in browser_client
     assert "challenge_stage=stage" in browser_client
     assert "\n            stage=stage," not in browser_client
-    assert 'challenge_type="docker_live_profile_challenged"' in browser_client
+    assert "challenge_type=challenge_type" in browser_client
+    assert "docker_live_profile_challenged" in browser_client
+    assert "docker_standard_profile_challenged" in browser_client
+    assert "browser_backend_403_guardrail" in browser_client
     assert "CHATGPT_FAIL_FAST_ON_CHALLENGE" in automation
     assert "PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE" in automation
     assert 'status = "docker_live_profile_challenged"' in cli
-    assert "fail-fast mid-run challenge detected; refusing cooldown/retry cascade" in browser_client
-    assert "backend-api 403 treated as docker live profile challenge; skipping persisted cooldown" in browser_client
+    assert "fail-fast mid-run browser challenge detected; refusing cooldown/retry cascade" in browser_client
+    assert "backend-api 403 treated as browser challenge guardrail; skipping persisted cooldown" in browser_client
     assert "response-wait-exception" in browser_client
     assert "response-wait-page-closed" in browser_client
     assert "TargetClosedError" in browser_client
+
+
+
+def test_release_control_backend_api_403_guardrail_is_terminal_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    browser_client = (root / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+
+    assert "run_all_log_has_backend_api_guardrail_403" in script
+    assert "status: browser_backend_403_guardrail" in script
+    assert "refusing rate-limit retry/cooldown" in script
+    assert "skipped_browser_backend_403_guardrail" in script
+    assert "CHATGPT_FAIL_FAST_ON_CHALLENGE=1" in script
+    assert "CHATGPT_FAIL_FAST_ON_CHALLENGE:" in compose
+    assert "backend-api 403 treated as browser challenge guardrail" in browser_client
+    assert "backend_403_guardrail_terminal" in browser_client
+    assert "Browser profile hit a Cloudflare/backend-403 guardrail" in browser_client

@@ -101,6 +101,7 @@ service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
 service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
 test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
 workflow_rc=0
+run_all_browser_guardrail_seen=0
 
 default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
 packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
@@ -1821,6 +1822,7 @@ run_pre_source_add_docker_compose() {
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
+  CHATGPT_FAIL_FAST_ON_CHALLENGE="${CHATGPT_FAIL_FAST_ON_CHALLENGE:-1}" \
   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
   PROMPTBRANCH_VERSION="${ver#v}" \
@@ -2947,6 +2949,7 @@ run_docker_compose() {
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
+  CHATGPT_FAIL_FAST_ON_CHALLENGE="${CHATGPT_FAIL_FAST_ON_CHALLENGE:-1}" \
   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
   PROMPTBRANCH_VERSION="${ver#v}" \
@@ -3473,6 +3476,63 @@ if [[ ${skip_service} -eq 0 ]]; then
     wait_for_promptbranch_service_version || fail "service version verification failed"
   fi
 fi
+
+run_all_log_has_backend_api_guardrail_403() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import re
+import sys
+raw = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+text = "\n".join(
+    line for line in raw.splitlines()
+    if not ("[selector] selector probe" in line and "visible=False" in line)
+)
+if re.search(r"backend-api[^\n'\"]+\b403\b", text, flags=re.IGNORECASE):
+    raise SystemExit(0)
+if re.search(r"status[=:]\s*403", text, flags=re.IGNORECASE) and "backend-api" in text.lower():
+    raise SystemExit(0)
+if "backend-api 403 treated as browser challenge guardrail" in text.lower():
+    raise SystemExit(0)
+if "backend-api 403 treated as docker live profile challenge" in text.lower():
+    raise SystemExit(0)
+if "browser_backend_403_guardrail" in text or "docker_standard_profile_challenged" in text or "docker_live_profile_challenged" in text:
+    if "backend_api_guardrail" in text or "backend-api" in text.lower():
+        raise SystemExit(0)
+decoder = json.JSONDecoder()
+for idx, char in enumerate(text):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(text[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    if value.get("backend_api_guardrail_403_seen") is True or value.get("backend_403_guardrail_terminal") is True:
+        raise SystemExit(0)
+    if str(value.get("challenge_type") or value.get("status") or "") in {"browser_backend_403_guardrail", "docker_standard_profile_challenged", "docker_live_profile_challenged"}:
+        raise SystemExit(0)
+    telemetry = value.get("rate_limit_telemetry")
+    if isinstance(telemetry, dict):
+        events = telemetry.get("service_rate_limit_events")
+        if isinstance(events, list):
+            for event in events:
+                if isinstance(event, dict) and event.get("kind") == "backend_api_guardrail" and int(event.get("status") or 0) == 403:
+                    raise SystemExit(0)
+    summary = value.get("rate_limit_summary")
+    if isinstance(summary, dict):
+        events = summary.get("service_rate_limit_events")
+        if isinstance(events, list):
+            for event in events:
+                if isinstance(event, dict) and event.get("kind") == "backend_api_guardrail" and int(event.get("status") or 0) == 403:
+                    raise SystemExit(0)
+raise SystemExit(1)
+INNERPY
+}
 
 run_all_log_has_rate_limit_evidence() {
   local log_path="$1"
@@ -4174,23 +4234,27 @@ run_full_test_transport() {
       return 0
     fi
   fi
-  printf '+ CHATGPT_SERVICE_BASE_URL=%s PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
+  printf '+ CHATGPT_SERVICE_BASE_URL=%s CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
   print_command_line "${full_test_cmd[@]}"
   printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+  CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
-  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_recovered_rate_limit_success "${selected_full_log}"; then
+  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403 "${selected_full_log}"; then
+    echo "status: browser_backend_403_guardrail" | tee -a "${selected_full_log}" >&2
+    echo "ERROR: full_${label} observed backend-api 403 guardrail; treating it as a terminal browser challenge and refusing rate-limit retry/cooldown." | tee -a "${selected_full_log}" >&2
+    run_all_browser_guardrail_seen=1
+  elif [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_recovered_rate_limit_success "${selected_full_log}"; then
     echo "WARN: recovered rate-limit evidence detected for full_${label}; functional verification passed, so release-control will not retry the whole step." | tee -a "${selected_full_log}" >&2
     test_rc=0
   elif [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 && ${run_all_rate_limit_retries} -gt 0 ]] && run_all_log_has_rate_limit_evidence "${selected_full_log}"; then
     if run_all_rate_limit_cooldown_sleep "full_${label}" "${selected_full_log}"; then
       echo "== pb test transport retry after rate-limit cooldown: ${label} ==" | tee -a "${selected_full_log}"
-      printf '+ CHATGPT_SERVICE_BASE_URL=%s timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
+      printf '+ CHATGPT_SERVICE_BASE_URL=%s CHATGPT_FAIL_FAST_ON_CHALLENGE=1 timeout --foreground %s ' "${base_url}" "${test_timeout_seconds}"
       print_command_line "${full_test_cmd[@]}"
       printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-      CHATGPT_SERVICE_BASE_URL="${base_url}" PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+      CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
       test_rc=${PIPESTATUS[0]}
     else
       echo "WARN: suppressing rate-limit retry for full_${label}; browser cooldown retry is forbidden for localhost/offline validation groups." | tee -a "${selected_full_log}" >&2
@@ -4948,8 +5012,8 @@ run_all_login_check_profile() {
   local profile_dir="$2"
   local log_path="$3"
   local rc=0
-  echo "+ pb --profile-dir ${profile_dir} login-check 2>&1 | tee -a ${log_path}"
-  pb --profile-dir "${profile_dir}" login-check 2>&1 | tee -a "${log_path}"
+  echo "+ CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir ${profile_dir} login-check 2>&1 | tee -a ${log_path}"
+  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${profile_dir}" login-check 2>&1 | tee -a "${log_path}"
   rc=${PIPESTATUS[0]}
   if [[ ${rc} -ne 0 ]]; then
     cat <<MSG | tee -a "${log_path}" >&2
@@ -5194,7 +5258,7 @@ run_all_ensure_shared_live_conversation() {
   echo "live_conversation_strategy: create_new_task_inside_shared_live_project" | tee -a "${run_all_project_ensure_log}"
   echo "live_conversation_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
   echo "+ pb --profile-dir ${live_profile_seed_dir} use ${run_all_shared_project_url} --json 2>&1 | tee -a ${run_all_project_ensure_log}"
-  pb --profile-dir "${live_profile_seed_dir}" use "${run_all_shared_project_url}" --json 2>&1 | tee -a "${run_all_project_ensure_log}"
+  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_seed_dir}" use "${run_all_shared_project_url}" --json 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   if [[ ${command_rc} -ne 0 ]]; then
     echo "ERROR: live_conversation_url_missing: failed to select shared live project before conversation bootstrap" | tee -a "${run_all_project_ensure_log}" >&2
@@ -5234,7 +5298,7 @@ run_all_ensure_shared_live_project() {
   echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
   : > "${run_all_project_ensure_log}"
   echo "+ pb --profile-dir ${live_profile_seed_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
-  pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
+  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   rc=${command_rc}
 
@@ -5284,6 +5348,29 @@ run_all_live_validation_steps() {
   echo "continue_on_failure: true"
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: unique_project_delete_frozen_retained"
+
+  if [[ ${run_all_browser_guardrail_seen} -eq 1 ]]; then
+    echo "ERROR: browser_backend_403_guardrail observed during full validation; skipping live browser phases to avoid using a poisoned browser/profile state." >&2
+    record_all_test_skipped_step "live_profile_preflight" "${live_profile_preflight_json}" "skipped_browser_backend_403_guardrail"
+    record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_browser_backend_403_guardrail"
+    record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_browser_backend_403_guardrail"
+    record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_browser_backend_403_guardrail"
+    record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_browser_backend_403_guardrail"
+    run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+    run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
+    write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"
+    if ! python3 - "${all_tests_summary_json}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+raise SystemExit(0 if payload.get("ok") is True and payload.get("final_verdict") == "GO" else 1)
+INNERPY
+    then
+      workflow_rc=1
+    fi
+    return 0
+  fi
 
   if run_all_live_profile_preflight; then
     if run_all_ensure_shared_live_project; then

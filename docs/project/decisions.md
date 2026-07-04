@@ -625,6 +625,11 @@ Release-live browser validation must not ask the operator to prove humanity insi
 `v0.1.103.10.45 — repair package version surface for Docker build context coherence` keeps the Docker-only live validation architecture. Challenge detection in release-live mode now logs with `challenge_stage` instead of a duplicate `_log(stage=...)` keyword, returns structured `docker_live_profile_challenged`, and prevents later live browser steps from opening once `ask_live` has already proven the live slot is challenged.
 
 
-## Decision — v0.1.103.10.47
+## Decision — v0.1.103.10.48
 
-`v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged` keeps the all-in-Docker live validation path and makes a challenged release-live slot terminal across both the internal `ask-live` matrix and release-control. The repair uses fixed-string/JSON-aware challenge detection and records later live browser steps as skipped-blocked instead of opening new Chrome contexts. No host-CDP/session-manager or copied-profile trust is reintroduced.
+`v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` keeps the all-in-Docker live validation path and makes a challenged release-live slot terminal across both the internal `ask-live` matrix and release-control. The repair uses fixed-string/JSON-aware challenge detection and records later live browser steps as skipped-blocked instead of opening new Chrome contexts. No host-CDP/session-manager or copied-profile trust is reintroduced.
+
+
+## Active repair slice — v0.1.103.10.48
+
+`v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` preserves the Docker-only live-validation line and extends fail-fast challenge classification beyond ask-live. Observed ChatGPT `/backend-api/...` 403 responses are diagnostic guardrail evidence only, not an operational API contract. Release-control now enables fail-fast challenge handling for full/direct, localhost/service, live preflight, project selection, and live ask paths; after a full-validation backend guardrail, remaining live browser phases are skipped and import/artifact guards still run.

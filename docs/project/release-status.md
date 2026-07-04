@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip
-active candidate version: v0.1.103.10.47
-next normal slice: v0.1.103.10.47 — treat mid-run Cloudflare/backend-403 challenge as terminal docker_live_profile_challenged
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip
+active candidate version: v0.1.103.10.48
+next normal slice: v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -562,10 +562,15 @@ Control-surface tokens: v0.1.103.10.45 chatgpt_claudecode_workflow-2_v0.1.103.10
 Control-surface active slice token: v0.1.103.10.45 — repair package version surface for Docker build context coherence
 
 
-## v0.1.103.10.47
+## v0.1.103.10.48
 
 | version | type | slice | status | validation | DoD movement | adoption |
 |---|---|---|---|---|---|---|
-| v0.1.103.10.47 | repair | treat mid-run Cloudflare/backend-403 challenge as terminal `docker_live_profile_challenged` | candidate | focused static/syntax/import-plan validation before operator run-all adoption | DOD-183 added; DOD-176..DOD-182 preserved | not accepted/current |
+| v0.1.103.10.48 | repair | treat mid-run Cloudflare/backend-403 challenge as terminal `docker_live_profile_challenged` | candidate | focused static/syntax/import-plan validation before operator run-all adoption | DOD-183 added; DOD-176..DOD-182 preserved | not accepted/current |
 
-Control-surface tokens: v0.1.103.10.47 chatgpt_claudecode_workflow-2_v0.1.103.10.47.zip mid-run backend-403 TargetClosedError maps to docker_live_profile_challenged no cooldown retry cascade
+Control-surface tokens: v0.1.103.10.48 chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip mid-run backend-403 TargetClosedError maps to docker_live_profile_challenged no cooldown retry cascade
+
+
+## v0.1.103.10.48
+
+`v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` preserves the Docker-only live-validation line and extends fail-fast challenge classification beyond ask-live. Observed ChatGPT `/backend-api/...` 403 responses are diagnostic guardrail evidence only, not an operational API contract. Release-control now enables fail-fast challenge handling for full/direct, localhost/service, live preflight, project selection, and live ask paths; after a full-validation backend guardrail, remaining live browser phases are skipped and import/artifact guards still run.

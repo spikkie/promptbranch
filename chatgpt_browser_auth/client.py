@@ -629,6 +629,23 @@ class ChatGPTBrowserClient:
             cooldown_until=cooldown_until,
         )
 
+    def _browser_challenge_type_for_guardrail(self) -> str:
+        """Return the structured challenge status for the active browser profile.
+
+        ChatGPT /backend-api endpoints are private web-app internals.  Promptbranch
+        must not treat them as an operational API contract; observed 403 responses
+        are diagnostic evidence that the current browser/profile is challenged or
+        forbidden.  The returned value identifies which profile surface should be
+        re-bootstrapped by the operator.
+        """
+
+        profile = str(getattr(self.config, "profile_dir", "") or "").replace("\\", "/").lower()
+        if ".pb_profile_local_debug_pools" in profile or "release-live/slots" in profile:
+            return "docker_live_profile_challenged"
+        if ".pb_profile/browser/default" in profile or profile.endswith("/app/profile") or profile.endswith("/profile"):
+            return "docker_standard_profile_challenged"
+        return "browser_backend_403_guardrail"
+
     def _note_backend_api_guardrail(
         self,
         *,
@@ -639,14 +656,16 @@ class ChatGPTBrowserClient:
     ) -> None:
         self._record_rate_limit_event(kind='backend_api_guardrail', trigger=trigger, status=status, url=url, wait_seconds=retry_after_seconds)
         if bool(getattr(self.config, "fail_fast_on_challenge", False)) and int(status or 0) == 403:
+            challenge_type = self._browser_challenge_type_for_guardrail()
             self._log(
                 'rate-limit',
-                'backend-api 403 treated as docker live profile challenge; skipping persisted cooldown',
+                'backend-api 403 treated as browser challenge guardrail; skipping persisted cooldown',
                 trigger=trigger,
                 status=status,
                 url=url,
                 cooldown_skipped=True,
-                challenge_type="docker_live_profile_challenged",
+                challenge_type=challenge_type,
+                backend_api_guardrail_terminal=True,
             )
             return
         cooldown_seconds = retry_after_seconds
@@ -3832,17 +3851,19 @@ class ChatGPTBrowserClient:
         current_title = await self._safe_page_title(page)
         if not self._looks_like_challenge(current_url, current_title):
             return
+        challenge_type = self._browser_challenge_type_for_guardrail()
         self._log(
             "auth",
             "fail-fast challenge detected; refusing manual-login wait",
             challenge_stage=stage,
             current_url=current_url,
             title=current_title,
-            status="docker_live_profile_challenged",
+            status=challenge_type,
+            challenge_type=challenge_type,
         )
         raise AuthChallengeRequiredError(
-            "Docker live profile hit a Cloudflare/browser challenge; release-live mode must fail fast instead of waiting for manual login.",
-            challenge_type="docker_live_profile_challenged",
+            "Browser profile hit a Cloudflare/browser challenge; release validation must fail fast instead of waiting for manual login.",
+            challenge_type=challenge_type,
             page_url=current_url,
             page_title=current_title,
             text_preview=await self._visible_text_preview(page),
@@ -11324,19 +11345,22 @@ class ChatGPTBrowserClient:
         )
         root_after_guardrail = bool(backend_403_seen and normalized_url in {"https://chatgpt.com", "https://chat.openai.com"})
         challenge_url_or_title = self._looks_like_challenge(current_url, current_title)
-        if not (challenge_url_or_title or root_after_guardrail or target_closed_after_guardrail):
+        backend_403_guardrail_terminal = bool(backend_403_seen)
+        if not (challenge_url_or_title or root_after_guardrail or target_closed_after_guardrail or backend_403_guardrail_terminal):
             return
         text_preview = await self._visible_text_preview(page)
         guardrail_events = self._recent_backend_api_guardrail_events()
+        challenge_type = self._browser_challenge_type_for_guardrail()
         self._log(
             "auth",
-            "fail-fast mid-run challenge detected; refusing cooldown/retry cascade",
+            "fail-fast mid-run browser challenge detected; refusing cooldown/retry cascade",
             challenge_stage=stage,
             current_url=current_url,
             title=current_title,
-            status="docker_live_profile_challenged",
-            challenge_type="docker_live_profile_challenged",
+            status=challenge_type,
+            challenge_type=challenge_type,
             backend_api_guardrail_403_seen=backend_403_seen,
+            backend_403_guardrail_terminal=backend_403_guardrail_terminal,
             target_closed_after_guardrail=target_closed_after_guardrail,
             root_after_guardrail=root_after_guardrail,
             exception_type=type(exc).__name__ if exc is not None else None,
@@ -11344,8 +11368,8 @@ class ChatGPTBrowserClient:
             guardrail_events=guardrail_events,
         )
         raise AuthChallengeRequiredError(
-            "Docker live profile hit a mid-run Cloudflare/backend-403 challenge; release-live mode must fail fast instead of retrying or persisting cooldown.",
-            challenge_type="docker_live_profile_challenged",
+            "Browser profile hit a Cloudflare/backend-403 guardrail; release validation must fail fast instead of retrying, waiting for timeout, or persisting cooldown.",
+            challenge_type=challenge_type,
             page_url=current_url,
             page_title=current_title,
             text_preview=text_preview,
