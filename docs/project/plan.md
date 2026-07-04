@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip
-active candidate version: v0.1.103.10.45
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip
-next normal slice: v0.1.103.10.45 — repair package version surface for Docker build context coherence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip
+active candidate version: v0.1.103.10.46
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip
+next normal slice: v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1965,3 +1965,10 @@ Scope: preserve all-in-Docker execution and explicit live profiles; after `live_
 ## Active repair slice — v0.1.103.10.45
 
 `v0.1.103.10.45 — repair package version surface for Docker build context coherence` repairs the `v0.1.103.10.43` fail-fast implementation bug where Cloudflare challenge handling called `_log()` with a duplicate `stage` argument. It preserves explicit Docker live profiles, live pool preservation, `/c/...` conversation routing, and `--retries 0`, and prevents `visual_artifact_roundtrip` / `release_live` from launching after `ask_live` returns `docker_live_profile_challenged`. No host-CDP/session-manager or copied-profile trust is reintroduced.
+
+
+## Active repair slice — v0.1.103.10.46
+
+`v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control` preserves the Docker-only live validation line from `v0.1.103.10.40` through `v0.1.103.10.45`, then repairs the remaining orchestration bug: once `ask-live` returns `docker_live_profile_challenged`, the ask-live matrix stops immediately and release-control records the later live browser steps as `skipped_ask_live_docker_live_profile_challenged` instead of launching more browser contexts. Challenge detection now uses fixed-string/JSON-aware detection rather than the broken regex path.
+
+Out of scope: host-CDP/session-manager, copied-profile trust, browser architecture redesign, and ChatGPT Project deletion.

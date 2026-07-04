@@ -12271,6 +12271,52 @@ def test_ask_live_failed_response_does_not_report_sentinel_match(monkeypatch) ->
     assert result["answer_text_length"] == 0
     assert "ASK_LIVE_FILE_ATTACHMENT_UNIT" in result["answer_text_preview"]
 
+def test_ask_live_challenge_is_terminal_for_step_matrix(monkeypatch, capsys, tmp_path) -> None:
+    from promptbranch_cli import main
+
+    conversation_url = "https://chatgpt.com/g/g-p-55555555555555555555555555555555-live/c/challenged"
+
+    class FakeBackend:
+        def __init__(self):
+            self.ask_count = 0
+
+        def state_snapshot(self):
+            return {}
+
+        async def ask(self, *, prompt: str, attachment_paths=None, conversation_url=None, expect_json=False, keep_open=False, retries=None, file_path=None, prefer_button_submit=False):
+            self.ask_count += 1
+            assert self.ask_count == 1, "ask-live must stop the matrix after docker_live_profile_challenged"
+            return {
+                "ok": False,
+                "status": "docker_live_profile_challenged",
+                "challenge_type": "docker_live_profile_challenged",
+                "error_type": "AuthChallengeRequiredError",
+                "conversation_url": conversation_url,
+            }
+
+    backend = FakeBackend()
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: backend)
+
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "ask-live",
+        "--json",
+        "--run-id", "CHALLENGE",
+        "--conversation-url", conversation_url,
+        "--keep-project",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert backend.ask_count == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "docker_live_profile_challenged"
+    assert payload["terminal_challenge"] is True
+    assert payload["challenge_type"] == "docker_live_profile_challenged"
+    assert payload["step_count"] == 1
+    assert payload["steps"][0]["status"] == "docker_live_profile_challenged"
+
+
 def test_visual_artifact_roundtrip_prompt_hardens_download_url_json_syntax() -> None:
     from promptbranch_cli import _visual_artifact_roundtrip_prompt
 

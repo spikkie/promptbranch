@@ -5117,11 +5117,66 @@ print(candidates[-1])
 INNERPY
 }
 
+run_all_log_has_docker_live_profile_challenge() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  grep -Fqi "docker_live_profile_challenged" "${log_path}"
+}
+
 run_all_log_has_cloudflare_challenge() {
   local log_path="$1"
   [[ -f "${log_path}" ]] || return 1
-  grep -Eiq 'Just a moment|__cf_chl|challenge_detected[^
-]*(true|True)|Cloudflare|auth_challenge_detected' "${log_path}"
+  if run_all_log_has_docker_live_profile_challenge "${log_path}"; then
+    return 0
+  fi
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+lowered = text.lower()
+fixed_markers = (
+    "just a moment",
+    "__cf_chl",
+    "cloudflare",
+    "auth_challenge_detected",
+    "docker_live_profile_challenged",
+)
+if any(marker in lowered for marker in fixed_markers):
+    raise SystemExit(0)
+if "challenge_detected" in lowered and ("true" in lowered or "=true" in lowered or ": true" in lowered):
+    raise SystemExit(0)
+
+decoder = json.JSONDecoder()
+for idx, char in enumerate(text):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(text[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "")
+        challenge_type = str(item.get("challenge_type") or item.get("response_challenge_type") or "")
+        if status == "docker_live_profile_challenged" or challenge_type == "docker_live_profile_challenged":
+            raise SystemExit(0)
+        if item.get("challenge_detected") is True:
+            raise SystemExit(0)
+        for nested in item.values():
+            if isinstance(nested, dict):
+                stack.append(nested)
+            elif isinstance(nested, list):
+                stack.extend(v for v in nested if isinstance(v, dict))
+raise SystemExit(1)
+INNERPY
 }
 
 run_all_ensure_shared_live_conversation() {
@@ -5239,7 +5294,7 @@ run_all_live_validation_steps() {
         record_all_test_skipped_step "release_live" "${release_live_log}" "live_conversation_url_missing"
       else
         if ! run_all_json_step "ask_live" "${ask_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json; then
-          if run_all_log_has_cloudflare_challenge "${ask_live_log}"; then
+          if run_all_log_has_docker_live_profile_challenge "${ask_live_log}"; then
             echo "ERROR: ask_live returned docker_live_profile_challenged; skipping remaining live browser steps to avoid a challenged-profile cascade." | tee -a "${ask_live_log}" >&2
             record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"
             record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_ask_live_docker_live_profile_challenged"

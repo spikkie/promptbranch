@@ -3470,10 +3470,14 @@ def test_release_control_live_steps_fail_fast_on_cloudflare_challenge_static() -
     assert "run_all_log_has_cloudflare_challenge" in script
     assert "docker_live_profile_challenged" in script
     assert "not retrying this live browser step" in script
-    assert "Just a moment|__cf_chl" in script
+    assert "run_all_log_has_docker_live_profile_challenge" in script
+    assert 'grep -Fqi "docker_live_profile_challenged"' in script
+    assert "just a moment" in script
+    assert "__cf_chl" in script
     assert 'if [[ ${step_rc} -ne 0 ]] && [[ "${step_name}" == "ask_live"' in script
     assert "ask_live returned docker_live_profile_challenged; skipping remaining live browser steps" in script
     assert "skipped_ask_live_docker_live_profile_challenged" in script
+    assert "grep -Eiq" not in script
     assert "return ${step_rc}" in script
     assert "--retries 0 --json" in script
     assert "PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1" in script

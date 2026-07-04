@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip
-active candidate version: v0.1.103.10.45
-next normal slice: v0.1.103.10.45 — repair package version surface for Docker build context coherence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip
+active candidate version: v0.1.103.10.46
+next normal slice: v0.1.103.10.46 — make docker_live_profile_challenged terminal for live test matrix and release-control
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -560,3 +560,12 @@ Control-surface tokens: v0.1.103.10.43 chatgpt_claudecode_workflow-2_v0.1.103.10
 Control-surface tokens: v0.1.103.10.45 chatgpt_claudecode_workflow-2_v0.1.103.10.45.zip docker_live_profile_challenged no live cascade after ask_live challenge
 
 Control-surface active slice token: v0.1.103.10.45 — repair package version surface for Docker build context coherence
+
+
+## v0.1.103.10.46
+
+| version | type | slice | status | validation | DoD movement | adoption |
+|---|---|---|---|---|---|---|
+| v0.1.103.10.46 | repair | make `docker_live_profile_challenged` terminal for ask-live matrix and release-control | candidate | focused static/syntax/import-plan validation before operator run-all adoption | DOD-182 added; DOD-176..DOD-181 preserved | not accepted/current |
+
+Control-surface tokens: v0.1.103.10.46 chatgpt_claudecode_workflow-2_v0.1.103.10.46.zip docker_live_profile_challenged terminal ask_live matrix no live cascade after ask_live challenge

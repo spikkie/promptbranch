@@ -6,6 +6,7 @@
 
 | Version | Slice | Status | Scope | Out of scope |
 |---|---|---|---|---|
+| v0.1.103.10.46 | make docker_live_profile_challenged terminal for live test matrix and release-control | active | Stop ask-live and later live browser steps immediately after a challenged Docker live slot | host-CDP/session-manager, copied-profile trust, browser architecture redesign, Project deletion |
 | v0.1.103.10.45 | repair package version surface for Docker build context coherence | active | Keep all-in-Docker live validation and repair version coherence across VERSION, promptbranch_version.py, and pyproject.toml without weakening Docker stale-context guards | host-CDP/session-manager, copied-profile trust, browser architecture redesign, Project deletion |
 | v0.1.104 | Sandbox mutation verification and rollback evidence gate | planned_after_acceptance | Verify sandbox mutation result evidence and define rollback/stop gates | broader correction workflows, deployment |
 | v0.1.105 | Sandbox correction promotion readiness check | planned | Decide whether sandbox-only correction evidence is ready for broader controlled workflows | deployment, autonomous promotion |

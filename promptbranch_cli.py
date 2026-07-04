@@ -20896,6 +20896,7 @@ async def _run_ask_live_step_once(
             "name": name,
             "ok": False,
             "status": status,
+            "challenge_type": "docker_live_profile_challenged" if status == "docker_live_profile_challenged" else None,
             "error": str(exc),
             "error_type": exc.__class__.__name__,
             "duration_seconds": round(time.monotonic() - started, 3),
@@ -20987,6 +20988,23 @@ async def _run_ask_live_step_once(
         "attachment_paths": [str(path) for path in attachment_paths or []],
         "duration_seconds": round(time.monotonic() - started, 3),
     }
+
+
+def _ask_live_step_is_docker_live_profile_challenged(result: dict[str, Any]) -> bool:
+    """Return True when an ask-live child result is a terminal Docker live profile challenge."""
+
+    status = str(result.get("status") or "")
+    challenge_type = str(result.get("challenge_type") or result.get("response_challenge_type") or "")
+    error_type = str(result.get("error_type") or result.get("response_error_type") or "")
+    return bool(
+        status == "docker_live_profile_challenged"
+        or challenge_type == "docker_live_profile_challenged"
+        or error_type in {"BotChallengeError", "AuthChallengeRequiredError"}
+    )
+
+
+def _ask_live_steps_have_terminal_docker_live_profile_challenge(steps: list[dict[str, Any]]) -> bool:
+    return any(_ask_live_step_is_docker_live_profile_challenged(step) for step in steps)
 
 
 def _ask_live_transient_first_turn_retry_candidate(result: dict[str, Any], *, name: str, attachment_paths: list[str] | None) -> bool:
@@ -21494,7 +21512,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     transient_retry_attempts=1,
                 ))
 
-            if "repeated_stale_first" in selected_steps:
+            if "repeated_stale_first" in selected_steps and not _ask_live_steps_have_terminal_docker_live_profile_challenge(steps):
                 steps.append(await _run_ask_live_step(
                     backend,
                     args,
@@ -21505,7 +21523,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     expected_project_home_url=test_project_url,
                 ))
 
-            if "repeated_stale_second" in selected_steps:
+            if "repeated_stale_second" in selected_steps and not _ask_live_steps_have_terminal_docker_live_profile_challenge(steps):
                 steps.append(await _run_ask_live_step(
                     backend,
                     args,
@@ -21516,7 +21534,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     expected_project_home_url=test_project_url,
                 ))
 
-            if "prompt_file" in selected_steps:
+            if "prompt_file" in selected_steps and not _ask_live_steps_have_terminal_docker_live_profile_challenge(steps):
                 prompt_file = temp_dir / "prompt_file.md"
                 prompt_file.write_text(
                     f"Return exactly the single token {sentinels['prompt_file']} and nothing else.\n",
@@ -21533,7 +21551,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     prefer_button_submit=True,
                 ))
 
-            if "file_attachment" in selected_steps:
+            if "file_attachment" in selected_steps and not _ask_live_steps_have_terminal_docker_live_profile_challenge(steps):
                 attachment = temp_dir / "ask_live_attachment.txt"
                 attachment.write_text(f"sentinel={sentinels['file_attachment']}\n", encoding="utf-8")
                 steps.append(await _run_ask_live_step(
@@ -21546,7 +21564,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
                     expected_project_home_url=test_project_url,
                 ))
 
-            if "prompt_file_with_attachment" in selected_steps:
+            if "prompt_file_with_attachment" in selected_steps and not _ask_live_steps_have_terminal_docker_live_profile_challenge(steps):
                 attachment = temp_dir / "ask_live_prompt_file_attachment.txt"
                 attachment.write_text(f"sentinel={sentinels['prompt_file_with_attachment']}\n", encoding="utf-8")
                 prompt_file = temp_dir / "read_attachment_prompt.md"
@@ -21580,6 +21598,7 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
     rate_limit_telemetry = _merge_rate_limit_telemetry(setup_result, *(step.get("rate_limit_telemetry") for step in steps), cleanup_result)
     rate_limit_contaminated = _rate_limit_telemetry_contaminated(rate_limit_telemetry)
     rate_limit_recovered = _rate_limit_telemetry_recovered(rate_limit_telemetry)
+    challenged = _ask_live_steps_have_terminal_docker_live_profile_challenge(steps)
     ask_steps_ok = bool(steps) and all(bool(step.get("ok")) for step in steps)
     functional_statuses = {"verified", "verified_with_recovered_rate_limit", "verified_with_streaming_timeout", "rate_limited_contaminated"}
     functional_steps_ok = bool(steps) and all(str(step.get("status")) in functional_statuses for step in steps)
@@ -21587,7 +21606,9 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
     if test_project_created and not bool(getattr(args, "keep_project", False)):
         cleanup_ok = bool(test_project_removed)
     ok = bool(ask_steps_ok and cleanup_ok and (not rate_limit_contaminated or rate_limit_recovered))
-    if not functional_steps_ok:
+    if challenged:
+        status = "docker_live_profile_challenged"
+    elif not functional_steps_ok:
         status = "failed"
     elif not cleanup_ok:
         status = "cleanup_failed"
@@ -21626,6 +21647,8 @@ async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -
         "step_count": len(steps),
         "failure_count": len([step for step in steps if not step.get("ok")]),
         "functional_failure_count": len([step for step in steps if str(step.get("status")) not in functional_statuses]),
+        "terminal_challenge": challenged,
+        "challenge_type": "docker_live_profile_challenged" if challenged else None,
         "rate_limit_telemetry": rate_limit_telemetry,
         "rate_limit_contaminated": rate_limit_contaminated,
         "rate_limit_recovered": rate_limit_recovered,
