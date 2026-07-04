@@ -386,9 +386,46 @@ composer_ready = last.get('composer_visible') is True
 if not composer_ready and not project_page_ready_accepted:
     errors.append('composer_visible is not true')
 require(last.get('release_blocking') is False, 'last release_blocking is not false')
+
+def _backend_guardrail_403_seen(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    telemetry_sources = []
+    for candidate in (
+        value.get('rate_limit_telemetry'),
+        value.get('rate_limit_summary'),
+    ):
+        if isinstance(candidate, dict):
+            telemetry_sources.append(candidate)
+    for key in ('initial_auth_readiness', 'last_session_status'):
+        nested = value.get(key)
+        if isinstance(nested, dict):
+            for candidate in (
+                nested.get('rate_limit_telemetry'),
+                nested.get('rate_limit_summary'),
+            ):
+                if isinstance(candidate, dict):
+                    telemetry_sources.append(candidate)
+    for telemetry in telemetry_sources:
+        if telemetry.get('backend_api_guardrail_seen') is True:
+            events = telemetry.get('service_rate_limit_events')
+            if not isinstance(events, list):
+                return True
+            for event in events:
+                if isinstance(event, dict) and event.get('kind') == 'backend_api_guardrail':
+                    try:
+                        if int(event.get('status') or 0) == 403:
+                            return True
+                    except Exception:
+                        return True
+    return False
+
+backend_api_guardrail_seen = _backend_guardrail_403_seen(payload) or _backend_guardrail_403_seen(last)
+if backend_api_guardrail_seen:
+    errors.append('backend_api_guardrail_seen is true; browser/profile is forbidden by backend-api 403 guardrail')
 result = {
     'ok': not errors,
-    'status': 'passed' if not errors else 'failed',
+    'status': 'browser_backend_403_guardrail' if backend_api_guardrail_seen else ('passed' if not errors else 'failed'),
     'action': 'pb_browser_cloudflare_validation',
     'host_profile_dir': profile_dir,
     'cloudflare_summary_path': str(summary_path),
@@ -404,7 +441,10 @@ result = {
         'project_page_ready_accepted': project_page_ready_accepted,
         'project_source_mutation_allowed': runtime.get('project_source_mutation_allowed'),
         'standard_browser_mode': runtime.get('standard_browser_mode'),
+        'backend_api_guardrail_seen': backend_api_guardrail_seen,
     },
+    'backend_api_guardrail_seen': backend_api_guardrail_seen,
+    'challenge_type': 'browser_backend_403_guardrail' if backend_api_guardrail_seen else None,
     'errors': errors,
 }
 (validation_dir / 'validation-summary.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8')

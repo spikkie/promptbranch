@@ -3515,3 +3515,26 @@ def test_release_control_backend_api_403_guardrail_is_terminal_static() -> None:
     assert "backend-api 403 treated as browser challenge guardrail" in browser_client
     assert "backend_403_guardrail_terminal" in browser_client
     assert "Browser profile hit a Cloudflare/backend-403 guardrail" in browser_client
+
+
+def test_standard_cloudflare_validation_rejects_backend_api_guardrail_static() -> None:
+    script = Path("scripts/pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+    assert "backend_api_guardrail_seen = _backend_guardrail_403_seen(payload)" in script
+    assert "browser_backend_403_guardrail" in script
+    assert "backend_api_guardrail_seen is true; browser/profile is forbidden" in script
+
+
+def test_release_control_auth_bootstrap_backend_api_guardrail_is_terminal_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "release_control_log_has_backend_api_guardrail_403" in script
+    assert "auth bootstrap ${phase} observed backend-api 403 guardrail" in script
+    assert "bootstrap_backend_guardrail=1" in script
+    assert "release_control_clear_auth_bootstrap_held_session \"${phase}\" || true" in script
+    assert "status: browser_backend_403_guardrail" in script
+
+
+def test_release_control_full_validation_guardrail_is_terminal_even_when_command_succeeds_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "if [[ ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403" in script
+    assert "test_rc=1" in script
+    assert "treating it as a terminal browser challenge" in script

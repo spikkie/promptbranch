@@ -1269,6 +1269,60 @@ release_control_clear_auth_bootstrap_held_session() {
   return "${PIPESTATUS[0]}"
 }
 
+
+release_control_log_has_backend_api_guardrail_403() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import re
+import sys
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+if re.search(r"backend-api[^\n'\"]+\b403\b", text, flags=re.IGNORECASE):
+    raise SystemExit(0)
+if re.search(r"status[=:]\s*403", text, flags=re.IGNORECASE) and "backend-api" in text.lower():
+    raise SystemExit(0)
+if '"backend_api_guardrail_seen": true' in text.lower() or "'backend_api_guardrail_seen': true" in text.lower():
+    raise SystemExit(0)
+if "browser_backend_403_guardrail" in text or "docker_standard_profile_challenged" in text or "docker_live_profile_challenged" in text:
+    if "backend_api_guardrail" in text or "backend-api" in text.lower():
+        raise SystemExit(0)
+decoder = json.JSONDecoder()
+for idx, ch in enumerate(text):
+    if ch != "{":
+        continue
+    try:
+        value, _ = decoder.raw_decode(text[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    stack = [value]
+    while stack:
+        cur = stack.pop()
+        if not isinstance(cur, dict):
+            continue
+        if cur.get("backend_api_guardrail_seen") is True:
+            raise SystemExit(0)
+        if cur.get("kind") == "backend_api_guardrail":
+            try:
+                if int(cur.get("status") or 0) == 403:
+                    raise SystemExit(0)
+            except SystemExit:
+                raise
+            except Exception:
+                raise SystemExit(0)
+        for nested in cur.values():
+            if isinstance(nested, dict):
+                stack.append(nested)
+            elif isinstance(nested, list):
+                stack.extend(item for item in nested if isinstance(item, dict))
+raise SystemExit(1)
+INNERPY
+}
+
 release_control_wait_for_no_held_auth_session() {
   local phase="${1:-release_control}"
   local bootstrap_url="${2:-}"
@@ -1413,25 +1467,42 @@ pb_auth_bootstrap() {
     --poll-seconds 10 \
     2>&1 | tee "${bootstrap_log}"
   local bootstrap_rc=${PIPESTATUS[0]}
+  local bootstrap_backend_guardrail=0
+  if release_control_log_has_backend_api_guardrail_403 "${bootstrap_log}"; then
+    bootstrap_backend_guardrail=1
+    echo "status: browser_backend_403_guardrail" | tee -a "${bootstrap_log}" >&2
+    echo "ERROR: auth bootstrap ${phase} observed backend-api 403 guardrail; treating standard Docker profile as challenged and stopping before the next browser/service operation." | tee -a "${bootstrap_log}" >&2
+    if [[ ${bootstrap_rc} -eq 0 ]]; then
+      bootstrap_rc=1
+    fi
+  fi
   if [[ ${bootstrap_rc} -eq 0 ]]; then
     release_control_clear_auth_bootstrap_held_session "${phase}" || return $?
     release_control_wait_for_no_held_auth_session "${phase}" "${bootstrap_url}" || return $?
+  elif [[ ${bootstrap_backend_guardrail} -eq 1 ]]; then
+    # The auth-readiness session may be held open even though the browser/profile
+    # is forbidden by backend-api 403 guardrail telemetry.  Restart only the
+    # candidate service to close that in-memory browser owner before exiting.
+    release_control_clear_auth_bootstrap_held_session "${phase}" || true
   fi
-  python3 - "${release_auth_bootstrap_json}" "${phase}" "${bootstrap_rc}" "${bootstrap_url}" "${bootstrap_log}" <<'INNERPY'
+  python3 - "${release_auth_bootstrap_json}" "${phase}" "${bootstrap_rc}" "${bootstrap_url}" "${bootstrap_log}" "${bootstrap_backend_guardrail}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
 import sys
-out, phase, rc, url, log = sys.argv[1:6]
+out, phase, rc, url, log, guardrail = sys.argv[1:7]
+backend_guardrail = guardrail.strip() == "1"
 payload = {
     "schema": "promptbranch.release_control.auth_bootstrap",
     "schema_version": "1.0",
     "source_kind": "release_control_auth_bootstrap",
     "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
     "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "ok": int(rc) == 0,
-    "status": "passed" if int(rc) == 0 else "failed",
+    "ok": int(rc) == 0 and not backend_guardrail,
+    "status": "browser_backend_403_guardrail" if backend_guardrail else ("passed" if int(rc) == 0 else "failed"),
+    "challenge_type": "browser_backend_403_guardrail" if backend_guardrail else None,
+    "backend_api_guardrail_seen": backend_guardrail,
     "phase": phase,
     "target_url": url,
     "log": log,
@@ -4240,10 +4311,11 @@ run_full_test_transport() {
 ' "${selected_full_log}"
   CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
-  if [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403 "${selected_full_log}"; then
+  if [[ ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403 "${selected_full_log}"; then
     echo "status: browser_backend_403_guardrail" | tee -a "${selected_full_log}" >&2
     echo "ERROR: full_${label} observed backend-api 403 guardrail; treating it as a terminal browser challenge and refusing rate-limit retry/cooldown." | tee -a "${selected_full_log}" >&2
     run_all_browser_guardrail_seen=1
+    test_rc=1
   elif [[ ${test_rc} -ne 0 && ${run_all_tests} -eq 1 ]] && run_all_log_has_recovered_rate_limit_success "${selected_full_log}"; then
     echo "WARN: recovered rate-limit evidence detected for full_${label}; functional verification passed, so release-control will not retry the whole step." | tee -a "${selected_full_log}" >&2
     test_rc=0

@@ -509,3 +509,5 @@ Last release: v0.1.102
 | DOD-184 | Backend-api 403 guardrail is terminal browser challenge across full/direct, localhost, and live validation paths | in_progress | `promptbranch_browser_auth/client.py`; `chatgpt_browser_auth/client.py`; `chatgpt_claudecode_workflow_release_control.sh`; focused client/shell tests | v0.1.103.10.48 |
 
 | DOD-185 | Release-live project setup, conversation bootstrap, ask-live, visual artifact, and release-live use the same explicit live slot profile; Docker bootstrap image defaults no longer depend on unset service image tag | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; `docker-compose.chatgpt-service.yml`; `scripts/pb-docker-browser-profile-bootstrap.sh`; focused shell tests | v0.1.103.10.49 |
+
+| DOD-186 | Backend-api 403 guardrail during auth bootstrap is release-blocking and clears held browser owner before stopping | in_progress | `scripts/pb-browser-cloudflare-validation.sh`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell tests | v0.1.103.10.50 |
