@@ -30,7 +30,10 @@ release_version_plain_from_version_file() {
 
 default_image_tag="${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}"
 if [[ -z "${default_image_tag}" ]]; then
-  default_image_tag="$(release_version_plain_from_version_file VERSION 2>/dev/null || printf 'local')"
+  default_image_tag="$(release_version_plain_from_version_file VERSION 2>/dev/null)" || {
+    echo "ERROR: PROMPTBRANCH_SERVICE_IMAGE_TAG is unset and VERSION is missing/empty; refusing promptbranch-service:local fallback." >&2
+    exit 64
+  }
 fi
 image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${default_image_tag}}"
 container_profile_dir="/app/profile"
@@ -51,7 +54,7 @@ Options:
   --fresh             Delete/recreate selected profile before opening Docker Chrome.
   --reuse             Reuse selected profile. Default.
   --url URL           URL to open. Default: https://chatgpt.com/. Project URLs are supported when passed explicitly.
-  --image IMAGE       Docker image. Default: promptbranch-service:<VERSION> when VERSION exists, otherwise promptbranch-service:local.
+  --image IMAGE       Docker image. Default: promptbranch-service:<VERSION>.
   --shm-size SIZE    Docker shared-memory size for Chrome. Default: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2g}.
   --help              Show this help.
 

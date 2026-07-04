@@ -818,6 +818,22 @@ def test_release_control_pins_compose_service_image_to_release_version() -> None
 
 
 
+def test_docker_parity_check_exports_versioned_service_image_without_local_fallback() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "docker-browser-parity-cloudflare-check.sh").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.chatgpt-service.yml").read_text(encoding="utf-8")
+
+    assert 'export PROMPTBRANCH_SERVICE_IMAGE_TAG="$(promptbranch_service_image_tag)"' in script
+    assert 'export PROMPTBRANCH_VERSION="${PROMPTBRANCH_VERSION:-${PROMPTBRANCH_SERVICE_IMAGE_TAG}}"' in script
+    assert 'export PROMPTBRANCH_SERVICE_IMAGE="$(promptbranch_service_image_ref)"' in script
+    assert "printf 'promptbranch-service:%s\\n'" in script
+    assert 'promptbranch-service:local' not in script
+    assert 'PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:?PROMPTBRANCH_VERSION must be set by release/run/parity scripts}' in compose
+    assert 'image: ${PROMPTBRANCH_SERVICE_IMAGE:?PROMPTBRANCH_SERVICE_IMAGE must be set by release/run/parity scripts}' in compose
+    assert 'promptbranch-service:${PROMPTBRANCH_VERSION:-local}' not in compose
+    assert '${PROMPTBRANCH_VERSION:-unknown}' not in compose
+
+
 
 def test_release_control_uses_single_default_runtime_identity() -> None:
     root = Path(__file__).resolve().parents[1]
@@ -831,7 +847,7 @@ def test_release_control_uses_single_default_runtime_identity() -> None:
     assert 'service_base_url="http://localhost:${service_port}"' in script
     assert '_out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)' in script
     assert 'name: chatgpt_claudecode_workflow' in compose
-    assert 'image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_VERSION:-local}}' in compose
+    assert 'image: ${PROMPTBRANCH_SERVICE_IMAGE:?PROMPTBRANCH_SERVICE_IMAGE must be set by release/run/parity scripts}' in compose
     assert '      - "8000:8000"' in compose
     assert 'export COMPOSE_PROJECT_NAME="chatgpt_claudecode_workflow"' in run_script
     assert 'export PROMPTBRANCH_SERVICE_PORT="8000"' in run_script

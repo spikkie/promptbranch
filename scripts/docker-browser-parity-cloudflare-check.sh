@@ -10,6 +10,39 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
+
+release_version_plain_from_version_file() {
+  local version_file="${1:-VERSION}"
+  [[ -f "${version_file}" ]] || return 1
+  local value
+  value="$(tr -d '\r\n[:space:]' < "${version_file}")"
+  value="${value#v}"
+  [[ -n "${value}" ]] || return 1
+  printf '%s\n' "${value}"
+}
+
+promptbranch_service_image_tag() {
+  if [[ -n "${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE_TAG}"
+    return 0
+  fi
+  if [[ -n "${PROMPTBRANCH_VERSION:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_VERSION#v}"
+    return 0
+  fi
+  release_version_plain_from_version_file VERSION
+}
+
+promptbranch_service_image_ref() {
+  local image_tag
+  image_tag="$(promptbranch_service_image_tag)"
+  if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" == "1" && -n "${PROMPTBRANCH_SERVICE_IMAGE:-}" ]]; then
+    printf '%s\n' "${PROMPTBRANCH_SERVICE_IMAGE}"
+    return 0
+  fi
+  printf 'promptbranch-service:%s\n' "${image_tag}"
+}
+
 no_recreate="${PROMPTBRANCH_DOCKER_BROWSER_NO_RECREATE:-0}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
@@ -73,6 +106,12 @@ fi
 if (( poll_seconds < 1 || poll_seconds > 300 )); then
   echo "ERROR: poll seconds out of range: ${poll_seconds}" >&2
   exit 64
+fi
+
+export PROMPTBRANCH_SERVICE_IMAGE_TAG="$(promptbranch_service_image_tag)"
+export PROMPTBRANCH_VERSION="${PROMPTBRANCH_VERSION:-${PROMPTBRANCH_SERVICE_IMAGE_TAG}}"
+if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" != "1" ]]; then
+  export PROMPTBRANCH_SERVICE_IMAGE="$(promptbranch_service_image_ref)"
 fi
 
 mkdir -p debug_artifacts/docker-browser-parity/cloudflare-check
@@ -219,7 +258,7 @@ prepare_bind_mount_profile_dir
   printf 'max_wait_seconds=%s\n' "${max_wait_seconds}"
   printf 'poll_seconds=%s\n' "${poll_seconds}"
   printf 'export_evidence=%s\n' "${export_evidence}"
-  env | sort | grep -E '^(PROMPTBRANCH_DOCKER_BROWSER_PROFILE|PROMPTBRANCH_PROFILE_DIR|PROMPTBRANCH_HOST_PROFILE_DIR|PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS|CHATGPT_USE_PATCHRIGHT|CHATGPT_BROWSER_CHANNEL|CHATGPT_HEADLESS|CHATGPT_DISABLE_FEDCM|CHATGPT_FILTER_NO_SANDBOX|CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS|CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS|CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS|CHATGPT_BROWSER_EXTRA_ARGS|CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE)='
+  env | sort | grep -E '^(PROMPTBRANCH_DOCKER_BROWSER_PROFILE|PROMPTBRANCH_PROFILE_DIR|PROMPTBRANCH_HOST_PROFILE_DIR|PROMPTBRANCH_SERVICE_IMAGE_TAG|PROMPTBRANCH_SERVICE_IMAGE|PROMPTBRANCH_VERSION|PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS|CHATGPT_USE_PATCHRIGHT|CHATGPT_BROWSER_CHANNEL|CHATGPT_HEADLESS|CHATGPT_DISABLE_FEDCM|CHATGPT_FILTER_NO_SANDBOX|CHATGPT_CLEAR_PROFILE_SINGLETON_LOCKS|CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS|CHATGPT_PATCHRIGHT_HEADED_SAFE_ARGS|CHATGPT_BROWSER_EXTRA_ARGS|CHATGPT_CONVERSATION_HISTORY_REQUEST_SHIELD_MODE)='
 } | tee "${out_dir}/run.log"
 
 mkdir -p .pb_profile .pb_profile/browser/default debug_artifacts

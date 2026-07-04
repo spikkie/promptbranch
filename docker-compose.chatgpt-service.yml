@@ -6,10 +6,10 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:-unknown}
+        PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:?PROMPTBRANCH_VERSION must be set by release/run/parity scripts}
         PROMPTBRANCH_ARTIFACT_SHA256: ${PROMPTBRANCH_ARTIFACT_SHA256:-unknown}
         PROMPTBRANCH_SOURCE_FINGERPRINT: ${PROMPTBRANCH_SOURCE_FINGERPRINT:-unknown}
-    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_VERSION:-local}}
+    image: ${PROMPTBRANCH_SERVICE_IMAGE:?PROMPTBRANCH_SERVICE_IMAGE must be set by release/run/parity scripts}
     pull_policy: build
     init: true
     shm_size: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2gb}
