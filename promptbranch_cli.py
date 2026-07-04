@@ -24430,6 +24430,8 @@ def _emit_service_exception(exc: Exception, args: argparse.Namespace) -> int | N
         print(f"{status_text}: {payload.get('error') or exc}", file=sys.stderr)
         if payload.get("active_operation"):
             print(f"active_operation={payload.get('active_operation')}", file=sys.stderr)
+        if payload.get("challenge_type"):
+            print(f"challenge_type={payload.get('challenge_type')}", file=sys.stderr)
         if payload.get("retry_after_seconds") is not None:
             print(f"retry_after_seconds={payload.get('retry_after_seconds')}", file=sys.stderr)
         if payload.get("recovery_hint"):

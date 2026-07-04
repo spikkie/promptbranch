@@ -793,3 +793,14 @@ def test_docker_parity_project_source_preflight_browser_context_unavailable_is_s
     assert detail["status"] == "project_source_preflight_browser_context_unavailable"
     assert detail["release_blocking"] is True
     assert detail["error_type"] == "BrowserContextUnavailableError"
+
+
+def test_container_service_honors_fail_fast_challenge_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CHATGPT_FAIL_FAST_ON_CHALLENGE", "1")
+    monkeypatch.setenv("PROMPTBRANCH_PROFILE_DIR", str(tmp_path / ".pb_profile"))
+
+    from promptbranch_container_api import _build_service
+
+    svc = _build_service(project_url_override="https://chatgpt.com/g/g-p-demo/project")
+
+    assert svc.settings.fail_fast_on_challenge is True

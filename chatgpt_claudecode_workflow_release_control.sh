@@ -5359,8 +5359,8 @@ run_all_ensure_shared_live_project() {
   echo "release_test_project_name: ${release_test_project_name}"
   echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
   : > "${run_all_project_ensure_log}"
-  echo "+ pb --profile-dir ${live_profile_pool_slot_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
-  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_pool_slot_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
+  echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir ${live_profile_pool_slot_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
+  PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_pool_slot_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   rc=${command_rc}
 
@@ -5389,6 +5389,10 @@ run_all_ensure_shared_live_project() {
   fi
 
   if [[ ${rc} -ne 0 ]]; then
+    if run_all_log_has_docker_live_profile_challenge "${run_all_project_ensure_log}" || run_all_log_has_cloudflare_challenge "${run_all_project_ensure_log}"; then
+      echo "status: docker_live_profile_challenged" | tee -a "${run_all_project_ensure_log}" >&2
+      echo "ERROR: live_project_ensure returned docker_live_profile_challenged; skipping remaining live browser steps to avoid a challenged-profile cascade." | tee -a "${run_all_project_ensure_log}" >&2
+    fi
     echo "WARN: live_project_ensure failed with ${rc}; live browser steps will be skipped." >&2
     workflow_rc=${rc}
   fi
@@ -5457,9 +5461,15 @@ INNERPY
         fi
       fi
     else
-      record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
-      record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"
-      record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
+      if run_all_log_has_docker_live_profile_challenge "${run_all_project_ensure_log}"; then
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
+      else
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
+      fi
     fi
   else
     record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"

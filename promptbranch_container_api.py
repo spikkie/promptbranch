@@ -21,6 +21,7 @@ from promptbranch_project_delete_safety import (
 )
 from promptbranch_browser_auth.client import get_latest_ask_progress
 from promptbranch_browser_auth.exceptions import (
+    AuthChallengeRequiredError,
     AuthenticationError,
     BotChallengeError,
     BrowserContextUnavailableError,
@@ -433,6 +434,8 @@ def _build_service(*, project_url_override: Optional[str] = None) -> ChatGPTAuto
             browser_channel=os.getenv("CHATGPT_BROWSER_CHANNEL", "chrome"),
             password_file=os.getenv("CHATGPT_PASSWORD_FILE"),
             disable_fedcm=_env_flag("CHATGPT_DISABLE_FEDCM", False),
+            fail_fast_on_challenge=_env_flag("CHATGPT_FAIL_FAST_ON_CHALLENGE", False)
+            or _env_flag("PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE", False),
             filter_no_sandbox=_env_flag("CHATGPT_FILTER_NO_SANDBOX", False),
             max_retries=int(os.getenv("CHATGPT_MAX_RETRIES", "2")),
             retry_backoff_seconds=float(os.getenv("CHATGPT_RETRY_BACKOFF_SECONDS", "2.0")),
@@ -548,10 +551,15 @@ def _service_for(project_url: Optional[str]) -> ChatGPTAutomationService:
 
 
 def _raise_http_error(exc: Exception) -> None:
-    if isinstance(exc, AuthenticationError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    if isinstance(exc, AuthChallengeRequiredError):
+        payload = exc.to_payload()
+        if payload.get("challenge_type") == "docker_live_profile_challenged":
+            payload["status"] = "docker_live_profile_challenged"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=payload) from exc
     if isinstance(exc, ManualLoginRequiredError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if isinstance(exc, AuthenticationError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     if isinstance(exc, BotChallengeError):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     if isinstance(exc, UnsupportedOperationError):
