@@ -9,7 +9,7 @@ services:
         PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:-unknown}
         PROMPTBRANCH_ARTIFACT_SHA256: ${PROMPTBRANCH_ARTIFACT_SHA256:-unknown}
         PROMPTBRANCH_SOURCE_FINGERPRINT: ${PROMPTBRANCH_SOURCE_FINGERPRINT:-unknown}
-    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}
+    image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_VERSION:-local}}
     pull_policy: build
     init: true
     shm_size: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2gb}

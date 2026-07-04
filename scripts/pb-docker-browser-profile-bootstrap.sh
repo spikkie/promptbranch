@@ -17,7 +17,22 @@ standard_profile_dir="${repo_root}/.pb_profile/browser/default"
 profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"
 fresh=0
 url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
-image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG:-local}}"
+
+release_version_plain_from_version_file() {
+  local version_file="${1:-VERSION}"
+  [[ -f "${version_file}" ]] || return 1
+  local value
+  value="$(tr -d '\r\n[:space:]' < "${version_file}")"
+  value="${value#v}"
+  [[ -n "${value}" ]] || return 1
+  printf '%s\n' "${value}"
+}
+
+default_image_tag="${PROMPTBRANCH_SERVICE_IMAGE_TAG:-}"
+if [[ -z "${default_image_tag}" ]]; then
+  default_image_tag="$(release_version_plain_from_version_file VERSION 2>/dev/null || printf 'local')"
+fi
+image="${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${default_image_tag}}"
 container_profile_dir="/app/profile"
 container_name="promptbranch-docker-browser-bootstrap-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 shm_size="${PROMPTBRANCH_DOCKER_SHM_SIZE:-2g}"
@@ -36,7 +51,7 @@ Options:
   --fresh             Delete/recreate selected profile before opening Docker Chrome.
   --reuse             Reuse selected profile. Default.
   --url URL           URL to open. Default: https://chatgpt.com/. Project URLs are supported when passed explicitly.
-  --image IMAGE       Docker image. Default: promptbranch-service:local.
+  --image IMAGE       Docker image. Default: promptbranch-service:<VERSION> when VERSION exists, otherwise promptbranch-service:local.
   --shm-size SIZE    Docker shared-memory size for Chrome. Default: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2g}.
   --help              Show this help.
 

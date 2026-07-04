@@ -5032,29 +5032,19 @@ run_all_live_profile_preflight() {
   echo "live_profile_pool_name: ${live_profile_pool_name}"
   echo "live_profile_pool_size: ${live_profile_pool_size}"
   echo "live_profile_pool_slot_dir: ${live_profile_pool_slot_display}"
-  echo "live_profile_strategy: explicit_bootstrapped_profiles_no_copy_no_refresh"
+  echo "live_profile_strategy: explicit_bootstrapped_slot_single_actor_no_copy_no_refresh"
   run_all_live_seed_profile_missing=0
   : > "${live_profile_preflight_raw_log}"
-  run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"
-  rc=$?
-  if [[ ${rc} -ne 0 ]]; then
-    echo "ERROR: live seed profile is missing or invalid; --run-all-tests cannot skip live-only tests." >&2
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_unavailable" "false" "${rc}" "${live_profile_preflight_raw_log}"
-    workflow_rc=${rc}
-    return ${rc}
+  if [[ -d "${live_profile_seed_dir}" ]]; then
+    run_all_validate_live_seed_profile "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}" ||       echo "WARN: optional live seed profile is present but invalid; release-live uses the explicit slot profile as the actor." | tee -a "${live_profile_preflight_raw_log}" >&2
+  else
+    echo "optional_live_seed_profile_status: missing_not_blocking" | tee -a "${live_profile_preflight_raw_log}"
   fi
   run_all_validate_live_pool_slot_profile "${live_profile_pool_slot_dir}" "${live_profile_preflight_raw_log}"
   rc=$?
   if [[ ${rc} -ne 0 ]]; then
     echo "ERROR: live profile pool slot is missing or invalid; bootstrap the exact release-live slot instead of copying profiles." >&2
     write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_pool_slot_unavailable" "false" "${rc}" "${live_profile_preflight_raw_log}"
-    workflow_rc=${rc}
-    return ${rc}
-  fi
-  run_all_login_check_profile "live_profile_seed" "${live_profile_seed_dir}" "${live_profile_preflight_raw_log}"
-  rc=$?
-  if [[ ${rc} -ne 0 ]]; then
-    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_seed_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
     workflow_rc=${rc}
     return ${rc}
   fi
@@ -5257,17 +5247,17 @@ run_all_ensure_shared_live_conversation() {
 
   echo "live_conversation_strategy: create_new_task_inside_shared_live_project" | tee -a "${run_all_project_ensure_log}"
   echo "live_conversation_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
-  echo "+ pb --profile-dir ${live_profile_seed_dir} use ${run_all_shared_project_url} --json 2>&1 | tee -a ${run_all_project_ensure_log}"
-  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_seed_dir}" use "${run_all_shared_project_url}" --json 2>&1 | tee -a "${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_pool_slot_dir} use ${run_all_shared_project_url} --json 2>&1 | tee -a ${run_all_project_ensure_log}"
+  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_pool_slot_dir}" use "${run_all_shared_project_url}" --json 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   if [[ ${command_rc} -ne 0 ]]; then
     echo "ERROR: live_conversation_url_missing: failed to select shared live project before conversation bootstrap" | tee -a "${run_all_project_ensure_log}" >&2
     return ${command_rc}
   fi
 
-  echo "+ pb --profile-dir ${live_profile_seed_dir} ask --new-task --retries 0 <bootstrap prompt> 2>&1 | tee -a ${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_pool_slot_dir} ask --new-task --retries 0 <bootstrap prompt> 2>&1 | tee -a ${run_all_project_ensure_log}"
   PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
-    pb --profile-dir "${live_profile_seed_dir}" ask --new-task --retries 0 "Reply with exactly the single token ${sentinel} and nothing else." 2>&1 | tee -a "${run_all_project_ensure_log}"
+    pb --profile-dir "${live_profile_pool_slot_dir}" ask --new-task --retries 0 "Reply with exactly the single token ${sentinel} and nothing else." 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   rc=${command_rc}
 
@@ -5297,8 +5287,8 @@ run_all_ensure_shared_live_project() {
   echo "release_test_project_name: ${release_test_project_name}"
   echo "reuse_policy: one_run_scoped_project_for_all_test_all_live_steps"
   : > "${run_all_project_ensure_log}"
-  echo "+ pb --profile-dir ${live_profile_seed_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
-  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_seed_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
+  echo "+ pb --profile-dir ${live_profile_pool_slot_dir} project-ensure ${release_test_project_name} --memory-mode project-only --keep-open 2>&1 | tee -a ${run_all_project_ensure_log}"
+  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${live_profile_pool_slot_dir}" project-ensure "${release_test_project_name}" --memory-mode project-only --keep-open 2>&1 | tee -a "${run_all_project_ensure_log}"
   command_rc=${PIPESTATUS[0]}
   rc=${command_rc}
 
@@ -5380,18 +5370,18 @@ INNERPY
         record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_conversation_url_missing"
         record_all_test_skipped_step "release_live" "${release_live_log}" "live_conversation_url_missing"
       else
-        if ! run_all_json_step "ask_live" "${ask_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test ask-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json; then
+        if ! run_all_json_step "ask_live" "${ask_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test ask-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json; then
           if run_all_log_has_docker_live_profile_challenge "${ask_live_log}"; then
             echo "ERROR: ask_live returned docker_live_profile_challenged; skipping remaining live browser steps to avoid a challenged-profile cascade." | tee -a "${ask_live_log}" >&2
             record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"
             record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_ask_live_docker_live_profile_challenged"
           else
-            run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-            run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+            run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+            run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
           fi
         else
-          run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-          run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-pool "${live_profile_pool_name}" --profile-pool-size "${live_profile_pool_size}" --profile-pool-seed-dir "${live_profile_seed_dir}" --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+          run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+          run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
         fi
       fi
     else

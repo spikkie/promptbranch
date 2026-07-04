@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
-  "active_candidate_version": "v0.1.103.10.48",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
+  "active_candidate_version": "v0.1.103.10.49",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
+  "active_slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,19 +20,26 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
       "created_at": "2026-07-04T11:36:31.662943Z",
-      "slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
+      "slice": "v0.1.103.10.48 \u2014 classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
       "status": "candidate",
       "version": "v0.1.103.10.48"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
+      "created_at": "2026-07-04T12:15:00Z",
+      "slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
+      "status": "candidate",
+      "version": "v0.1.103.10.49"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "last_updated": "2026-07-01",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
-  "next_normal_slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
-  "next_normal_version": "v0.1.103.10.48",
+  "last_updated": "2026-07-04",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
+  "next_normal_slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
+  "next_normal_version": "v0.1.103.10.49",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -48,6 +55,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Run live project ensure, conversation bootstrap, ask-live, visual artifact roundtrip, and release-live with the same explicitly bootstrapped release-live slot profile; keep .pb_profile_local_debug optional and stop relying on PROMPTBRANCH_SERVICE_IMAGE_TAG/local fallback for Docker bootstrap defaults.",
+      "version": "v0.1.103.10.49"
+    },
     {
       "kind": "repair",
       "status": "candidate",
@@ -171,7 +184,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
       "scope": "Add Docker shared-memory sizing for Chrome service and visible bootstrap paths after exit_code=132 no-space-on-device crash.",
-      "slice": "v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation",
+      "slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
       "status": "candidate",
       "version": "v0.1.103.10.22"
     }
@@ -199,12 +212,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
       "release_mode": "repair",
-      "scope": "all-in-Docker browser path only; classify mid-run Cloudflare/backend-403 and TargetClosedError-after-403 as terminal docker_live_profile_challenged; no host-CDP/session-manager work",
-      "slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
+      "scope": "all-in-Docker release-live uses one explicit live slot profile as the sole actor for project ensure, conversation bootstrap, ask-live, visual and release-live; Docker image defaults derive from VERSION/PROMPTBRANCH_VERSION instead of tag-local fallback",
+      "slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
       "status": "active",
-      "version": "v0.1.103.10.48"
+      "version": "v0.1.103.10.49"
     },
     {
       "release_mode": "normal",
@@ -248,5 +261,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.48"
+  "updated_for": "v0.1.103.10.49"
 }

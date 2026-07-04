@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip
-active candidate version: v0.1.103.10.48
-next normal slice: v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip
+active candidate version: v0.1.103.10.49
+next normal slice: v0.1.103.10.49 — run all release-live setup and ask steps in the same explicit live slot profile
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -574,3 +574,7 @@ Control-surface tokens: v0.1.103.10.48 chatgpt_claudecode_workflow-2_v0.1.103.10
 ## v0.1.103.10.48
 
 `v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths` preserves the Docker-only live-validation line and extends fail-fast challenge classification beyond ask-live. Observed ChatGPT `/backend-api/...` 403 responses are diagnostic guardrail evidence only, not an operational API contract. Release-control now enables fail-fast challenge handling for full/direct, localhost/service, live preflight, project selection, and live ask paths; after a full-validation backend guardrail, remaining live browser phases are skipped and import/artifact guards still run.
+
+## Active repair slice — v0.1.103.10.49
+
+`v0.1.103.10.49 — run all release-live setup and ask steps in the same explicit live slot profile` preserves the Docker-only challenge classification chain through `v0.1.103.10.48`, then fixes the remaining human-likeness topology bug: release-live setup and execution now use `.pb_profile_local_debug_pools/release-live/slots/slot-1` as the single actor profile for project ensure, project selection, conversation bootstrap, ask-live, visual artifact roundtrip, and release-live. `.pb_profile_local_debug` remains optional/reference state and is no longer used to create the live conversation that the slot later opens. The Docker bootstrap default image also derives from `VERSION`/`PROMPTBRANCH_VERSION` instead of depending on an unset `PROMPTBRANCH_SERVICE_IMAGE_TAG` local fallback.
