@@ -768,6 +768,7 @@ run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver
 run_all_shared_project_url=""
 run_all_shared_conversation_url=""
 run_all_live_warmup_conversation_url=""
+run_all_live_service_target_url=""
 run_all_continuous_failure_kind=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
@@ -1895,6 +1896,7 @@ run_pre_source_add_docker_compose() {
   COMPOSE_PROJECT_NAME="${compose_project_name}" \
   PROMPTBRANCH_SERVICE_PORT="${service_port}" \
   CHATGPT_SERVICE_BASE_URL="${service_base_url}" \
+  CHATGPT_PROJECT_URL="${CHATGPT_PROJECT_URL:-}" \
   CHATGPT_FAIL_FAST_ON_CHALLENGE="${CHATGPT_FAIL_FAST_ON_CHALLENGE:-1}" \
   PROMPTBRANCH_SERVICE_IMAGE_TAG="${image_tag}" \
   PROMPTBRANCH_SERVICE_IMAGE="${image_ref}" \
@@ -3006,8 +3008,8 @@ compose_env_prefix() {
   artifact_sha="$(release_artifact_sha256)"
   local source_fingerprint
   source_fingerprint="$(promptbranch_source_fingerprint)"
-  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q PROMPTBRANCH_VERSION=%q PROMPTBRANCH_ARTIFACT_SHA256=%q PROMPTBRANCH_SOURCE_FINGERPRINT=%q' \
-    "${compose_project_name}" "${service_port}" "${service_base_url}" "${image_tag}" "${image_ref}" "${ver#v}" "${artifact_sha}" "${source_fingerprint}"
+  printf 'COMPOSE_PROJECT_NAME=%q PROMPTBRANCH_SERVICE_PORT=%q CHATGPT_SERVICE_BASE_URL=%q CHATGPT_PROJECT_URL=%q PROMPTBRANCH_SERVICE_IMAGE_TAG=%q PROMPTBRANCH_SERVICE_IMAGE=%q PROMPTBRANCH_VERSION=%q PROMPTBRANCH_ARTIFACT_SHA256=%q PROMPTBRANCH_SOURCE_FINGERPRINT=%q' \
+    "${compose_project_name}" "${service_port}" "${service_base_url}" "${CHATGPT_PROJECT_URL:-}" "${image_tag}" "${image_ref}" "${ver#v}" "${artifact_sha}" "${source_fingerprint}"
 }
 
 run_docker_compose() {
@@ -5035,7 +5037,7 @@ run_all_write_live_profile_missing_json() {
   local status="$2"
   local profile_dir="$3"
   local label="$4"
-  python3 - "${out_path}" "${status}" "${profile_dir}" "${label}" "${repo_root}" "${run_all_shared_project_url:-}" <<'INNERPY'
+  python3 - "${out_path}" "${status}" "${profile_dir}" "${label}" "${repo_root}" "${run_all_live_service_target_url:-${run_all_shared_project_url:-}}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
@@ -5046,7 +5048,7 @@ status = sys.argv[2]
 profile_dir = sys.argv[3]
 label = sys.argv[4]
 repo_root = Path(sys.argv[5])
-url = sys.argv[6] or "https://chatgpt.com/"
+url = sys.argv[6]
 payload = {
     "ok": False,
     "action": "release_control_live_profile_preflight",
@@ -5056,7 +5058,7 @@ payload = {
     "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     "recommendation": "Bootstrap and authenticate the exact Docker live profile before running --run-all-tests.",
     "bootstrap_commands": [
-        f"./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir {profile_dir} --url {url}",
+        f"./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir {profile_dir} --url {url or '<trusted-/g/.../c/...-conversation-url>'}",
         "./scripts/pb-docker-live-profile-bootstrap.sh",
     ],
 }
@@ -5105,22 +5107,53 @@ run_all_login_check_profile() {
     cat <<MSG | tee -a "${log_path}" >&2
 ERROR: ${label} login-check failed with ${rc}.
 Bootstrap this exact profile before rerunning --run-all-tests:
-  ./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir "${profile_dir}" --url "${run_all_shared_project_url:-https://chatgpt.com/}"
+  ./scripts/pb-docker-browser-profile-bootstrap.sh --profile-dir "${profile_dir}" --url "${run_all_live_service_target_url:-${run_all_shared_project_url:-<trusted-/g/.../c/...-conversation-url>}}"
 MSG
   fi
   return ${rc}
+}
+
+run_all_resolve_live_service_target_url() {
+  local resolved_url=""
+  echo "== pb test-all step: live_service_target_resolve =="
+  echo "live_service_target_policy: require_trusted_project_conversation_url_no_chatgpt_root"
+  echo "+ release_control_resolve_auth_bootstrap_url pre_tests"
+  if resolved_url="$(release_control_resolve_auth_bootstrap_url pre_tests 2>/dev/null)" && run_all_url_is_conversation_url "${resolved_url}"; then
+    run_all_live_service_target_url="${resolved_url}"
+    run_all_live_warmup_conversation_url="${resolved_url}"
+    echo "live_service_target_url: ${run_all_live_service_target_url}"
+    echo "live_profile_preflight_warmup_conversation_url_seed: ${run_all_live_warmup_conversation_url}"
+    return 0
+  fi
+  run_all_live_service_target_url=""
+  run_all_live_warmup_conversation_url=""
+  {
+    echo "live_service_target_url: unavailable"
+    echo "status: live_preflight_target_url_missing"
+    echo "ERROR: live preflight requires a trusted /g/.../c/... target URL before Docker service recreate; refusing to start Docker live-slot service at chatgpt.com root."
+  } | tee -a "${live_profile_preflight_raw_log}" >&2
+  write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_preflight_target_url_missing" "false" "78" "${live_profile_preflight_raw_log}"
+  workflow_rc=78
+  return 78
 }
 
 run_all_recreate_service_for_live_slot_profile() {
   local rc=0
   echo "== pb test-all step: live_service_slot_recreate =="
   echo "live_service_profile_strategy: docker_service_maps_release_live_slot_to_app_profile"
+  echo "live_service_target_strategy: trusted_project_conversation_url_no_chatgpt_root"
   echo "live_profile_pool_slot_dir: ${live_profile_pool_slot_display}"
-  echo "+ PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
-  PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans
+  echo "live_service_target_url: ${run_all_live_service_target_url:-unavailable}"
+  if [[ -z "${run_all_live_service_target_url}" ]]; then
+    echo "ERROR: live_service_slot_recreate requires run_all_live_service_target_url; refusing chatgpt.com root fallback." >&2
+    workflow_rc=78
+    return 78
+  fi
+  echo "+ CHATGPT_PROJECT_URL=${run_all_live_service_target_url} PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
+  CHATGPT_PROJECT_URL="${run_all_live_service_target_url}" PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans
   rc=$?
   if [[ ${rc} -ne 0 ]]; then
-    echo "ERROR: live service recreate failed while mapping release-live slot to /app/profile." >&2
+    echo "ERROR: live service recreate failed while mapping release-live slot to /app/profile and CHATGPT_PROJECT_URL to trusted conversation URL." >&2
     workflow_rc=${rc}
     return ${rc}
   fi
@@ -5130,6 +5163,7 @@ run_all_recreate_service_for_live_slot_profile() {
     return 1
   fi
   echo "live_service_profile_status: mapped_slot_profile_to_app_profile"
+  echo "live_service_target_status: trusted_conversation_url_configured"
   return 0
 }
 
@@ -5166,8 +5200,14 @@ run_all_live_profile_preflight() {
   if run_all_live_warmup_conversation_url="$(run_all_extract_conversation_url_from_log "${live_profile_preflight_raw_log}" 2>/dev/null)"; then
     echo "live_profile_preflight_warmup_conversation_url: ${run_all_live_warmup_conversation_url}" | tee -a "${live_profile_preflight_raw_log}"
   else
-    run_all_live_warmup_conversation_url=""
-    echo "live_profile_preflight_warmup_conversation_url: unavailable" | tee -a "${live_profile_preflight_raw_log}"
+    if [[ -n "${run_all_live_service_target_url}" ]] && run_all_url_is_conversation_url "${run_all_live_service_target_url}"; then
+      run_all_live_warmup_conversation_url="${run_all_live_service_target_url}"
+      echo "live_profile_preflight_warmup_conversation_url: ${run_all_live_warmup_conversation_url}" | tee -a "${live_profile_preflight_raw_log}"
+      echo "live_profile_preflight_warmup_conversation_url_source: configured_service_target" | tee -a "${live_profile_preflight_raw_log}"
+    else
+      run_all_live_warmup_conversation_url=""
+      echo "live_profile_preflight_warmup_conversation_url: unavailable" | tee -a "${live_profile_preflight_raw_log}"
+    fi
   fi
   write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified_explicit_live_profiles" "true" "0" "${live_profile_preflight_raw_log}"
   return 0
@@ -5579,7 +5619,7 @@ INNERPY
     return 0
   fi
 
-  if run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then
+  if run_all_resolve_live_service_target_url && run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then
     if run_all_release_live_continuous_bootstrap_and_ask; then
       run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
       run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json

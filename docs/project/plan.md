@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip
-active candidate version: v0.1.103.10.59
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip
-next normal slice: v0.1.103.10.59 — extract live preflight warmup URL from login-check url field
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip
+active candidate version: v0.1.103.10.60
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip
+next normal slice: v0.1.103.10.60 — configure Docker live-slot service with trusted conversation URL before preflight
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2016,3 +2016,8 @@ Scope: release-live-continuous starts the initial auth/warmup check from the tru
 ## v0.1.103.10.59 — extract live preflight warmup URL from login-check url field
 
 KISS repair: pass the validated live preflight `/c/...` URL to release-live-continuous; do not fall back to ChatGPT root.
+
+
+## v0.1.103.10.60 — configure Docker live-slot service with trusted conversation URL before preflight
+
+Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip` configures the Docker live-slot service with a trusted `/g/.../c/...` conversation URL before live preflight, while preserving the Docker-routed release-live-continuous design.

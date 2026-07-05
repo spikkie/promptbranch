@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.59"
+VERSION = "v0.1.103.10.60"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -59,6 +59,15 @@ def replay_run_all(scenario: str) -> ReplayResult:
 
     passed("full_direct")
     passed("full_localhost")
+
+    if scenario == "live_preflight_target_url_missing":
+        failed("live_profile_preflight", "live_preflight_target_url_missing")
+        for name in ("live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"):
+            skipped(name, "skipped_live_profile_preflight_failed")
+        passed("import_smoke")
+        passed("artifact_guard")
+        return result
+
     passed("live_profile_preflight")
 
     if scenario == "auth_bootstrap_backend_403":
@@ -170,3 +179,15 @@ def test_release_control_replay_continuous_bootstrap_clean_ask_challenge() -> No
     assert result.step("visual_artifact_roundtrip").reason == "skipped_ask_live_docker_live_profile_challenged"
     assert result.step("release_live").reason == "skipped_ask_live_docker_live_profile_challenged"
     assert result.launched_browser_steps == ["release_live_continuous"]
+
+
+def test_release_control_replay_missing_live_preflight_target_blocks_live_without_launch() -> None:
+    result = replay_run_all("live_preflight_target_url_missing")
+
+    assert result.ok is False
+    assert result.step("live_profile_preflight").reason == "live_preflight_target_url_missing"
+    assert result.step("live_project_ensure").reason == "skipped_live_profile_preflight_failed"
+    assert result.step("ask_live").reason == "skipped_live_profile_preflight_failed"
+    assert result.step("import_smoke").ok is True
+    assert result.step("artifact_guard").ok is True
+    assert result.launched_browser_steps == []

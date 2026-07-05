@@ -3639,8 +3639,29 @@ def test_release_live_continuous_uses_docker_service_transport_not_profile_lease
 def test_release_control_maps_release_live_slot_to_app_profile_before_live_preflight_static() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     assert "run_all_recreate_service_for_live_slot_profile" in script
-    assert 'PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
+    assert 'CHATGPT_PROJECT_URL="${run_all_live_service_target_url}" PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
     assert "docker_service_maps_release_live_slot_to_app_profile" in script
-    call = script.index('if run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then')
+    assert "trusted_project_conversation_url_no_chatgpt_root" in script
+    call = script.index('if run_all_resolve_live_service_target_url && run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then')
     live = script.index('run_all_release_live_continuous_bootstrap_and_ask', call)
     assert call < live
+
+
+def test_release_control_configures_live_slot_service_with_trusted_conversation_url_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "run_all_resolve_live_service_target_url" in script
+    assert "live_preflight_target_url_missing" in script
+    assert "refusing to start Docker live-slot service at chatgpt.com root" in script
+    assert 'run_all_url_is_conversation_url "${resolved_url}"' in script
+    assert 'CHATGPT_PROJECT_URL="${run_all_live_service_target_url}"' in script
+    resolve = script.index('run_all_resolve_live_service_target_url()')
+    recreate = script.index('run_all_recreate_service_for_live_slot_profile()', resolve)
+    assert resolve < recreate
+
+
+def test_release_control_live_preflight_does_not_recommend_chatgpt_root_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    bootstrap_block = script[script.index('run_all_write_live_profile_missing_json()'):script.index('run_all_validate_live_profile_dir()')]
+    assert '<trusted-/g/.../c/...-conversation-url>' in bootstrap_block
+    assert '--url {url or ' in bootstrap_block
+    assert '--url {url}",' not in bootstrap_block

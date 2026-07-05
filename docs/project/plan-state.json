@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
-  "active_candidate_version": "v0.1.103.10.59",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip",
+  "active_candidate_version": "v0.1.103.10.60",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
+  "active_slice": "v0.1.103.10.60 \u2014 configure Docker live-slot service with trusted conversation URL before preflight",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "v0.1.103.10.59",
+  "current_candidate": "v0.1.103.10.60",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -59,9 +59,9 @@
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
   "last_updated": "2026-07-05",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
-  "next_normal_slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
-  "next_normal_version": "v0.1.103.10.59",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip",
+  "next_normal_slice": "v0.1.103.10.60 \u2014 configure Docker live-slot service with trusted conversation URL before preflight",
+  "next_normal_version": "v0.1.103.10.60",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -261,12 +261,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip",
       "release_mode": "repair",
-      "scope": "route release-live-continuous through the Docker service browser envelope that passed live preflight instead of local host Patchright",
-      "slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
+      "scope": "configure Docker live-slot service with trusted /g/.../c/... conversation URL before live preflight while preserving Docker-routed release-live-continuous",
+      "slice": "v0.1.103.10.60 \u2014 configure Docker live-slot service with trusted conversation URL before preflight",
       "status": "active",
-      "version": "v0.1.103.10.59"
+      "version": "v0.1.103.10.60"
     },
     {
       "release_mode": "normal",

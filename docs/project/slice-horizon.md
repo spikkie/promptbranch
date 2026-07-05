@@ -142,3 +142,12 @@ Slice: v0.1.103.10.59 — extract live preflight warmup URL from login-check url
 
 Scope: release-live-continuous starts the initial auth/warmup check from the trusted conversation URL proven by live_profile_preflight instead of bare https://chatgpt.com/.
 
+
+
+## v0.1.103.10.60
+
+Active candidate: v0.1.103.10.60
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip
+
+Slice: v0.1.103.10.60 — configure Docker live-slot service with trusted conversation URL before preflight
