@@ -1614,12 +1614,16 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert call_text.count("pb test full") == 1
     assert "validation_evidence_reuse: reused full_direct browser/source lifecycle for full_localhost" in result.stdout
     assert "--skip source_add_text,source_remove_text" in call_text
-    assert "pb --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 login-check" in call_text
-    "if [[ \"$1\" == \"--profile-dir\" && \"$3\" == \"project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
-    assert "pb --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 project-ensure" in call_text
-    assert "pb test ask-live --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 --profile-lease --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json" in call_text
-    assert "pb test visual-artifact-roundtrip --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 --profile-lease --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json" in call_text
-    assert "pb test release-live --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 --profile-lease --conversation-url https://chatgpt.com/g/g-p-shared/project --keep-project --json" in call_text
+    live_steps = {step["name"]: step for step in summary["steps"] if step["name"] in {"live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}}
+    assert live_steps
+    assert all(step["status"] == "external_live_not_requested" for step in live_steps.values())
+    assert summary["external_live_tests_requested"] is False
+    assert summary["external_live_not_requested_steps"] == ["live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"]
+    assert "pb --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 login-check" not in call_text
+    assert "pb --profile-dir ./.pb_profile_local_debug_pools/release-live/slots/slot-1 project-ensure" not in call_text
+    assert "pb test ask-live" not in call_text
+    assert "pb test visual-artifact-roundtrip" not in call_text
+    assert "pb test release-live" not in call_text
     assert "pb test import-smoke --json" in call_text
     assert "pb artifact guard --zip repo_v9.9.9.zip --version v9.9.9 --json" in call_text
 
@@ -3665,6 +3669,31 @@ def test_release_control_live_preflight_does_not_recommend_chatgpt_root_static()
     assert '<trusted-/g/.../c/...-conversation-url>' in bootstrap_block
     assert '--url {url or ' in bootstrap_block
     assert '--url {url}",' not in bootstrap_block
+
+
+def test_release_control_default_run_all_external_live_not_requested_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "--run-external-live-tests" in script
+    assert "--require-chatgpt-live-validation" in script
+    assert "external_live_not_requested" in script
+    assert "refusing to call POST /v1/login-check during default --run-all-tests" in script
+    default_branch = script.index('if [[ ${run_external_live_tests} -eq 0 ]]; then')
+    preflight_launch = script.index('if run_all_resolve_live_service_target_url && run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then')
+    assert default_branch < preflight_launch
+    assert 'record_all_test_nonblocking_skipped_step "live_profile_preflight" "${live_profile_preflight_json}" "external_live_not_requested"' in script
+
+
+def test_release_control_external_live_flag_explicitly_enables_probe_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'run_external_live_tests="${PROMPTBRANCH_RUN_EXTERNAL_LIVE_TESTS:-0}"' in script
+    assert '--run-external-live-tests)' in script
+    assert 'run_external_live_tests=1' in script
+    assert '--require-chatgpt-live-validation)' in script
+    assert 'require_chatgpt_live_validation=1' in script
+    assert 'export PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS="${run_external_live_tests}"' in script
+    assert '"external_live_tests_requested": os.environ.get("PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS") == "1"' in script
 
 
 def test_release_control_classifies_docker_live_preflight_challenge_as_external_live_blocked_static() -> None:

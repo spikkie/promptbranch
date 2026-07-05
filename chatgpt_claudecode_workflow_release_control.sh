@@ -82,6 +82,10 @@ adopt_current=0
 adopt_if_green=0
 adopt_after_validation=0
 run_all_tests=0
+# External ChatGPT live probes are Cloudflare/human-check gated and are therefore
+# not part of default deterministic --run-all-tests product validation.
+run_external_live_tests="${PROMPTBRANCH_RUN_EXTERNAL_LIVE_TESTS:-0}"
+require_chatgpt_live_validation="${PROMPTBRANCH_REQUIRE_CHATGPT_LIVE_VALIDATION:-0}"
 # Release-control run-all should treat ChatGPT conversation-history 429s as
 # temporary backpressure: click/dismiss the modal in browser code, wait for the
 # persisted cooldown window, then retry the same step once before declaring FIX.
@@ -149,12 +153,20 @@ Options:
                               or an internal tee-based session log fallback otherwise.
                               Does not imply adoption. Use --tests-only --adopt-if-green for
                               guarded adoption of an already uploaded Project Source ZIP.
-      --run-all-tests         Run the full operator validation stack in one command and continue
+      --run-all-tests         Run the full deterministic operator validation stack in one command and continue
                               after individual failures. Implies --run-tests and --test-transport both.
-                              Runs pb test full via direct+localhost, ask-live, visual-artifact-roundtrip,
-                              release-live, import-smoke, and artifact guard, then writes a final GO/FIX JSON report.
+                              Runs pb test full via direct+localhost, import-smoke, and artifact guard, then
+                              writes a final GO/FIX JSON report. External ChatGPT live probes are not run by
+                              default because they are Cloudflare/human-check gated and cannot be product-fixed.
                               By default, text-source add/remove is treated as a compatibility probe and is
                               excluded from the release-blocking full browser path.
+      --run-external-live-tests
+                              Also run Cloudflare-gated ChatGPT live probes: live_profile_preflight,
+                              live_project_ensure, ask_live, visual_artifact_roundtrip, and release_live.
+                              This is an explicit external probe, not part of default product validation.
+      --require-chatgpt-live-validation
+                              Require the external ChatGPT live probe for a GO/adoption result. Implies
+                              --run-external-live-tests.
       --strict-source-kind-matrix
                               With --run-all-tests, include text-source add/remove in the release-blocking
                               full browser source-kind matrix.
@@ -578,6 +590,15 @@ while [[ $# -gt 0 ]]; do
       run_all_strict_source_kind_matrix=1
       shift
       ;;
+    --run-external-live-tests)
+      run_external_live_tests=1
+      shift
+      ;;
+    --require-chatgpt-live-validation)
+      require_chatgpt_live_validation=1
+      run_external_live_tests=1
+      shift
+      ;;
     --run-failing-tests)
       run_failing_tests=1
       run_all_tests=1
@@ -672,6 +693,19 @@ fi
 if [[ ${adopt_after_validation} -eq 1 && ${run_failing_tests} -eq 1 ]]; then
   fail "--adopt-after-validation cannot be combined with --run-failing-tests"
 fi
+case "${run_external_live_tests}" in
+  0|1) ;;
+  *) fail "PROMPTBRANCH_RUN_EXTERNAL_LIVE_TESTS/--run-external-live-tests must resolve to 0 or 1; got ${run_external_live_tests}" ;;
+esac
+case "${require_chatgpt_live_validation}" in
+  0|1) ;;
+  *) fail "PROMPTBRANCH_REQUIRE_CHATGPT_LIVE_VALIDATION/--require-chatgpt-live-validation must resolve to 0 or 1; got ${require_chatgpt_live_validation}" ;;
+esac
+if [[ ${require_chatgpt_live_validation} -eq 1 ]]; then
+  run_external_live_tests=1
+fi
+export PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS="${run_external_live_tests}"
+export PROMPTBRANCH_RELEASE_REQUIRE_CHATGPT_LIVE_VALIDATION="${require_chatgpt_live_validation}"
 
 if [[ ${import_plan} -eq 1 && ${skip_zip_import} -eq 1 ]]; then
   fail "--import-plan requires a candidate ZIP; do not combine it with --skip-zip-import"
@@ -1493,6 +1527,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import sys
 out, phase, rc, url, log, guardrail = sys.argv[1:7]
 backend_guardrail = guardrail.strip() == "1"
@@ -2322,6 +2357,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import sys
 
 out = Path(sys.argv[1])
@@ -4533,6 +4569,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import os
 import sys
 
 out = Path(sys.argv[1])
@@ -4918,7 +4955,13 @@ for item in raw_steps:
 
 ok = bool(steps) and all(step["ok"] for step in steps)
 failed = [step for step in steps if not step["ok"]]
+external_live_not_requested_statuses = {"external_live_not_requested"}
 external_live_statuses = {"live_external_browser_challenge", "skipped_live_external_browser_challenge"}
+external_live_not_requested_steps = [
+    step["name"]
+    for step in steps
+    if step.get("status") in external_live_not_requested_statuses
+]
 live_external_browser_challenge_steps = [
     step["name"]
     for step in steps
@@ -4959,7 +5002,8 @@ validation_reuse_summary = {
         "first_command": "--run-tests --strict-source-kind-matrix",
         "second_command": "--run-all-tests --strict-source-kind-matrix",
         "reusable_group": "full_direct",
-        "must_still_execute_groups": ["live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live", "import_smoke", "artifact_guard"],
+        "must_still_execute_groups": ["import_smoke", "artifact_guard"],
+        "external_live_groups": ["live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"],
         "reusable_browser_source_lifecycle_groups": ["full_localhost"],
     },
 }
@@ -4991,6 +5035,7 @@ diagnostics_summary = {
     "rate_limit_evidence_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_evidence_detected") is True],
     "rate_limit_retry_denied_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_retry_denied") is True],
     "live_external_browser_challenge_steps": live_external_browser_challenge_steps,
+    "external_live_not_requested_steps": external_live_not_requested_steps,
     "likely_failure_phases": {step["name"]: step.get("diagnostics", {}).get("likely_failure_phase") for step in failed},
 }
 summary = {
@@ -5003,6 +5048,9 @@ summary = {
     "status": release_policy_status,
     "final_verdict": final_verdict,
     "external_live_blocked": external_live_blocked,
+    "external_live_tests_requested": os.environ.get("PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS") == "1",
+    "chatgpt_live_validation_required": os.environ.get("PROMPTBRANCH_RELEASE_REQUIRE_CHATGPT_LIVE_VALIDATION") == "1",
+    "external_live_not_requested_steps": external_live_not_requested_steps,
     "product_failure_count": len(product_failed),
     "live_external_browser_challenge_steps": live_external_browser_challenge_steps,
     "version": version,
@@ -5693,6 +5741,32 @@ run_all_live_validation_steps() {
   echo "continue_on_failure: true"
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: unique_project_delete_frozen_retained"
+  echo "external_live_tests_requested: ${run_external_live_tests}"
+  echo "chatgpt_live_validation_required: ${require_chatgpt_live_validation}"
+
+  if [[ ${run_external_live_tests} -eq 0 ]]; then
+    echo "external_live_policy: not_requested_default_product_validation"
+    echo "INFO: external ChatGPT live probes are not requested; refusing to call POST /v1/login-check during default --run-all-tests."
+    record_all_test_nonblocking_skipped_step "live_profile_preflight" "${live_profile_preflight_json}" "external_live_not_requested"
+    record_all_test_nonblocking_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "external_live_not_requested"
+    record_all_test_nonblocking_skipped_step "ask_live" "${ask_live_log}" "external_live_not_requested"
+    record_all_test_nonblocking_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "external_live_not_requested"
+    record_all_test_nonblocking_skipped_step "release_live" "${release_live_log}" "external_live_not_requested"
+    run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+    run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
+    write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"
+    if ! python3 - "${all_tests_summary_json}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+raise SystemExit(0 if payload.get("ok") is True and payload.get("final_verdict") == "GO" else 1)
+INNERPY
+    then
+      workflow_rc=1
+    fi
+    return 0
+  fi
 
   if [[ ${run_all_browser_guardrail_seen} -eq 1 ]]; then
     echo "ERROR: browser_backend_403_guardrail observed during full validation; skipping live browser phases to avoid using a poisoned browser/profile state." >&2
@@ -5964,6 +6038,8 @@ service_port:   ${service_port}
 service_base:   ${service_base_url}
 test_transport: ${test_transport}
 run_all_tests:  ${run_all_tests}
+run_external_live_tests: ${run_external_live_tests}
+require_chatgpt_live_validation: ${require_chatgpt_live_validation}
 run_failing_tests: ${run_failing_tests}
 run_all_strict_source_kind_matrix: ${run_all_strict_source_kind_matrix}
 all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")

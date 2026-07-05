@@ -618,3 +618,12 @@ Active candidate: v0.1.103.10.61
 Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
+
+
+## v0.1.103.10.62
+
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip`
+
+Slice: v0.1.103.10.62 — split external ChatGPT live probes from mandatory product release validation
+
+Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.

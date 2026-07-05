@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.61"
+VERSION = "v0.1.103.10.62"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -59,6 +59,13 @@ def replay_run_all(scenario: str) -> ReplayResult:
 
     passed("full_direct")
     passed("full_localhost")
+
+    if scenario == "default_external_live_not_requested":
+        for name in ("live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"):
+            result.steps.append(ReplayStep(name, "passed", "external_live_not_requested"))
+        passed("import_smoke")
+        passed("artifact_guard")
+        return result
 
     if scenario == "live_preflight_target_url_missing":
         failed("live_profile_preflight", "live_preflight_target_url_missing")
@@ -122,6 +129,20 @@ def replay_run_all(scenario: str) -> ReplayResult:
     passed("import_smoke")
     passed("artifact_guard")
     return result
+
+
+def test_release_control_replay_default_external_live_not_requested_go_path() -> None:
+    result = replay_run_all("default_external_live_not_requested")
+
+    assert result.ok is True
+    assert result.final_verdict == "GO"
+    for name in ("live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"):
+        step = result.step(name)
+        assert step.ok is True
+        assert step.reason == "external_live_not_requested"
+    assert result.step("import_smoke").ok is True
+    assert result.step("artifact_guard").ok is True
+    assert result.launched_browser_steps == []
 
 
 def test_release_control_replay_success_go_path() -> None:
