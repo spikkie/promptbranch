@@ -3624,3 +3624,23 @@ def test_release_live_continuous_requires_warmup_url_before_launch_static() -> N
     assert 'warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")' in script
     assert 'release_live_continuous_warmup_conversation_url: unavailable' in script
     assert 'status: live_preflight_warmup_url_missing' in script
+
+
+def test_release_live_continuous_uses_docker_service_transport_not_profile_lease_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "release-live-continuous_service_transport_required" in script
+    launch = script.index('CHATGPT_SERVICE_BASE_URL="${service_base_url}" PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1')
+    segment = script[launch: launch + 900]
+    assert 'CHATGPT_SERVICE_BASE_URL="${service_base_url}"' in segment
+    assert '--profile-lease' not in segment
+    assert '--profile-dir "${live_profile_pool_slot_dir}"' in segment
+
+
+def test_release_control_maps_release_live_slot_to_app_profile_before_live_preflight_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "run_all_recreate_service_for_live_slot_profile" in script
+    assert 'PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
+    assert "docker_service_maps_release_live_slot_to_app_profile" in script
+    call = script.index('if run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then')
+    live = script.index('run_all_release_live_continuous_bootstrap_and_ask', call)
+    assert call < live

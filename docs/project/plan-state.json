@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.58.zip",
-  "active_candidate_version": "v0.1.103.10.58",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
+  "active_candidate_version": "v0.1.103.10.59",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.58 \u2014 extract live preflight warmup URL from login-check url field",
+  "active_slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "v0.1.103.10.58",
+  "current_candidate": "v0.1.103.10.59",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -47,11 +47,11 @@
       "version": "v0.1.103.10.56"
     },
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.58.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
       "created_at": "2026-07-05T14:20:00Z",
-      "slice": "v0.1.103.10.58 \u2014 release-live-continuous warms up on trusted conversation URL, not chatgpt.com root",
+      "slice": "v0.1.103.10.59 \u2014 release-live-continuous warms up on trusted conversation URL, not chatgpt.com root",
       "status": "candidate",
-      "version": "v0.1.103.10.58"
+      "version": "v0.1.103.10.59"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -59,9 +59,9 @@
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
   "last_updated": "2026-07-05",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.58.zip",
-  "next_normal_slice": "v0.1.103.10.58 \u2014 extract live preflight warmup URL from login-check url field",
-  "next_normal_version": "v0.1.103.10.58",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
+  "next_normal_slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
+  "next_normal_version": "v0.1.103.10.59",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -79,10 +79,10 @@
   "release_history": [
     {
       "kind": "repair",
-      "slice": "v0.1.103.10.58 \u2014 extract live preflight warmup URL from login-check url field",
+      "slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
       "status": "candidate",
       "summary": "Use the live preflight validated conversation URL as release-live-continuous warmup target instead of bare chatgpt.com root.",
-      "version": "v0.1.103.10.58"
+      "version": "v0.1.103.10.59"
     },
     {
       "kind": "repair",
@@ -261,12 +261,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.58.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
       "release_mode": "repair",
-      "scope": "extract the trusted /c/... warmup URL from live_profile_preflight login-check top-level url and refuse ChatGPT root fallback",
-      "slice": "v0.1.103.10.58 \u2014 extract live preflight warmup URL from login-check url field",
+      "scope": "route release-live-continuous through the Docker service browser envelope that passed live preflight instead of local host Patchright",
+      "slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
       "status": "active",
-      "version": "v0.1.103.10.58"
+      "version": "v0.1.103.10.59"
     },
     {
       "release_mode": "normal",

@@ -168,6 +168,17 @@ class ProjectEnsureRequest(BaseModel):
     project_url: Optional[str] = None
 
 
+class ReleaseLiveContinuousRequest(BaseModel):
+    project_name: str = Field(..., min_length=1)
+    bootstrap_prompt: str = Field(..., min_length=1)
+    ask_prompt: str = Field(..., min_length=1)
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    memory_mode: str = "project-only"
+    service_timeout_seconds: Optional[float] = None
+    warmup_conversation_url: Optional[str] = None
+
+
 class ProjectRemoveRequest(BaseModel):
     keep_open: bool = False
     project_url: Optional[str] = None
@@ -1045,6 +1056,38 @@ async def ensure_project(payload: ProjectEnsureRequest) -> dict:
             memory_mode=payload.memory_mode,
             keep_open=payload.keep_open,
         )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+
+
+@protected.post("/release-live/continuous", dependencies=[Depends(require_service_token)])
+async def release_live_continuous(payload: ReleaseLiveContinuousRequest) -> dict:
+    try:
+        return await _service_for(payload.warmup_conversation_url).release_live_bootstrap_and_ask(
+            project_name=payload.project_name,
+            bootstrap_prompt=payload.bootstrap_prompt,
+            ask_prompt=payload.ask_prompt,
+            icon=payload.icon,
+            color=payload.color,
+            memory_mode=payload.memory_mode,
+            service_timeout_seconds=payload.service_timeout_seconds,
+            warmup_conversation_url=payload.warmup_conversation_url,
+        )
+    except AuthChallengeRequiredError as exc:  # release-control needs structured JSON, not an HTTP transport failure
+        payload_dict = exc.to_payload()
+        payload_dict.setdefault("ok", False)
+        payload_dict["status"] = "docker_live_profile_challenged" if payload_dict.get("challenge_type") == "docker_live_profile_challenged" else str(payload_dict.get("status") or "auth_challenge_required")
+        payload_dict.setdefault("action", "test_release_live_continuous")
+        return payload_dict
+    except BotChallengeError as exc:
+        return {
+            "ok": False,
+            "action": "test_release_live_continuous",
+            "status": "docker_live_profile_challenged",
+            "challenge_type": "docker_live_profile_challenged",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+        }
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)
 

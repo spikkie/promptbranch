@@ -1550,13 +1550,25 @@ class ServiceBackend:
         service_timeout_seconds: Optional[float] = None,
         warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        return {
-            "ok": False,
-            "action": "test_release_live_continuous",
-            "status": "unsupported_service_backend",
-            "error": "release-live continuous validation requires direct profile-lease backend so one browser session can own project ensure, bootstrap, and first ask",
-            "error_type": "unsupported_service_backend",
-        }
+        result = await self._call(
+            self._client.release_live_bootstrap_and_ask,
+            project_name=project_name,
+            bootstrap_prompt=bootstrap_prompt,
+            ask_prompt=ask_prompt,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            service_timeout_seconds=service_timeout_seconds or self._service_timeout_seconds,
+            warmup_conversation_url=warmup_conversation_url,
+        )
+        if isinstance(result, dict):
+            project_url = result.get("project_url")
+            conversation_url = result.get("conversation_url")
+            if isinstance(project_url, str) and project_url:
+                self._conversation_state.remember_project(project_url, project_name=project_name)
+            if isinstance(conversation_url, str) and conversation_url:
+                self._conversation_state.remember(project_url or self._project_url, conversation_url, project_name=project_name)
+        return result
 
     def state_snapshot(self) -> dict[str, Any]:
         return self._conversation_state.snapshot(self._project_url)
@@ -24619,11 +24631,13 @@ async def _async_main(args: argparse.Namespace) -> int:
             profile_lease.__enter__()
             args._browser_profile_dir = str(profile_lease.leased_profile_dir or lease_settings.get("profile_dir"))
             args.profile_lease = profile_lease.to_payload(ok=True)
-            # Profile-pool slots are local filesystem browser profiles. The Docker
-            # service owns its own container profile and cannot use these local
-            # leased slot paths, so pooled browser-backed commands intentionally
-            # run through the direct local browser backend.
-            if lease_settings.get("pool_name") or bool(getattr(args, "profile_lease", False)):
+            # Profile-pool slots are local filesystem browser profiles. Most
+            # headed live commands intentionally run through the direct local
+            # browser backend.  release-live-continuous is the exception: release
+            # control maps the exact slot to /app/profile and routes it through
+            # the Docker service so preflight and continuous validation share the
+            # same browser envelope.
+            if (lease_settings.get("pool_name") or bool(getattr(args, "profile_lease", False))) and not (getattr(args, "command", None) == "test" and getattr(args, "test_command", None) == "release-live-continuous"):
                 args.service_base_url = None
         backend = build_backend(args)
         if args.command == "login-check":
@@ -24731,7 +24745,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
     args._profile_dir_explicit = _option_was_provided(normalized_argv, "--profile-dir")
-    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live", "release-live-continuous"}:
+    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
         args.debug_browser = True
         args.headless = False
         if not _option_was_provided(normalized_argv, "--profile-dir"):

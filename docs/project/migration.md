@@ -876,13 +876,13 @@ No operator state migration is required. Existing manually bootstrapped `.pb_pro
 
 Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip` wires `release-live-continuous` into the real CLI test dispatcher while preserving the continuous release-live session design.
 
-## v0.1.103.10.58
+## v0.1.103.10.59
 
-Active candidate: v0.1.103.10.58
+Active candidate: v0.1.103.10.59
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.58.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip
 
-Slice: v0.1.103.10.58 — extract live preflight warmup URL from login-check url field
+Slice: v0.1.103.10.59 — extract live preflight warmup URL from login-check url field
 
 Scope: release-live-continuous starts the initial auth/warmup check from the trusted conversation URL proven by live_profile_preflight instead of bare https://chatgpt.com/.
 

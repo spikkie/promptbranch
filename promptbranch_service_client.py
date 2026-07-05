@@ -172,6 +172,37 @@ class ChatGPTServiceClient:
             response = self._client.post("/v1/ask", data=data, timeout=self._timeout)
         return self._json(response)
 
+
+    def release_live_bootstrap_and_ask(
+        self,
+        *,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "project-only",
+        service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "project_name": project_name,
+            "bootstrap_prompt": bootstrap_prompt,
+            "ask_prompt": ask_prompt,
+            "memory_mode": memory_mode,
+        }
+        if icon is not None:
+            payload["icon"] = icon
+        if color is not None:
+            payload["color"] = color
+        if service_timeout_seconds is not None:
+            payload["service_timeout_seconds"] = float(service_timeout_seconds)
+        if warmup_conversation_url:
+            payload["warmup_conversation_url"] = warmup_conversation_url
+        response = self._client.post("/v1/release-live/continuous", json=payload, timeout=self._timeout)
+        return self._json(response)
+
+
     def discover_project_source_capabilities(
         self,
         *,

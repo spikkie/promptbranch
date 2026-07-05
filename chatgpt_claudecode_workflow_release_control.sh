@@ -5111,6 +5111,28 @@ MSG
   return ${rc}
 }
 
+run_all_recreate_service_for_live_slot_profile() {
+  local rc=0
+  echo "== pb test-all step: live_service_slot_recreate =="
+  echo "live_service_profile_strategy: docker_service_maps_release_live_slot_to_app_profile"
+  echo "live_profile_pool_slot_dir: ${live_profile_pool_slot_display}"
+  echo "+ PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
+  PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans
+  rc=$?
+  if [[ ${rc} -ne 0 ]]; then
+    echo "ERROR: live service recreate failed while mapping release-live slot to /app/profile." >&2
+    workflow_rc=${rc}
+    return ${rc}
+  fi
+  if ! wait_for_promptbranch_service_version; then
+    echo "ERROR: live service did not report expected candidate version after slot-profile recreate." >&2
+    workflow_rc=1
+    return 1
+  fi
+  echo "live_service_profile_status: mapped_slot_profile_to_app_profile"
+  return 0
+}
+
 run_all_live_profile_preflight() {
   local rc=0
   echo "== pb test-all step: live_profile_preflight =="
@@ -5414,11 +5436,10 @@ run_all_release_live_continuous_bootstrap_and_ask() {
   warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")
   {
     echo "release_live_continuous_warmup_conversation_url: ${run_all_live_warmup_conversation_url}"
-    echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --profile-lease --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} ${warmup_args[*]:-} --keep-project --retries 0 --json"
-    PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
+    echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} ${warmup_args[*]:-} --keep-project --retries 0 --json"
+    CHATGPT_SERVICE_BASE_URL="${service_base_url}" PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
       pb test release-live-continuous \
         --profile-dir "${live_profile_pool_slot_dir}" \
-        --profile-lease \
         --project-name "${release_test_project_name}" \
         --memory-mode project-only \
         --bootstrap-sentinel "${bootstrap_sentinel}" \
@@ -5558,7 +5579,7 @@ INNERPY
     return 0
   fi
 
-  if run_all_live_profile_preflight; then
+  if run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then
     if run_all_release_live_continuous_bootstrap_and_ask; then
       run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
       run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
@@ -5810,3 +5831,5 @@ exit_code:     ${workflow_rc}
 DONE
 
 exit "${workflow_rc}"
+
+# release-live-continuous_service_transport_required: run through CHATGPT_SERVICE_BASE_URL, not local host Patchright
