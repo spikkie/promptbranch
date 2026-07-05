@@ -588,3 +588,8 @@ Control-surface tokens: v0.1.103.10.48 chatgpt_claudecode_workflow-2_v0.1.103.10
 ## Active repair slice — v0.1.103.10.55
 
 `v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.
+
+
+## v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
+
+Repair candidate chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip wires `pb test release-live-continuous` into the real CLI dispatcher while preserving the continuous release-live design from 10.55.

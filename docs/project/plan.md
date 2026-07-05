@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip
-active candidate version: v0.1.103.10.55
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip
-next normal slice: v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip
+active candidate version: v0.1.103.10.56
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip
+next normal slice: v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1991,3 +1991,8 @@ Out of scope: host-CDP/session-manager, copied-profile trust, browser architectu
 ## Active repair slice — v0.1.103.10.55
 
 `v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.
+
+
+## v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
+
+Repair candidate chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip wires `pb test release-live-continuous` into the real CLI dispatcher while preserving the continuous release-live design from 10.55.

@@ -22403,6 +22403,8 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
             args.project_name_prefix = RELEASE_LIVE_DELETE_FROZEN_PROJECT_PREFIX
         _apply_delete_frozen_live_test_defaults(args, profile="release-live")
         return await cmd_test_visual_artifact_roundtrip(backend, args)
+    if args.test_command == "release-live-continuous":
+        return await cmd_test_release_live_continuous(backend, args)
     if args.test_command == "visual-artifact-roundtrip":
         _apply_delete_frozen_live_test_defaults(args, profile="visual-artifact-roundtrip")
         return await cmd_test_visual_artifact_roundtrip(backend, args)

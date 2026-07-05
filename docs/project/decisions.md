@@ -647,3 +647,8 @@ Release-live browser validation must not ask the operator to prove humanity insi
 ## Active repair slice — v0.1.103.10.55
 
 `v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` adds a fast replay harness for release-control run-all orchestration, including terminal live bootstrap 429/guardrail behavior before ask_live. It preserves all-in-Docker, no host-CDP/session-manager, no copied-profile trust, and no private backend-api operational dependency.
+
+
+## v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
+
+Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip` wires `release-live-continuous` into the real CLI test dispatcher while preserving the continuous release-live session design.

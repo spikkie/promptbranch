@@ -14287,3 +14287,59 @@ def test_ask_live_plain_does_not_retry_real_wrong_project(monkeypatch) -> None:
     assert result["retry_attempt_count"] == 0
     assert result["transient_retry_attempted"] is False
     assert calls == 1
+
+
+def test_cmd_test_dispatches_release_live_continuous(capsys) -> None:
+    from promptbranch_cli import cmd_test
+
+    class FakeBackend:
+        async def release_live_bootstrap_and_ask(self, **kwargs):
+            assert kwargs["project_name"] == "itest-release-live-continuous"
+            assert kwargs["bootstrap_prompt"].startswith("Reply with exactly the single token BOOTSTRAP_SENTINEL")
+            assert kwargs["ask_prompt"].startswith("Return exactly the single token ASK_SENTINEL")
+            return {
+                "ok": True,
+                "status": "verified",
+                "project_url": "https://chatgpt.com/g/g-p-demo/project",
+                "conversation_url": "https://chatgpt.com/g/g-p-demo/c/demo",
+                "ask_result": {"answer": "ASK_SENTINEL"},
+            }
+
+    args = argparse.Namespace(
+        test_command="release-live-continuous",
+        json=True,
+        run_id="dispatch-test",
+        project_name="itest-release-live-continuous",
+        project_icon=None,
+        project_color=None,
+        memory_mode="project-only",
+        bootstrap_sentinel="BOOTSTRAP_SENTINEL",
+        ask_sentinel="ASK_SENTINEL",
+        keep_project=True,
+        retries=0,
+        service_timeout_seconds=None,
+    )
+
+    rc = asyncio.run(cmd_test(FakeBackend(), args))
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert rc == 0
+    assert payload["action"] == "test_release_live_continuous"
+    assert payload["status"] == "verified"
+    assert payload["continuous_browser_session"] is True
+    assert payload["contains_expected_sentinel"] is True
+
+
+def test_parser_exposes_release_live_continuous_help() -> None:
+    parser = make_parser()
+    args = parser.parse_args([
+        "test",
+        "release-live-continuous",
+        "--project-name",
+        "itest-release-live-continuous",
+        "--json",
+    ])
+    assert args.command == "test"
+    assert args.test_command == "release-live-continuous"
+    assert args.project_name == "itest-release-live-continuous"
