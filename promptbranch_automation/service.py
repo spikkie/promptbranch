@@ -1059,6 +1059,7 @@ class ChatGPTAutomationService:
         color: Optional[str] = None,
         memory_mode: str = "project-only",
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         logger.info("Running release-live continuous bootstrap and ask")
         async with self._lock.operation("release_live_continuous"):
@@ -1070,6 +1071,7 @@ class ChatGPTAutomationService:
                 color=color,
                 memory_mode=memory_mode,
                 service_timeout_seconds=service_timeout_seconds,
+                warmup_conversation_url=warmup_conversation_url,
             )
 
     async def ensure_project(

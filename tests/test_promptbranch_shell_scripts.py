@@ -3585,3 +3585,20 @@ def test_release_live_bootstrap_guardrail_blocks_ask_live_static() -> None:
     assert "skipped_blocked_by_live_bootstrap_guardrail" in script
     assert "refusing to open ask_live" in script
     assert "rate_limit_modal/conversation_history_429/backend-api guardrail" in script
+
+
+def test_release_live_continuous_uses_preflight_warmup_conversation_url_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    cli = (root / "promptbranch_cli.py").read_text(encoding="utf-8")
+    browser_client = (root / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+
+    assert "run_all_live_warmup_conversation_url" in script
+    assert "live_profile_preflight_warmup_conversation_url" in script
+    assert "--warmup-conversation-url" in script
+    assert "release_live_continuous_warmup_conversation_url" in script
+    assert "current_url" in script
+    assert 'test_release_live_continuous.add_argument("--warmup-conversation-url"' in cli
+    assert 'warmup_conversation_url=getattr(args, "warmup_conversation_url", None)' in cli
+    assert 'warmup_strategy="trusted_preflight_conversation_url"' in browser_client
+    assert "self.config.project_url = effective_warmup_url" in browser_client

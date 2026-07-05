@@ -1223,6 +1223,7 @@ class DirectBackend:
         color: Optional[str] = None,
         memory_mode: str = "project-only",
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         result = await self._service.release_live_bootstrap_and_ask(
             project_name=project_name,
@@ -1232,6 +1233,7 @@ class DirectBackend:
             color=color,
             memory_mode=memory_mode,
             service_timeout_seconds=service_timeout_seconds,
+            warmup_conversation_url=warmup_conversation_url,
         )
         if self._conversation_state is not None and isinstance(result, dict):
             project_url = result.get("project_url")
@@ -1546,6 +1548,7 @@ class ServiceBackend:
         color: Optional[str] = None,
         memory_mode: str = "project-only",
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         return {
             "ok": False,
@@ -21454,6 +21457,7 @@ async def cmd_test_release_live_continuous(backend: CommandBackend, args: argpar
             color=getattr(args, "project_color", None),
             memory_mode=getattr(args, "memory_mode", "project-only"),
             service_timeout_seconds=getattr(args, "service_timeout_seconds", None),
+            warmup_conversation_url=getattr(args, "warmup_conversation_url", None),
         )
     except (AuthChallengeRequiredError, BotChallengeError) as exc:
         payload = {
@@ -21482,6 +21486,9 @@ async def cmd_test_release_live_continuous(backend: CommandBackend, args: argpar
     payload.setdefault("bootstrap_sentinel", bootstrap_sentinel)
     payload.setdefault("ask_sentinel", ask_sentinel)
     payload.setdefault("continuous_browser_session", True)
+    if getattr(args, "warmup_conversation_url", None):
+        payload.setdefault("warmup_conversation_url", getattr(args, "warmup_conversation_url", None))
+        payload.setdefault("warmup_strategy", "trusted_preflight_conversation_url")
     payload.setdefault("duration_seconds", round(time.monotonic() - started, 3))
     ask_result = payload.get("ask_result") if isinstance(payload.get("ask_result"), dict) else {}
     answer_text = _ask_live_answer_text(ask_result) if isinstance(ask_result, dict) else ""
@@ -24112,6 +24119,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_release_live_continuous.add_argument("--project-color")
     test_release_live_continuous.add_argument("--bootstrap-sentinel", help="Expected bootstrap sentinel token.")
     test_release_live_continuous.add_argument("--ask-sentinel", help="Expected first ask sentinel token.")
+    test_release_live_continuous.add_argument("--warmup-conversation-url", help="Known trusted ChatGPT conversation URL to use for the initial auth/warmup check instead of chatgpt.com root.")
     test_release_live_continuous.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen.")
     test_release_live_continuous.add_argument("--retries", type=int, help="Compatibility flag; continuous release-live uses one attempt.")
     _add_profile_pool_options(test_release_live_continuous, default_pool=None)

@@ -469,6 +469,7 @@ class ChatGPTAutomation:
         color: Optional[str] = None,
         memory_mode: str = "project-only",
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         return await self.client.release_live_bootstrap_and_ask(
             project_name=project_name,
@@ -478,6 +479,7 @@ class ChatGPTAutomation:
             color=color,
             memory_mode=memory_mode,
             service_timeout_seconds=service_timeout_seconds,
+            warmup_conversation_url=warmup_conversation_url,
         )
 
     async def create_project(

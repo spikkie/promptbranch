@@ -1835,31 +1835,45 @@ class ChatGPTBrowserClient:
         color: Optional[str] = None,
         memory_mode: str = "project-only",
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         """Run release-live project ensure, bootstrap, and first ask in one browser context.
 
         Release-live validation should behave like one human browser session: select
         the project, create the fresh conversation, and send the first validation
         prompt without closing/reopening the browser between those operations.
+        When the live preflight has already proven a concrete Project conversation
+        URL for this exact slot profile, start the initial auth check at that URL
+        instead of warming up on the bare chatgpt.com root.
         """
+        effective_warmup_url = str(warmup_conversation_url or "").strip() or None
         self._log(
             "release-live-continuous",
             "starting release-live continuous bootstrap and ask",
             project_name=project_name,
             profile_dir=self.config.profile_dir,
+            warmup_conversation_url=effective_warmup_url,
+            warmup_strategy="trusted_preflight_conversation_url" if effective_warmup_url else "configured_project_url",
         )
-        return await self._run_with_context(
-            operation_name="release_live_continuous",
-            operation=self._release_live_bootstrap_and_ask_operation,
-            project_name=project_name,
-            bootstrap_prompt=bootstrap_prompt,
-            ask_prompt=ask_prompt,
-            icon=icon,
-            color=color,
-            memory_mode=memory_mode,
-            service_timeout_seconds=service_timeout_seconds,
-            respect_history_rate_limit_cooldown=False,
-        )
+        original_project_url = self.config.project_url
+        if effective_warmup_url:
+            self.config.project_url = effective_warmup_url
+        try:
+            return await self._run_with_context(
+                operation_name="release_live_continuous",
+                operation=self._release_live_bootstrap_and_ask_operation,
+                project_name=project_name,
+                bootstrap_prompt=bootstrap_prompt,
+                ask_prompt=ask_prompt,
+                icon=icon,
+                color=color,
+                memory_mode=memory_mode,
+                service_timeout_seconds=service_timeout_seconds,
+                warmup_conversation_url=effective_warmup_url,
+                respect_history_rate_limit_cooldown=False,
+            )
+        finally:
+            self.config.project_url = original_project_url
 
     @staticmethod
     def _release_live_telemetry_guardrail_seen(telemetry: Any) -> bool:
@@ -1883,6 +1897,7 @@ class ChatGPTBrowserClient:
         color: Optional[str],
         memory_mode: str,
         service_timeout_seconds: Optional[float] = None,
+        warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         started = time.monotonic()
         project_result = await self._ensure_project_operation(
@@ -1903,6 +1918,8 @@ class ChatGPTBrowserClient:
                 "status": str(project_result.get("status") or "live_project_ensure_failed") if isinstance(project_result, dict) else "live_project_ensure_failed",
                 "failed_phase": "live_project_ensure",
                 "project_result": project_result,
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
 
@@ -1939,6 +1956,8 @@ class ChatGPTBrowserClient:
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
                 "rate_limit_telemetry": bootstrap_telemetry,
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
         if not (isinstance(conversation_url, str) and "/c/" in conversation_url):
@@ -1951,6 +1970,8 @@ class ChatGPTBrowserClient:
                 "conversation_url": conversation_url,
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
 
@@ -1992,6 +2013,8 @@ class ChatGPTBrowserClient:
             "ask_result": ask_result,
             "continuous_browser_session": True,
             "same_profile_for_project_bootstrap_and_ask": True,
+            "warmup_conversation_url": warmup_conversation_url,
+            "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
             "duration_seconds": round(time.monotonic() - started, 3),
         }
 

@@ -14297,6 +14297,7 @@ def test_cmd_test_dispatches_release_live_continuous(capsys) -> None:
             assert kwargs["project_name"] == "itest-release-live-continuous"
             assert kwargs["bootstrap_prompt"].startswith("Reply with exactly the single token BOOTSTRAP_SENTINEL")
             assert kwargs["ask_prompt"].startswith("Return exactly the single token ASK_SENTINEL")
+            assert kwargs["warmup_conversation_url"] == "https://chatgpt.com/g/g-p-demo/c/warmup"
             return {
                 "ok": True,
                 "status": "verified",
@@ -14318,6 +14319,7 @@ def test_cmd_test_dispatches_release_live_continuous(capsys) -> None:
         keep_project=True,
         retries=0,
         service_timeout_seconds=None,
+        warmup_conversation_url="https://chatgpt.com/g/g-p-demo/c/warmup",
     )
 
     rc = asyncio.run(cmd_test(FakeBackend(), args))
@@ -14338,8 +14340,11 @@ def test_parser_exposes_release_live_continuous_help() -> None:
         "release-live-continuous",
         "--project-name",
         "itest-release-live-continuous",
+        "--warmup-conversation-url",
+        "https://chatgpt.com/g/g-p-demo/c/warmup",
         "--json",
     ])
     assert args.command == "test"
     assert args.test_command == "release-live-continuous"
     assert args.project_name == "itest-release-live-continuous"
+    assert args.warmup_conversation_url == "https://chatgpt.com/g/g-p-demo/c/warmup"

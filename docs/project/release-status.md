@@ -593,3 +593,19 @@ Control-surface tokens: v0.1.103.10.48 chatgpt_claudecode_workflow-2_v0.1.103.10
 ## v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
 
 Repair candidate chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip wires `pb test release-live-continuous` into the real CLI dispatcher while preserving the continuous release-live design from 10.55.
+
+## v0.1.103.10.57
+
+- Added trusted conversation warmup for `release-live-continuous`: the continuous live session starts from the conversation URL proven by `live_profile_preflight` instead of bare `https://chatgpt.com/`.
+- Preserves all-in-Docker, explicit slot profile, no host-CDP/session-manager, and no copied-profile trust.
+
+## v0.1.103.10.57
+
+Active candidate: v0.1.103.10.57
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.57.zip
+
+Slice: v0.1.103.10.57 — release-live-continuous warms up on trusted conversation URL, not chatgpt.com root
+
+Scope: release-live-continuous starts the initial auth/warmup check from the trusted conversation URL proven by live_profile_preflight instead of bare https://chatgpt.com/.
+

@@ -767,6 +767,7 @@ live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_prefligh
 run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver}.log"
 run_all_shared_project_url=""
 run_all_shared_conversation_url=""
+run_all_live_warmup_conversation_url=""
 run_all_continuous_failure_kind=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
@@ -5140,6 +5141,12 @@ run_all_live_profile_preflight() {
     workflow_rc=${rc}
     return ${rc}
   fi
+  if run_all_live_warmup_conversation_url="$(run_all_extract_conversation_url_from_log "${live_profile_preflight_raw_log}" 2>/dev/null)"; then
+    echo "live_profile_preflight_warmup_conversation_url: ${run_all_live_warmup_conversation_url}" | tee -a "${live_profile_preflight_raw_log}"
+  else
+    run_all_live_warmup_conversation_url=""
+    echo "live_profile_preflight_warmup_conversation_url: unavailable" | tee -a "${live_profile_preflight_raw_log}"
+  fi
   write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified_explicit_live_profiles" "true" "0" "${live_profile_preflight_raw_log}"
   return 0
 }
@@ -5241,7 +5248,7 @@ for idx, char in enumerate(raw):
         continue
     if not isinstance(value, dict):
         continue
-    for key in ("conversation_url", "current_conversation_url"):
+    for key in ("conversation_url", "current_conversation_url", "current_url"):
         url = value.get(key)
         if is_conversation_url(url):
             candidates.append(str(url).strip())
@@ -5390,8 +5397,17 @@ run_all_release_live_continuous_bootstrap_and_ask() {
   echo "reuse_policy: one_continuous_release_live_slot_session_for_project_bootstrap_and_first_ask"
   : > "${run_all_project_ensure_log}"
   : > "${ask_live_log}"
+  local warmup_args=()
+  if [[ -n "${run_all_live_warmup_conversation_url}" ]]; then
+    warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")
+  fi
   {
-    echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --profile-lease --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} --keep-project --retries 0 --json"
+    if [[ -n "${run_all_live_warmup_conversation_url}" ]]; then
+      echo "release_live_continuous_warmup_conversation_url: ${run_all_live_warmup_conversation_url}"
+    else
+      echo "release_live_continuous_warmup_conversation_url: unavailable"
+    fi
+    echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --profile-lease --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} ${warmup_args[*]:-} --keep-project --retries 0 --json"
     PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
       pb test release-live-continuous \
         --profile-dir "${live_profile_pool_slot_dir}" \
@@ -5400,6 +5416,7 @@ run_all_release_live_continuous_bootstrap_and_ask() {
         --memory-mode project-only \
         --bootstrap-sentinel "${bootstrap_sentinel}" \
         --ask-sentinel "${ask_sentinel}" \
+        "${warmup_args[@]}" \
         --keep-project \
         --retries 0 \
         --json

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip
-active candidate version: v0.1.103.10.56
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip
-next normal slice: v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.57.zip
+active candidate version: v0.1.103.10.57
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.57.zip
+next normal slice: v0.1.103.10.57 — release-live-continuous warms up on trusted conversation URL, not chatgpt.com root
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1993,6 +1993,22 @@ Out of scope: host-CDP/session-manager, copied-profile trust, browser architectu
 `v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.
 
 
-## v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch
+## v0.1.103.10.57 — release-live-continuous warms up on trusted conversation URL, not chatgpt.com root
 
-Repair candidate chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip wires `pb test release-live-continuous` into the real CLI dispatcher while preserving the continuous release-live design from 10.55.
+Repair candidate chatgpt_claudecode_workflow-2_v0.1.103.10.57.zip wires `pb test release-live-continuous` into the real CLI dispatcher while preserving the continuous release-live design from 10.55.
+
+## v0.1.103.10.57
+
+- Added trusted conversation warmup for `release-live-continuous`: the continuous live session starts from the conversation URL proven by `live_profile_preflight` instead of bare `https://chatgpt.com/`.
+- Preserves all-in-Docker, explicit slot profile, no host-CDP/session-manager, and no copied-profile trust.
+
+## v0.1.103.10.57
+
+Active candidate: v0.1.103.10.57
+
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.57.zip
+
+Slice: v0.1.103.10.57 — release-live-continuous warms up on trusted conversation URL, not chatgpt.com root
+
+Scope: release-live-continuous starts the initial auth/warmup check from the trusted conversation URL proven by live_profile_preflight instead of bare https://chatgpt.com/.
+

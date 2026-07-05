@@ -517,3 +517,9 @@ Last release: v0.1.102
 | DOD-188 | Release-live bootstrap 429/rate-limit/backend-api guardrail telemetry is terminal before ask_live | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; focused shell tests | v0.1.103.10.53 |
 
 | DOD-189 | Fast release-control replay harness covers run-all success and terminal live bootstrap guardrail before ask_live | in_progress | tests/test_release_control_replay_harness.py; tests/fixtures/release_control_replay/bin/pb | v0.1.103.10.55 |
+
+## v0.1.103.10.57
+
+- Added trusted conversation warmup for `release-live-continuous`: the continuous live session starts from the conversation URL proven by `live_profile_preflight` instead of bare `https://chatgpt.com/`.
+- Preserves all-in-Docker, explicit slot profile, no host-CDP/session-manager, and no copied-profile trust.
+
