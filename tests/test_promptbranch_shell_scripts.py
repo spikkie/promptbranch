@@ -3602,3 +3602,25 @@ def test_release_live_continuous_uses_preflight_warmup_conversation_url_static()
     assert 'warmup_conversation_url=getattr(args, "warmup_conversation_url", None)' in cli
     assert 'warmup_strategy="trusted_preflight_conversation_url"' in browser_client
     assert "self.config.project_url = effective_warmup_url" in browser_client
+
+
+def test_release_live_preflight_warmup_extracts_top_level_login_check_url_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert '("conversation_url", "current_conversation_url", "current_url", "url")' in script
+    assert "pb login-check reports the validated page as" in script
+    assert "top-level ``url``" in script
+    assert "live_preflight_warmup_url_missing" in script
+    assert "refusing to start release-live-continuous at chatgpt.com root" in script
+    assert "skipped_live_preflight_warmup_url_missing" in script
+
+
+def test_release_live_continuous_requires_warmup_url_before_launch_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    guard = script.index('if [[ -z "${run_all_live_warmup_conversation_url}" ]]')
+    launch = script.index('echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous')
+    assert guard < launch
+    assert 'warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")' in script
+    assert 'release_live_continuous_warmup_conversation_url: unavailable' in script
+    assert 'status: live_preflight_warmup_url_missing' in script

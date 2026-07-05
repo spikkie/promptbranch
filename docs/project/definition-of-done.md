@@ -518,8 +518,12 @@ Last release: v0.1.102
 
 | DOD-189 | Fast release-control replay harness covers run-all success and terminal live bootstrap guardrail before ask_live | in_progress | tests/test_release_control_replay_harness.py; tests/fixtures/release_control_replay/bin/pb | v0.1.103.10.55 |
 
-## v0.1.103.10.57
+## v0.1.103.10.58
 
 - Added trusted conversation warmup for `release-live-continuous`: the continuous live session starts from the conversation URL proven by `live_profile_preflight` instead of bare `https://chatgpt.com/`.
 - Preserves all-in-Docker, explicit slot profile, no host-CDP/session-manager, and no copied-profile trust.
 
+
+## v0.1.103.10.58
+
+DOD-192: release-live-continuous extracts the trusted warmup conversation URL from `pb login-check` top-level `url` and refuses to fall back to ChatGPT root when it is missing.

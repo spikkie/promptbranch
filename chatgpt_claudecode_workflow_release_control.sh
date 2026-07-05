@@ -5248,7 +5248,10 @@ for idx, char in enumerate(raw):
         continue
     if not isinstance(value, dict):
         continue
-    for key in ("conversation_url", "current_conversation_url", "current_url"):
+    # v0.1.103.10.58: pb login-check reports the validated page as
+    # top-level ``url``.  Accept it only when it is already a /c/...
+    # conversation URL; do not allow /project or chatgpt.com root fallbacks.
+    for key in ("conversation_url", "current_conversation_url", "current_url", "url"):
         url = value.get(key)
         if is_conversation_url(url):
             candidates.append(str(url).strip())
@@ -5398,15 +5401,19 @@ run_all_release_live_continuous_bootstrap_and_ask() {
   : > "${run_all_project_ensure_log}"
   : > "${ask_live_log}"
   local warmup_args=()
-  if [[ -n "${run_all_live_warmup_conversation_url}" ]]; then
-    warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")
-  fi
-  {
-    if [[ -n "${run_all_live_warmup_conversation_url}" ]]; then
-      echo "release_live_continuous_warmup_conversation_url: ${run_all_live_warmup_conversation_url}"
-    else
+  if [[ -z "${run_all_live_warmup_conversation_url}" ]]; then
+    run_all_continuous_failure_kind="live_preflight_warmup_url_missing"
+    {
       echo "release_live_continuous_warmup_conversation_url: unavailable"
-    fi
+      echo "status: live_preflight_warmup_url_missing"
+      echo "ERROR: live_profile_preflight did not produce a trusted /c/... warmup URL; refusing to start release-live-continuous at chatgpt.com root."
+    } 2>&1 | tee -a "${run_all_project_ensure_log}" | tee -a "${ask_live_log}" >&2
+    record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+    return 1
+  fi
+  warmup_args=(--warmup-conversation-url "${run_all_live_warmup_conversation_url}")
+  {
+    echo "release_live_continuous_warmup_conversation_url: ${run_all_live_warmup_conversation_url}"
     echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --profile-lease --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} ${warmup_args[*]:-} --keep-project --retries 0 --json"
     PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
       pb test release-live-continuous \
@@ -5565,6 +5572,11 @@ INNERPY
         ask_live_docker_live_profile_challenged)
           record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"
           record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_ask_live_docker_live_profile_challenged"
+          ;;
+        live_preflight_warmup_url_missing)
+          record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_preflight_warmup_url_missing"
+          record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_preflight_warmup_url_missing"
+          record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_preflight_warmup_url_missing"
           ;;
         *)
           record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_release_live_continuous_failed"
