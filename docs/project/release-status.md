@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip
-active candidate version: v0.1.103.10.53
-next normal slice: v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip
+active candidate version: v0.1.103.10.54
+next normal slice: v0.1.103.10.54 — fast release-control run-all replay harness
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -583,3 +583,8 @@ Control-surface tokens: v0.1.103.10.48 chatgpt_claudecode_workflow-2_v0.1.103.10
 ## Active repair slice — v0.1.103.10.53
 
 `v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live` preserves the Docker-only live-profile repair chain through `v0.1.103.10.49`, then makes backend-api 403 guardrail telemetry during auth bootstrap terminal. Release-control now refuses to treat a visually logged-in/composer-visible browser as clean when the standard Docker profile is already forbidden by backend-api guardrail responses; it restarts the candidate service to clear the held browser owner and stops before Project Source add/full validation.
+
+
+## Active repair slice — v0.1.103.10.54
+
+`v0.1.103.10.54 — fast release-control run-all replay harness` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.

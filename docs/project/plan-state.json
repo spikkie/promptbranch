@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip",
-  "active_candidate_version": "v0.1.103.10.53",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
+  "active_candidate_version": "v0.1.103.10.54",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
+  "active_slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -20,26 +20,33 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
       "created_at": "2026-07-04T11:36:31.662943Z",
-      "slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
+      "slice": "v0.1.103.10.48 \u2014 classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
       "status": "candidate",
       "version": "v0.1.103.10.48"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
       "created_at": "2026-07-04T12:15:00Z",
-      "slice": "v0.1.103.10.49 — run all release-live setup and ask steps in the same explicit live slot profile",
+      "slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
       "status": "candidate",
       "version": "v0.1.103.10.49"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
+      "created_at": "2026-07-05T01:35:00Z",
+      "slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
+      "status": "candidate",
+      "version": "v0.1.103.10.54"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "last_updated": "2026-07-04",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip",
-  "next_normal_slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
-  "next_normal_version": "v0.1.103.10.53",
+  "last_updated": "2026-07-05",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
+  "next_normal_slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
+  "next_normal_version": "v0.1.103.10.54",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -55,6 +62,12 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "version": "v0.1.103.10.54",
+      "summary": "Add a fast pytest-backed release-control run-all replay harness for control-flow scenarios, including live bootstrap 429/guardrail with persisted cooldown, so shell/orchestration bugs are caught before long live Docker/ChatGPT runs."
+    },
     {
       "kind": "repair",
       "status": "candidate",
@@ -184,7 +197,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
       "scope": "Add Docker shared-memory sizing for Chrome service and visible bootstrap paths after exit_code=132 no-space-on-device crash.",
-      "slice": "v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation",
+      "slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
       "status": "candidate",
       "version": "v0.1.103.10.22"
     },
@@ -192,7 +205,7 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip",
       "release_mode": "repair",
       "scope": "backend-api 403 guardrail during auth bootstrap is release-blocking; release-control stops before Project Source add/full validation and clears the held auth browser owner without resetting all profiles",
-      "slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
+      "slice": "v0.1.103.10.53 \u2014 release-live bootstrap 429/guardrail is terminal before ask_live",
       "status": "candidate_built",
       "version": "v0.1.103.10.53"
     }
@@ -220,12 +233,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
       "release_mode": "repair",
-      "scope": "release-live project-ensure uses the explicit slot with fail-fast challenge mode, maps Cloudflare/backend-api guardrail to docker_live_profile_challenged, skips later live steps, and keeps docker compose down operator-safe without release env vars",
-      "slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
+      "scope": "fast replay harness for release-control run-all orchestration scenarios before expensive live Docker/ChatGPT validation",
+      "slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
       "status": "active",
-      "version": "v0.1.103.10.53"
+      "version": "v0.1.103.10.54"
     },
     {
       "release_mode": "normal",
@@ -269,5 +282,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.53"
+  "updated_for": "v0.1.103.10.54"
 }

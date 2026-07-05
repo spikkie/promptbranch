@@ -810,7 +810,7 @@ def test_release_control_pins_compose_service_image_to_release_version() -> None
 
     assert 'promptbranch_service_image_ref()' in script
     assert 'local default_image="promptbranch-service:${image_tag}"' in script
-    assert 'export PROMPTBRANCH_SERVICE_IMAGE="$(promptbranch_service_image_ref)"' in script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE="${image_ref}"' in script
     assert 'PROMPTBRANCH_SERVICE_IMAGE=%q' in script
     assert 'PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE' in script
     assert 'export PROMPTBRANCH_SERVICE_IMAGE="promptbranch-service:${PROMPTBRANCH_SERVICE_IMAGE_TAG}"' in run_script
