@@ -510,6 +510,8 @@ Last release: v0.1.102
 
 | DOD-185 | Release-live project setup, conversation bootstrap, ask-live, visual artifact, and release-live use the same explicit live slot profile; Docker bootstrap image defaults no longer depend on unset service image tag | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; `docker-compose.chatgpt-service.yml`; `scripts/pb-docker-browser-profile-bootstrap.sh`; focused shell tests | v0.1.103.10.49 |
 
-| DOD-186 | Backend-api 403 guardrail during auth bootstrap is release-blocking and clears held browser owner before stopping | in_progress | `scripts/pb-browser-cloudflare-validation.sh`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell tests | v0.1.103.10.52 |
+| DOD-186 | Backend-api 403 guardrail during auth bootstrap is release-blocking and clears held browser owner before stopping | in_progress | `scripts/pb-browser-cloudflare-validation.sh`; `chatgpt_claudecode_workflow_release_control.sh`; focused shell tests | v0.1.103.10.53 |
 
-| DOD-187 | Docker parity/check compose paths propagate versioned service image tags and refuse silent local/unknown candidate validation fallbacks | in_progress | docker-compose.chatgpt-service.yml; scripts/docker-browser-parity-cloudflare-check.sh; focused shell tests | v0.1.103.10.52 |
+| DOD-187 | Docker parity/check compose paths propagate versioned service image tags and refuse silent local/unknown candidate validation fallbacks | in_progress | docker-compose.chatgpt-service.yml; scripts/docker-browser-parity-cloudflare-check.sh; focused shell tests | v0.1.103.10.53 |
+
+| DOD-188 | Release-live bootstrap 429/rate-limit/backend-api guardrail telemetry is terminal before ask_live | in_progress | `chatgpt_claudecode_workflow_release_control.sh`; focused shell tests | v0.1.103.10.53 |

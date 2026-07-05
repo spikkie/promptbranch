@@ -3677,6 +3677,18 @@ INNERPY
 }
 
 
+
+run_all_log_has_live_bootstrap_guardrail() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  # Release-live bootstrap is a safety gate, not a recoverable ask step.
+  # If the bootstrap prompt technically returns a conversation URL but the
+  # telemetry shows a modal/rate-limit/429/backend-api guardrail, do not open
+  # another browser context for ask_live.  That next context is where the
+  # managed Cloudflare human-check window appears.
+  run_all_log_has_rate_limit_evidence "${log_path}"
+}
+
 run_all_log_has_recovered_rate_limit_success() {
   local log_path="$1"
   [[ -f "${log_path}" ]] || return 1
@@ -5337,6 +5349,13 @@ run_all_ensure_shared_live_conversation() {
     run_all_shared_conversation_url="${extracted_conversation_url}"
     echo "shared_live_conversation_url: ${run_all_shared_conversation_url}" | tee -a "${run_all_project_ensure_log}"
     rc=0
+    if run_all_log_has_live_bootstrap_guardrail "${run_all_project_ensure_log}"; then
+      echo "status: live_bootstrap_guardrail" | tee -a "${run_all_project_ensure_log}" >&2
+      echo "ERROR: live conversation bootstrap observed rate_limit_modal/conversation_history_429/backend-api guardrail telemetry; refusing to open ask_live." | tee -a "${run_all_project_ensure_log}" >&2
+      echo "live_bootstrap_guardrail_terminal: true" | tee -a "${run_all_project_ensure_log}"
+      echo "release_control_cooldown_policy: no_wait_no_retry_after_live_bootstrap_guardrail" | tee -a "${run_all_project_ensure_log}"
+      rc=1
+    fi
   else
     echo "ERROR: live_conversation_url_missing: live_project_ensure produced only /project and conversation bootstrap did not return /c/..." | tee -a "${run_all_project_ensure_log}" >&2
     rc=1
@@ -5461,7 +5480,12 @@ INNERPY
         fi
       fi
     else
-      if run_all_log_has_docker_live_profile_challenge "${run_all_project_ensure_log}"; then
+      if run_all_log_has_live_bootstrap_guardrail "${run_all_project_ensure_log}"; then
+        echo "ERROR: live bootstrap returned guardrail/rate-limit telemetry; skipping ask_live, visual_artifact_roundtrip, and release_live before opening another browser context." | tee -a "${run_all_project_ensure_log}" >&2
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+      elif run_all_log_has_docker_live_profile_challenge "${run_all_project_ensure_log}"; then
         record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
         record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
         record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"

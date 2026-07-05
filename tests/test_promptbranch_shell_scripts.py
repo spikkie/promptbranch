@@ -3572,3 +3572,16 @@ def test_release_live_project_ensure_fail_fast_and_compose_down_safe_static() ->
     assert 'fail_fast_on_challenge=_env_flag("CHATGPT_FAIL_FAST_ON_CHALLENGE", False)' in container_api
     assert "AuthChallengeRequiredError" in container_api
     assert "challenge_type={payload.get('challenge_type')}" in cli
+
+
+def test_release_live_bootstrap_guardrail_blocks_ask_live_static() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_log_has_live_bootstrap_guardrail" in script
+    assert "status: live_bootstrap_guardrail" in script
+    assert "live_bootstrap_guardrail_terminal: true" in script
+    assert "release_control_cooldown_policy: no_wait_no_retry_after_live_bootstrap_guardrail" in script
+    assert "skipped_blocked_by_live_bootstrap_guardrail" in script
+    assert "refusing to open ask_live" in script
+    assert "rate_limit_modal/conversation_history_429/backend-api guardrail" in script
