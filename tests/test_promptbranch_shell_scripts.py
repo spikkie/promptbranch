@@ -3665,3 +3665,24 @@ def test_release_control_live_preflight_does_not_recommend_chatgpt_root_static()
     assert '<trusted-/g/.../c/...-conversation-url>' in bootstrap_block
     assert '--url {url or ' in bootstrap_block
     assert '--url {url}",' not in bootstrap_block
+
+
+def test_release_control_classifies_docker_live_preflight_challenge_as_external_live_blocked_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "run_all_log_has_external_browser_challenge" in script
+    assert "auth_challenge_required" in script
+    assert "docker_standard_profile_challenged" in script
+    assert "live_external_browser_challenge" in script
+    assert "release_control_live_policy: external_browser_challenge_no_browser_repair" in script
+    assert "skipped_live_external_browser_challenge" in script
+    assert "LIVE_BLOCKED" in script
+    assert "product_failure_count" in script
+    assert "external_live_blocked" in script
+
+
+def test_release_control_live_slot_recreate_trace_does_not_duplicate_chatgpt_project_url_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "CHATGPT_PROJECT_URL=${run_all_live_service_target_url} PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix)" not in script
+    assert "PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} CHATGPT_PROJECT_URL=${run_all_live_service_target_url}" in script

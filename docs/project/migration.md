@@ -888,10 +888,10 @@ Scope: release-live-continuous starts the initial auth/warmup check from the tru
 
 
 
-## v0.1.103.10.60
+## v0.1.103.10.61
 
-Active candidate: v0.1.103.10.60
+Active candidate: v0.1.103.10.61
 
-Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.60.zip
+Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 
-Slice: v0.1.103.10.60 — configure Docker live-slot service with trusted conversation URL before preflight
+Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop

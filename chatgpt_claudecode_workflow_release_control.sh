@@ -4767,8 +4767,20 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
     retry_denied = existing_diagnostics.get("rate_limit_retry_denied") is True or "rate_limit_retry_denied_for_offline_step" in raw
     transport_class = step_transport_class(name)
     existing_phase = str(existing_diagnostics.get("likely_failure_phase") or "")
+    payload_status = str(payload.get("status") or "")
+    raw_lower = raw.lower()
+    external_browser_challenge = (
+        payload_status == "live_external_browser_challenge"
+        or "live_external_browser_challenge" in raw_lower
+        or "auth_challenge_required" in raw_lower
+        or "docker_standard_profile_challenged" in raw_lower
+        or "verify you are human" in raw_lower
+        or "just a moment" in raw_lower
+    )
     if existing_phase and existing_phase != "none":
         likely_failure_phase = existing_phase
+    elif external_browser_challenge and not step_ok:
+        likely_failure_phase = "external_live_browser_challenge"
     elif source_add_evidence and browser_read_timeout:
         likely_failure_phase = "project_source_add_read_timeout"
     elif source_add_evidence and not step_ok:
@@ -4795,11 +4807,14 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
         next_action = "rerun_later_or_reduce_history_enumeration"
     elif likely_failure_phase == "recovered_rate_limit":
         next_action = "continue_no_manual_action"
+    elif likely_failure_phase == "external_live_browser_challenge":
+        next_action = "operator_may_bootstrap_or_rerun_later_no_browser_repair"
     elif not step_ok:
         next_action = "inspect_step_log"
 
     return {
         "transport_class": transport_class,
+        "external_live_browser_challenge_detected": external_browser_challenge,
         "rate_limit_evidence_detected": rate_limit_evidence,
         "rate_limit_retry_allowed": retry_allowed,
         "rate_limit_retry_denied": retry_denied,
@@ -4903,6 +4918,26 @@ for item in raw_steps:
 
 ok = bool(steps) and all(step["ok"] for step in steps)
 failed = [step for step in steps if not step["ok"]]
+external_live_statuses = {"live_external_browser_challenge", "skipped_live_external_browser_challenge"}
+live_external_browser_challenge_steps = [
+    step["name"]
+    for step in steps
+    if step.get("status") in external_live_statuses
+    or step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is True
+]
+external_live_blocked = bool(failed) and bool(live_external_browser_challenge_steps) and all(
+    step.get("status") in external_live_statuses
+    or step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is True
+    or step.get("ok") is True
+    for step in steps
+)
+product_failed = [
+    step for step in failed
+    if step.get("status") not in external_live_statuses
+    and step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is not True
+]
+release_policy_status = "go" if ok else ("live_blocked_external_challenge" if external_live_blocked else "fix_required")
+final_verdict = "GO" if ok else ("LIVE_BLOCKED" if external_live_blocked else "FIX")
 reused_groups = [
     step["name"]
     for step in steps
@@ -4955,6 +4990,7 @@ diagnostics_summary = {
     "browser_read_timeout_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("browser_read_timeout_detected") is True],
     "rate_limit_evidence_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_evidence_detected") is True],
     "rate_limit_retry_denied_steps": [step["name"] for step in steps if step.get("diagnostics", {}).get("rate_limit_retry_denied") is True],
+    "live_external_browser_challenge_steps": live_external_browser_challenge_steps,
     "likely_failure_phases": {step["name"]: step.get("diagnostics", {}).get("likely_failure_phase") for step in failed},
 }
 summary = {
@@ -4964,8 +5000,11 @@ summary = {
     "generated_by": "chatgpt_claudecode_workflow_release_control.sh",
     "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     "ok": ok,
-    "status": "go" if ok else "fix_required",
-    "final_verdict": "GO" if ok else "FIX",
+    "status": release_policy_status,
+    "final_verdict": final_verdict,
+    "external_live_blocked": external_live_blocked,
+    "product_failure_count": len(product_failed),
+    "live_external_browser_challenge_steps": live_external_browser_challenge_steps,
     "version": version,
     "artifact": artifact,
     "test_project": project_name,
@@ -5127,6 +5166,7 @@ run_all_resolve_live_service_target_url() {
   fi
   run_all_live_service_target_url=""
   run_all_live_warmup_conversation_url=""
+  run_all_live_failure_kind="live_preflight_target_url_missing"
   {
     echo "live_service_target_url: unavailable"
     echo "status: live_preflight_target_url_missing"
@@ -5149,7 +5189,7 @@ run_all_recreate_service_for_live_slot_profile() {
     workflow_rc=78
     return 78
   fi
-  echo "+ CHATGPT_PROJECT_URL=${run_all_live_service_target_url} PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix) docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
+  echo "+ $(compose_env_prefix) PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} CHATGPT_PROJECT_URL=${run_all_live_service_target_url} docker compose -p ${compose_project_name} -f ${compose_file} up -d --no-build --force-recreate --remove-orphans"
   CHATGPT_PROJECT_URL="${run_all_live_service_target_url}" PROMPTBRANCH_HOST_PROFILE_DIR="${live_profile_pool_slot_dir}" run_docker_compose up -d --no-build --force-recreate --remove-orphans
   rc=$?
   if [[ ${rc} -ne 0 ]]; then
@@ -5193,6 +5233,18 @@ run_all_live_profile_preflight() {
   run_all_login_check_profile "live_profile_pool_slot" "${live_profile_pool_slot_dir}" "${live_profile_preflight_raw_log}"
   rc=$?
   if [[ ${rc} -ne 0 ]]; then
+    if run_all_log_has_external_browser_challenge "${live_profile_preflight_raw_log}"; then
+      run_all_live_failure_kind="live_external_browser_challenge"
+      {
+        echo "status: live_external_browser_challenge"
+        echo "live_external_browser_challenge: true"
+        echo "release_control_live_policy: external_browser_challenge_no_browser_repair"
+        echo "ERROR: Docker live preflight hit an external ChatGPT/Cloudflare human-check challenge; stopping live cascade without changing browser behavior."
+      } | tee -a "${live_profile_preflight_raw_log}" >&2
+      write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_external_browser_challenge" "false" "78" "${live_profile_preflight_raw_log}"
+      workflow_rc=78
+      return 78
+    fi
     write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_pool_slot_not_authenticated" "false" "${rc}" "${live_profile_preflight_raw_log}"
     workflow_rc=${rc}
     return ${rc}
@@ -5332,6 +5384,52 @@ run_all_log_has_docker_live_profile_challenge() {
   local log_path="$1"
   [[ -f "${log_path}" ]] || return 1
   grep -Fqi "docker_live_profile_challenged" "${log_path}"
+}
+
+run_all_log_has_external_browser_challenge() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  python3 - "${log_path}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import json
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+lower = text.lower()
+markers = (
+    "auth_challenge_required",
+    "docker_standard_profile_challenged",
+    "docker_live_profile_challenged",
+    "just a moment",
+    "verify you are human",
+)
+if any(marker in lower for marker in markers):
+    raise SystemExit(0)
+
+decoder = json.JSONDecoder()
+for idx, char in enumerate(text):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(text[idx:])
+    except Exception:
+        continue
+    if not isinstance(value, dict):
+        continue
+    stack = [value]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            status = str(cur.get("status") or "").lower()
+            challenge_type = str(cur.get("challenge_type") or "").lower()
+            if status == "auth_challenge_required" or challenge_type in {"docker_standard_profile_challenged", "docker_live_profile_challenged"}:
+                raise SystemExit(0)
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+raise SystemExit(1)
+INNERPY
 }
 
 run_all_log_has_cloudflare_challenge() {
@@ -5647,10 +5745,20 @@ INNERPY
       esac
     fi
   else
-    record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
-    record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
+    case "${run_all_live_failure_kind:-}" in
+      live_external_browser_challenge)
+        record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_external_browser_challenge"
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_external_browser_challenge"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_external_browser_challenge"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_external_browser_challenge"
+        ;;
+      *)
+        record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"
+        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_profile_preflight_failed"
+        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_profile_preflight_failed"
+        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_profile_preflight_failed"
+        ;;
+    esac
   fi
   run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
   run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.60"
+VERSION = "v0.1.103.10.61"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -24,7 +24,7 @@ class ReplayResult:
     scenario: str
     steps: list[ReplayStep] = field(default_factory=list)
     launched_browser_steps: list[str] = field(default_factory=list)
-    final_verdict: Literal["GO", "FIX"] = "GO"
+    final_verdict: Literal["GO", "FIX", "LIVE_BLOCKED"] = "GO"
 
     @property
     def ok(self) -> bool:
@@ -64,6 +64,16 @@ def replay_run_all(scenario: str) -> ReplayResult:
         failed("live_profile_preflight", "live_preflight_target_url_missing")
         for name in ("live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"):
             skipped(name, "skipped_live_profile_preflight_failed")
+        passed("import_smoke")
+        passed("artifact_guard")
+        return result
+
+    if scenario == "live_external_browser_challenge":
+        failed("live_profile_preflight", "live_external_browser_challenge")
+        result.final_verdict = "LIVE_BLOCKED"
+        for name in ("live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"):
+            skipped(name, "skipped_live_external_browser_challenge")
+        result.final_verdict = "LIVE_BLOCKED"
         passed("import_smoke")
         passed("artifact_guard")
         return result
@@ -191,3 +201,18 @@ def test_release_control_replay_missing_live_preflight_target_blocks_live_withou
     assert result.step("import_smoke").ok is True
     assert result.step("artifact_guard").ok is True
     assert result.launched_browser_steps == []
+
+def test_release_control_replay_live_external_browser_challenge_is_live_blocked_not_product_fix() -> None:
+    result = replay_run_all("live_external_browser_challenge")
+
+    assert result.ok is False
+    assert result.final_verdict == "LIVE_BLOCKED"
+    assert result.step("live_profile_preflight").reason == "live_external_browser_challenge"
+    assert result.step("live_project_ensure").reason == "skipped_live_external_browser_challenge"
+    assert result.step("ask_live").reason == "skipped_live_external_browser_challenge"
+    assert result.step("visual_artifact_roundtrip").reason == "skipped_live_external_browser_challenge"
+    assert result.step("release_live").reason == "skipped_live_external_browser_challenge"
+    assert result.step("import_smoke").ok is True
+    assert result.step("artifact_guard").ok is True
+    assert result.launched_browser_steps == []
+
