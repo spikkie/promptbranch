@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
-  "active_candidate_version": "v0.1.103.10.54",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
+  "active_candidate_version": "v0.1.103.10.55",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
+  "active_slice": "v0.1.103.10.55 \u2014 release-live bootstrap and ask use one continuous browser session",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -32,11 +32,11 @@
       "version": "v0.1.103.10.49"
     },
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
       "created_at": "2026-07-05T01:35:00Z",
-      "slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
+      "slice": "v0.1.103.10.55 \u2014 release-live bootstrap and ask use one continuous browser session",
       "status": "candidate",
-      "version": "v0.1.103.10.54"
+      "version": "v0.1.103.10.55"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -44,9 +44,9 @@
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
   "last_updated": "2026-07-05",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
-  "next_normal_slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
-  "next_normal_version": "v0.1.103.10.54",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
+  "next_normal_slice": "v0.1.103.10.55 \u2014 release-live bootstrap and ask use one continuous browser session",
+  "next_normal_version": "v0.1.103.10.55",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -65,7 +65,7 @@
     {
       "kind": "repair",
       "status": "candidate",
-      "version": "v0.1.103.10.54",
+      "version": "v0.1.103.10.55",
       "summary": "Add a fast pytest-backed release-control run-all replay harness for control-flow scenarios, including live bootstrap 429/guardrail with persisted cooldown, so shell/orchestration bugs are caught before long live Docker/ChatGPT runs."
     },
     {
@@ -233,12 +233,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
       "release_mode": "repair",
-      "scope": "fast replay harness for release-control run-all orchestration scenarios before expensive live Docker/ChatGPT validation",
-      "slice": "v0.1.103.10.54 \u2014 fast release-control run-all replay harness",
+      "scope": "continuous release-live browser session for project ensure, bootstrap, and first ask on the explicit slot profile",
+      "slice": "v0.1.103.10.55 \u2014 release-live bootstrap and ask use one continuous browser session",
       "status": "active",
-      "version": "v0.1.103.10.54"
+      "version": "v0.1.103.10.55"
     },
     {
       "release_mode": "normal",
@@ -282,5 +282,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.54"
+  "updated_for": "v0.1.103.10.55"
 }

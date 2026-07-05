@@ -644,6 +644,6 @@ Release-live browser validation must not ask the operator to prove humanity insi
 `v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live` preserves the Docker-only live-profile repair chain through `v0.1.103.10.49`, then makes backend-api 403 guardrail telemetry during auth bootstrap terminal. Release-control now refuses to treat a visually logged-in/composer-visible browser as clean when the standard Docker profile is already forbidden by backend-api guardrail responses; it restarts the candidate service to clear the held browser owner and stops before Project Source add/full validation.
 
 
-## Active repair slice — v0.1.103.10.54
+## Active repair slice — v0.1.103.10.55
 
-`v0.1.103.10.54 — fast release-control run-all replay harness` adds a fast replay harness for release-control run-all orchestration, including terminal live bootstrap 429/guardrail behavior before ask_live. It preserves all-in-Docker, no host-CDP/session-manager, no copied-profile trust, and no private backend-api operational dependency.
+`v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` adds a fast replay harness for release-control run-all orchestration, including terminal live bootstrap 429/guardrail behavior before ask_live. It preserves all-in-Docker, no host-CDP/session-manager, no copied-profile trust, and no private backend-api operational dependency.

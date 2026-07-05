@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip
-active candidate version: v0.1.103.10.54
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.54.zip
-next normal slice: v0.1.103.10.54 — fast release-control run-all replay harness
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip
+active candidate version: v0.1.103.10.55
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip
+next normal slice: v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1988,6 +1988,6 @@ Out of scope: host-CDP/session-manager, copied-profile trust, browser architectu
 `v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live` preserves the Docker-only live-profile repair chain through `v0.1.103.10.49`, then makes backend-api 403 guardrail telemetry during auth bootstrap terminal. Release-control now refuses to treat a visually logged-in/composer-visible browser as clean when the standard Docker profile is already forbidden by backend-api guardrail responses; it restarts the candidate service to clear the held browser owner and stops before Project Source add/full validation.
 
 
-## Active repair slice — v0.1.103.10.54
+## Active repair slice — v0.1.103.10.55
 
-`v0.1.103.10.54 — fast release-control run-all replay harness` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.
+`v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session` preserves the Docker-only live-profile and guardrail repairs through v0.1.103.10.53, then adds a fast pytest-backed replay harness for release-control run-all orchestration. The replay covers the success path and terminal live bootstrap 429/backend guardrail behavior before ask_live, reducing long live validation loops for shell/control-flow repairs.

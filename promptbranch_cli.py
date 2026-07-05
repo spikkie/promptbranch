@@ -200,7 +200,7 @@ def _now_unix() -> float:
 
 def _is_browser_profile_lease_command(args: argparse.Namespace) -> bool:
     command = getattr(args, "command", None)
-    if command == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
+    if command == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live", "release-live-continuous"}:
         return True
     if command == "task" and getattr(args, "task_command", None) in {"list", "use", "show", "messages", "message", "answer"}:
         return True
@@ -1213,6 +1213,35 @@ class DirectBackend:
             self._conversation_state.remember(self._project_url, returned_conversation_url)
         return result
 
+    async def release_live_bootstrap_and_ask(
+        self,
+        *,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "project-only",
+        service_timeout_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        result = await self._service.release_live_bootstrap_and_ask(
+            project_name=project_name,
+            bootstrap_prompt=bootstrap_prompt,
+            ask_prompt=ask_prompt,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            service_timeout_seconds=service_timeout_seconds,
+        )
+        if self._conversation_state is not None and isinstance(result, dict):
+            project_url = result.get("project_url")
+            conversation_url = result.get("conversation_url")
+            if isinstance(project_url, str) and project_url:
+                self._conversation_state.remember_project(project_url, project_name=project_name)
+            if isinstance(conversation_url, str) and conversation_url:
+                self._conversation_state.remember(project_url or self._project_url, conversation_url, project_name=project_name)
+        return result
+
     def state_snapshot(self) -> dict[str, Any]:
         if self._conversation_state is None:
             return {}
@@ -1506,6 +1535,25 @@ class ServiceBackend:
         ):
             self._conversation_state.remember(self._project_url, returned_conversation_url)
         return result
+
+    async def release_live_bootstrap_and_ask(
+        self,
+        *,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "project-only",
+        service_timeout_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "action": "test_release_live_continuous",
+            "status": "unsupported_service_backend",
+            "error": "release-live continuous validation requires direct profile-lease backend so one browser session can own project ensure, bootstrap, and first ask",
+            "error_type": "unsupported_service_backend",
+        }
 
     def state_snapshot(self) -> dict[str, Any]:
         return self._conversation_state.snapshot(self._project_url)
@@ -7605,7 +7653,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
         "mcp": ["manifest", "serve", "config", "--json", "--path", "--include-controlled-processes", "--host", "--server-name", "--command"],
-        "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
+        "test": ["smoke", "browser", "agent", "full", "ask-live", "artifact-roundtrip", "visual-artifact-roundtrip", "release-live", "release-live-continuous", "report", "status", "import-smoke", "--json", "--path", "--log", "--service-log", "--keep-open", "--keep-project", "--only", "--skip", "--allow-recent-state-task-fallback"],
         "doctor": ["--json"],
         "debug": ["chats", "task-list", "tasks", "rate-limit", "backend", "projects", "conversations", "parallel-plan", "backend-reads", "--json", "--operation", "--plan-only", "--no-history", "--scroll-rounds", "--wait-ms", "--history-max-pages", "--history-max-detail-probes", "--manual-pause", "--keep-open"],
         "parallel": ["policy", "task", "show", "ask", "--task", "--targets", "--tasks", "--all", "--concurrency", "--plan-only", "--deep-history", "--protocol", "--prompt-file", "--target-version", "--release-type", "--json", "--keep-open"],
@@ -21390,6 +21438,67 @@ def _delete_frozen_uses_retained_project(args: argparse.Namespace) -> bool:
     return str(getattr(args, "project_name", "") or "") == DELETE_FROZEN_RETAINED_TEST_PROJECT_NAME
 
 
+async def cmd_test_release_live_continuous(backend: CommandBackend, args: argparse.Namespace) -> int:
+    run_id = getattr(args, "run_id", None) or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    bootstrap_sentinel = getattr(args, "bootstrap_sentinel", None) or f"LIVE_CONVERSATION_BOOTSTRAP_{run_id}"
+    ask_sentinel = getattr(args, "ask_sentinel", None) or _ask_live_sentinel(run_id, "plain")
+    bootstrap_prompt = f"Reply with exactly the single token {bootstrap_sentinel} and nothing else."
+    ask_prompt = f"Return exactly the single token {ask_sentinel} and nothing else."
+    started = time.monotonic()
+    try:
+        result = await backend.release_live_bootstrap_and_ask(
+            project_name=args.project_name,
+            bootstrap_prompt=bootstrap_prompt,
+            ask_prompt=ask_prompt,
+            icon=getattr(args, "project_icon", None),
+            color=getattr(args, "project_color", None),
+            memory_mode=getattr(args, "memory_mode", "project-only"),
+            service_timeout_seconds=getattr(args, "service_timeout_seconds", None),
+        )
+    except (AuthChallengeRequiredError, BotChallengeError) as exc:
+        payload = {
+            "ok": False,
+            "action": "test_release_live_continuous",
+            "status": "docker_live_profile_challenged",
+            "challenge_type": "docker_live_profile_challenged",
+            "error": str(exc),
+            "error_type": exc.__class__.__name__,
+            "run_id": run_id,
+            "project_name": args.project_name,
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"release-live-continuous: {payload['status']}")
+        return 1
+    payload = dict(result) if isinstance(result, dict) else {"ok": False, "status": "invalid_result", "result": result}
+    payload.setdefault("ok", False)
+    payload.setdefault("action", "test_release_live_continuous")
+    payload.setdefault("status", "verified" if payload.get("ok") else "failed")
+    payload.setdefault("run_id", run_id)
+    payload.setdefault("profile", "release-live-continuous")
+    payload.setdefault("project_name", args.project_name)
+    payload.setdefault("bootstrap_sentinel", bootstrap_sentinel)
+    payload.setdefault("ask_sentinel", ask_sentinel)
+    payload.setdefault("continuous_browser_session", True)
+    payload.setdefault("duration_seconds", round(time.monotonic() - started, 3))
+    ask_result = payload.get("ask_result") if isinstance(payload.get("ask_result"), dict) else {}
+    answer_text = _ask_live_answer_text(ask_result) if isinstance(ask_result, dict) else ""
+    if payload.get("ok") and ask_sentinel not in answer_text:
+        payload["ok"] = False
+        payload["status"] = "failed"
+        payload["failed_phase"] = "ask_live"
+        payload["error"] = "continuous ask did not return expected sentinel"
+        payload["contains_expected_sentinel"] = False
+    else:
+        payload.setdefault("contains_expected_sentinel", bool(ask_sentinel in answer_text))
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"release-live-continuous: {payload.get('status')}")
+    return 0 if payload.get("ok") else 1
+
 async def cmd_test_ask_live(backend: CommandBackend, args: argparse.Namespace) -> int:
     """Run a visible/local operator ask workflow smoke profile.
 
@@ -23992,6 +24101,20 @@ def make_parser() -> argparse.ArgumentParser:
     test_artifact_roundtrip.add_argument("--path", default=".", help="Repo path used for version context and default .pb_profile location.")
     test_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in synthetic artifact names. Defaults to deterministic.")
 
+    test_release_live_continuous = test_subparsers.add_parser("release-live-continuous", help="Run release-live project ensure, bootstrap, and first ask in one continuous browser session.")
+    test_release_live_continuous.add_argument("--json", action="store_true", help="Emit JSON result.")
+    test_release_live_continuous.add_argument("--run-id", help="Optional run identifier used in sentinels.")
+    test_release_live_continuous.add_argument("--project-name", required=True, help="Run-scoped release-live test project name.")
+    test_release_live_continuous.add_argument("--memory-mode", choices=["default", "project-only"], default="project-only")
+    test_release_live_continuous.add_argument("--project-icon")
+    test_release_live_continuous.add_argument("--project-color")
+    test_release_live_continuous.add_argument("--bootstrap-sentinel", help="Expected bootstrap sentinel token.")
+    test_release_live_continuous.add_argument("--ask-sentinel", help="Expected first ask sentinel token.")
+    test_release_live_continuous.add_argument("--keep-project", action="store_true", help="Compatibility flag; project deletion is frozen.")
+    test_release_live_continuous.add_argument("--retries", type=int, help="Compatibility flag; continuous release-live uses one attempt.")
+    _add_profile_pool_options(test_release_live_continuous, default_pool=None)
+    test_release_live_continuous.set_defaults(debug_browser=True, pause_before_fill=False, pause_after_fill=False, pause_before_submit=False)
+
     test_visual_artifact_roundtrip = test_subparsers.add_parser("visual-artifact-roundtrip", help="Visibly send a local ZIP, retrieve a generated ZIP through artifact intake, and verify smoke contents.")
     test_visual_artifact_roundtrip.add_argument("--json", action="store_true", help="Emit the visual artifact roundtrip result as JSON.")
     test_visual_artifact_roundtrip.add_argument("--run-id", help="Optional run identifier used in sentinels and artifact names. Defaults to a UTC timestamp.")
@@ -24598,7 +24721,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(normalized_argv)
     args = _apply_cli_config_defaults(args, normalized_argv)
     args._profile_dir_explicit = _option_was_provided(normalized_argv, "--profile-dir")
-    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live"}:
+    if getattr(args, "command", None) == "test" and getattr(args, "test_command", None) in {"ask-live", "visual-artifact-roundtrip", "release-live", "release-live-continuous"}:
         args.debug_browser = True
         args.headless = False
         if not _option_was_provided(normalized_argv, "--profile-dir"):

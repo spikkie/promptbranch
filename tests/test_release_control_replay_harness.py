@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.54"
+VERSION = "v0.1.103.10.55"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -88,7 +88,7 @@ def replay_run_all(scenario: str) -> ReplayResult:
     passed("live_conversation_bootstrap")
 
     if scenario == "ask_live_challenge":
-        result.launched_browser_steps.append("ask_live")
+        result.launched_browser_steps.append("release_live_continuous")
         failed("ask_live", "docker_live_profile_challenged")
         skipped("visual_artifact_roundtrip", "skipped_ask_live_docker_live_profile_challenged")
         skipped("release_live", "skipped_ask_live_docker_live_profile_challenged")
@@ -96,7 +96,7 @@ def replay_run_all(scenario: str) -> ReplayResult:
         passed("artifact_guard")
         return result
 
-    result.launched_browser_steps.extend(["ask_live", "visual_artifact_roundtrip", "release_live"])
+    result.launched_browser_steps.extend(["release_live_continuous", "visual_artifact_roundtrip", "release_live"])
     passed("ask_live")
     passed("visual_artifact_roundtrip")
     passed("release_live")
@@ -123,7 +123,7 @@ def test_release_control_replay_success_go_path() -> None:
         "artifact_guard",
     ):
         assert result.step(name).ok is True
-    assert result.launched_browser_steps == ["ask_live", "visual_artifact_roundtrip", "release_live"]
+    assert result.launched_browser_steps == ["release_live_continuous", "visual_artifact_roundtrip", "release_live"]
 
 
 def test_release_control_replay_live_bootstrap_429_guardrail_blocks_ask_live_without_wait() -> None:
@@ -149,7 +149,7 @@ def test_release_control_replay_ask_live_challenge_is_terminal() -> None:
     assert result.step("ask_live").reason == "docker_live_profile_challenged"
     assert result.step("visual_artifact_roundtrip").reason == "skipped_ask_live_docker_live_profile_challenged"
     assert result.step("release_live").reason == "skipped_ask_live_docker_live_profile_challenged"
-    assert result.launched_browser_steps == ["ask_live"]
+    assert result.launched_browser_steps == ["release_live_continuous"]
 
 
 def test_release_control_replay_live_project_ensure_challenge_blocks_bootstrap_and_ask() -> None:
@@ -160,3 +160,13 @@ def test_release_control_replay_live_project_ensure_challenge_blocks_bootstrap_a
     assert result.step("live_conversation_bootstrap").reason == "skipped_live_project_ensure_docker_live_profile_challenged"
     assert result.step("ask_live").reason == "skipped_live_project_ensure_docker_live_profile_challenged"
     assert result.launched_browser_steps == []
+
+
+def test_release_control_replay_continuous_bootstrap_clean_ask_challenge() -> None:
+    result = replay_run_all("ask_live_challenge")
+
+    assert result.ok is False
+    assert result.step("ask_live").reason == "docker_live_profile_challenged"
+    assert result.step("visual_artifact_roundtrip").reason == "skipped_ask_live_docker_live_profile_challenged"
+    assert result.step("release_live").reason == "skipped_ask_live_docker_live_profile_challenged"
+    assert result.launched_browser_steps == ["release_live_continuous"]

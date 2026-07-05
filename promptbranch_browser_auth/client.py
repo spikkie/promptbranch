@@ -1825,6 +1825,176 @@ class ChatGPTBrowserClient:
             await self._dump_failure_artifacts(page, "ask_question_held_session", exc)
             raise
 
+    async def release_live_bootstrap_and_ask(
+        self,
+        *,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "project-only",
+        service_timeout_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """Run release-live project ensure, bootstrap, and first ask in one browser context.
+
+        Release-live validation should behave like one human browser session: select
+        the project, create the fresh conversation, and send the first validation
+        prompt without closing/reopening the browser between those operations.
+        """
+        self._log(
+            "release-live-continuous",
+            "starting release-live continuous bootstrap and ask",
+            project_name=project_name,
+            profile_dir=self.config.profile_dir,
+        )
+        return await self._run_with_context(
+            operation_name="release_live_continuous",
+            operation=self._release_live_bootstrap_and_ask_operation,
+            project_name=project_name,
+            bootstrap_prompt=bootstrap_prompt,
+            ask_prompt=ask_prompt,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            service_timeout_seconds=service_timeout_seconds,
+            respect_history_rate_limit_cooldown=False,
+        )
+
+    @staticmethod
+    def _release_live_telemetry_guardrail_seen(telemetry: Any) -> bool:
+        if not isinstance(telemetry, dict):
+            return False
+        return bool(
+            telemetry.get("rate_limit_modal_detected")
+            or telemetry.get("conversation_history_429_seen")
+            or telemetry.get("backend_api_guardrail_seen")
+        )
+
+    async def _release_live_bootstrap_and_ask_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str],
+        color: Optional[str],
+        memory_mode: str,
+        service_timeout_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        project_result = await self._ensure_project_operation(
+            context=context,
+            page=page,
+            name=project_name,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            keep_open=False,
+        )
+        project_result = self._attach_rate_limit_telemetry(project_result)
+        project_url = project_result.get("project_url") if isinstance(project_result, dict) else None
+        if not (isinstance(project_result, dict) and project_result.get("ok") and isinstance(project_url, str) and project_url):
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": str(project_result.get("status") or "live_project_ensure_failed") if isinstance(project_result, dict) else "live_project_ensure_failed",
+                "failed_phase": "live_project_ensure",
+                "project_result": project_result,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+
+        original_project_url = self.config.project_url
+        try:
+            self.config.project_url = project_url
+            bootstrap_result = await self._ask_question_operation(
+                context=context,
+                page=page,
+                prompt=bootstrap_prompt,
+                file_path=None,
+                attachment_paths=None,
+                conversation_url=project_url,
+                expect_json=False,
+                keep_open=False,
+                service_timeout_seconds=service_timeout_seconds,
+                prefer_button_submit=False,
+                reuse_current_page_if_ready=False,
+            )
+            bootstrap_result = self._attach_rate_limit_telemetry(bootstrap_result)
+        finally:
+            self.config.project_url = original_project_url
+
+        bootstrap_telemetry = bootstrap_result.get("rate_limit_telemetry") if isinstance(bootstrap_result, dict) else None
+        conversation_url = bootstrap_result.get("conversation_url") if isinstance(bootstrap_result, dict) else None
+        if self._release_live_telemetry_guardrail_seen(bootstrap_telemetry):
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": "live_bootstrap_guardrail",
+                "failed_phase": "live_conversation_bootstrap",
+                "project_url": project_url,
+                "conversation_url": conversation_url,
+                "project_result": project_result,
+                "bootstrap_result": bootstrap_result,
+                "rate_limit_telemetry": bootstrap_telemetry,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+        if not (isinstance(conversation_url, str) and "/c/" in conversation_url):
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": "live_conversation_url_missing",
+                "failed_phase": "live_conversation_bootstrap",
+                "project_url": project_url,
+                "conversation_url": conversation_url,
+                "project_result": project_result,
+                "bootstrap_result": bootstrap_result,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+
+        ask_result = await self._ask_question_operation(
+            context=context,
+            page=page,
+            prompt=ask_prompt,
+            file_path=None,
+            attachment_paths=None,
+            conversation_url=conversation_url,
+            expect_json=False,
+            keep_open=False,
+            service_timeout_seconds=service_timeout_seconds,
+            prefer_button_submit=False,
+            reuse_current_page_if_ready=True,
+        )
+        ask_result = self._attach_rate_limit_telemetry(ask_result)
+        ask_status = str(ask_result.get("status") or "") if isinstance(ask_result, dict) else ""
+        ask_challenge_type = str(ask_result.get("challenge_type") or ask_result.get("response_challenge_type") or "") if isinstance(ask_result, dict) else ""
+        ask_ok = bool(isinstance(ask_result, dict) and ask_result.get("ok"))
+        if ask_status == "docker_live_profile_challenged" or ask_challenge_type == "docker_live_profile_challenged":
+            status = "docker_live_profile_challenged"
+            ok = False
+        elif ask_ok:
+            status = "verified"
+            ok = True
+        else:
+            status = ask_status or "ask_failed"
+            ok = False
+        return {
+            "ok": ok,
+            "action": "test_release_live_continuous",
+            "status": status,
+            "failed_phase": None if ok else "ask_live",
+            "project_url": project_url,
+            "conversation_url": conversation_url,
+            "project_result": project_result,
+            "bootstrap_result": bootstrap_result,
+            "ask_result": ask_result,
+            "continuous_browser_session": True,
+            "same_profile_for_project_bootstrap_and_ask": True,
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+
     async def list_projects(
         self,
         *,

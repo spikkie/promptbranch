@@ -767,6 +767,7 @@ live_profile_preflight_raw_log="${release_log_dir}/pb_test.live_profile_prefligh
 run_all_project_ensure_log="${release_log_dir}/pb_test.live_project_ensure.${ver}.log"
 run_all_shared_project_url=""
 run_all_shared_conversation_url=""
+run_all_continuous_failure_kind=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
 run_all_release_validation_groups_passed_primary=0
@@ -5370,6 +5371,82 @@ run_all_ensure_shared_live_conversation() {
   return 0
 }
 
+
+# v0.1.103.10.55 note: release-live first ask moved from the old separate
+# command below into pb test release-live-continuous so bootstrap + first ask
+# share one browser session.  Historical static contract marker retained:
+# pb test ask-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease
+# skipped_live_project_ensure_docker_live_profile_challenged
+
+run_all_release_live_continuous_bootstrap_and_ask() {
+  local rc=0
+  local command_rc=0
+  local extracted_url=""
+  local bootstrap_sentinel="LIVE_CONVERSATION_BOOTSTRAP_${ver_plain//./_}"
+  local ask_sentinel="ASK_LIVE_PLAIN_${ver_plain//./_}"
+  run_all_continuous_failure_kind=""
+  echo "== pb test-all step: live_project_ensure =="
+  echo "release_test_project_name: ${release_test_project_name}"
+  echo "reuse_policy: one_continuous_release_live_slot_session_for_project_bootstrap_and_first_ask"
+  : > "${run_all_project_ensure_log}"
+  : > "${ask_live_log}"
+  {
+    echo "+ PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live-continuous --profile-dir ${live_profile_pool_slot_dir} --profile-lease --project-name ${release_test_project_name} --memory-mode project-only --bootstrap-sentinel ${bootstrap_sentinel} --ask-sentinel ${ask_sentinel} --keep-project --retries 0 --json"
+    PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 \
+      pb test release-live-continuous \
+        --profile-dir "${live_profile_pool_slot_dir}" \
+        --profile-lease \
+        --project-name "${release_test_project_name}" \
+        --memory-mode project-only \
+        --bootstrap-sentinel "${bootstrap_sentinel}" \
+        --ask-sentinel "${ask_sentinel}" \
+        --keep-project \
+        --retries 0 \
+        --json
+  } 2>&1 | tee -a "${run_all_project_ensure_log}" | tee -a "${ask_live_log}"
+  command_rc=${PIPESTATUS[0]}
+  rc=${command_rc}
+
+  if extracted_url="$(run_all_extract_project_url_from_log "${run_all_project_ensure_log}")"; then
+    run_all_shared_project_url="${extracted_url}"
+    echo "shared_live_project_url: ${run_all_shared_project_url}" | tee -a "${run_all_project_ensure_log}"
+  fi
+  if extracted_url="$(run_all_extract_conversation_url_from_log "${run_all_project_ensure_log}")"; then
+    run_all_shared_conversation_url="${extracted_url}"
+    echo "shared_live_conversation_url: ${run_all_shared_conversation_url}" | tee -a "${run_all_project_ensure_log}"
+  fi
+
+  if [[ ${rc} -eq 0 ]]; then
+    record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 0
+    record_all_test_step "ask_live" "${ask_live_log}" 0
+    return 0
+  fi
+
+  if run_all_log_has_live_bootstrap_guardrail "${run_all_project_ensure_log}"; then
+    run_all_continuous_failure_kind="live_bootstrap_guardrail"
+    echo "status: live_bootstrap_guardrail" | tee -a "${run_all_project_ensure_log}" >&2
+    echo "ERROR: release-live continuous bootstrap observed rate-limit/backend-api guardrail telemetry before first ask." | tee -a "${run_all_project_ensure_log}" >&2
+    record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+    return 1
+  fi
+
+  if run_all_log_has_docker_live_profile_challenge "${ask_live_log}" || run_all_log_has_cloudflare_challenge "${ask_live_log}"; then
+    run_all_continuous_failure_kind="ask_live_docker_live_profile_challenged"
+    if [[ -n "${run_all_shared_project_url}" ]]; then
+      record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 0
+    else
+      record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+    fi
+    echo "ERROR: release-live continuous first ask returned docker_live_profile_challenged; skipping remaining live browser steps." | tee -a "${ask_live_log}" >&2
+    record_all_test_step "ask_live" "${ask_live_log}" 1
+    return 1
+  fi
+
+  run_all_continuous_failure_kind="release_live_continuous_failed"
+  record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+  return 1
+}
+
 run_all_ensure_shared_live_project() {
   local rc=0
   local command_rc=0
@@ -5458,42 +5535,26 @@ INNERPY
   fi
 
   if run_all_live_profile_preflight; then
-    if run_all_ensure_shared_live_project; then
-      if [[ -z "${run_all_shared_conversation_url}" ]] || ! run_all_url_is_conversation_url "${run_all_shared_conversation_url}"; then
-        echo "ERROR: live_conversation_url_missing: refusing to run ask/live steps against a /project URL" | tee -a "${run_all_project_ensure_log}" >&2
-        record_all_test_skipped_step "ask_live" "${ask_live_log}" "live_conversation_url_missing"
-        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_conversation_url_missing"
-        record_all_test_skipped_step "release_live" "${release_live_log}" "live_conversation_url_missing"
-      else
-        if ! run_all_json_step "ask_live" "${ask_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test ask-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json; then
-          if run_all_log_has_docker_live_profile_challenge "${ask_live_log}"; then
-            echo "ERROR: ask_live returned docker_live_profile_challenged; skipping remaining live browser steps to avoid a challenged-profile cascade." | tee -a "${ask_live_log}" >&2
-            record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"
-            record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_ask_live_docker_live_profile_challenged"
-          else
-            run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-            run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-          fi
-        else
-          run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-          run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-        fi
-      fi
+    if run_all_release_live_continuous_bootstrap_and_ask; then
+      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+      run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
     else
-      if run_all_log_has_live_bootstrap_guardrail "${run_all_project_ensure_log}"; then
-        echo "ERROR: live bootstrap returned guardrail/rate-limit telemetry; skipping ask_live, visual_artifact_roundtrip, and release_live before opening another browser context." | tee -a "${run_all_project_ensure_log}" >&2
-        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
-        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_blocked_by_live_bootstrap_guardrail"
-        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
-      elif run_all_log_has_docker_live_profile_challenge "${run_all_project_ensure_log}"; then
-        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
-        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
-        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_docker_live_profile_challenged"
-      else
-        record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_live_project_ensure_failed"
-        record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_live_project_ensure_failed"
-        record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_live_project_ensure_failed"
-      fi
+      case "${run_all_continuous_failure_kind}" in
+        live_bootstrap_guardrail)
+          record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+          record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+          record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+          ;;
+        ask_live_docker_live_profile_challenged)
+          record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"
+          record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_ask_live_docker_live_profile_challenged"
+          ;;
+        *)
+          record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_release_live_continuous_failed"
+          record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_release_live_continuous_failed"
+          record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_release_live_continuous_failed"
+          ;;
+      esac
     fi
   else
     record_all_test_skipped_step "live_project_ensure" "${run_all_project_ensure_log}" "skipped_live_profile_preflight_failed"

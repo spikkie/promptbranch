@@ -459,6 +459,27 @@ class ChatGPTAutomation:
             wait_ms=wait_ms,
         )
 
+    async def release_live_bootstrap_and_ask(
+        self,
+        *,
+        project_name: str,
+        bootstrap_prompt: str,
+        ask_prompt: str,
+        icon: Optional[str] = None,
+        color: Optional[str] = None,
+        memory_mode: str = "project-only",
+        service_timeout_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        return await self.client.release_live_bootstrap_and_ask(
+            project_name=project_name,
+            bootstrap_prompt=bootstrap_prompt,
+            ask_prompt=ask_prompt,
+            icon=icon,
+            color=color,
+            memory_mode=memory_mode,
+            service_timeout_seconds=service_timeout_seconds,
+        )
+
     async def create_project(
         self,
         *,
