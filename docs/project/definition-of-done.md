@@ -537,6 +537,8 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
 
-## v0.1.103.10.63
+## v0.1.103.10.64
 
 DOD-193: default `--run-all-tests` performs deterministic product release validation without invoking Cloudflare-gated external ChatGPT live probes. `live_profile_preflight`, `live_project_ensure`, `ask_live`, `visual_artifact_roundtrip`, and `release_live` are reported as `external_live_not_requested` unless explicitly enabled with `--run-external-live-tests` or `--require-chatgpt-live-validation`.
+
+| DOD-236 | `release-live-continuous` with a trusted project conversation warmup URL skips root project discovery and keeps bootstrap/ask in that conversation/session | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_release_live_continuous_direct_conversation.py` | v0.1.103.10.64 |

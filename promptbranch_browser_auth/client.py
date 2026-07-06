@@ -1900,29 +1900,57 @@ class ChatGPTBrowserClient:
         warmup_conversation_url: Optional[str] = None,
     ) -> dict[str, Any]:
         started = time.monotonic()
-        project_result = await self._ensure_project_operation(
-            context=context,
-            page=page,
-            name=project_name,
-            icon=icon,
-            color=color,
-            memory_mode=memory_mode,
-            keep_open=False,
-        )
-        project_result = self._attach_rate_limit_telemetry(project_result)
-        project_url = project_result.get("project_url") if isinstance(project_result, dict) else None
-        if not (isinstance(project_result, dict) and project_result.get("ok") and isinstance(project_url, str) and project_url):
-            return {
-                "ok": False,
-                "action": "test_release_live_continuous",
-                "status": str(project_result.get("status") or "live_project_ensure_failed") if isinstance(project_result, dict) else "live_project_ensure_failed",
-                "failed_phase": "live_project_ensure",
-                "project_result": project_result,
-                "warmup_conversation_url": warmup_conversation_url,
-                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
-                "duration_seconds": round(time.monotonic() - started, 3),
+        direct_conversation_url = str(warmup_conversation_url or "").strip() if warmup_conversation_url else ""
+        direct_conversation_mode = bool(direct_conversation_url and self._is_project_scoped_conversation_url(direct_conversation_url))
+        if direct_conversation_mode:
+            project_url = self._project_home_url_from_url(direct_conversation_url)
+            project_result = {
+                "ok": True,
+                "action": "project_ensure",
+                "status": "trusted_conversation_url",
+                "project_url": project_url,
+                "conversation_url": direct_conversation_url,
+                "project_name": project_name,
+                "project_identity_source": "warmup_conversation_url",
+                "project_discovery_skipped": True,
+                "root_project_discovery_skipped": True,
+                "project_created": False,
+                "project_removed": False,
             }
+            self._log(
+                "release-live-continuous",
+                "using trusted project conversation URL directly; skipping root project discovery",
+                project_name=project_name,
+                project_url=project_url,
+                conversation_url=direct_conversation_url,
+                project_identity_source="warmup_conversation_url",
+            )
+        else:
+            project_result = await self._ensure_project_operation(
+                context=context,
+                page=page,
+                name=project_name,
+                icon=icon,
+                color=color,
+                memory_mode=memory_mode,
+                keep_open=False,
+            )
+            project_result = self._attach_rate_limit_telemetry(project_result)
+            project_url = project_result.get("project_url") if isinstance(project_result, dict) else None
+            if not (isinstance(project_result, dict) and project_result.get("ok") and isinstance(project_url, str) and project_url):
+                return {
+                    "ok": False,
+                    "action": "test_release_live_continuous",
+                    "status": str(project_result.get("status") or "live_project_ensure_failed") if isinstance(project_result, dict) else "live_project_ensure_failed",
+                    "failed_phase": "live_project_ensure",
+                    "project_result": project_result,
+                    "warmup_conversation_url": warmup_conversation_url,
+                    "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                    "trusted_conversation_direct_mode": False,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
 
+        bootstrap_target_url = direct_conversation_url if direct_conversation_mode else project_url
         original_project_url = self.config.project_url
         try:
             self.config.project_url = project_url
@@ -1932,12 +1960,12 @@ class ChatGPTBrowserClient:
                 prompt=bootstrap_prompt,
                 file_path=None,
                 attachment_paths=None,
-                conversation_url=project_url,
+                conversation_url=bootstrap_target_url,
                 expect_json=False,
                 keep_open=False,
                 service_timeout_seconds=service_timeout_seconds,
                 prefer_button_submit=False,
-                reuse_current_page_if_ready=False,
+                reuse_current_page_if_ready=direct_conversation_mode,
             )
             bootstrap_result = self._attach_rate_limit_telemetry(bootstrap_result)
         finally:
@@ -1945,6 +1973,8 @@ class ChatGPTBrowserClient:
 
         bootstrap_telemetry = bootstrap_result.get("rate_limit_telemetry") if isinstance(bootstrap_result, dict) else None
         conversation_url = bootstrap_result.get("conversation_url") if isinstance(bootstrap_result, dict) else None
+        if direct_conversation_mode and not (isinstance(conversation_url, str) and "/c/" in conversation_url):
+            conversation_url = direct_conversation_url
         if self._release_live_telemetry_guardrail_seen(bootstrap_telemetry):
             return {
                 "ok": False,
@@ -1958,6 +1988,7 @@ class ChatGPTBrowserClient:
                 "rate_limit_telemetry": bootstrap_telemetry,
                 "warmup_conversation_url": warmup_conversation_url,
                 "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                "trusted_conversation_direct_mode": direct_conversation_mode,
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
         if not (isinstance(conversation_url, str) and "/c/" in conversation_url):
@@ -1972,6 +2003,7 @@ class ChatGPTBrowserClient:
                 "bootstrap_result": bootstrap_result,
                 "warmup_conversation_url": warmup_conversation_url,
                 "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                "trusted_conversation_direct_mode": direct_conversation_mode,
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
 
@@ -2015,6 +2047,9 @@ class ChatGPTBrowserClient:
             "same_profile_for_project_bootstrap_and_ask": True,
             "warmup_conversation_url": warmup_conversation_url,
             "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+            "trusted_conversation_direct_mode": direct_conversation_mode,
+            "project_identity_source": "warmup_conversation_url" if direct_conversation_mode else "project_ensure",
+            "root_project_discovery_skipped": direct_conversation_mode,
             "duration_seconds": round(time.monotonic() - started, 3),
         }
 

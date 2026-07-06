@@ -674,16 +674,22 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
 
 
-## v0.1.103.10.63
+## v0.1.103.10.64
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip`
 
-Slice: v0.1.103.10.63 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+Slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
 
-## Decision — v0.1.103.10.63 external-live first-ask challenge is LIVE_BLOCKED
+## Decision — v0.1.103.10.64 external-live first-ask challenge is LIVE_BLOCKED
 
 Decision: when explicit external-live validation reaches `release-live-continuous` and the first ask returns `docker_live_profile_challenged`, release-control must report `LIVE_BLOCKED` rather than `FIX`, provided product validation steps are otherwise healthy.
 
 Rationale: `FIX` means product/code repair is needed. A clean Cloudflare/Docker live browser challenge during explicit external ChatGPT live validation is an external browser condition, not a deterministic product-validation failure.
+
+## Decision — v0.1.103.10.64 trusted conversation warmup is authoritative for release-live-continuous
+
+Decision: when `release-live-continuous` is given a trusted project conversation URL via `--warmup-conversation-url`, that URL is sufficient project identity for the live-only test. The command must not navigate to `https://chatgpt.com/` to rediscover or create a project in that path. Bootstrap and first ask should remain in the same conversation/session.
+
+Rationale: the live log showed the trusted conversation was logged in and composer-ready before the command navigated away for root project discovery. The root navigation introduced avoidable page/context loss and extra external web-app surface area.
