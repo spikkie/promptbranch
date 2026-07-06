@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip
-active candidate version: v0.1.103.10.62
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip
-next normal slice: v0.1.103.10.62 — split external ChatGPT live probes from mandatory product release validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip
+active candidate version: v0.1.103.10.63
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip
+next normal slice: v0.1.103.10.63 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2023,10 +2023,10 @@ KISS repair: pass the validated live preflight `/c/...` URL to release-live-cont
 Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip` configures the Docker live-slot service with a trusted `/g/.../c/...` conversation URL before live preflight, while preserving the Docker-routed release-live-continuous design.
 
 
-## v0.1.103.10.62
+## v0.1.103.10.63
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip`
 
-Slice: v0.1.103.10.62 — split external ChatGPT live probes from mandatory product release validation
+Slice: v0.1.103.10.63 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.

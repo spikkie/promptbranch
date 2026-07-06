@@ -674,10 +674,16 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
 
 
-## v0.1.103.10.62
+## v0.1.103.10.63
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip`
 
-Slice: v0.1.103.10.62 — split external ChatGPT live probes from mandatory product release validation
+Slice: v0.1.103.10.63 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
+
+## Decision — v0.1.103.10.63 external-live first-ask challenge is LIVE_BLOCKED
+
+Decision: when explicit external-live validation reaches `release-live-continuous` and the first ask returns `docker_live_profile_challenged`, release-control must report `LIVE_BLOCKED` rather than `FIX`, provided product validation steps are otherwise healthy.
+
+Rationale: `FIX` means product/code repair is needed. A clean Cloudflare/Docker live browser challenge during explicit external ChatGPT live validation is an external browser condition, not a deterministic product-validation failure.

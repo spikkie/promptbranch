@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.62"
+VERSION = "v0.1.103.10.63"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -118,6 +118,7 @@ def replay_run_all(scenario: str) -> ReplayResult:
         failed("ask_live", "docker_live_profile_challenged")
         skipped("visual_artifact_roundtrip", "skipped_ask_live_docker_live_profile_challenged")
         skipped("release_live", "skipped_ask_live_docker_live_profile_challenged")
+        result.final_verdict = "LIVE_BLOCKED"
         passed("import_smoke")
         passed("artifact_guard")
         return result
@@ -186,6 +187,7 @@ def test_release_control_replay_ask_live_challenge_is_terminal() -> None:
     result = replay_run_all("ask_live_challenge")
 
     assert result.ok is False
+    assert result.final_verdict == "LIVE_BLOCKED"
     assert result.step("ask_live").reason == "docker_live_profile_challenged"
     assert result.step("visual_artifact_roundtrip").reason == "skipped_ask_live_docker_live_profile_challenged"
     assert result.step("release_live").reason == "skipped_ask_live_docker_live_profile_challenged"
@@ -206,6 +208,7 @@ def test_release_control_replay_continuous_bootstrap_clean_ask_challenge() -> No
     result = replay_run_all("ask_live_challenge")
 
     assert result.ok is False
+    assert result.final_verdict == "LIVE_BLOCKED"
     assert result.step("ask_live").reason == "docker_live_profile_challenged"
     assert result.step("visual_artifact_roundtrip").reason == "skipped_ask_live_docker_live_profile_challenged"
     assert result.step("release_live").reason == "skipped_ask_live_docker_live_profile_challenged"

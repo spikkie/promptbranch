@@ -3708,6 +3708,9 @@ def test_release_control_classifies_docker_live_preflight_challenge_as_external_
     assert "LIVE_BLOCKED" in script
     assert "product_failure_count" in script
     assert "external_live_blocked" in script
+    assert "docker_live_profile_challenged" in script
+    assert "skipped_ask_live_docker_live_profile_challenged" in script
+    assert "skipped_live_project_ensure_docker_live_profile_challenged" in script
 
 
 def test_release_control_live_slot_recreate_trace_does_not_duplicate_chatgpt_project_url_static() -> None:

@@ -4807,10 +4807,13 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
     payload_status = str(payload.get("status") or "")
     raw_lower = raw.lower()
     external_browser_challenge = (
-        payload_status == "live_external_browser_challenge"
+        payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged"}
         or "live_external_browser_challenge" in raw_lower
         or "auth_challenge_required" in raw_lower
         or "docker_standard_profile_challenged" in raw_lower
+        or "docker_live_profile_challenged" in raw_lower
+        or "skipped_ask_live_docker_live_profile_challenged" in raw_lower
+        or "skipped_live_project_ensure_docker_live_profile_challenged" in raw_lower
         or "verify you are human" in raw_lower
         or "just a moment" in raw_lower
     )
@@ -4956,7 +4959,13 @@ for item in raw_steps:
 ok = bool(steps) and all(step["ok"] for step in steps)
 failed = [step for step in steps if not step["ok"]]
 external_live_not_requested_statuses = {"external_live_not_requested"}
-external_live_statuses = {"live_external_browser_challenge", "skipped_live_external_browser_challenge"}
+external_live_statuses = {
+    "live_external_browser_challenge",
+    "skipped_live_external_browser_challenge",
+    "docker_live_profile_challenged",
+    "skipped_ask_live_docker_live_profile_challenged",
+    "skipped_live_project_ensure_docker_live_profile_challenged",
+}
 external_live_not_requested_steps = [
     step["name"]
     for step in steps
