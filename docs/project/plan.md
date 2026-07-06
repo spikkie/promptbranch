@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip
-active candidate version: v0.1.103.10.64
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip
-next normal slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
+active candidate version: v0.1.103.10.65
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
+next normal slice: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2023,15 +2023,15 @@ KISS repair: pass the validated live preflight `/c/...` URL to release-live-cont
 Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip` configures the Docker live-slot service with a trusted `/g/.../c/...` conversation URL before live preflight, while preserving the Docker-routed release-live-continuous design.
 
 
-## v0.1.103.10.64
+## v0.1.103.10.65
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip`
 
-Slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+Slice: v0.1.103.10.65 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
 
-## v0.1.103.10.64 — release-live-continuous uses explicit trusted conversation URL directly
+## v0.1.103.10.65 — release-live-continuous uses explicit trusted conversation URL directly
 
 KISS scope:
 
@@ -2045,4 +2045,20 @@ KISS scope:
 8. No Cloudflare workaround.
 9. No host-CDP/session-manager.
 
-Control-surface active slice token: v0.1.103.10.64 — release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery
+Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+
+
+## v0.1.103.10.65 — direct trusted conversation warmup before send guard
+
+Slice: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+
+KISS scope:
+
+1. Keep `v0.1.103.10.64` direct trusted conversation mode.
+2. Keep root project discovery skipped for trusted `/g/.../c/...` warmup URLs.
+3. Navigate to `--warmup-conversation-url` immediately after browser launch in direct mode.
+4. Verify current URL scope, composer visibility, logged-in state, and absence of challenge.
+5. Only then call bootstrap/ask with held-page reuse.
+6. Do not add Cloudflare workarounds, host-CDP/session-manager, copied-profile trust, or project deletion.
+
+Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard

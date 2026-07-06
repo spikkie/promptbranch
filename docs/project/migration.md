@@ -897,14 +897,19 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
 
 
-## v0.1.103.10.64
+## v0.1.103.10.65
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip`
 
-Slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+Slice: v0.1.103.10.65 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
 
-## v0.1.103.10.64 migration
+## v0.1.103.10.65 migration
 
 No data migration. Operators can continue using the same release-live slot profile and trusted project conversation URL. Existing commands with `--warmup-conversation-url https://chatgpt.com/g/.../c/...` now use that conversation directly instead of root project discovery.
+
+
+## v0.1.103.10.65 migration
+
+No state migration is required. Browser profile format, registry format, Project Source policy, artifact adoption policy, and release-control product/external-live split remain unchanged.

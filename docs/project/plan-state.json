@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
-  "active_candidate_version": "v0.1.103.10.64",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
+  "active_candidate_version": "v0.1.103.10.65",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
+  "active_slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "v0.1.103.10.64",
+  "current_candidate": "v0.1.103.10.65",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -65,10 +65,10 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
-  "last_updated": "2026-07-05",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
-  "next_normal_slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
-  "next_normal_version": "v0.1.103.10.64",
+  "last_updated": "2026-07-06",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
+  "next_normal_slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
+  "next_normal_version": "v0.1.103.10.65",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -85,20 +85,28 @@
   ],
   "release_history": [
     {
-      "version": "v0.1.103.10.64",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
       "kind": "repair",
+      "slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
       "status": "candidate",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
-      "slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
-      "summary": "When release-live-continuous is given a trusted project conversation warmup URL, it derives project identity from that URL and skips root project discovery so it does not navigate away to chatgpt.com before bootstrap/ask."
+      "summary": "In trusted conversation direct mode, explicitly navigate to the supplied /g/.../c/... warmup conversation URL and verify composer/login/challenge/scope readiness before invoking the held-page send guard, preventing about:blank from being evaluated as the send surface.",
+      "version": "v0.1.103.10.65"
     },
     {
-      "version": "v0.1.103.10.63",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
       "kind": "repair",
+      "slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
       "status": "candidate",
+      "summary": "When release-live-continuous is given a trusted project conversation warmup URL, it derives project identity from that URL and skips root project discovery so it does not navigate away to chatgpt.com before bootstrap/ask.",
+      "version": "v0.1.103.10.64"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip",
+      "kind": "repair",
       "slice": "v0.1.103.10.63 \u2014 classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED",
-      "summary": "Classifies explicit external-live release-live-continuous first-ask Cloudflare/docker_live_profile_challenged cascades as LIVE_BLOCKED instead of product FIX, preserving product validation as GO and avoiding browser workaround changes."
+      "status": "candidate",
+      "summary": "Classifies explicit external-live release-live-continuous first-ask Cloudflare/docker_live_profile_challenged cascades as LIVE_BLOCKED instead of product FIX, preserving product validation as GO and avoiding browser workaround changes.",
+      "version": "v0.1.103.10.63"
     },
     {
       "kind": "repair",
@@ -290,12 +298,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
       "release_mode": "repair",
       "scope": "release-live-continuous with a trusted /g/.../c/... warmup URL derives project identity and skips root project discovery; bootstrap and first ask stay in the same conversation/session.",
-      "slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
+      "slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
       "status": "active",
-      "version": "v0.1.103.10.64"
+      "version": "v0.1.103.10.65"
     },
     {
       "release_mode": "normal",
@@ -339,5 +347,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.64"
+  "updated_for": "v0.1.103.10.65"
 }

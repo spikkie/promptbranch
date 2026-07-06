@@ -1951,6 +1951,67 @@ class ChatGPTBrowserClient:
                 }
 
         bootstrap_target_url = direct_conversation_url if direct_conversation_mode else project_url
+        if direct_conversation_mode:
+            direct_nav = await self._goto(
+                page,
+                direct_conversation_url,
+                label="release-live-continuous-trusted-conversation",
+                respect_history_rate_limit_cooldown=False,
+            )
+            await self._wait_for_challenge_resolution(page, label="release-live-continuous-trusted-conversation")
+            await self._raise_fail_fast_challenge_if_configured(page, stage="release-live-continuous-trusted-conversation")
+            direct_state = await self._probe_auth_readiness_state(page)
+            direct_status = self._auth_readiness_status_from_state(direct_state)
+            direct_readiness = self._auth_readiness_result_from_state(
+                direct_state,
+                action="release_live_continuous_trusted_conversation_status",
+                held_session=None,
+            )
+            direct_scope = self._ask_target_scope_evidence(
+                current_url=str(direct_readiness.get("current_url") or await self._safe_page_url(page)),
+                target_url=direct_conversation_url,
+            )
+            project_result["trusted_conversation_navigation"] = direct_nav
+            project_result["trusted_conversation_readiness"] = direct_readiness
+            project_result["trusted_conversation_scope"] = direct_scope
+            project_result["trusted_conversation_ready"] = bool(
+                direct_status == "auth_preflight_ready"
+                and bool(direct_readiness.get("composer_visible"))
+                and bool(direct_readiness.get("logged_in"))
+                and not bool(direct_readiness.get("challenge_detected"))
+                and direct_scope.get("matches") is True
+            )
+            self._log(
+                "release-live-continuous",
+                "trusted conversation page readiness checked before bootstrap ask",
+                status=direct_status,
+                ready=project_result["trusted_conversation_ready"],
+                current_url=direct_readiness.get("current_url"),
+                requested_target_url=direct_conversation_url,
+                composer_visible=direct_readiness.get("composer_visible"),
+                logged_in=direct_readiness.get("logged_in"),
+                challenge_detected=direct_readiness.get("challenge_detected"),
+                scope_matches=direct_scope.get("matches"),
+                scope_reason=direct_scope.get("reason"),
+            )
+            if not project_result["trusted_conversation_ready"]:
+                return {
+                    "ok": False,
+                    "action": "test_release_live_continuous",
+                    "status": "trusted_conversation_not_ready",
+                    "failed_phase": "live_conversation_bootstrap",
+                    "project_url": project_url,
+                    "conversation_url": direct_conversation_url,
+                    "project_result": project_result,
+                    "trusted_conversation_navigation": direct_nav,
+                    "trusted_conversation_readiness": direct_readiness,
+                    "trusted_conversation_scope": direct_scope,
+                    "warmup_conversation_url": warmup_conversation_url,
+                    "warmup_strategy": "trusted_preflight_conversation_url",
+                    "trusted_conversation_direct_mode": True,
+                    "root_project_discovery_skipped": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
         original_project_url = self.config.project_url
         try:
             self.config.project_url = project_url

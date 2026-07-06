@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip
-active candidate version: v0.1.103.10.64
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip
-next normal slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
+active candidate version: v0.1.103.10.65
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
+next normal slice: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1052,23 +1052,30 @@ Candidate adds extraction of top-level `url` from live preflight login-check out
 
 Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip` configures the Docker live-slot service with a trusted `/g/.../c/...` conversation URL before live preflight, while preserving the Docker-routed release-live-continuous design.
 
-## v0.1.103.10.64 candidate
+## v0.1.103.10.65 candidate
 
 `--run-all-tests` now separates deterministic product validation from explicit external ChatGPT live probes. By default, release-control does not call `POST /v1/login-check`; live rows are marked `external_live_not_requested` and import/artifact guard still run.
 
 
-## v0.1.103.10.64
+## v0.1.103.10.65
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip`
 
-Slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+Slice: v0.1.103.10.65 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
 
-## v0.1.103.10.64 candidate status
+## v0.1.103.10.65 candidate status
 
-`v0.1.103.10.64` repairs the observed live-only failure from `chatgpt_claudecode_workflow-2_session_20260706_133417_319786.log`: `release-live-continuous` successfully opened a trusted project conversation with `composer_visible=True`, `logged_in=True`, and `challenge_detected=False`, then navigated to `https://chatgpt.com/` for root project discovery and lost the page/context. The repair keeps the trusted `/g/.../c/...` conversation as the active surface, derives the project home URL from it, and skips project create/discover/delete behavior in that path.
+`v0.1.103.10.65` repairs the observed live-only failure from `chatgpt_claudecode_workflow-2_session_20260706_133417_319786.log`: `release-live-continuous` successfully opened a trusted project conversation with `composer_visible=True`, `logged_in=True`, and `challenge_detected=False`, then navigated to `https://chatgpt.com/` for root project discovery and lost the page/context. The repair keeps the trusted `/g/.../c/...` conversation as the active surface, derives the project home URL from it, and skips project create/discover/delete behavior in that path.
 
 Baseline note: `v0.1.103.10.62` is the accepted/current product-validation baseline unless later adoption evidence proves otherwise. This candidate is built from the `v0.1.103.10.63` repair candidate plus this narrow flow fix.
 
-Control-surface active slice token: v0.1.103.10.64 — release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery
+Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+
+
+## v0.1.103.10.65 candidate status
+
+`v0.1.103.10.65` repairs the next direct-conversation ordering bug observed after `v0.1.103.10.64`: the flow trusted the `/g/.../c/...` warmup conversation identity and skipped root discovery, but the browser page remained `about:blank`, so the held-page send guard refused to submit. This candidate explicitly navigates to the trusted conversation URL and verifies current URL scope, composer visibility, login state, and no challenge before bootstrap/ask.
+
+Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard

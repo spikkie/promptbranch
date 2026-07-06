@@ -674,22 +674,27 @@ Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 Slice: v0.1.103.10.61 — classify Docker live preflight challenge as external live challenge and stop browser-repair loop
 
 
-## v0.1.103.10.64
+## v0.1.103.10.65
 
-Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip`
+Artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip`
 
-Slice: v0.1.103.10.64 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
+Slice: v0.1.103.10.65 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED
 
 Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatGPT live probes are explicit and default live rows are `external_live_not_requested`.
 
-## Decision — v0.1.103.10.64 external-live first-ask challenge is LIVE_BLOCKED
+## Decision — v0.1.103.10.65 external-live first-ask challenge is LIVE_BLOCKED
 
 Decision: when explicit external-live validation reaches `release-live-continuous` and the first ask returns `docker_live_profile_challenged`, release-control must report `LIVE_BLOCKED` rather than `FIX`, provided product validation steps are otherwise healthy.
 
 Rationale: `FIX` means product/code repair is needed. A clean Cloudflare/Docker live browser challenge during explicit external ChatGPT live validation is an external browser condition, not a deterministic product-validation failure.
 
-## Decision — v0.1.103.10.64 trusted conversation warmup is authoritative for release-live-continuous
+## Decision — v0.1.103.10.65 trusted conversation warmup is authoritative for release-live-continuous
 
 Decision: when `release-live-continuous` is given a trusted project conversation URL via `--warmup-conversation-url`, that URL is sufficient project identity for the live-only test. The command must not navigate to `https://chatgpt.com/` to rediscover or create a project in that path. Bootstrap and first ask should remain in the same conversation/session.
 
 Rationale: the live log showed the trusted conversation was logged in and composer-ready before the command navigated away for root project discovery. The root navigation introduced avoidable page/context loss and extra external web-app surface area.
+
+
+## Decision — v0.1.103.10.65 trusted conversation page must be opened before held send guard
+
+When `release-live-continuous` receives a trusted project-scoped `/g/.../c/...` warmup URL, the URL is not only identity evidence. It is also the required active browser surface. The command must navigate to that conversation and verify readiness before invoking the held-page send guard, otherwise `about:blank` can be misclassified as an auth/challenge failure before any live prompt is sent.
