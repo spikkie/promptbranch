@@ -1876,6 +1876,42 @@ class ChatGPTBrowserClient:
             self.config.project_url = original_project_url
 
     @staticmethod
+    def _release_live_expected_single_token(prompt: Any) -> str:
+        text = str(prompt or "").strip()
+        marker = "single token "
+        if marker not in text:
+            return ""
+        tail = text.split(marker, 1)[1].strip()
+        for suffix in (" and nothing else.", " and nothing else"):
+            if tail.endswith(suffix):
+                tail = tail[: -len(suffix)].strip()
+                break
+        return tail.strip().strip('"\'`')
+
+    @staticmethod
+    def _release_live_result_answer_text(result: Any) -> str:
+        if not isinstance(result, dict):
+            return ""
+        for key in ("answer", "answer_text", "text", "response_text"):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
+    @classmethod
+    def _release_live_result_completed_with_expected_token(cls, result: Any, prompt: Any) -> bool:
+        if not isinstance(result, dict):
+            return False
+        status = str(result.get("status") or "").strip().lower()
+        if status != "completed":
+            return False
+        expected = cls._release_live_expected_single_token(prompt)
+        if not expected:
+            return False
+        answer = cls._release_live_result_answer_text(result)
+        return answer == expected
+
+    @staticmethod
     def _release_live_telemetry_guardrail_seen(telemetry: Any) -> bool:
         if not isinstance(telemetry, dict):
             return False
@@ -2084,21 +2120,38 @@ class ChatGPTBrowserClient:
         ask_result = self._attach_rate_limit_telemetry(ask_result)
         ask_status = str(ask_result.get("status") or "") if isinstance(ask_result, dict) else ""
         ask_challenge_type = str(ask_result.get("challenge_type") or ask_result.get("response_challenge_type") or "") if isinstance(ask_result, dict) else ""
+        bootstrap_ok = bool(isinstance(bootstrap_result, dict) and bootstrap_result.get("ok"))
         ask_ok = bool(isinstance(ask_result, dict) and ask_result.get("ok"))
+        bootstrap_completed_with_expected_token = self._release_live_result_completed_with_expected_token(
+            bootstrap_result,
+            bootstrap_prompt,
+        )
+        ask_completed_with_expected_token = self._release_live_result_completed_with_expected_token(
+            ask_result,
+            ask_prompt,
+        )
+        sentinel_completed_ok = bool(
+            isinstance(project_result, dict)
+            and project_result.get("ok")
+            and bootstrap_completed_with_expected_token
+            and ask_completed_with_expected_token
+        )
         if ask_status == "docker_live_profile_challenged" or ask_challenge_type == "docker_live_profile_challenged":
             status = "docker_live_profile_challenged"
             ok = False
-        elif ask_ok:
+        elif sentinel_completed_ok:
+            status = "completed"
+            ok = True
+        elif bootstrap_ok and ask_ok:
             status = "verified"
             ok = True
         else:
             status = ask_status or "ask_failed"
             ok = False
-        return {
+        result = {
             "ok": ok,
             "action": "test_release_live_continuous",
             "status": status,
-            "failed_phase": None if ok else "ask_live",
             "project_url": project_url,
             "conversation_url": conversation_url,
             "project_result": project_result,
@@ -2111,8 +2164,14 @@ class ChatGPTBrowserClient:
             "trusted_conversation_direct_mode": direct_conversation_mode,
             "project_identity_source": "warmup_conversation_url" if direct_conversation_mode else "project_ensure",
             "root_project_discovery_skipped": direct_conversation_mode,
+            "bootstrap_completed_with_expected_sentinel": bootstrap_completed_with_expected_token,
+            "ask_completed_with_expected_sentinel": ask_completed_with_expected_token,
+            "contains_expected_sentinel": ask_completed_with_expected_token,
             "duration_seconds": round(time.monotonic() - started, 3),
         }
+        if not ok:
+            result["failed_phase"] = "ask_live"
+        return result
 
     async def list_projects(
         self,

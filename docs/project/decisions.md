@@ -715,3 +715,10 @@ This remains repair-only and does not advance the normal horizon. It keeps trust
 When `release-live-continuous` has already verified a trusted project conversation and the browser target closes while waiting for chat input selectors, Promptbranch must stop iterating the remaining selectors and return structured `browser_context_closed_during_submit` with `submit_subphase=composer_wait`. This is not Cloudflare unless challenge evidence exists, and it must not be converted into a generic response timeout.
 
 Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.
+
+
+## Decision — v0.1.103.10.68 completed sentinel run is successful release-live-continuous evidence
+
+When release-live-continuous keeps the trusted direct conversation session and both bootstrap and ask sub-results return `status=completed` with exact expected sentinel answers, the top-level result must be `ok=true` with no `failed_phase`, even if the sub-results omit `ok=true`. Browser action audit warnings remain preserved and are not part of this success predicate.
+
+Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok`.

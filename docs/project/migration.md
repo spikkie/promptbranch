@@ -934,3 +934,12 @@ Active candidate version: `v0.1.103.10.67`.
 Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.
 
 Migration impact: no data or profile migration. Runtime behavior only changes classification of browser target closure during composer selector waiting.
+
+
+## v0.1.103.10.68 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip`.
+
+Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok`.
+
+Migration impact: no data, browser profile, Project Source, artifact registry, or Docker profile migration. Runtime behavior only changes final aggregation for completed bootstrap/ask sentinel runs.

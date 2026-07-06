@@ -36,5 +36,5 @@ If a required group is missing or failed, release-control must treat the full-te
 ## Last updated
 
 ```text
-v0.1.74
+v0.1.103.10.68
 ```

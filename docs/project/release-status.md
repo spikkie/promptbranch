@@ -668,3 +668,15 @@ Active candidate version: `v0.1.103.10.67`.
 Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.
 
 Release state: candidate only; not accepted/current; focused validation required.
+
+## v0.1.103.10.68 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip`.
+
+Active candidate version: `v0.1.103.10.68`.
+
+Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok`.
+
+`v0.1.103.10.68` keeps the `v0.1.103.10.67` trusted direct-conversation flow and fixes the final aggregation predicate: when project ensure succeeds, bootstrap returns `status=completed` with the exact bootstrap sentinel, and ask returns `status=completed` with the exact ask sentinel, the top-level result is `ok=true`, `contains_expected_sentinel=true`, and no `failed_phase` is emitted. Browser action audit warnings remain preserved.
+
+Control-surface active slice token: v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok

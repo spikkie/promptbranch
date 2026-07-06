@@ -161,3 +161,51 @@ def test_click_fallback_short_circuits_target_closed_static_guard() -> None:
     assert "browser target closed during force click; skipping remaining click fallbacks" in source
     assert "browser target closed during mouse coordinate click; skipping remaining click fallbacks" in source
     assert "browser target closed during evaluate click" in source
+
+
+class CompletedSentinelClient(DirectConversationClient):
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "ASK_SENTINEL" if len(self.ask_calls) == 2 else "BOOTSTRAP_SENTINEL",
+        }
+
+
+def test_release_live_continuous_completed_sentinel_results_are_ok_without_subresult_ok(tmp_path: Path) -> None:
+    client = CompletedSentinelClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert "failed_phase" not in result
+    assert result["contains_expected_sentinel"] is True
+    assert result["bootstrap_completed_with_expected_sentinel"] is True
+    assert result["ask_completed_with_expected_sentinel"] is True
+    assert result["bootstrap_result"]["status"] == "completed"
+    assert result["ask_result"]["status"] == "completed"
+    assert result["ask_result"]["answer"] == "ASK_SENTINEL"
+
+
+def test_release_live_continuous_completed_sentinel_success_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "_release_live_result_completed_with_expected_token" in source
+    assert "sentinel_completed_ok" in source
+    assert 'status = "completed"' in source
+    assert '"contains_expected_sentinel": ask_completed_with_expected_token' in source
+    assert 'if not ok:\n            result["failed_phase"] = "ask_live"' in source
