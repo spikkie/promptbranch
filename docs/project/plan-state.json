@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
-  "active_candidate_version": "v0.1.103.10.65",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip",
+  "active_candidate_version": "v0.1.103.10.66",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
+  "active_slice": "v0.1.103.10.66 \u2014 release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -67,8 +67,8 @@
   "last_completed_repair_version": "v0.1.100.3",
   "last_updated": "2026-07-06",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
-  "next_normal_slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
-  "next_normal_version": "v0.1.103.10.65",
+  "next_normal_slice": "v0.1.103.10.66 \u2014 release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure",
+  "next_normal_version": "v0.1.103.10.66",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -276,6 +276,14 @@
     }
   ],
   "release_mode": "repair",
+  "repair_history": [
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Classify live browser page/context close during composer submit as browser_context_closed_during_submit and stop click fallback cascades on target-close evidence.",
+      "version": "v0.1.103.10.66"
+    }
+  ],
   "repair_must_not_advance_scope": true,
   "replan_rules": [
     "Normal releases may update the rolling horizon when the decision is recorded in docs/project/decisions.md.",
@@ -298,12 +306,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip",
       "release_mode": "repair",
-      "scope": "release-live-continuous with a trusted /g/.../c/... warmup URL derives project identity and skips root project discovery; bootstrap and first ask stay in the same conversation/session.",
-      "slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
+      "scope": "release-live-continuous with a trusted /g/.../c/... warmup URL preserves direct conversation mode and returns structured browser lifetime failure if the page/context closes after readiness before or during composer submit.",
+      "slice": "v0.1.103.10.66 \u2014 release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure",
       "status": "active",
-      "version": "v0.1.103.10.65"
+      "version": "v0.1.103.10.66"
     },
     {
       "release_mode": "normal",
@@ -347,5 +355,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.65"
+  "updated_for": "v0.1.103.10.66"
 }

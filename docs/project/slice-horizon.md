@@ -164,3 +164,14 @@ Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatG
 ## Active repair horizon — v0.1.103.10.65
 
 `v0.1.103.10.65` remains in the Docker/Patchright release-live repair line. It does not introduce host-CDP/session-manager, copied profile trust, or Cloudflare workarounds.
+
+
+## Active repair — v0.1.103.10.66
+
+`v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure` remains inside the release-live-continuous trusted conversation repair line and does not advance v0.1.104.
+
+- status: active
+- release_mode: repair
+- scope: keep direct trusted conversation mode and return structured `browser_context_closed_during_submit` if the live browser page/context closes after readiness before/during submit
+- version: v0.1.103.10.66
+- artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip

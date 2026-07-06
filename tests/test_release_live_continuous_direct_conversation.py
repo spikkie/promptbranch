@@ -130,3 +130,23 @@ def test_release_live_continuous_direct_conversation_static_guard() -> None:
     ensure_idx = source.index("project_result = await self._ensure_project_operation")
     direct_idx = source.index("if direct_conversation_mode:")
     assert direct_idx < ensure_idx
+
+
+def test_release_live_continuous_browser_lifetime_submit_failure_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "browser_context_closed_during_submit" in source
+    assert "browser/page context closed during composer submit; returning structured live browser lifetime failure" in source
+    assert "pre_composer_click_closed" in source
+    assert "composer_click" in source
+    assert "prompt_fill" in source
+    assert "submit_dispatch" in source
+    assert "challenge_evidence_present" in source
+
+
+def test_click_fallback_short_circuits_target_closed_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "_is_browser_target_closed_error" in source
+    assert "browser target closed during primary click; skipping click fallbacks" in source
+    assert "browser target closed during force click; skipping remaining click fallbacks" in source
+    assert "browser target closed during mouse coordinate click; skipping remaining click fallbacks" in source
+    assert "browser target closed during evaluate click" in source

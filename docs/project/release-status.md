@@ -640,3 +640,21 @@ Slice: v0.1.103.10.65 — release-live-continuous direct conversation mode navig
 Status: candidate. Validation is focused/static/unit only until operator release-control evidence is supplied.
 
 Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+
+
+## v0.1.103.10.66
+
+Active repair candidate: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
+
+Scope remains repair-only: preserve direct trusted conversation mode, skip root project discovery, add explicit `browser_context_closed_during_submit` handling, and do not add Cloudflare workarounds, host-CDP/session-manager, copied-profile trust, or project deletion.
+
+
+## v0.1.103.10.66 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip`.
+
+Active candidate version: `v0.1.103.10.66`.
+
+Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
+
+This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
-active candidate version: v0.1.103.10.65
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip
-next normal slice: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip
+active candidate version: v0.1.103.10.66
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip
+next normal slice: v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2062,3 +2062,21 @@ KISS scope:
 6. Do not add Cloudflare workarounds, host-CDP/session-manager, copied-profile trust, or project deletion.
 
 Control-surface active slice token: v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard
+
+
+## v0.1.103.10.66
+
+Active repair candidate: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
+
+Scope remains repair-only: preserve direct trusted conversation mode, skip root project discovery, add explicit `browser_context_closed_during_submit` handling, and do not add Cloudflare workarounds, host-CDP/session-manager, copied-profile trust, or project deletion.
+
+
+## v0.1.103.10.66 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip`.
+
+Active candidate version: `v0.1.103.10.66`.
+
+Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
+
+This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.

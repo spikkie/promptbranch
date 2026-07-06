@@ -698,3 +698,14 @@ Rationale: the live log showed the trusted conversation was logged in and compos
 ## Decision — v0.1.103.10.65 trusted conversation page must be opened before held send guard
 
 When `release-live-continuous` receives a trusted project-scoped `/g/.../c/...` warmup URL, the URL is not only identity evidence. It is also the required active browser surface. The command must navigate to that conversation and verify readiness before invoking the held-page send guard, otherwise `about:blank` can be misclassified as an auth/challenge failure before any live prompt is sent.
+
+
+## v0.1.103.10.66 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip`.
+
+Active candidate version: `v0.1.103.10.66`.
+
+Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
+
+This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.

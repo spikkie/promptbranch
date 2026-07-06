@@ -2869,6 +2869,29 @@ class ChatGPTBrowserClient:
         )
         return error_type == "TargetClosedError" or any(marker.lower() in message.lower() for marker in recoverable_markers)
 
+    @staticmethod
+    def _is_browser_target_closed_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        error_type = type(exc).__name__
+        target_closed_markers = (
+            "target page, context or browser has been closed",
+            "page has been closed",
+            "browser has been closed",
+            "context has been closed",
+            "target closed",
+        )
+        return error_type == "TargetClosedError" or any(marker in message for marker in target_closed_markers)
+
+    @staticmethod
+    def _page_reports_closed(page: Any) -> bool:
+        try:
+            is_closed = getattr(page, "is_closed", None)
+            if callable(is_closed):
+                return bool(is_closed())
+        except Exception:
+            return True
+        return False
+
     async def _launch_persistent_context_with_recovery(self, chromium: Any, launch_kwargs: dict[str, Any]) -> Any:
         try:
             return await chromium.launch_persistent_context(**launch_kwargs)
@@ -3647,6 +3670,41 @@ class ChatGPTBrowserClient:
         held_scope_evidence: dict[str, Any] | None = None
         project_scope_navigation_check_required = False
 
+        async def browser_lifetime_failure_result(*, submit_phase: str, exc: Exception | None = None) -> dict[str, Any]:
+            phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
+            phase_timings["browser_lifetime_submit_phase"] = submit_phase
+            phase_timings["browser_context_closed_during_submit"] = True
+            current_url = await self._safe_page_url(page)
+            result = {
+                "ok": False,
+                "action": "ask",
+                "status": "browser_context_closed_during_submit",
+                "error": "browser/page context closed after readiness and before or during composer submit",
+                "error_type": "browser_context_closed_during_submit",
+                "failed_phase": "submit",
+                "submit_failure_phase": submit_phase,
+                "current_url": current_url,
+                "requested_target_url": requested_target_url,
+                "conversation_url": target_url if self._is_conversation_url(target_url) else None,
+                "partial_result": True,
+                "release_blocking": True,
+                "challenge_evidence_present": False,
+                "ask_phase_timings": phase_timings,
+            }
+            if exc is not None:
+                result["exception_type"] = type(exc).__name__
+                result["exception_text"] = str(exc)[:800]
+            self._record_ask_progress(**result)
+            self._log(
+                "submit",
+                "browser/page context closed during composer submit; returning structured live browser lifetime failure",
+                submit_failure_phase=submit_phase,
+                current_url=current_url,
+                error_type=type(exc).__name__ if exc is not None else None,
+                error=str(exc)[:240] if exc is not None else None,
+            )
+            return result
+
         phase_started = time.monotonic()
         if reuse_current_page_if_ready:
             held_state = await self._probe_auth_readiness_state(page)
@@ -3886,13 +3944,31 @@ class ChatGPTBrowserClient:
             prompt="Debug pause before filling the composer. Inspect the browser, then press Enter to continue... ",
         )
 
+        if self._page_reports_closed(page):
+            return await browser_lifetime_failure_result(submit_phase="pre_composer_click_closed")
+
         self._log("composer", "chat input resolved and composer ready; clicking")
         phase_started = time.monotonic()
-        await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
+        try:
+            await self._click_locator_with_fallback(input_locator, label="ask-question-composer-input", timeout_ms=5_000)
+        except Exception as exc:
+            if self._is_browser_target_closed_error(exc):
+                mark_phase("composer_click_seconds", phase_started)
+                return await browser_lifetime_failure_result(submit_phase="composer_click", exc=exc)
+            raise
         mark_phase("composer_click_seconds", phase_started)
 
+        if self._page_reports_closed(page):
+            return await browser_lifetime_failure_result(submit_phase="pre_prompt_fill_closed")
+
         phase_started = time.monotonic()
-        fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+        try:
+            fill_evidence = await self._fill_chat_prompt(page, input_locator, prompt=prompt)
+        except Exception as exc:
+            if self._is_browser_target_closed_error(exc):
+                mark_phase("prompt_fill_seconds", phase_started)
+                return await browser_lifetime_failure_result(submit_phase="prompt_fill", exc=exc)
+            raise
         mark_phase("prompt_fill_seconds", phase_started)
         phase_timings["prompt_fill_method"] = fill_evidence.get("method")
         phase_timings["prompt_fill_requested_method"] = fill_evidence.get("requested_method")
@@ -3982,12 +4058,20 @@ class ChatGPTBrowserClient:
             prompt="Debug pause before submit. Inspect focus, send/stop buttons, and network panel, then press Enter to submit... ",
         )
 
-        submit_evidence = await self._submit_prompt(
-            page,
-            prompt=prompt,
-            prefer_button=bool(prefer_button_submit or upload_paths),
-            allow_keyboard_fallback_after_button_prepare_failure=bool(prefer_button_submit and not upload_paths),
-        )
+        if self._page_reports_closed(page):
+            return await browser_lifetime_failure_result(submit_phase="pre_submit_closed")
+
+        try:
+            submit_evidence = await self._submit_prompt(
+                page,
+                prompt=prompt,
+                prefer_button=bool(prefer_button_submit or upload_paths),
+                allow_keyboard_fallback_after_button_prepare_failure=bool(prefer_button_submit and not upload_paths),
+            )
+        except Exception as exc:
+            if self._is_browser_target_closed_error(exc):
+                return await browser_lifetime_failure_result(submit_phase="submit_dispatch", exc=exc)
+            raise
         if isinstance(submit_evidence, dict):
             # Keep the originating submit policy on the causal evidence object so
             # every downstream JSON envelope can expose it without having to
@@ -17260,6 +17344,9 @@ class ChatGPTBrowserClient:
             last_error = exc
             self._record_browser_action(kind='click_failure', label=label, strategy='primary', status=type(exc).__name__, error=str(exc))
             self._log("click", "primary locator click failed", label=label, error=repr(exc))
+            if self._is_browser_target_closed_error(exc):
+                self._log("click", "browser target closed during primary click; skipping click fallbacks", label=label, error_type=type(exc).__name__)
+                raise
             if page is not None:
                 await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-primary-click-failure')
 
@@ -17273,6 +17360,9 @@ class ChatGPTBrowserClient:
                 last_error = exc
                 self._record_browser_action(kind='click_failure', label=label, strategy='force', status=type(exc).__name__, error=str(exc))
                 self._log("click", "force locator click failed", label=label, error=repr(exc))
+                if self._is_browser_target_closed_error(exc):
+                    self._log("click", "browser target closed during force click; skipping remaining click fallbacks", label=label, error_type=type(exc).__name__)
+                    raise
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-force-click-failure')
 
@@ -17290,6 +17380,9 @@ class ChatGPTBrowserClient:
                 last_error = exc
                 self._record_browser_action(kind='click_failure', label=label, strategy='mouse_coordinate', status=type(exc).__name__, error=str(exc))
                 self._log("click", "mouse coordinate click failed", label=label, error=repr(exc))
+                if self._is_browser_target_closed_error(exc):
+                    self._log("click", "browser target closed during mouse coordinate click; skipping remaining click fallbacks", label=label, error_type=type(exc).__name__)
+                    raise
                 await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-coordinate-click-failure')
 
         if allow_evaluate:
@@ -17302,6 +17395,9 @@ class ChatGPTBrowserClient:
                 last_error = exc
                 self._record_browser_action(kind='click_failure', label=label, strategy='evaluate', status=type(exc).__name__, error=str(exc))
                 self._log("click", "evaluate locator click failed", label=label, error=repr(exc))
+                if self._is_browser_target_closed_error(exc):
+                    self._log("click", "browser target closed during evaluate click", label=label, error_type=type(exc).__name__)
+                    raise
                 if page is not None:
                     await self._wait_for_rate_limit_modal_to_clear(page, label=f'{label}-after-evaluate-click-failure')
 
