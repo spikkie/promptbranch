@@ -556,3 +556,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 | --- | --- | --- | --- | --- |
 | DOD-238 | `release-live-continuous` trusted conversation direct mode returns structured `browser_context_closed_during_submit` when the page/context closes after readiness but before/during composer submit, and click fallbacks stop immediately on target-close evidence | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_release_live_continuous_direct_conversation.py` | v0.1.103.10.66 |
+
+## v0.1.103.10.67
+
+| ID | DoD item | Status | Evidence | Last release |
+| --- | --- | --- | --- | --- |
+| DOD-239 | `release-live-continuous` returns structured `browser_context_closed_during_submit` with `submit_subphase=composer_wait` when the browser target closes during chat input selector wait, and does not downgrade that evidence to `ResponseTimeoutError` | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_release_live_continuous_direct_conversation.py` | v0.1.103.10.67 |

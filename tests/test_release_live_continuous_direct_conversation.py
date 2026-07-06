@@ -136,11 +136,22 @@ def test_release_live_continuous_browser_lifetime_submit_failure_static_guard() 
     source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
     assert "browser_context_closed_during_submit" in source
     assert "browser/page context closed during composer submit; returning structured live browser lifetime failure" in source
+    assert "composer_wait" in source
+    assert "submit_subphase" in source
+    assert "browser target closed while waiting for chat input; stopping selector iteration" in source
     assert "pre_composer_click_closed" in source
     assert "composer_click" in source
     assert "prompt_fill" in source
     assert "submit_dispatch" in source
     assert "challenge_evidence_present" in source
+
+
+def test_wait_for_chat_input_target_closed_is_not_response_timeout_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    target_closed_log_idx = source.index("browser target closed while waiting for chat input; stopping selector iteration")
+    response_timeout_idx = source.index('raise ResponseTimeoutError("Chat input did not become visible")')
+    assert target_closed_log_idx < response_timeout_idx
+    assert 'return await browser_lifetime_failure_result(submit_phase="composer_wait", exc=exc)' in source
 
 
 def test_click_fallback_short_circuits_target_closed_static_guard() -> None:

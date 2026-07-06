@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip
-active candidate version: v0.1.103.10.66
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip
-next normal slice: v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.67.zip
+active candidate version: v0.1.103.10.67
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.67.zip
+next normal slice: v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -1097,3 +1097,15 @@ Active candidate version: `v0.1.103.10.66`.
 Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
 
 This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.
+
+## v0.1.103.10.67 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.67.zip`.
+
+Active candidate version: `v0.1.103.10.67`.
+
+Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.
+
+`v0.1.103.10.67` keeps the `v0.1.103.10.66` trusted direct-conversation flow and fixes the earlier composer selector wait edge case: if the page/context closes while waiting for the chat input, Promptbranch must stop selector iteration and return structured `browser_context_closed_during_submit` with `submit_subphase=composer_wait`, not `ResponseTimeoutError: Chat input did not become visible`.
+
+Control-surface active slice token: v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit

@@ -175,3 +175,11 @@ Default `--run-all-tests` no longer calls `POST /v1/login-check`; external ChatG
 - scope: keep direct trusted conversation mode and return structured `browser_context_closed_during_submit` if the live browser page/context closes after readiness before/during submit
 - version: v0.1.103.10.66
 - artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.66.zip
+
+## Active repair — v0.1.103.10.67
+
+`v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit` remains inside the release-live-continuous trusted conversation repair line and does not advance v0.1.104.
+
+- version: v0.1.103.10.67
+- artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.67.zip
+- scope: classify composer wait target-close as structured browser lifetime failure; no Cloudflare workaround.

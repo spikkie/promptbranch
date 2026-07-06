@@ -709,3 +709,9 @@ Active candidate version: `v0.1.103.10.66`.
 Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
 
 This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.
+
+## Decision — v0.1.103.10.67 composer wait target-close is browser lifetime failure
+
+When `release-live-continuous` has already verified a trusted project conversation and the browser target closes while waiting for chat input selectors, Promptbranch must stop iterating the remaining selectors and return structured `browser_context_closed_during_submit` with `submit_subphase=composer_wait`. This is not Cloudflare unless challenge evidence exists, and it must not be converted into a generic response timeout.
+
+Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.

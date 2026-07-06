@@ -924,3 +924,13 @@ Active candidate version: `v0.1.103.10.66`.
 Active repair slice: `v0.1.103.10.66 — release-live-continuous handles page/context close during composer submit as explicit browser-lifetime failure`.
 
 This remains repair-only and does not advance the normal horizon. It keeps trusted conversation direct mode and adds structured `browser_context_closed_during_submit` evidence for live browser page/context close during composer submit.
+
+## v0.1.103.10.67 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.67.zip`.
+
+Active candidate version: `v0.1.103.10.67`.
+
+Active repair slice: `v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit`.
+
+Migration impact: no data or profile migration. Runtime behavior only changes classification of browser target closure during composer selector waiting.

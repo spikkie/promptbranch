@@ -3674,6 +3674,7 @@ class ChatGPTBrowserClient:
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             phase_timings["browser_lifetime_submit_phase"] = submit_phase
             phase_timings["browser_context_closed_during_submit"] = True
+            phase_timings["submit_subphase"] = submit_phase
             current_url = await self._safe_page_url(page)
             result = {
                 "ok": False,
@@ -3683,6 +3684,7 @@ class ChatGPTBrowserClient:
                 "error_type": "browser_context_closed_during_submit",
                 "failed_phase": "submit",
                 "submit_failure_phase": submit_phase,
+                "submit_subphase": submit_phase,
                 "current_url": current_url,
                 "requested_target_url": requested_target_url,
                 "conversation_url": target_url if self._is_conversation_url(target_url) else None,
@@ -3896,7 +3898,13 @@ class ChatGPTBrowserClient:
             }
 
         phase_started = time.monotonic()
-        input_locator = await self._wait_for_chat_input(page)
+        try:
+            input_locator = await self._wait_for_chat_input(page)
+        except Exception as exc:
+            if self._is_browser_target_closed_error(exc):
+                mark_phase("input_wait_seconds", phase_started)
+                return await browser_lifetime_failure_result(submit_phase="composer_wait", exc=exc)
+            raise
         mark_phase("input_wait_seconds", phase_started)
 
         phase_started = time.monotonic()
@@ -7593,6 +7601,14 @@ class ChatGPTBrowserClient:
                 return locator
             except Exception as exc:  # pragma: no cover - depends on page state
                 self._log("composer", "chat input selector wait failed", selector=selector, error=str(exc))
+                if self._is_browser_target_closed_error(exc):
+                    self._log(
+                        "composer",
+                        "browser target closed while waiting for chat input; stopping selector iteration",
+                        selector=selector,
+                        error_type=type(exc).__name__,
+                    )
+                    raise
                 last_error = exc
         raise ResponseTimeoutError("Chat input did not become visible") from last_error
 
