@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.63"
+VERSION = "v0.1.103.10.71"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -101,6 +101,21 @@ def replay_run_all(scenario: str) -> ReplayResult:
         passed("artifact_guard")
         return result
 
+    if scenario == "v1031070_live_project_ensure_log_contains_live_bootstrap_guardrail":
+        # Mirrors the real v0.1.103.10.70 all-all failure shape: the
+        # release-live-continuous command writes project/conversation evidence,
+        # then appends ``status: live_bootstrap_guardrail`` to the
+        # live_project_ensure log. The final aggregation must classify the
+        # cascade as external LIVE_BLOCKED, not product FIX.
+        failed("live_project_ensure", "live_bootstrap_guardrail")
+        result.final_verdict = "LIVE_BLOCKED"
+        for name in ("ask_live", "visual_artifact_roundtrip", "release_live"):
+            skipped(name, "skipped_blocked_by_live_bootstrap_guardrail")
+            result.final_verdict = "LIVE_BLOCKED"
+        passed("import_smoke")
+        passed("artifact_guard")
+        return result
+
     passed("live_project_ensure")
 
     if scenario == "live_bootstrap_429_guardrail_with_persisted_cooldown":
@@ -183,6 +198,19 @@ def test_release_control_replay_live_bootstrap_429_guardrail_blocks_ask_live_wit
     assert "ask_live" not in result.launched_browser_steps
     assert "visual_artifact_roundtrip" not in result.launched_browser_steps
     assert "release_live" not in result.launched_browser_steps
+
+
+def test_release_control_replay_v1031070_live_bootstrap_guardrail_cascade_is_live_blocked() -> None:
+    result = replay_run_all("v1031070_live_project_ensure_log_contains_live_bootstrap_guardrail")
+
+    assert result.ok is False
+    assert result.final_verdict == "LIVE_BLOCKED"
+    assert result.step("live_project_ensure").reason == "live_bootstrap_guardrail"
+    assert result.step("ask_live").reason == "skipped_blocked_by_live_bootstrap_guardrail"
+    assert result.step("visual_artifact_roundtrip").reason == "skipped_blocked_by_live_bootstrap_guardrail"
+    assert result.step("release_live").reason == "skipped_blocked_by_live_bootstrap_guardrail"
+    assert result.step("import_smoke").ok is True
+    assert result.step("artifact_guard").ok is True
 
 
 def test_release_control_replay_ask_live_challenge_is_terminal() -> None:

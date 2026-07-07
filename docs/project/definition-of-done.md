@@ -577,3 +577,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Slice |
 | --- | --- | --- | --- | --- |
 | DOD-242 | live bootstrap guardrail classification | in_progress | Release-control must classify `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` as external-live blockage evidence, preserving failed live steps and adoption refusal while avoiding product `FIX` when artifact/product validation passed. | v0.1.103.10.70 |
+
+
+## v0.1.103.10.71
+
+| ID | Requirement | Status | Evidence | Slice |
+| --- | --- | --- | --- | --- |
+| DOD-243 | final all-tests aggregation maps live bootstrap guardrail cascades to LIVE_BLOCKED | in_progress | Release-control must normalize mixed `live_project_ensure` logs containing terminal `live_bootstrap_guardrail` evidence before product failure counting, preserving failed downstream live steps and passed artifact guard evidence. | v0.1.103.10.71 |

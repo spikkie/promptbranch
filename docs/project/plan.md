@@ -2128,3 +2128,14 @@ Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootst
 `v0.1.103.10.70` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and changes only release-control final classification: `live_bootstrap_guardrail` plus skipped downstream live statuses are external-live blockage evidence, so all-all adoption remains blocked but the final verdict becomes `LIVE_BLOCKED`, not product `FIX`.
 
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
+
+
+## v0.1.103.10.71 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip`.
+
+Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED`.
+
+`v0.1.103.10.71` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.70` status vocabulary. It fixes the actual all-tests final summary aggregation path: if the mixed `live_project_ensure` log contains terminal `live_bootstrap_guardrail` evidence, the failed live cascade is classified as external `LIVE_BLOCKED`, not product `FIX`, while preserving failed live steps, `artifact_guard` evidence, and adoption refusal.
+
+Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.

@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
-  "active_candidate_version": "v0.1.103.10.70",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
+  "active_candidate_version": "v0.1.103.10.71",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+  "active_slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "v0.1.103.10.70",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -84,8 +84,8 @@
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
-  "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
-  "last_completed_repair_version": "v0.1.100.3",
+  "last_completed_repair": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+  "last_completed_repair_version": "v0.1.103.10.70",
   "last_updated": "2026-07-06",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
   "next_normal_slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
@@ -323,6 +323,11 @@
       "status": "candidate",
       "summary": "Mark release-live-continuous successful when project evidence is ok and completed bootstrap/ask sub-results return exact expected sentinels even without ok=true.",
       "version": "v0.1.103.10.68"
+    },
+    {
+      "version": "v0.1.103.10.71",
+      "slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+      "summary": "Normalizes mixed live_project_ensure logs containing terminal live_bootstrap_guardrail evidence before final product/live verdict aggregation, preserving failed live steps and adoption refusal."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -396,5 +401,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.70"
+  "updated_for": "v0.1.103.10.71"
 }

@@ -3696,6 +3696,18 @@ def test_release_control_external_live_flag_explicitly_enables_probe_static() ->
     assert '"external_live_tests_requested": os.environ.get("PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS") == "1"' in script
 
 
+
+
+def test_release_control_all_tests_summary_normalizes_live_bootstrap_guardrail_status_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'if name == "live_project_ensure" and (' in script
+    assert '"status: live_bootstrap_guardrail" in raw_log_lower' in script
+    assert '"live_bootstrap_guardrail_terminal: true" in raw_log_lower' in script
+    assert 'status = "live_bootstrap_guardrail"' in script
+    assert 'elif status == "failed" and "skipped_blocked_by_live_bootstrap_guardrail" in raw_log_lower:' in script
+    assert 'payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged", "live_bootstrap_guardrail", "skipped_blocked_by_live_bootstrap_guardrail"}' in script
+
 def test_release_control_classifies_docker_live_preflight_challenge_as_external_live_blocked_static() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 

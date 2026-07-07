@@ -4807,11 +4807,13 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
     payload_status = str(payload.get("status") or "")
     raw_lower = raw.lower()
     external_browser_challenge = (
-        payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged"}
+        payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged", "live_bootstrap_guardrail", "skipped_blocked_by_live_bootstrap_guardrail"}
         or "live_external_browser_challenge" in raw_lower
         or "auth_challenge_required" in raw_lower
         or "docker_standard_profile_challenged" in raw_lower
         or "docker_live_profile_challenged" in raw_lower
+        or "live_bootstrap_guardrail" in raw_lower
+        or "skipped_blocked_by_live_bootstrap_guardrail" in raw_lower
         or "skipped_ask_live_docker_live_profile_challenged" in raw_lower
         or "skipped_live_project_ensure_docker_live_profile_challenged" in raw_lower
         or "verify you are human" in raw_lower
@@ -4926,15 +4928,32 @@ for item in raw_steps:
         rc = int(rc_text)
     except Exception:
         rc = 99
+    raw_log_text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    raw_log_lower = raw_log_text.lower()
     recovered_rate_limit_success = payload_recovered_rate_limit_success(payload)
     ok = ((rc == 0 and payload.get("ok") is True) or recovered_rate_limit_success) and error is None
     status = payload.get("status") or ("passed" if ok else "failed")
     if recovered_rate_limit_success and status == "rate_limited_contaminated":
         status = "verified_with_recovered_rate_limit"
+    # v0.1.103.10.71: release-live-continuous bootstrap guardrail can be
+    # appended to a mixed live_project_ensure log after a valid project payload.
+    # The selected JSON payload may therefore be ok/resolved while the shell
+    # step rc is failing and the terminal reason only exists in raw log text.
+    # Normalize that actual final aggregation input here so the release verdict
+    # becomes LIVE_BLOCKED rather than product FIX while preserving the failed
+    # live_project_ensure step and downstream skipped live steps.
+    if name == "live_project_ensure" and (
+        "status: live_bootstrap_guardrail" in raw_log_lower
+        or '"status": "live_bootstrap_guardrail"' in raw_log_lower
+        or '"status":"live_bootstrap_guardrail"' in raw_log_lower
+        or "live_bootstrap_guardrail_terminal: true" in raw_log_lower
+    ):
+        status = "live_bootstrap_guardrail"
+    elif status == "failed" and "skipped_blocked_by_live_bootstrap_guardrail" in raw_log_lower:
+        status = "skipped_blocked_by_live_bootstrap_guardrail"
     if name == "artifact_guard":
         ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
         status = payload.get("status") or status
-    raw_log_text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
     diagnostics = classify_step_diagnostics(name, payload, raw_log_text, rc, recovered_rate_limit_success, ok)
     steps.append({
         "name": name,
