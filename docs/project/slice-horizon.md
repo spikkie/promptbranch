@@ -2,12 +2,14 @@
 
 ## Active repair slice
 
-v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok
+v0.1.103.10.69 — add install.sh strict all-all release gate
 
 ## Recent repair context
 
 - v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit
 - v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok
+
+- v0.1.103.10.69 — add install.sh strict all-all release gate
 
 ## Planned normal horizon after repair acceptance
 

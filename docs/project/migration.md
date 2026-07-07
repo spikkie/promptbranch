@@ -943,3 +943,9 @@ Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip`.
 Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok`.
 
 Migration impact: no data, browser profile, Project Source, artifact registry, or Docker profile migration. Runtime behavior only changes final aggregation for completed bootstrap/ask sentinel runs.
+
+## v0.1.103.10.69 repair note
+
+Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release gate`.
+
+`install.sh` is a new root-level helper script. It does not migrate existing state or registry files; it wraps the already-supported release-control flags for strict all-all validation and adoption. Operators may pass a version and optional ZIP path.

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-active candidate version: v0.1.103.10.68
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-next normal slice: v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip
+active candidate version: v0.1.103.10.69
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip
+next normal slice: v0.1.103.10.69 — add install.sh strict all-all release gate
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2104,3 +2104,16 @@ Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed
 `v0.1.103.10.68` keeps the `v0.1.103.10.67` trusted direct-conversation flow and fixes the final aggregation predicate: when project ensure succeeds, bootstrap returns `status=completed` with the exact bootstrap sentinel, and ask returns `status=completed` with the exact ask sentinel, the top-level result is `ok=true`, `contains_expected_sentinel=true`, and no `failed_phase` is emitted. Browser action audit warnings remain preserved.
 
 Control-surface active slice token: v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok
+
+## v0.1.103.10.69 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip`.
+
+Active candidate version: `v0.1.103.10.69`.
+
+Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release gate`.
+
+`v0.1.103.10.69` adds repo-root `install.sh` as the strict all-all release gate for new ZIP releases. The script installs the exact candidate ZIP, runs default product validation, runs explicit external ChatGPT live validation, requires live validation to pass, adopts only if all validation is `GO`, and writes `pb artifact current --all --json` evidence after adoption.
+
+Control-surface active slice token: v0.1.103.10.69 — add install.sh strict all-all release gate
+

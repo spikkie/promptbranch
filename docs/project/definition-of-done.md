@@ -564,3 +564,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-239 | `release-live-continuous` returns structured `browser_context_closed_during_submit` with `submit_subphase=composer_wait` when the browser target closes during chat input selector wait, and does not downgrade that evidence to `ResponseTimeoutError` | in_progress | `promptbranch_browser_auth/client.py`; `tests/test_release_live_continuous_direct_conversation.py` | v0.1.103.10.67 |
 
 | DOD-240 | release-live-continuous completed sentinel aggregation | in_progress | A trusted direct-conversation release-live-continuous run with successful project evidence, completed bootstrap result matching the bootstrap sentinel, and completed ask result matching the ask sentinel must emit top-level `ok=true`, `contains_expected_sentinel=true`, and no `failed_phase`, even when sub-results do not include `ok=true`. | v0.1.103.10.68 |
+
+## v0.1.103.10.69
+
+| ID | DoD item | Status | Evidence | Last release |
+| --- | --- | --- | --- | --- |
+| DOD-241 | strict all-all release gate script | in_progress | Repo-root `install.sh` must install an exact candidate ZIP, run `--run-all-tests`, `--run-external-live-tests`, `--require-chatgpt-live-validation`, and `--adopt-after-validation`, then emit `pb artifact current --all --json` evidence. | v0.1.103.10.69 |

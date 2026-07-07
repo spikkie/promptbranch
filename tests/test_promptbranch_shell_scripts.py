@@ -3718,3 +3718,28 @@ def test_release_control_live_slot_recreate_trace_does_not_duplicate_chatgpt_pro
 
     assert "CHATGPT_PROJECT_URL=${run_all_live_service_target_url} PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} $(compose_env_prefix)" not in script
     assert "PROMPTBRANCH_HOST_PROFILE_DIR=${live_profile_pool_slot_dir} CHATGPT_PROJECT_URL=${run_all_live_service_target_url}" in script
+
+
+def test_install_sh_strict_all_all_release_gate_static() -> None:
+    script = (Path(__file__).resolve().parents[1] / "install.sh").read_text(encoding="utf-8")
+
+    assert "set -euo pipefail" in script
+    assert 'ver="$1"' in script
+    assert 'zip="${2:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"' in script
+    assert '--install-from-zip "${zip}"' in script
+    assert '--version "${ver}"' in script
+    assert "--run-all-tests" in script
+    assert "--run-external-live-tests" in script
+    assert "--require-chatgpt-live-validation" in script
+    assert "--adopt-after-validation" in script
+    assert "--skip-docker-logs" in script
+    assert "--prune-release-logs" in script
+    assert "--release-log-keep 12" in script
+    assert 'tee "${HOME}/tmp/release_control.${ver}.full.all-all.adopt.log"' in script
+    assert 'pb artifact current --all --json | tee "${HOME}/tmp/pb_current_after_${ver}.json"' in script
+
+
+def test_install_sh_is_executable() -> None:
+    script = Path(__file__).resolve().parents[1] / "install.sh"
+    assert script.is_file()
+    assert script.stat().st_mode & 0o111

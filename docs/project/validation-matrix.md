@@ -36,5 +36,10 @@ If a required group is missing or failed, release-control must treat the full-te
 ## Last updated
 
 ```text
-v0.1.103.10.68
+v0.1.103.10.69
 ```
+
+
+## v0.1.103.10.69 validation addition
+
+`install.sh` is covered by shell-script static tests that verify the strict all-all release-control flags, adoption flag, log paths, and current-state verification command.

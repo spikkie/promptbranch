@@ -722,3 +722,9 @@ Active repair slice: `v0.1.103.10.67 — composer wait target-close is classifie
 When release-live-continuous keeps the trusted direct conversation session and both bootstrap and ask sub-results return `status=completed` with exact expected sentinel answers, the top-level result must be `ok=true` with no `failed_phase`, even if the sub-results omit `ok=true`. Browser action audit warnings remain preserved and are not part of this success predicate.
 
 Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok`.
+
+## Decision — v0.1.103.10.69 strict all-all install script
+
+Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release gate`.
+
+Add `install.sh` at repo root as the operator-facing strict full release gate for a new ZIP. It intentionally combines product validation and explicit external-live validation with `--adopt-after-validation`, so adoption occurs only when both deterministic and live gates are green. This does not change release-control semantics and does not bypass Cloudflare.
