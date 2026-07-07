@@ -728,3 +728,12 @@ Active repair slice: `v0.1.103.10.68 — release-live-continuous marks completed
 Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release gate`.
 
 Add `install.sh` at repo root as the operator-facing strict full release gate for a new ZIP. It intentionally combines product validation and explicit external-live validation with `--adopt-after-validation`, so adoption occurs only when both deterministic and live gates are green. This does not change release-control semantics and does not bypass Cloudflare.
+
+
+## v0.1.103.10.70 repair note
+
+Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked`.
+
+Decision: keep the `v0.1.103.10.69` strict all-all install gate unchanged, but classify `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` as external-live blockage evidence so all-all adoption remains blocked with `LIVE_BLOCKED`, not product `FIX`.
+
+No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile trust is introduced.

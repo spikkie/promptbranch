@@ -949,3 +949,12 @@ Migration impact: no data, browser profile, Project Source, artifact registry, o
 Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release gate`.
 
 `install.sh` is a new root-level helper script. It does not migrate existing state or registry files; it wraps the already-supported release-control flags for strict all-all validation and adoption. Operators may pass a version and optional ZIP path.
+
+
+## v0.1.103.10.70 repair note
+
+Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked`.
+
+Decision: keep the `v0.1.103.10.69` strict all-all install gate unchanged, but classify `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` as external-live blockage evidence so all-all adoption remains blocked with `LIVE_BLOCKED`, not product `FIX`.
+
+No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile trust is introduced.

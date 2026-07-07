@@ -570,3 +570,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 | --- | --- | --- | --- | --- |
 | DOD-241 | strict all-all release gate script | in_progress | Repo-root `install.sh` must install an exact candidate ZIP, run `--run-all-tests`, `--run-external-live-tests`, `--require-chatgpt-live-validation`, and `--adopt-after-validation`, then emit `pb artifact current --all --json` evidence. | v0.1.103.10.69 |
+
+
+## v0.1.103.10.70
+
+| ID | Requirement | Status | Evidence | Slice |
+| --- | --- | --- | --- | --- |
+| DOD-242 | live bootstrap guardrail classification | in_progress | Release-control must classify `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` as external-live blockage evidence, preserving failed live steps and adoption refusal while avoiding product `FIX` when artifact/product validation passed. | v0.1.103.10.70 |

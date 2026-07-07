@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip
-active candidate version: v0.1.103.10.69
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip
-next normal slice: v0.1.103.10.69 — add install.sh strict all-all release gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip
+active candidate version: v0.1.103.10.70
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip
+next normal slice: v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,7 +30,7 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip candidate once packaged
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip candidate once packaged
 release status: v0.1.103.10.69 is a strict all-all release-gate helper candidate until full release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
@@ -1134,3 +1134,14 @@ Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release g
 
 Control-surface active slice token: v0.1.103.10.69 — add install.sh strict all-all release gate
 
+
+
+## v0.1.103.10.70 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip`.
+
+Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked`.
+
+`v0.1.103.10.70` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and changes only release-control final classification: `live_bootstrap_guardrail` plus skipped downstream live statuses are external-live blockage evidence, so all-all adoption remains blocked but the final verdict becomes `LIVE_BLOCKED`, not product `FIX`.
+
+Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.

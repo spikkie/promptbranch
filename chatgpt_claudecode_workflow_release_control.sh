@@ -4965,6 +4965,8 @@ external_live_statuses = {
     "docker_live_profile_challenged",
     "skipped_ask_live_docker_live_profile_challenged",
     "skipped_live_project_ensure_docker_live_profile_challenged",
+    "live_bootstrap_guardrail",
+    "skipped_blocked_by_live_bootstrap_guardrail",
 }
 external_live_not_requested_steps = [
     step["name"]

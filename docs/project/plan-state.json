@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
-  "active_candidate_version": "v0.1.103.10.69",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
+  "active_candidate_version": "v0.1.103.10.70",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
+  "active_slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "v0.1.103.10.69",
+  "current_candidate": "v0.1.103.10.70",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -73,6 +73,13 @@
       "slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
       "status": "candidate",
       "version": "v0.1.103.10.69"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
+      "created_at": "2026-07-07T13:50:00Z",
+      "slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+      "status": "candidate",
+      "version": "v0.1.103.10.70"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -80,9 +87,9 @@
   "last_completed_repair": "ZIP hygiene repair for packaged debug artifacts",
   "last_completed_repair_version": "v0.1.100.3",
   "last_updated": "2026-07-06",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
-  "next_normal_slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
-  "next_normal_version": "v0.1.103.10.69",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
+  "next_normal_slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+  "next_normal_version": "v0.1.103.10.70",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -340,12 +347,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
       "release_mode": "repair",
-      "scope": "Add repo-root install.sh strict all-all release gate for new ZIPs: product validation plus explicit external-live validation plus adoption/current-state evidence in one operator command.",
-      "slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
+      "scope": "Classify release-live-continuous live_bootstrap_guardrail caused by backend-api/rate-limit telemetry as external-live blocked, preserving adoption refusal without product FIX.",
+      "slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
       "status": "active",
-      "version": "v0.1.103.10.69"
+      "version": "v0.1.103.10.70"
     },
     {
       "release_mode": "normal",
@@ -389,5 +396,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.69"
+  "updated_for": "v0.1.103.10.70"
 }

@@ -43,3 +43,9 @@ v0.1.103.10.69
 ## v0.1.103.10.69 validation addition
 
 `install.sh` is covered by shell-script static tests that verify the strict all-all release-control flags, adoption flag, log paths, and current-state verification command.
+
+
+## v0.1.103.10.70 validation addition
+
+- Static release-control classifier checks include `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` in the external-live blocked status set.
+- Replay harness verifies live bootstrap guardrail returns final verdict `LIVE_BLOCKED` while downstream live steps remain skipped and artifact guard remains passable.

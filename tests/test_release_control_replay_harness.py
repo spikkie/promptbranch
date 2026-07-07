@@ -105,8 +105,10 @@ def replay_run_all(scenario: str) -> ReplayResult:
 
     if scenario == "live_bootstrap_429_guardrail_with_persisted_cooldown":
         failed("live_conversation_bootstrap", "live_bootstrap_guardrail")
+        result.final_verdict = "LIVE_BLOCKED"
         for name in ("ask_live", "visual_artifact_roundtrip", "release_live"):
             skipped(name, "skipped_blocked_by_live_bootstrap_guardrail")
+            result.final_verdict = "LIVE_BLOCKED"
         passed("import_smoke")
         passed("artifact_guard")
         return result
@@ -171,7 +173,7 @@ def test_release_control_replay_live_bootstrap_429_guardrail_blocks_ask_live_wit
     result = replay_run_all("live_bootstrap_429_guardrail_with_persisted_cooldown")
 
     assert result.ok is False
-    assert result.final_verdict == "FIX"
+    assert result.final_verdict == "LIVE_BLOCKED"
     assert result.step("live_conversation_bootstrap").reason == "live_bootstrap_guardrail"
     assert result.step("ask_live").reason == "skipped_blocked_by_live_bootstrap_guardrail"
     assert result.step("visual_artifact_roundtrip").reason == "skipped_blocked_by_live_bootstrap_guardrail"

@@ -693,3 +693,14 @@ Active repair slice: `v0.1.103.10.69 — add install.sh strict all-all release g
 
 Control-surface active slice token: v0.1.103.10.69 — add install.sh strict all-all release gate
 
+
+
+## v0.1.103.10.70 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip`.
+
+Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked`.
+
+`v0.1.103.10.70` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and changes only release-control final classification: `live_bootstrap_guardrail` plus skipped downstream live statuses are external-live blockage evidence, so all-all adoption remains blocked but the final verdict becomes `LIVE_BLOCKED`, not product `FIX`.
+
+Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
