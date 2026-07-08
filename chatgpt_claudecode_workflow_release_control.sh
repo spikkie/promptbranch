@@ -4998,7 +4998,7 @@ live_external_browser_challenge_steps = [
     if step.get("status") in external_live_statuses
     or step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is True
 ]
-external_live_blocked = bool(failed) and bool(live_external_browser_challenge_steps) and all(
+external_live_blocked_raw = bool(failed) and bool(live_external_browser_challenge_steps) and all(
     step.get("status") in external_live_statuses
     or step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is True
     or step.get("ok") is True
@@ -5009,6 +5009,11 @@ product_failed = [
     if step.get("status") not in external_live_statuses
     and step.get("diagnostics", {}).get("external_live_browser_challenge_detected") is not True
 ]
+# v0.1.103.10.72: external-live blockage may only set the final verdict
+# to LIVE_BLOCKED when product validation is otherwise clean. If any product
+# validation step failed, the release needs a product/code/control-surface
+# repair and must remain FIX even when external ChatGPT live is also blocked.
+external_live_blocked = external_live_blocked_raw and not product_failed
 release_policy_status = "go" if ok else ("live_blocked_external_challenge" if external_live_blocked else "fix_required")
 final_verdict = "GO" if ok else ("LIVE_BLOCKED" if external_live_blocked else "FIX")
 reused_groups = [
@@ -5078,10 +5083,12 @@ summary = {
     "status": release_policy_status,
     "final_verdict": final_verdict,
     "external_live_blocked": external_live_blocked,
+    "external_live_blocked_raw": external_live_blocked_raw,
     "external_live_tests_requested": os.environ.get("PROMPTBRANCH_RELEASE_RUN_EXTERNAL_LIVE_TESTS") == "1",
     "chatgpt_live_validation_required": os.environ.get("PROMPTBRANCH_RELEASE_REQUIRE_CHATGPT_LIVE_VALIDATION") == "1",
     "external_live_not_requested_steps": external_live_not_requested_steps,
     "product_failure_count": len(product_failed),
+    "product_failure_steps": [step["name"] for step in product_failed],
     "live_external_browser_challenge_steps": live_external_browser_challenge_steps,
     "version": version,
     "artifact": artifact,

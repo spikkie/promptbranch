@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.71"
+VERSION = "v0.1.103.10.72"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -56,6 +56,19 @@ def replay_run_all(scenario: str) -> ReplayResult:
     def skipped(name: str, reason: str) -> None:
         result.steps.append(ReplayStep(name, "skipped", reason))
         result.final_verdict = "FIX"
+
+    if scenario == "product_failure_plus_live_bootstrap_guardrail":
+        failed("full_direct", "project_control_surface_failed")
+        failed("full_localhost", "project_control_surface_failed")
+        passed("live_profile_preflight")
+        failed("live_project_ensure", "live_bootstrap_guardrail")
+        for name in ("ask_live", "visual_artifact_roundtrip", "release_live"):
+            skipped(name, "skipped_blocked_by_live_bootstrap_guardrail")
+        passed("import_smoke")
+        passed("artifact_guard")
+        # Product failures must win over external-live blockage.
+        result.final_verdict = "FIX"
+        return result
 
     passed("full_direct")
     passed("full_localhost")
@@ -212,6 +225,18 @@ def test_release_control_replay_v1031070_live_bootstrap_guardrail_cascade_is_liv
     assert result.step("import_smoke").ok is True
     assert result.step("artifact_guard").ok is True
 
+
+
+def test_release_control_replay_product_failure_plus_live_bootstrap_guardrail_is_fix() -> None:
+    result = replay_run_all("product_failure_plus_live_bootstrap_guardrail")
+
+    assert result.ok is False
+    assert result.final_verdict == "FIX"
+    assert result.step("full_direct").reason == "project_control_surface_failed"
+    assert result.step("full_localhost").reason == "project_control_surface_failed"
+    assert result.step("live_project_ensure").reason == "live_bootstrap_guardrail"
+    assert result.step("ask_live").reason == "skipped_blocked_by_live_bootstrap_guardrail"
+    assert result.step("artifact_guard").ok is True
 
 def test_release_control_replay_ask_live_challenge_is_terminal() -> None:
     result = replay_run_all("ask_live_challenge")

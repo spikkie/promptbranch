@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip
-active candidate version: v0.1.103.10.70
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip
-next normal slice: v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip
+active candidate version: v0.1.103.10.72
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip
+next normal slice: v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip candidate once packaged
-release status: v0.1.103.10.69 is a strict all-all release-gate helper candidate until full release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip candidate once packaged
+release status: v0.1.103.10.72 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,14 +65,14 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103.1 as the Docker browser parity diagnostic envelope from accepted/current v0.1.102.
+Validate and package v0.1.103.10.72 as the active repair candidate from the last accepted/current operational baseline.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.1.zip
-ver=v0.1.103.1
+zip=~/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip
+ver=v0.1.103.10.72
 
 timeout --foreground 10800 ./chatgpt_claudecode_workflow_release_control.sh   --install-from-zip "$zip"   --version "$ver"   --run-all-tests   --strict-source-kind-matrix   --adopt-after-validation   --skip-docker-logs   --prune-release-logs   --release-log-keep 12   2>&1 | tee ~/tmp/release_control.$ver.run_all_tests.adopt.log
 ```
@@ -1156,3 +1156,12 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 `v0.1.103.10.71` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.70` status vocabulary. It fixes the actual all-tests final summary aggregation path: if the mixed `live_project_ensure` log contains terminal `live_bootstrap_guardrail` evidence, the failed live cascade is classified as external `LIVE_BLOCKED`, not product `FIX`, while preserving failed live steps, `artifact_guard` evidence, and adoption refusal.
 
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
+
+
+## v0.1.103.10.72 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip`.
+
+Active repair slice: `v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean`.
+
+`v0.1.103.10.72` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.

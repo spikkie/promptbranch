@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked
+v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean
 
 ## Recent repair context
 
@@ -11,6 +11,7 @@ v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as exter
 - v0.1.103.10.69 — add install.sh strict all-all release gate
 
 - v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked
+- v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED
 
 ## Planned normal horizon after repair acceptance
 

@@ -3720,6 +3720,9 @@ def test_release_control_classifies_docker_live_preflight_challenge_as_external_
     assert "LIVE_BLOCKED" in script
     assert "product_failure_count" in script
     assert "external_live_blocked" in script
+    assert "external_live_blocked_raw" in script
+    assert "product_failure_steps" in script
+    assert "external_live_blocked = external_live_blocked_raw and not product_failed" in script
     assert "docker_live_profile_challenged" in script
     assert "skipped_ask_live_docker_live_profile_challenged" in script
     assert "skipped_live_project_ensure_docker_live_profile_challenged" in script

@@ -584,3 +584,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Slice |
 | --- | --- | --- | --- | --- |
 | DOD-243 | final all-tests aggregation maps live bootstrap guardrail cascades to LIVE_BLOCKED | in_progress | Release-control must normalize mixed `live_project_ensure` logs containing terminal `live_bootstrap_guardrail` evidence before product failure counting, preserving failed downstream live steps and passed artifact guard evidence. | v0.1.103.10.71 |
+
+
+## v0.1.103.10.72
+
+| ID | Requirement | Status | Evidence | Slice |
+| --- | --- | --- | --- | --- |
+| DOD-244 | project control-surface candidate metadata and final verdict precedence | in_progress | `docs/project/plan-state.json`, `docs/project/status.md`, `docs/project/plan.md`, `docs/project/slice-horizon.md`, `tests/test_project_control_surface.py`, and `tests/test_release_control_replay_harness.py` must keep active candidate metadata aligned and prove that product failures produce `FIX` even when external-live is also blocked. | v0.1.103.10.72 |

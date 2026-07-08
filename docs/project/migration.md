@@ -958,3 +958,8 @@ Active repair slice: `v0.1.103.10.70 — classify release-live-continuous bootst
 Decision: keep the `v0.1.103.10.69` strict all-all install gate unchanged, but classify `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` as external-live blockage evidence so all-all adoption remains blocked with `LIVE_BLOCKED`, not product `FIX`.
 
 No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile trust is introduced.
+
+
+## v0.1.103.10.72 repair decision
+
+`v0.1.103.10.72` keeps repair scope only: the project control surface must identify `chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip` as the active candidate, and all-all release aggregation must prefer product `FIX` over external `LIVE_BLOCKED` whenever product validation has failed. `LIVE_BLOCKED` is reserved for clean product validation with external ChatGPT live blockage. The planned normal horizon after repair acceptance remains `v0.1.104`.

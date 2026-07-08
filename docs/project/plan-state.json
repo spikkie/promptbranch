@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
-  "active_candidate_version": "v0.1.103.10.71",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip",
+  "active_candidate_version": "v0.1.103.10.72",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+  "active_slice": "v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -80,16 +80,23 @@
       "slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
       "status": "candidate",
       "version": "v0.1.103.10.70"
+    },
+    {
+      "version": "v0.1.103.10.71",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
+      "slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+      "status": "candidate",
+      "created_at": "2026-07-08T01:07:00Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
-  "last_completed_repair": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
-  "last_completed_repair_version": "v0.1.103.10.70",
-  "last_updated": "2026-07-06",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
-  "next_normal_slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
-  "next_normal_version": "v0.1.103.10.70",
+  "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+  "last_completed_repair_version": "v0.1.103.10.71",
+  "last_updated": "2026-07-08",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip",
+  "next_normal_slice": "v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean",
+  "next_normal_version": "v0.1.103.10.72",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -105,6 +112,14 @@
     "patch/diff artifact generation"
   ],
   "release_history": [
+    {
+      "version": "v0.1.103.10.72",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean",
+      "status": "candidate",
+      "summary": "Updates control-surface active candidate metadata to v0.1.103.10.72 and tightens all-tests verdict aggregation so live guardrail cascades produce LIVE_BLOCKED only when product validation is otherwise clean; product failures keep final verdict FIX."
+    },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
       "kind": "repair",
@@ -328,6 +343,12 @@
       "version": "v0.1.103.10.71",
       "slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
       "summary": "Normalizes mixed live_project_ensure logs containing terminal live_bootstrap_guardrail evidence before final product/live verdict aggregation, preserving failed live steps and adoption refusal."
+    },
+    {
+      "version": "v0.1.103.10.72",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Control-surface active candidate sync and product-failure precedence over external-live blockage classification."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -352,12 +373,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip",
       "release_mode": "repair",
-      "scope": "Classify release-live-continuous live_bootstrap_guardrail caused by backend-api/rate-limit telemetry as external-live blocked, preserving adoption refusal without product FIX.",
-      "slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+      "scope": "Synchronize project control-surface active candidate metadata and classify live guardrail cascades as LIVE_BLOCKED only when product validation is clean; product failures remain FIX.",
+      "slice": "v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean",
       "status": "active",
-      "version": "v0.1.103.10.70"
+      "version": "v0.1.103.10.72"
     },
     {
       "release_mode": "normal",
@@ -401,5 +422,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.71"
+  "updated_for": "v0.1.103.10.72"
 }
