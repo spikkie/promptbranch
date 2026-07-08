@@ -591,3 +591,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Slice |
 | --- | --- | --- | --- | --- |
 | DOD-244 | project control-surface candidate metadata and final verdict precedence | in_progress | `docs/project/plan-state.json`, `docs/project/status.md`, `docs/project/plan.md`, `docs/project/slice-horizon.md`, `tests/test_project_control_surface.py`, and `tests/test_release_control_replay_harness.py` must keep active candidate metadata aligned and prove that product failures produce `FIX` even when external-live is also blocked. | v0.1.103.10.72 |
+
+
+## v0.1.103.10.73
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-245 | version_surface tests derive expected version from release metadata | in_progress | `tests/test_promptbranch_version.py` must derive expected package/version-tag values from `VERSION`, `pyproject.toml`, and `promptbranch_version.py`, and must reject stale hardcoded repair-version literals. | v0.1.103.10.73 |

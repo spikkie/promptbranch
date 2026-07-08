@@ -742,3 +742,8 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.72 repair decision
 
 `v0.1.103.10.72` keeps repair scope only: the project control surface must identify `chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip` as the active candidate, and all-all release aggregation must prefer product `FIX` over external `LIVE_BLOCKED` whenever product validation has failed. `LIVE_BLOCKED` is reserved for clean product validation with external ChatGPT live blockage. The planned normal horizon after repair acceptance remains `v0.1.104`.
+
+
+## v0.1.103.10.73 repair decision
+
+`v0.1.103.10.73` keeps the strict all-all install gate, live bootstrap guardrail cascade normalization, and product-failure precedence over `LIVE_BLOCKED`. The repair decision is to remove stale hardcoded release-version expectations from `tests/test_promptbranch_version.py`; version-surface assertions must derive expected values from `VERSION`, `pyproject.toml`, and `promptbranch_version.py`, while preserving the no-double-v-prefix invariant.

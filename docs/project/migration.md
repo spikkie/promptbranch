@@ -963,3 +963,8 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.72 repair decision
 
 `v0.1.103.10.72` keeps repair scope only: the project control surface must identify `chatgpt_claudecode_workflow-2_v0.1.103.10.72.zip` as the active candidate, and all-all release aggregation must prefer product `FIX` over external `LIVE_BLOCKED` whenever product validation has failed. `LIVE_BLOCKED` is reserved for clean product validation with external ChatGPT live blockage. The planned normal horizon after repair acceptance remains `v0.1.104`.
+
+
+## v0.1.103.10.73 repair decision
+
+`v0.1.103.10.73` is a product-test repair only. It migrates the version-surface test from a stale hardcoded candidate literal to release-metadata-derived expectations, and adds a guard against stale repair-version literals in that test file. No Cloudflare/rate-limit behavior, host-CDP/session-manager behavior, copied-profile trust, or adoption logic is changed.
