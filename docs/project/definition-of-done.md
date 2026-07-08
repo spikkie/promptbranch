@@ -598,3 +598,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-245 | version_surface tests derive expected version from release metadata | in_progress | `tests/test_promptbranch_version.py` must derive expected package/version-tag values from `VERSION`, `pyproject.toml`, and `promptbranch_version.py`, and must reject stale hardcoded repair-version literals. | v0.1.103.10.73 |
+
+## v0.1.103.10.74
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-246 | release-live bootstrap guardrail bounded retry | in_progress | `release-live-continuous` must perform at most one safe cooldown/re-readiness retry after bootstrap guardrail telemetry, without bypassing Cloudflare/rate limits or trusting copied profiles. | v0.1.103.10.74 |

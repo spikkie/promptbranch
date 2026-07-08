@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.73.zip
-active candidate version: v0.1.103.10.73
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.73.zip
-next normal slice: v0.1.103.10.73 — make version_surface tests derive expected version from release metadata
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip
+active candidate version: v0.1.103.10.74
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip
+next normal slice: v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -26,7 +26,7 @@ The active rolling horizon is stored in `docs/project/plan-state.json` and expla
 
 ```text
 v0.1.102 — Correction-plan generation without file mutation
-v0.1.103.10.73 — make version_surface tests derive expected version from release metadata
+v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
@@ -1621,7 +1621,7 @@ Out of scope:
 - Creating patch/diff artifacts.
 - Deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion.
 
-Planned after v0.1.102 acceptance: v0.1.103.10.73 — make version_surface tests derive expected version from release metadata.
+Planned after v0.1.102 acceptance: v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass.
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 
@@ -2141,10 +2141,10 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.73 repair note
+## v0.1.103.10.74 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.73.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip`.
 
-Active repair slice: `v0.1.103.10.73 — make version_surface tests derive expected version from release metadata`.
+Active repair slice: `v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass`.
 
-`v0.1.103.10.73` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.
+`v0.1.103.10.74` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.

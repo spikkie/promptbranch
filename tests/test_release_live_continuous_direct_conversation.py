@@ -209,3 +209,70 @@ def test_release_live_continuous_completed_sentinel_success_static_guard() -> No
     assert 'status = "completed"' in source
     assert '"contains_expected_sentinel": ask_completed_with_expected_token' in source
     assert 'if not ok:\n            result["failed_phase"] = "ask_live"' in source
+
+
+class BootstrapGuardrailRetryClient(DirectConversationClient):
+    @staticmethod
+    def _release_live_guardrail_cooldown_seconds() -> float:
+        return 0.0
+
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        if len(self.ask_calls) == 1:
+            self._record_rate_limit_event(
+                kind="backend_api_guardrail",
+                trigger="release_live_bootstrap",
+                status=429,
+                url=kwargs["conversation_url"],
+            )
+            return {
+                "status": "completed",
+                "conversation_url": kwargs["conversation_url"],
+                "answer": "BOOTSTRAP_SENTINEL",
+            }
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "ASK_SENTINEL" if len(self.ask_calls) == 3 else "BOOTSTRAP_SENTINEL",
+        }
+
+
+def test_release_live_continuous_retries_bootstrap_once_after_guardrail_when_readiness_clean(tmp_path: Path) -> None:
+    client = BootstrapGuardrailRetryClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["bootstrap_guardrail_retry"]["ok"] is True
+    assert result["bootstrap_guardrail_retry"]["retry_attempted"] is True
+    assert result["bootstrap_guardrail_retry"]["retry_guardrail_persisted"] is not True if "retry_guardrail_persisted" in result["bootstrap_guardrail_retry"] else True
+    assert len(client.ask_calls) == 3
+    assert [call["conversation_url"] for call in client.ask_calls] == [warmup_url, warmup_url, warmup_url]
+    assert result["bootstrap_result"]["answer"] == "BOOTSTRAP_SENTINEL"
+    assert result["ask_result"]["answer"] == "ASK_SENTINEL"
+
+
+def test_release_live_continuous_guardrail_retry_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "PROMPTBRANCH_RELEASE_LIVE_BOOTSTRAP_GUARDRAIL_COOLDOWN_SECONDS" in source
+    assert "release_live_bootstrap_guardrail_cooldown_wait" in source
+    assert "retry_limit" in source
+    assert "retry_limit=1" in source
+    assert "ready_for_single_bootstrap_retry" in source
+    assert "bootstrap_guardrail_retry" in source
+    assert "retry_guardrail_persisted" in source
+    assert "bypass=False" in source or "\"bypass\": False" in source

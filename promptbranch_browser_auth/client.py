@@ -1921,6 +1921,118 @@ class ChatGPTBrowserClient:
             or telemetry.get("backend_api_guardrail_seen")
         )
 
+    @staticmethod
+    def _release_live_telemetry_guardrail_seen_since(telemetry: Any, event_start_index: int) -> bool:
+        if not isinstance(telemetry, dict):
+            return False
+        events = telemetry.get("service_rate_limit_events")
+        if not isinstance(events, list):
+            return False
+        try:
+            start = max(0, int(event_start_index))
+        except Exception:
+            start = 0
+        for event in events[start:]:
+            if not isinstance(event, dict):
+                continue
+            if event.get("kind") in {"backend_api_guardrail", "modal_detected", "conversation_history_rate_limit"}:
+                return True
+            try:
+                if int(event.get("status") or 0) == 429:
+                    return True
+            except Exception:
+                pass
+        return False
+
+    @staticmethod
+    def _release_live_guardrail_cooldown_seconds() -> float:
+        raw = (os.getenv("PROMPTBRANCH_RELEASE_LIVE_BOOTSTRAP_GUARDRAIL_COOLDOWN_SECONDS") or "60").strip()
+        try:
+            seconds = float(raw)
+        except Exception:
+            seconds = 60.0
+        # The retry is a bounded backoff, not a bypass: at most one minute by default
+        # and hard-capped to five minutes for operator-tuned release validation.
+        return min(300.0, max(0.0, seconds))
+
+    async def _release_live_guardrail_cooldown_and_recheck(
+        self,
+        page: Any,
+        *,
+        target_url: str,
+        label: str,
+    ) -> dict[str, Any]:
+        configured_wait = self._release_live_guardrail_cooldown_seconds()
+        persisted_remaining = self._conversation_history_cooldown_remaining()
+        wait_seconds = max(configured_wait, persisted_remaining)
+        wait_seconds = min(300.0, max(0.0, wait_seconds))
+        if wait_seconds > 0:
+            self._rate_limit_cooldown_wait_seconds_total += wait_seconds
+            self._rate_limit_cooldown_wait_count += 1
+            self._record_rate_limit_event(
+                kind="release_live_bootstrap_guardrail_cooldown_wait",
+                trigger="release_live_bootstrap_guardrail",
+                label=label,
+                wait_seconds=wait_seconds,
+            )
+            self._log(
+                "release-live-continuous",
+                "waiting after release-live bootstrap guardrail before one safe retry",
+                label=label,
+                wait_seconds=round(wait_seconds, 3),
+                configured_wait_seconds=round(configured_wait, 3),
+                persisted_cooldown_remaining_seconds=round(persisted_remaining, 3),
+                retry_limit=1,
+                bypass=False,
+            )
+            await asyncio.sleep(wait_seconds)
+
+        await self._wait_for_challenge_resolution(page, label=f"{label}-rereadiness")
+        await self._raise_fail_fast_challenge_if_configured(page, stage=f"{label}-rereadiness")
+        state = await self._probe_auth_readiness_state(page)
+        status = self._auth_readiness_status_from_state(state)
+        readiness = self._auth_readiness_result_from_state(
+            state,
+            action="release_live_bootstrap_guardrail_rereadiness",
+            held_session=None,
+        )
+        scope = self._ask_target_scope_evidence(
+            current_url=str(readiness.get("current_url") or await self._safe_page_url(page)),
+            target_url=target_url,
+        )
+        ready = bool(
+            status == "auth_preflight_ready"
+            and bool(readiness.get("composer_visible"))
+            and bool(readiness.get("logged_in"))
+            and not bool(readiness.get("challenge_detected"))
+            and scope.get("matches") is True
+        )
+        result = {
+            "ok": ready,
+            "action": "release_live_bootstrap_guardrail_cooldown_retry_gate",
+            "status": "ready_for_single_bootstrap_retry" if ready else "not_ready_for_bootstrap_retry",
+            "label": label,
+            "wait_seconds": round(wait_seconds, 3),
+            "retry_limit": 1,
+            "bypass": False,
+            "readiness": readiness,
+            "scope": scope,
+        }
+        self._log(
+            "release-live-continuous",
+            "release-live bootstrap guardrail re-readiness checked",
+            label=label,
+            ready=ready,
+            status=status,
+            current_url=readiness.get("current_url"),
+            challenge_detected=readiness.get("challenge_detected"),
+            composer_visible=readiness.get("composer_visible"),
+            logged_in=readiness.get("logged_in"),
+            scope_matches=scope.get("matches"),
+            bypass=False,
+        )
+        return self._attach_rate_limit_telemetry(result)
+
     async def _release_live_bootstrap_and_ask_operation(
         self,
         *,
@@ -2048,7 +2160,34 @@ class ChatGPTBrowserClient:
                     "root_project_discovery_skipped": True,
                     "duration_seconds": round(time.monotonic() - started, 3),
                 }
+        pre_bootstrap_event_start = len(self._rate_limit_events)
+        pre_bootstrap_telemetry = self._rate_limit_telemetry_snapshot()
+        pre_bootstrap_retry_gate: dict[str, Any] | None = None
+        if self._release_live_telemetry_guardrail_seen_since(pre_bootstrap_telemetry, pre_bootstrap_event_start):
+            pre_bootstrap_retry_gate = await self._release_live_guardrail_cooldown_and_recheck(
+                page,
+                target_url=bootstrap_target_url,
+                label="pre_bootstrap_guardrail",
+            )
+            if not bool(pre_bootstrap_retry_gate.get("ok")):
+                return {
+                    "ok": False,
+                    "action": "test_release_live_continuous",
+                    "status": "live_bootstrap_guardrail",
+                    "failed_phase": "live_conversation_bootstrap",
+                    "project_url": project_url,
+                    "conversation_url": direct_conversation_url if direct_conversation_mode else None,
+                    "project_result": project_result,
+                    "bootstrap_guardrail_retry": pre_bootstrap_retry_gate,
+                    "rate_limit_telemetry": pre_bootstrap_retry_gate.get("rate_limit_telemetry"),
+                    "warmup_conversation_url": warmup_conversation_url,
+                    "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                    "trusted_conversation_direct_mode": direct_conversation_mode,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
+
         original_project_url = self.config.project_url
+        bootstrap_event_start = len(self._rate_limit_events)
         try:
             self.config.project_url = project_url
             bootstrap_result = await self._ask_question_operation(
@@ -2072,7 +2211,55 @@ class ChatGPTBrowserClient:
         conversation_url = bootstrap_result.get("conversation_url") if isinstance(bootstrap_result, dict) else None
         if direct_conversation_mode and not (isinstance(conversation_url, str) and "/c/" in conversation_url):
             conversation_url = direct_conversation_url
-        if self._release_live_telemetry_guardrail_seen(bootstrap_telemetry):
+        bootstrap_guardrail_retry: dict[str, Any] | None = pre_bootstrap_retry_gate
+        if self._release_live_telemetry_guardrail_seen_since(bootstrap_telemetry, bootstrap_event_start):
+            bootstrap_guardrail_retry = await self._release_live_guardrail_cooldown_and_recheck(
+                page,
+                target_url=bootstrap_target_url,
+                label="bootstrap_guardrail_retry",
+            )
+            if bool(bootstrap_guardrail_retry.get("ok")):
+                retry_event_start = len(self._rate_limit_events)
+                original_project_url = self.config.project_url
+                try:
+                    self.config.project_url = project_url
+                    retry_bootstrap_result = await self._ask_question_operation(
+                        context=context,
+                        page=page,
+                        prompt=bootstrap_prompt,
+                        file_path=None,
+                        attachment_paths=None,
+                        conversation_url=bootstrap_target_url,
+                        expect_json=False,
+                        keep_open=False,
+                        service_timeout_seconds=service_timeout_seconds,
+                        prefer_button_submit=False,
+                        reuse_current_page_if_ready=direct_conversation_mode,
+                    )
+                    retry_bootstrap_result = self._attach_rate_limit_telemetry(retry_bootstrap_result)
+                finally:
+                    self.config.project_url = original_project_url
+                retry_telemetry = retry_bootstrap_result.get("rate_limit_telemetry") if isinstance(retry_bootstrap_result, dict) else None
+                retry_conversation_url = retry_bootstrap_result.get("conversation_url") if isinstance(retry_bootstrap_result, dict) else None
+                if direct_conversation_mode and not (isinstance(retry_conversation_url, str) and "/c/" in retry_conversation_url):
+                    retry_conversation_url = direct_conversation_url
+                bootstrap_guardrail_retry["retry_attempted"] = True
+                bootstrap_guardrail_retry["retry_result_status"] = str(retry_bootstrap_result.get("status") or "") if isinstance(retry_bootstrap_result, dict) else "non_dict_result"
+                bootstrap_guardrail_retry["retry_conversation_url"] = retry_conversation_url
+                if not self._release_live_telemetry_guardrail_seen_since(retry_telemetry, retry_event_start):
+                    bootstrap_result = retry_bootstrap_result
+                    bootstrap_telemetry = retry_telemetry
+                    conversation_url = retry_conversation_url
+                else:
+                    bootstrap_guardrail_retry["retry_guardrail_persisted"] = True
+            else:
+                bootstrap_guardrail_retry["retry_attempted"] = False
+
+        if self._release_live_telemetry_guardrail_seen_since(bootstrap_telemetry, bootstrap_event_start) and not (
+            isinstance(bootstrap_guardrail_retry, dict)
+            and bool(bootstrap_guardrail_retry.get("retry_attempted"))
+            and not bool(bootstrap_guardrail_retry.get("retry_guardrail_persisted"))
+        ):
             return {
                 "ok": False,
                 "action": "test_release_live_continuous",
@@ -2082,6 +2269,7 @@ class ChatGPTBrowserClient:
                 "conversation_url": conversation_url,
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
+                "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
                 "rate_limit_telemetry": bootstrap_telemetry,
                 "warmup_conversation_url": warmup_conversation_url,
                 "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
@@ -2156,6 +2344,7 @@ class ChatGPTBrowserClient:
             "conversation_url": conversation_url,
             "project_result": project_result,
             "bootstrap_result": bootstrap_result,
+            "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
             "ask_result": ask_result,
             "continuous_browser_session": True,
             "same_profile_for_project_bootstrap_and_ask": True,

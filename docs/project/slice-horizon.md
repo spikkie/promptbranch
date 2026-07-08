@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.73 — make version_surface tests derive expected version from release metadata
+v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
 
 ## Recent repair context
 
