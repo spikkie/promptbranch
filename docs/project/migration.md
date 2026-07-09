@@ -969,6 +969,6 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 
 `v0.1.103.10.73` is a product-test repair only. It migrates the version-surface test from a stale hardcoded candidate literal to release-metadata-derived expectations, and adds a guard against stale repair-version literals in that test file. No Cloudflare/rate-limit behavior, host-CDP/session-manager behavior, copied-profile trust, or adoption logic is changed.
 
-## v0.1.103.10.74 repair decision
+## v0.1.103.10.75 repair decision
 
-`v0.1.103.10.74` migrates the live bootstrap guardrail handling from immediate terminal blockage to one bounded cooldown/re-readiness retry, while preserving terminal `LIVE_BLOCKED` classification when the guardrail persists. This is a release-live safety improvement only and does not alter adoption semantics.
+`v0.1.103.10.75` migrates the live bootstrap guardrail handling from immediate terminal blockage to one bounded cooldown/re-readiness retry, while preserving terminal `LIVE_BLOCKED` classification when the guardrail persists. This is a release-live safety improvement only and does not alter adoption semantics.

@@ -3721,12 +3721,17 @@ INNERPY
 run_all_log_has_live_bootstrap_guardrail() {
   local log_path="$1"
   [[ -f "${log_path}" ]] || return 1
-  # Release-live bootstrap is a safety gate, not a recoverable ask step.
-  # If the bootstrap prompt technically returns a conversation URL but the
-  # telemetry shows a modal/rate-limit/429/backend-api guardrail, do not open
-  # another browser context for ask_live.  That next context is where the
-  # managed Cloudflare human-check window appears.
-  run_all_log_has_rate_limit_evidence "${log_path}"
+  # Release-live bootstrap guardrail is only the explicit terminal status.
+  # Generic/stale rate-limit telemetry alone is not enough; if backend_api_guardrail_seen
+  # is false and the ask sentinel succeeds, the client must report the more precise
+  # bootstrap_sentinel_missing_after_ask_success state instead of this guardrail.
+  grep -Eq 'status: live_bootstrap_guardrail|"status"[[:space:]]*:[[:space:]]*"live_bootstrap_guardrail"|live_bootstrap_guardrail_terminal: true' "${log_path}"
+}
+
+run_all_log_has_bootstrap_sentinel_missing_after_ask_success() {
+  local log_path="$1"
+  [[ -f "${log_path}" ]] || return 1
+  grep -Eq 'status: bootstrap_sentinel_missing_after_ask_success|"status"[[:space:]]*:[[:space:]]*"bootstrap_sentinel_missing_after_ask_success"' "${log_path}"
 }
 
 run_all_log_has_recovered_rate_limit_success() {
@@ -4807,13 +4812,15 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
     payload_status = str(payload.get("status") or "")
     raw_lower = raw.lower()
     external_browser_challenge = (
-        payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged", "live_bootstrap_guardrail", "skipped_blocked_by_live_bootstrap_guardrail"}
+        payload_status in {"live_external_browser_challenge", "docker_live_profile_challenged", "live_bootstrap_guardrail", "skipped_blocked_by_live_bootstrap_guardrail", "bootstrap_sentinel_missing_after_ask_success", "skipped_bootstrap_sentinel_missing_after_ask_success"}
         or "live_external_browser_challenge" in raw_lower
         or "auth_challenge_required" in raw_lower
         or "docker_standard_profile_challenged" in raw_lower
         or "docker_live_profile_challenged" in raw_lower
         or "live_bootstrap_guardrail" in raw_lower
         or "skipped_blocked_by_live_bootstrap_guardrail" in raw_lower
+        or "bootstrap_sentinel_missing_after_ask_success" in raw_lower
+        or "skipped_bootstrap_sentinel_missing_after_ask_success" in raw_lower
         or "skipped_ask_live_docker_live_profile_challenged" in raw_lower
         or "skipped_live_project_ensure_docker_live_profile_challenged" in raw_lower
         or "verify you are human" in raw_lower
@@ -4949,8 +4956,16 @@ for item in raw_steps:
         or "live_bootstrap_guardrail_terminal: true" in raw_log_lower
     ):
         status = "live_bootstrap_guardrail"
+    elif name == "live_project_ensure" and (
+        "status: bootstrap_sentinel_missing_after_ask_success" in raw_log_lower
+        or '"status": "bootstrap_sentinel_missing_after_ask_success"' in raw_log_lower
+        or '"status":"bootstrap_sentinel_missing_after_ask_success"' in raw_log_lower
+    ):
+        status = "bootstrap_sentinel_missing_after_ask_success"
     elif status == "failed" and "skipped_blocked_by_live_bootstrap_guardrail" in raw_log_lower:
         status = "skipped_blocked_by_live_bootstrap_guardrail"
+    elif status == "failed" and "skipped_bootstrap_sentinel_missing_after_ask_success" in raw_log_lower:
+        status = "skipped_bootstrap_sentinel_missing_after_ask_success"
     if name == "artifact_guard":
         ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
         status = payload.get("status") or status
@@ -4986,6 +5001,8 @@ external_live_statuses = {
     "skipped_live_project_ensure_docker_live_profile_challenged",
     "live_bootstrap_guardrail",
     "skipped_blocked_by_live_bootstrap_guardrail",
+    "bootstrap_sentinel_missing_after_ask_success",
+    "skipped_bootstrap_sentinel_missing_after_ask_success",
 }
 external_live_not_requested_steps = [
     step["name"]
@@ -5693,7 +5710,15 @@ run_all_release_live_continuous_bootstrap_and_ask() {
   if run_all_log_has_live_bootstrap_guardrail "${run_all_project_ensure_log}"; then
     run_all_continuous_failure_kind="live_bootstrap_guardrail"
     echo "status: live_bootstrap_guardrail" | tee -a "${run_all_project_ensure_log}" >&2
-    echo "ERROR: release-live continuous bootstrap observed rate-limit/backend-api guardrail telemetry before first ask." | tee -a "${run_all_project_ensure_log}" >&2
+    echo "ERROR: release-live continuous bootstrap observed explicit rate-limit/backend-api guardrail telemetry before first ask." | tee -a "${run_all_project_ensure_log}" >&2
+    record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+    return 1
+  fi
+
+  if run_all_log_has_bootstrap_sentinel_missing_after_ask_success "${run_all_project_ensure_log}"; then
+    run_all_continuous_failure_kind="bootstrap_sentinel_missing_after_ask_success"
+    echo "status: bootstrap_sentinel_missing_after_ask_success" | tee -a "${run_all_project_ensure_log}" >&2
+    echo "ERROR: release-live continuous ask sentinel succeeded but bootstrap sentinel remained missing after one safe bootstrap retry." | tee -a "${run_all_project_ensure_log}" >&2
     record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
     return 1
   fi
@@ -5838,6 +5863,11 @@ INNERPY
           record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
           record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_blocked_by_live_bootstrap_guardrail"
           record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+          ;;
+        bootstrap_sentinel_missing_after_ask_success)
+          record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_bootstrap_sentinel_missing_after_ask_success"
+          record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_bootstrap_sentinel_missing_after_ask_success"
+          record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_bootstrap_sentinel_missing_after_ask_success"
           ;;
         ask_live_docker_live_profile_challenged)
           record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_ask_live_docker_live_profile_challenged"

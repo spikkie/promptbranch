@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip
-active candidate version: v0.1.103.10.74
-next normal slice: v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip
+active candidate version: v0.1.103.10.75
+next normal slice: v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -717,10 +717,10 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.74 repair note
+## v0.1.103.10.75 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip`.
 
-Active repair slice: `v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass`.
+Active repair slice: `v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail`.
 
-`v0.1.103.10.74` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.
+`v0.1.103.10.75` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.

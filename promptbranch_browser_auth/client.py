@@ -1955,17 +1955,16 @@ class ChatGPTBrowserClient:
         # and hard-capped to five minutes for operator-tuned release validation.
         return min(300.0, max(0.0, seconds))
 
-    async def _release_live_guardrail_cooldown_and_recheck(
+    async def _release_live_bootstrap_retry_readiness_gate(
         self,
         page: Any,
         *,
         target_url: str,
         label: str,
+        action: str,
+        wait_seconds: float = 0.0,
     ) -> dict[str, Any]:
-        configured_wait = self._release_live_guardrail_cooldown_seconds()
-        persisted_remaining = self._conversation_history_cooldown_remaining()
-        wait_seconds = max(configured_wait, persisted_remaining)
-        wait_seconds = min(300.0, max(0.0, wait_seconds))
+        wait_seconds = min(300.0, max(0.0, float(wait_seconds or 0.0)))
         if wait_seconds > 0:
             self._rate_limit_cooldown_wait_seconds_total += wait_seconds
             self._rate_limit_cooldown_wait_count += 1
@@ -1977,11 +1976,9 @@ class ChatGPTBrowserClient:
             )
             self._log(
                 "release-live-continuous",
-                "waiting after release-live bootstrap guardrail before one safe retry",
+                "waiting before one safe release-live bootstrap retry",
                 label=label,
                 wait_seconds=round(wait_seconds, 3),
-                configured_wait_seconds=round(configured_wait, 3),
-                persisted_cooldown_remaining_seconds=round(persisted_remaining, 3),
                 retry_limit=1,
                 bypass=False,
             )
@@ -1993,7 +1990,7 @@ class ChatGPTBrowserClient:
         status = self._auth_readiness_status_from_state(state)
         readiness = self._auth_readiness_result_from_state(
             state,
-            action="release_live_bootstrap_guardrail_rereadiness",
+            action=action,
             held_session=None,
         )
         scope = self._ask_target_scope_evidence(
@@ -2009,7 +2006,7 @@ class ChatGPTBrowserClient:
         )
         result = {
             "ok": ready,
-            "action": "release_live_bootstrap_guardrail_cooldown_retry_gate",
+            "action": action,
             "status": "ready_for_single_bootstrap_retry" if ready else "not_ready_for_bootstrap_retry",
             "label": label,
             "wait_seconds": round(wait_seconds, 3),
@@ -2020,7 +2017,7 @@ class ChatGPTBrowserClient:
         }
         self._log(
             "release-live-continuous",
-            "release-live bootstrap guardrail re-readiness checked",
+            "release-live bootstrap retry readiness checked",
             label=label,
             ready=ready,
             status=status,
@@ -2032,6 +2029,40 @@ class ChatGPTBrowserClient:
             bypass=False,
         )
         return self._attach_rate_limit_telemetry(result)
+
+    async def _release_live_guardrail_cooldown_and_recheck(
+        self,
+        page: Any,
+        *,
+        target_url: str,
+        label: str,
+    ) -> dict[str, Any]:
+        configured_wait = self._release_live_guardrail_cooldown_seconds()
+        persisted_remaining = self._conversation_history_cooldown_remaining()
+        wait_seconds = max(configured_wait, persisted_remaining)
+        wait_seconds = min(300.0, max(0.0, wait_seconds))
+        return await self._release_live_bootstrap_retry_readiness_gate(
+            page,
+            target_url=target_url,
+            label=label,
+            action="release_live_bootstrap_guardrail_cooldown_retry_gate",
+            wait_seconds=wait_seconds,
+        )
+
+    async def _release_live_bootstrap_sentinel_retry_gate(
+        self,
+        page: Any,
+        *,
+        target_url: str,
+        label: str = "bootstrap_sentinel_missing_after_ask_success",
+    ) -> dict[str, Any]:
+        return await self._release_live_bootstrap_retry_readiness_gate(
+            page,
+            target_url=target_url,
+            label=label,
+            action="release_live_bootstrap_sentinel_retry_gate",
+            wait_seconds=0.0,
+        )
 
     async def _release_live_bootstrap_and_ask_operation(
         self,
@@ -2318,6 +2349,41 @@ class ChatGPTBrowserClient:
             ask_result,
             ask_prompt,
         )
+        bootstrap_sentinel_retry: dict[str, Any] | None = None
+        if (not bootstrap_completed_with_expected_token) and ask_completed_with_expected_token:
+            bootstrap_sentinel_retry = await self._release_live_bootstrap_sentinel_retry_gate(
+                page,
+                target_url=conversation_url,
+            )
+            if bool(bootstrap_sentinel_retry.get("ok")):
+                retry_bootstrap_result = await self._ask_question_operation(
+                    context=context,
+                    page=page,
+                    prompt=bootstrap_prompt,
+                    file_path=None,
+                    attachment_paths=None,
+                    conversation_url=conversation_url,
+                    expect_json=False,
+                    keep_open=False,
+                    service_timeout_seconds=service_timeout_seconds,
+                    prefer_button_submit=False,
+                    reuse_current_page_if_ready=True,
+                )
+                retry_bootstrap_result = self._attach_rate_limit_telemetry(retry_bootstrap_result)
+                bootstrap_sentinel_retry["retry_attempted"] = True
+                bootstrap_sentinel_retry["retry_result_status"] = str(retry_bootstrap_result.get("status") or "") if isinstance(retry_bootstrap_result, dict) else "non_dict_result"
+                bootstrap_sentinel_retry["retry_completed_with_expected_sentinel"] = self._release_live_result_completed_with_expected_token(
+                    retry_bootstrap_result,
+                    bootstrap_prompt,
+                )
+                bootstrap_sentinel_retry["retry_result"] = retry_bootstrap_result
+                if bool(bootstrap_sentinel_retry.get("retry_completed_with_expected_sentinel")):
+                    bootstrap_result = retry_bootstrap_result
+                    bootstrap_completed_with_expected_token = True
+                    bootstrap_ok = True
+            else:
+                bootstrap_sentinel_retry["retry_attempted"] = False
+
         sentinel_completed_ok = bool(
             isinstance(project_result, dict)
             and project_result.get("ok")
@@ -2330,6 +2396,9 @@ class ChatGPTBrowserClient:
         elif sentinel_completed_ok:
             status = "completed"
             ok = True
+        elif ask_completed_with_expected_token and not bootstrap_completed_with_expected_token:
+            status = "bootstrap_sentinel_missing_after_ask_success"
+            ok = False
         elif bootstrap_ok and ask_ok:
             status = "verified"
             ok = True
@@ -2345,6 +2414,7 @@ class ChatGPTBrowserClient:
             "project_result": project_result,
             "bootstrap_result": bootstrap_result,
             "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+            "bootstrap_sentinel_retry": bootstrap_sentinel_retry,
             "ask_result": ask_result,
             "continuous_browser_session": True,
             "same_profile_for_project_bootstrap_and_ask": True,
@@ -2359,7 +2429,11 @@ class ChatGPTBrowserClient:
             "duration_seconds": round(time.monotonic() - started, 3),
         }
         if not ok:
-            result["failed_phase"] = "ask_live"
+            result["failed_phase"] = (
+                "live_conversation_bootstrap"
+                if status == "bootstrap_sentinel_missing_after_ask_success"
+                else "ask_live"
+            )
         return result
 
     async def list_projects(

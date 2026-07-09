@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-PACKAGE_VERSION = "0.1.103.10.74"
+PACKAGE_VERSION = "0.1.103.10.75"
 
 
 def normalize_version(value: object) -> str | None:

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip
-active candidate version: v0.1.103.10.74
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip
-next normal slice: v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip
+active candidate version: v0.1.103.10.75
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip
+next normal slice: v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip candidate once packaged
-release status: v0.1.103.10.74 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip candidate once packaged
+release status: v0.1.103.10.75 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,13 +65,13 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103.10.74 as the active repair candidate from the last accepted/current operational baseline.
+Validate and package v0.1.103.10.75 as the active repair candidate from the last accepted/current operational baseline.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-./install.sh v0.1.103.10.74
+./install.sh v0.1.103.10.75
 ```
 
 ## v0.1.102 candidate status
@@ -1155,10 +1155,10 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.74 repair note
+## v0.1.103.10.75 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.74.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip`.
 
-Active repair slice: `v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass`.
+Active repair slice: `v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail`.
 
-`v0.1.103.10.74` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.
+`v0.1.103.10.75` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.

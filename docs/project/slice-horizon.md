@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.74 — release-live-continuous pre-bootstrap guardrail cooldown/retry without bypass
+v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail
 
 ## Recent repair context
 

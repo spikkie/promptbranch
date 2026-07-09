@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.74"
+VERSION = "v0.1.103.10.75"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 
@@ -129,8 +129,18 @@ def replay_run_all(scenario: str) -> ReplayResult:
         passed("artifact_guard")
         return result
 
-    passed("live_project_ensure")
 
+    if scenario == "bootstrap_sentinel_missing_after_ask_success":
+        failed("live_project_ensure", "bootstrap_sentinel_missing_after_ask_success")
+        result.final_verdict = "LIVE_BLOCKED"
+        for name in ("ask_live", "visual_artifact_roundtrip", "release_live"):
+            skipped(name, "skipped_bootstrap_sentinel_missing_after_ask_success")
+            result.final_verdict = "LIVE_BLOCKED"
+        passed("import_smoke")
+        passed("artifact_guard")
+        return result
+
+    passed("live_project_ensure")
     if scenario == "live_bootstrap_429_guardrail_with_persisted_cooldown":
         failed("live_conversation_bootstrap", "live_bootstrap_guardrail")
         result.final_verdict = "LIVE_BLOCKED"
@@ -295,3 +305,15 @@ def test_release_control_replay_live_external_browser_challenge_is_live_blocked_
     assert result.step("artifact_guard").ok is True
     assert result.launched_browser_steps == []
 
+
+
+def test_release_control_replay_bootstrap_sentinel_missing_after_ask_success_is_live_blocked() -> None:
+    result = replay_run_all("bootstrap_sentinel_missing_after_ask_success")
+
+    assert result.final_verdict == "LIVE_BLOCKED"
+    assert result.step("live_project_ensure").reason == "bootstrap_sentinel_missing_after_ask_success"
+    assert result.step("ask_live").reason == "skipped_bootstrap_sentinel_missing_after_ask_success"
+    assert result.step("visual_artifact_roundtrip").reason == "skipped_bootstrap_sentinel_missing_after_ask_success"
+    assert result.step("release_live").reason == "skipped_bootstrap_sentinel_missing_after_ask_success"
+    assert result.step("import_smoke").ok is True
+    assert result.step("artifact_guard").ok is True

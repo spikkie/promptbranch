@@ -748,6 +748,6 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 
 `v0.1.103.10.73` keeps the strict all-all install gate, live bootstrap guardrail cascade normalization, and product-failure precedence over `LIVE_BLOCKED`. The repair decision is to remove stale hardcoded release-version expectations from `tests/test_promptbranch_version.py`; version-surface assertions must derive expected values from `VERSION`, `pyproject.toml`, and `promptbranch_version.py`, while preserving the no-double-v-prefix invariant.
 
-## v0.1.103.10.74 repair decision
+## v0.1.103.10.75 repair decision
 
-`v0.1.103.10.74` keeps the strict all-all install gate and product-clean `LIVE_BLOCKED` classification. The repair decision is to add one bounded `release-live-continuous` bootstrap guardrail cooldown/re-readiness retry. The retry is allowed only when the same live browser profile remains authenticated, challenge-free, composer-visible, and scoped to the trusted conversation URL. No Cloudflare/rate-limit bypass, host-CDP/session-manager path, or copied-profile trust is introduced.
+`v0.1.103.10.75` keeps the strict all-all install gate and product-clean `LIVE_BLOCKED` classification. The repair decision is to add one bounded `release-live-continuous` bootstrap guardrail cooldown/re-readiness retry. The retry is allowed only when the same live browser profile remains authenticated, challenge-free, composer-visible, and scoped to the trusted conversation URL. No Cloudflare/rate-limit bypass, host-CDP/session-manager path, or copied-profile trust is introduced.

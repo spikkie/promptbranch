@@ -208,7 +208,8 @@ def test_release_live_continuous_completed_sentinel_success_static_guard() -> No
     assert "sentinel_completed_ok" in source
     assert 'status = "completed"' in source
     assert '"contains_expected_sentinel": ask_completed_with_expected_token' in source
-    assert 'if not ok:\n            result["failed_phase"] = "ask_live"' in source
+    assert 'if not ok:\n            result["failed_phase"] = (' in source
+    assert 'else "ask_live"' in source
 
 
 class BootstrapGuardrailRetryClient(DirectConversationClient):
@@ -276,3 +277,115 @@ def test_release_live_continuous_guardrail_retry_static_guard() -> None:
     assert "bootstrap_guardrail_retry" in source
     assert "retry_guardrail_persisted" in source
     assert "bypass=False" in source or "\"bypass\": False" in source
+
+
+class BootstrapSentinelMissingRetrySuccessClient(DirectConversationClient):
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        if len(self.ask_calls) == 1:
+            return {
+                "status": "completed",
+                "conversation_url": kwargs["conversation_url"],
+                "answer": "WRONG_BOOTSTRAP_SENTINEL",
+            }
+        if len(self.ask_calls) == 2:
+            return {
+                "status": "completed",
+                "conversation_url": kwargs["conversation_url"],
+                "answer": "ASK_SENTINEL",
+            }
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "BOOTSTRAP_SENTINEL",
+        }
+
+
+class BootstrapSentinelMissingRetryFailureClient(DirectConversationClient):
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        if len(self.ask_calls) == 2:
+            return {
+                "status": "completed",
+                "conversation_url": kwargs["conversation_url"],
+                "answer": "ASK_SENTINEL",
+            }
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "WRONG_BOOTSTRAP_SENTINEL",
+        }
+
+
+def test_release_live_continuous_retries_missing_bootstrap_sentinel_once_after_ask_success(tmp_path: Path) -> None:
+    client = BootstrapSentinelMissingRetrySuccessClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["bootstrap_guardrail_retry"] is None
+    assert result["bootstrap_sentinel_retry"]["ok"] is True
+    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
+    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is True
+    assert result["bootstrap_completed_with_expected_sentinel"] is True
+    assert result["ask_completed_with_expected_sentinel"] is True
+    assert len(client.ask_calls) == 3
+    assert [call["prompt"] for call in client.ask_calls] == [
+        "Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+        "Return exactly the single token ASK_SENTINEL and nothing else.",
+        "Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+    ]
+
+
+def test_release_live_continuous_missing_bootstrap_sentinel_after_ask_success_has_precise_status(tmp_path: Path) -> None:
+    client = BootstrapSentinelMissingRetryFailureClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "bootstrap_sentinel_missing_after_ask_success"
+    assert result["failed_phase"] == "live_conversation_bootstrap"
+    assert result["bootstrap_guardrail_retry"] is None
+    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
+    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is False
+    assert result["bootstrap_completed_with_expected_sentinel"] is False
+    assert result["ask_completed_with_expected_sentinel"] is True
+    assert len(client.ask_calls) == 3
+
+
+def test_release_live_continuous_bootstrap_sentinel_missing_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "bootstrap_sentinel_missing_after_ask_success" in source
+    assert "_release_live_bootstrap_sentinel_retry_gate" in source
+    assert "release_live_bootstrap_sentinel_retry_gate" in source
+    assert "if (not bootstrap_completed_with_expected_token) and ask_completed_with_expected_token" in source
+    assert "retry_completed_with_expected_sentinel" in source
+    assert 'result["failed_phase"] = (' in source
+
