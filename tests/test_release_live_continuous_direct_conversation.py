@@ -389,3 +389,96 @@ def test_release_live_continuous_bootstrap_sentinel_missing_static_guard() -> No
     assert "retry_completed_with_expected_sentinel" in source
     assert 'result["failed_phase"] = (' in source
 
+class VisibleThinkingPreambleCompletedSentinelClient(DirectConversationClient):
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": (
+                "Thought for a few seconds\nASK_SENTINEL"
+                if len(self.ask_calls) == 2
+                else "Thought for a couple of seconds\n\nBOOTSTRAP_SENTINEL"
+            ),
+        }
+
+
+class ArbitraryPrefixCompletedSentinelClient(DirectConversationClient):
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        if len(self.ask_calls) == 2:
+            return {
+                "status": "completed",
+                "conversation_url": kwargs["conversation_url"],
+                "answer": "ASK_SENTINEL",
+            }
+        return {
+            "status": "completed",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "Here is the token:\nBOOTSTRAP_SENTINEL",
+        }
+
+
+def test_release_live_accepts_known_visible_thinking_preamble_before_exact_sentinel(tmp_path: Path) -> None:
+    client = VisibleThinkingPreambleCompletedSentinelClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["bootstrap_sentinel_retry"] is None
+    assert result["bootstrap_completed_with_expected_sentinel"] is True
+    assert result["ask_completed_with_expected_sentinel"] is True
+    assert result["contains_expected_sentinel"] is True
+    assert len(client.ask_calls) == 2
+
+
+def test_release_live_rejects_arbitrary_prefix_before_exact_sentinel(tmp_path: Path) -> None:
+    client = ArbitraryPrefixCompletedSentinelClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "bootstrap_sentinel_missing_after_ask_success"
+    assert result["failed_phase"] == "live_conversation_bootstrap"
+    assert result["bootstrap_completed_with_expected_sentinel"] is False
+    assert result["ask_completed_with_expected_sentinel"] is True
+    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
+    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is False
+
+
+def test_release_live_visible_thinking_preamble_normalization_static_guard() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "_RELEASE_LIVE_VISIBLE_THINKING_PREAMBLES" in source
+    assert "Thought for a couple of seconds" in source
+    assert "Thought for a few seconds" in source
+    assert "_release_live_answer_matches_expected_single_token" in source
+    assert "lines[-1] != expected_text" in source
+    assert "all(line in cls._RELEASE_LIVE_VISIBLE_THINKING_PREAMBLES" in source
+

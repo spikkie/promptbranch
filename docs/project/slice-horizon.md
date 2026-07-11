@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail
+v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation
 
 ## Recent repair context
 

@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip",
-  "active_candidate_version": "v0.1.103.10.75",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip",
+  "active_candidate_version": "v0.1.103.10.76",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail",
+  "active_slice": "v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -101,9 +101,9 @@
   "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
   "last_updated": "2026-07-08",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip",
-  "next_normal_slice": "v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail",
-  "next_normal_version": "v0.1.103.10.75",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip",
+  "next_normal_slice": "v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation",
+  "next_normal_version": "v0.1.103.10.76",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -380,12 +380,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip",
       "release_mode": "repair",
-      "scope": "Distinguish missing bootstrap sentinel after ask success from explicit backend/rate-limit guardrail, retry only the missing bootstrap phase once under clean readiness, and preserve product-clean LIVE_BLOCKED classification without bypass.",
-      "slice": "v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail",
+      "scope": "Normalize only known visible thinking preambles before exact release-live sentinel validation while preserving exact single-token failure for arbitrary extra text.",
+      "slice": "v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation",
       "status": "active",
-      "version": "v0.1.103.10.75"
+      "version": "v0.1.103.10.76"
     },
     {
       "release_mode": "normal",
@@ -429,5 +429,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.75"
+  "updated_for": "v0.1.103.10.76"
 }

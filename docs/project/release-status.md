@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip
-active candidate version: v0.1.103.10.75
-next normal slice: v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip
+active candidate version: v0.1.103.10.76
+next normal slice: v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -717,10 +717,18 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.75 repair note
+## v0.1.103.10.76 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.75.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip`.
 
-Active repair slice: `v0.1.103.10.75 — release-live-continuous distinguishes missing bootstrap sentinel from backend guardrail`.
+Active repair slice: `v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation`.
 
-`v0.1.103.10.75` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.
+`v0.1.103.10.76` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.
+
+## v0.1.103.10.76 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.76.zip`.
+
+Active repair slice: `v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation`.
+
+`v0.1.103.10.76` keeps the strict all-all install gate, product-clean `LIVE_BLOCKED` classification, and precise `bootstrap_sentinel_missing_after_ask_success` status. It changes only release-live sentinel validation so known visible thinking preambles are normalized before exact single-token matching. Arbitrary extra text remains a failure.

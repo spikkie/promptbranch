@@ -599,14 +599,20 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 |---|---|---|---|---|
 | DOD-245 | version_surface tests derive expected version from release metadata | in_progress | `tests/test_promptbranch_version.py` must derive expected package/version-tag values from `VERSION`, `pyproject.toml`, and `promptbranch_version.py`, and must reject stale hardcoded repair-version literals. | v0.1.103.10.73 |
 
-## v0.1.103.10.75
+## v0.1.103.10.76
 
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
-| DOD-246 | release-live bootstrap guardrail bounded retry | in_progress | `release-live-continuous` must perform at most one safe cooldown/re-readiness retry after bootstrap guardrail telemetry, without bypassing Cloudflare/rate limits or trusting copied profiles. | v0.1.103.10.75 |
+| DOD-246 | release-live bootstrap guardrail bounded retry | in_progress | `release-live-continuous` must perform at most one safe cooldown/re-readiness retry after bootstrap guardrail telemetry, without bypassing Cloudflare/rate limits or trusting copied profiles. | v0.1.103.10.76 |
 
-## v0.1.103.10.75
+## v0.1.103.10.76
 
 | ID | Capability | Status | Evidence | Version |
 |---|---|---|---|---|
-| DOD-247 | precise release-live bootstrap sentinel status | in_progress | `release-live-continuous` must distinguish `bootstrap_sentinel_missing_after_ask_success` from explicit backend/rate-limit bootstrap guardrail, retry only the missing bootstrap phase once when readiness is clean, and preserve product-clean `LIVE_BLOCKED` classification. | v0.1.103.10.75 |
+| DOD-247 | precise release-live bootstrap sentinel status | in_progress | `release-live-continuous` must distinguish `bootstrap_sentinel_missing_after_ask_success` from explicit backend/rate-limit bootstrap guardrail, retry only the missing bootstrap phase once when readiness is clean, and preserve product-clean `LIVE_BLOCKED` classification. | v0.1.103.10.76 |
+
+## v0.1.103.10.76
+
+| ID | Item | Status | Evidence | Version |
+| --- | --- | --- | --- | --- |
+| DOD-248 | release-live visible thinking preamble normalization | in_progress | `release-live-continuous` must accept only known visible thinking preambles before an exact expected sentinel line and reject arbitrary extra text. | v0.1.103.10.76 |

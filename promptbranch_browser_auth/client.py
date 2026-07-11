@@ -1898,6 +1898,36 @@ class ChatGPTBrowserClient:
                 return value.strip()
         return ""
 
+    _RELEASE_LIVE_VISIBLE_THINKING_PREAMBLES = {
+        "Thought for a couple of seconds",
+        "Thought for a few seconds",
+    }
+
+    @classmethod
+    def _release_live_answer_matches_expected_single_token(cls, answer: Any, expected: Any) -> bool:
+        """Return True only for an exact sentinel, with bounded visible-thinking normalization.
+
+        Some ChatGPT surfaces render a short visible thinking preamble before a
+        requested single-token answer, for example ``Thought for a couple of
+        seconds`` followed by the sentinel on the last line.  For release-live
+        sentinel validation only, accept that bounded shape when every non-empty
+        line before the sentinel is one of the known preambles.  Any other extra
+        text remains a failure.
+        """
+
+        expected_text = str(expected or "").strip()
+        answer_text = str(answer or "").strip()
+        if not expected_text or not answer_text:
+            return False
+        if answer_text == expected_text:
+            return True
+
+        lines = [line.strip() for line in answer_text.splitlines() if line.strip()]
+        if not lines or lines[-1] != expected_text:
+            return False
+        prefix_lines = lines[:-1]
+        return bool(prefix_lines) and all(line in cls._RELEASE_LIVE_VISIBLE_THINKING_PREAMBLES for line in prefix_lines)
+
     @classmethod
     def _release_live_result_completed_with_expected_token(cls, result: Any, prompt: Any) -> bool:
         if not isinstance(result, dict):
@@ -1909,7 +1939,7 @@ class ChatGPTBrowserClient:
         if not expected:
             return False
         answer = cls._release_live_result_answer_text(result)
-        return answer == expected
+        return cls._release_live_answer_matches_expected_single_token(answer, expected)
 
     @staticmethod
     def _release_live_telemetry_guardrail_seen(telemetry: Any) -> bool:
