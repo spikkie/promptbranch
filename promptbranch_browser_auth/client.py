@@ -6505,6 +6505,15 @@ class ChatGPTBrowserClient:
                 exact_safe=False,
                 anchor_safe=True,
             )
+        if existing_source is None:
+            # ChatGPT may keep a prior overwrite attempt under a duplicate
+            # filename such as ``name(1).txt``.  Treat that as an existing
+            # overwrite target during preflight so the normal remove-then-add
+            # path can restore deterministic test semantics.
+            existing_source = self._match_file_source_duplicate_suffix_card(
+                initial_sources,
+                source_match_candidates,
+            )
         if existing_source is not None:
             self._log(
                 "project-source-add",
@@ -7181,17 +7190,44 @@ class ChatGPTBrowserClient:
                             source_match_candidates=persistence_candidates,
                             error=repr(snapshot_exc),
                         )
+                if snapshot_recovered_source is None and normalized_kind == "file" and overwritten_existing:
+                    snapshot_recovered_source = self._match_file_source_duplicate_suffix_card(
+                        post_recovery_sources,
+                        persistence_candidates,
+                    )
+                    if snapshot_recovered_source is not None:
+                        snapshot_recovered_source = dict(snapshot_recovered_source)
+                        snapshot_recovered_source["_promptbranch_verification_mode"] = "post_commit_duplicate_suffix_snapshot_recovered"
                 if snapshot_recovered_source is not None and bool(transaction.get("save_saw_commit")) and not int(transaction.get("save_failed") or 0):
                     persisted_source = dict(snapshot_recovered_source)
-                    persisted_source["_promptbranch_verification_mode"] = "post_commit_surface_snapshot_recovered"
+                    persisted_source["_promptbranch_verification_mode"] = persisted_source.get(
+                        "_promptbranch_verification_mode",
+                        "post_commit_surface_snapshot_recovered",
+                    )
                     persisted_source["_promptbranch_ui_card_seen_before_refresh"] = True
                     persisted_source["_promptbranch_post_refresh_attempt"] = None
+                    duplicate_suffix_match = (
+                        snapshot_recovered_source.get("_promptbranch_duplicate_suffix_match")
+                        if normalized_kind == "file" and isinstance(snapshot_recovered_source, dict)
+                        else None
+                    )
                     post_commit_recovery = {
-                        "status": "recovered_from_visible_surface_snapshot",
-                        "method": "post_commit_text_source_snapshot_reconciliation" if normalized_kind == "text" else "post_commit_snapshot_match",
+                        "status": (
+                            "recovered_from_duplicate_suffix_visible_surface_snapshot"
+                            if duplicate_suffix_match
+                            else "recovered_from_visible_surface_snapshot"
+                        ),
+                        "method": (
+                            "post_commit_text_source_snapshot_reconciliation"
+                            if normalized_kind == "text"
+                            else "post_commit_file_duplicate_suffix_snapshot_match"
+                            if duplicate_suffix_match
+                            else "post_commit_snapshot_match"
+                        ),
                         "transaction_status": transaction.get("transaction_status"),
                         "source_match_candidates": persistence_candidates,
                         "save_watch_summary": save_summary,
+                        "duplicate_suffix_match": duplicate_suffix_match,
                         "text_source_reconciliation_proof": (
                             snapshot_recovered_source.get("_promptbranch_text_source_reconciliation_proof")
                             if normalized_kind == "text" and isinstance(snapshot_recovered_source, dict)
@@ -16938,6 +16974,73 @@ class ChatGPTBrowserClient:
         return normalized in {
             "file contents may not be accessible",
         }
+
+    def _normalize_file_source_identity_for_duplicate_suffix_match(self, value: Optional[str]) -> str:
+        normalized = self._normalize_source_match_text(value)
+        if not normalized or self._is_generic_source_metadata_only_value(normalized):
+            return ""
+        normalized = re.sub(
+            r"\s+(?:document|file contents may not be accessible)$",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        ).strip()
+        return normalized
+
+    def _strip_file_duplicate_suffix(self, value: Optional[str]) -> str:
+        normalized = self._normalize_file_source_identity_for_duplicate_suffix_match(value)
+        if not normalized:
+            return ""
+        # ChatGPT can render a second upload as ``name(1).ext`` or
+        # ``name (1).ext``.  Strip only a final numeric collision suffix before
+        # the file extension/end; do not perform fuzzy substring matching.
+        return re.sub(
+            r"\s*\(\d+\)(?=(?:\.[^./\\\s]+)?$)",
+            "",
+            normalized,
+        ).strip()
+
+    def _file_source_duplicate_suffix_match_details(
+        self,
+        *,
+        requested_candidates: Optional[list[str]],
+        observed_identity: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        observed = self._normalize_file_source_identity_for_duplicate_suffix_match(observed_identity)
+        if not observed:
+            return None
+        observed_stripped = self._strip_file_duplicate_suffix(observed)
+        if not observed_stripped or observed_stripped.lower() == observed.lower():
+            return None
+        for candidate in requested_candidates or []:
+            requested = self._normalize_file_source_identity_for_duplicate_suffix_match(candidate)
+            if not requested:
+                continue
+            if observed_stripped.lower() == requested.lower():
+                return {
+                    "requested": requested,
+                    "observed": observed,
+                    "observed_without_duplicate_suffix": observed_stripped,
+                    "match_kind": "file_duplicate_suffix",
+                }
+        return None
+
+    def _match_file_source_duplicate_suffix_card(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        source_match_candidates: Optional[list[str]],
+    ) -> Optional[dict[str, str]]:
+        for card in cards or []:
+            for identity in self._source_card_identity_candidates(card):
+                details = self._file_source_duplicate_suffix_match_details(
+                    requested_candidates=source_match_candidates,
+                    observed_identity=identity,
+                )
+                if details:
+                    matched = dict(card)
+                    matched["_promptbranch_duplicate_suffix_match"] = details
+                    return matched
+        return None
 
     def _source_card_match_candidates(
         self,

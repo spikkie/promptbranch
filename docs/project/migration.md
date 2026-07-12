@@ -976,3 +976,7 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.76 repair decision
 
 `v0.1.103.10.76` migrates release-live sentinel validation from raw full-string equality to bounded visible-thinking normalization. The change is limited to release-live sentinel checks and does not alter Cloudflare/rate-limit handling or adoption semantics.
+
+## v0.1.103.10.77 repair decision
+
+`v0.1.103.10.77` migrates overwrite-file persistence verification from exact-only refreshed surface matching to exact-or-duplicate-suffix matching when a save commit is observed and the operation is already in the overwrite path.

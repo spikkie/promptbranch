@@ -755,3 +755,7 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.76 repair decision
 
 `v0.1.103.10.76` normalizes only the known visible thinking preambles `Thought for a couple of seconds` and `Thought for a few seconds` before release-live exact sentinel validation. The matcher remains fail-closed: the final non-empty line must equal the expected sentinel exactly and every preceding non-empty line must be one of the known preambles.
+
+## v0.1.103.10.77 repair decision
+
+`v0.1.103.10.77` keeps sentinel normalization and product-clean `LIVE_BLOCKED` classification. The decision is to accept duplicate-suffixed file-source identities such as `name(1).txt` only as overwrite-file persistence proof after a committed save. Exact-name `pb src add`/`pbsa` upsert remains a separate canonical-source repair.

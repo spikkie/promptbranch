@@ -3381,6 +3381,137 @@ def test_add_file_source_operation_recovers_post_commit_visible_snapshot_after_r
     assert result["post_commit_recovery"]["status"] == "recovered_from_visible_surface_snapshot"
 
 
+
+def test_file_source_duplicate_suffix_match_is_exact_and_suffix_bound(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    details = browser_client._file_source_duplicate_suffix_match_details(
+        requested_candidates=["release.zip", "release.zip Document"],
+        observed_identity="release(1).zip Document",
+    )
+
+    assert details == {
+        "requested": "release.zip",
+        "observed": "release(1).zip",
+        "observed_without_duplicate_suffix": "release.zip",
+        "match_kind": "file_duplicate_suffix",
+    }
+    assert browser_client._file_source_duplicate_suffix_match_details(
+        requested_candidates=["release.zip"],
+        observed_identity="other-release(1).zip Document",
+    ) is None
+    assert browser_client._file_source_duplicate_suffix_match_details(
+        requested_candidates=["release.zip"],
+        observed_identity="release-copy.zip Document",
+    ) is None
+
+
+def test_add_file_source_operation_accepts_duplicate_suffix_after_committed_overwrite(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    snapshot_calls = {"count": 0}
+    calls: dict[str, object] = {"removed": False, "added": False}
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        snapshot_calls["count"] += 1
+        if snapshot_calls["count"] == 1:
+            return [{"identity": "release.zip Document", "title": "release.zip", "text": "release.zip Document"}]
+        if snapshot_calls["count"] == 2:
+            return []
+        return [{"identity": "release(1).zip Document", "title": "release(1).zip", "text": "release(1).zip Document"}]
+
+    async def fake_remove(*_args, **kwargs):
+        calls["removed"] = True
+        assert kwargs["source_name"] == "release.zip"
+        return {"ok": True, "removed_via_ui": True, "source_match": "release.zip"}
+
+    async def fake_add_file_source(*_args, **_kwargs) -> None:
+        calls["added"] = True
+
+    async def fake_wait_for_source_presence(*_args, **_kwargs):
+        raise ResponseTimeoutError("source was not visible under canonical release.zip")
+
+    async def fake_wait_for_post_save_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_wait_for_quiet(*_args, **_kwargs):
+        return {
+            "saw_commit": True,
+            "started": 2,
+            "finished": 2,
+            "failed": 0,
+            "inflight": 0,
+        }
+
+    async def fake_verify_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("Timed out waiting for project source to appear: release.zip")
+
+    async def fake_recover(*_args, **_kwargs):
+        raise AssertionError("commit_seen_but_not_verified_present should use visible duplicate-suffix snapshot reconciliation")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
+    browser_client._recover_project_source_after_post_commit_timeout = fake_recover  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": True,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 2,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": set(),
+    }
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert calls == {"removed": True, "added": True}
+    assert result["ok"] is True
+    assert result["already_exists"] is True
+    assert result["overwritten"] is True
+    assert result["removed_existing"] is True
+    assert result["persistence_verified"] is True
+    assert result["source_match"] == "release(1).zip Document"
+    assert result["verification_mode"] == "post_commit_duplicate_suffix_snapshot_recovered"
+    assert result["post_commit_recovery"]["status"] == "recovered_from_duplicate_suffix_visible_surface_snapshot"
+    assert result["post_commit_recovery"]["duplicate_suffix_match"]["observed"] == "release(1).zip"
+
 def test_stale_inflight_post_commit_absent_source_is_classified_as_true_absence(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,

@@ -3055,6 +3055,11 @@ class ChatGPTBrowserClient:
                 exact_safe=False,
                 anchor_safe=True,
             )
+        if existing_source is None:
+            existing_source = self._match_file_source_duplicate_suffix_card(
+                initial_sources,
+                source_match_candidates,
+            )
         if existing_source is not None:
             self._log(
                 "project-source-add",
@@ -7568,6 +7573,68 @@ class ChatGPTBrowserClient:
         return normalized in {
             "file contents may not be accessible",
         }
+
+    def _normalize_file_source_identity_for_duplicate_suffix_match(self, value: Optional[str]) -> str:
+        normalized = self._normalize_source_match_text(value)
+        if not normalized or self._is_generic_source_metadata_only_value(normalized):
+            return ""
+        normalized = re.sub(
+            r"\s+(?:document|file contents may not be accessible)$",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        ).strip()
+        return normalized
+
+    def _strip_file_duplicate_suffix(self, value: Optional[str]) -> str:
+        normalized = self._normalize_file_source_identity_for_duplicate_suffix_match(value)
+        if not normalized:
+            return ""
+        return re.sub(
+            r"\s*\(\d+\)(?=(?:\.[^./\\\s]+)?$)",
+            "",
+            normalized,
+        ).strip()
+
+    def _file_source_duplicate_suffix_match_details(
+        self,
+        *,
+        requested_candidates: Optional[list[str]],
+        observed_identity: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        observed = self._normalize_file_source_identity_for_duplicate_suffix_match(observed_identity)
+        if not observed:
+            return None
+        observed_stripped = self._strip_file_duplicate_suffix(observed)
+        if not observed_stripped or observed_stripped.lower() == observed.lower():
+            return None
+        for candidate in requested_candidates or []:
+            requested = self._normalize_file_source_identity_for_duplicate_suffix_match(candidate)
+            if requested and observed_stripped.lower() == requested.lower():
+                return {
+                    "requested": requested,
+                    "observed": observed,
+                    "observed_without_duplicate_suffix": observed_stripped,
+                    "match_kind": "file_duplicate_suffix",
+                }
+        return None
+
+    def _match_file_source_duplicate_suffix_card(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        source_match_candidates: Optional[list[str]],
+    ) -> Optional[dict[str, str]]:
+        for card in cards or []:
+            for identity in self._source_card_identity_candidates(card):
+                details = self._file_source_duplicate_suffix_match_details(
+                    requested_candidates=source_match_candidates,
+                    observed_identity=identity,
+                )
+                if details:
+                    matched = dict(card)
+                    matched["_promptbranch_duplicate_suffix_match"] = details
+                    return matched
+        return None
 
     def _source_card_match_candidates(
         self,

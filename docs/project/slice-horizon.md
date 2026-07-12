@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.76 — normalize visible thinking preamble before exact sentinel validation
+v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence
 
 ## Recent repair context
 
