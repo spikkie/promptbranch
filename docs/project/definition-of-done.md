@@ -642,3 +642,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 |---|---|---|---|---|
 | DOD-252 | Candidate transport identity is separate from canonical Project Source identity | in_progress | Unique transport basename `chatgpt_claudecode_workflow-2_transport_v0.1.103.10.81_b7c1de9f28.zip` is accepted only after internal VERSION/CRC validation; canonical `chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip` is derived from version and is the only source/adoption identity. | v0.1.103.10.81 |
 
+
+## v0.1.103.10.82
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-253 | Library-backed exact-name Project Source overwrite | in_progress | `pbsa <file>` remains an alias for `promptbranch src add <file>`; same-name overwrite removes the exact Project Source association, reconciles exact attributable Library file IDs and Recently deleted entries, uploads the canonical basename, and succeeds only with one exact canonical source and zero numeric suffix variants. Ambiguous cross-project ownership fails closed. | v0.1.103.10.82 |

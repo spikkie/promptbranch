@@ -783,3 +783,7 @@ Active repair slice: `v0.1.103.10.81 — separate candidate transport filename f
 
 `v0.1.103.10.81` keeps the strict all-all gate, sentinel normalization, authoritative Project Sources preflight/suffix rollback, and verified candidate-image reuse. It separates the unique ChatGPT attachment transport basename from the canonical repo+version release artifact, validates the transport ZIP's internal VERSION and integrity, materializes the canonical local copy, and uploads/adopts only that canonical identity.
 
+
+## v0.1.103.10.82 — Library-backed overwrite reconciliation
+
+Decision: keep `pbsa <file>` unchanged and replace the obsolete assumption that removing a Project Source frees its filename. Same-name overwrite must reconcile only exact, attributable backing file IDs in ChatGPT Library and Recently deleted before canonical re-upload. Loose text deletion and ambiguous cross-project deletion are prohibited.

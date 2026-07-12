@@ -3445,6 +3445,213 @@ def test_file_source_duplicate_suffix_match_is_exact_and_suffix_bound(
     ) is None
 
 
+def test_same_name_file_overwrite_reconciles_library_before_canonical_upload(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    existing = {
+        "identity": "release.zip Document",
+        "title": "release.zip",
+        "text": "release.zip Document",
+        "file_id": "file_existing_123",
+    }
+    canonical = {
+        "identity": "release.zip Document",
+        "title": "release.zip",
+        "text": "release.zip Document",
+        "file_id": "file_new_123456",
+        "_promptbranch_verification_mode": "post_refresh",
+        "_promptbranch_ui_card_seen_before_refresh": True,
+        "_promptbranch_post_refresh_attempt": 1,
+    }
+    preflights = [
+        {"ok": True, "authoritative": True, "sources": [existing], "source_card_count": 1, "source_identities": ["release.zip Document"], "empty_state_visible": False},
+        {"ok": True, "authoritative": True, "sources": [], "source_card_count": 0, "source_identities": [], "empty_state_visible": True},
+        {"ok": True, "authoritative": True, "sources": [], "source_card_count": 0, "source_identities": [], "empty_state_visible": True},
+    ]
+    order: list[str] = []
+    reconcile_calls: list[dict[str, object]] = []
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_authoritative(*_args, **_kwargs):
+        return preflights.pop(0)
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return existing
+
+    async def fake_reconcile(*_args, **kwargs):
+        reconcile_calls.append(dict(kwargs))
+        if kwargs.get("inspect_only"):
+            order.append("library_inspect")
+            return {"ok": True, "status": "library_reconciliation_ready", "safe_file_ids": ["file_existing_123"], "records": []}
+        order.append("library_delete")
+        assert kwargs["required_file_ids"] == ["file_existing_123"]
+        return {"ok": True, "status": "library_collision_cleared", "safe_file_ids": ["file_existing_123"], "records": []}
+
+    async def fake_remove(*_args, **kwargs):
+        order.append("project_source_remove")
+        assert kwargs["source_name"] == "release.zip"
+        return {"ok": True, "removed_via_ui": True, "source_match": "release.zip Document"}
+
+    async def fake_upload(*_args, **_kwargs):
+        order.append("canonical_upload")
+
+    async def fake_presence(*_args, **_kwargs):
+        return canonical
+
+    async def fake_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0, "quiet_now": True}
+
+    async def fake_resolution(*_args, **_kwargs):
+        return {"sources": [canonical], "exact_canonical_sources": [canonical], "duplicate_suffix_sources": []}
+
+    async def fake_verify(*_args, **_kwargs):
+        return canonical
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [canonical]
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-current/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authoritative  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._reconcile_library_file_family = fake_reconcile  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_post_commit_file_source_resolution = fake_resolution  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_verify  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "installed": False,
+        "source_kind": "file",
+        "started": 2,
+        "finished": 2,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": set(),
+        "backend_assigned_names": ["release.zip"],
+        "backing_file_ids": ["file_new_123456"],
+        "responses": [],
+        "response_tasks": [],
+    }
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=context,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["overwritten"] is True
+    assert result["removed_existing"] is True
+    assert result["persistence_verified"] is True
+    assert result["backend_assigned_name"] == "release.zip"
+    assert result["exact_canonical_source_count"] == 1
+    assert result["duplicate_suffix_source_count"] == 0
+    assert order == ["library_inspect", "project_source_remove", "library_delete", "canonical_upload"]
+    assert len(reconcile_calls) == 2
+
+
+def test_add_file_source_library_ambiguity_blocks_before_project_source_removal(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    removed = {"called": False}
+    uploaded = {"called": False}
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_authoritative(*_args, **_kwargs):
+        source = {
+            "identity": "release.zip Document",
+            "title": "release.zip",
+            "text": "release.zip Document",
+            "file_id": "file_existing_123",
+        }
+        return {
+            "ok": True,
+            "authoritative": True,
+            "sources": [source],
+            "source_card_count": 1,
+            "source_identities": ["release.zip Document"],
+            "empty_state_visible": False,
+        }
+
+    async def fake_library(*_args, **kwargs):
+        assert kwargs["inspect_only"] is True
+        return {
+            "ok": False,
+            "status": "library_collision_ambiguous",
+            "release_blocking": True,
+            "ambiguous_records": [{"file_id": "file_shared_123", "reason": "referenced_by_other_project"}],
+            "safe_file_ids": [],
+        }
+
+    async def fake_remove(*_args, **_kwargs):
+        removed["called"] = True
+        return {"ok": True, "removed_via_ui": True}
+
+    async def fake_upload(*_args, **_kwargs):
+        uploaded["called"] = True
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-current/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authoritative  # type: ignore[method-assign]
+    browser_client._reconcile_library_file_family = fake_library  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=context,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "library_collision_ambiguous"
+    assert result["project_source_mutated"] is False
+    assert removed["called"] is False
+    assert uploaded["called"] is False
+
+
 def test_add_file_source_operation_blocks_visible_duplicate_suffix_before_upload(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
@@ -3620,13 +3827,14 @@ def test_add_file_source_operation_blocks_duplicate_suffix_after_committed_uploa
 
     assert calls == {"removed": True, "added": True}
     assert result["ok"] is False
-    assert result["status"] == "backend_renamed_source"
+    assert result["status"] == "library_collision_not_cleared"
     assert result["conflict_reason"] == "backend_created_suffix_renamed_source_without_canonical"
     assert result["already_exists"] is True
     assert result["overwritten"] is True
     assert result["removed_existing"] is True
     assert result["persistence_verified"] is False
     assert result["backend_renamed_source"] is True
+    assert result["library_collision_not_cleared"] is True
     assert result["release_blocking"] is True
     assert result["operator_review_required"] is True
     assert result["duplicate_suffix_source_identities"] == ["release(1).zip Document"]
@@ -4099,10 +4307,11 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
 
     assert calls == {"uploaded": True, "verified": False, "rollback": True}
     assert result["ok"] is False
-    assert result["status"] == "backend_renamed_source"
+    assert result["status"] == "library_collision_not_cleared"
     assert result["added"] is False
     assert result["persistence_verified"] is False
     assert result["backend_renamed_source_rollback"]["status"] == "removed"
+    assert result["library_collision_not_cleared"] is True
 
 
 def test_backend_suffix_rollback_waits_for_remove_result_before_returning(
@@ -4156,3 +4365,627 @@ def test_removed_backend_suffix_never_produces_success_claim(browser_client: Cha
     assert result["persistence_verified"] is False
     assert result["release_blocking"] is True
     assert result["backend_renamed_source"] is True
+
+
+class _LibraryWatchContext:
+    def __init__(self) -> None:
+        self.handlers: dict[str, object] = {}
+
+    def on(self, event_name: str, handler) -> None:
+        self.handlers[event_name] = handler
+
+    def remove_listener(self, event_name: str, handler) -> None:
+        if self.handlers.get(event_name) is handler:
+            self.handlers.pop(event_name, None)
+
+
+class _LibraryPage:
+    async def wait_for_timeout(self, _milliseconds: int) -> None:
+        return None
+
+
+def _library_surface(records, *, reason: str = "stable_library_snapshot"):
+    family_records = list(records)
+    return {
+        "ok": True,
+        "authoritative": True,
+        "reason": reason,
+        "records": list(records),
+        "family_records": family_records,
+        "record_count": len(records),
+        "family_record_count": len(family_records),
+        "empty_state_visible": not records,
+        "stable_observations": 2 if records else 0,
+        "observations": [],
+    }
+
+
+def _install_library_surface_sequence(browser_client: ChatGPTBrowserClient, surfaces: list[dict]) -> None:
+    async def fake_surface(*_args, **_kwargs):
+        assert surfaces, "unexpected Library authority probe"
+        return surfaces.pop(0)
+
+    browser_client._wait_for_authoritative_library_family_surface = fake_surface  # type: ignore[method-assign]
+
+
+def test_library_filename_family_matches_exact_and_numeric_suffixes(browser_client: ChatGPTBrowserClient) -> None:
+    canonical = "platform-gitops_v0.0.6.6.zip"
+    assert browser_client._file_source_family_member(canonical, canonical) is True
+    assert browser_client._file_source_family_member("platform-gitops_v0.0.6.6(7).zip", canonical) is True
+    assert browser_client._file_source_family_member("platform-gitops_v0.0.6.6 (7).zip", canonical) is True
+    assert browser_client._file_source_family_member("platform-gitops_v0.0.6.60.zip", canonical) is False
+    assert browser_client._file_source_family_member("other(7).zip", canonical) is False
+
+
+def test_upload_response_extracts_backing_file_id_and_backend_assigned_name(browser_client: ChatGPTBrowserClient) -> None:
+    payload = {
+        "upload": {
+            "file_id": "file_1234567890abcdef",
+            "filename": "platform-gitops_v0.0.6.6(7).zip",
+            "project_id": "g-p-current",
+        }
+    }
+    records = browser_client._extract_library_file_records_from_payload(
+        payload,
+        source_url="https://chatgpt.com/backend-api/files/process_upload_stream",
+    )
+    assert records == [
+        {
+            "file_id": "file_1234567890abcdef",
+            "filename": "platform-gitops_v0.0.6.6(7).zip",
+            "project_ids": ["g-p-current"],
+            "project_references_known": True,
+            "deleted": False,
+            "source_url": "https://chatgpt.com/backend-api/files/process_upload_stream",
+        }
+    ]
+
+
+def test_library_transaction_ledger_attributes_prior_promptbranch_upload(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    browser_client._record_library_upload_transactions(
+        project_url="https://chatgpt.com/g/g-p-current/project",
+        canonical_name="release.zip",
+        file_ids=["file_ledger_123456"],
+        assigned_names=["release(2).zip"],
+    )
+    assert browser_client._library_transaction_ids_for_family(
+        "release.zip",
+        "https://chatgpt.com/g/g-p-current/project",
+    ) == {"file_ledger_123456"}
+    assert browser_client._library_transaction_ids_for_family(
+        "release.zip",
+        "https://chatgpt.com/g/g-p-other/project",
+    ) == set()
+    browser_client._forget_library_upload_transactions(["file_ledger_123456"])
+    assert browser_client._library_transaction_ids_for_family(
+        "release.zip",
+        "https://chatgpt.com/g/g-p-current/project",
+    ) == set()
+
+
+def test_library_reconciliation_accepts_exact_required_file_id_when_reference_metadata_is_unknown(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    snapshots = [
+        [{"file_id": "file_required_123", "filename": "release.zip", "project_ids": [], "project_references_known": False, "deleted": False}],
+        [{"file_id": "file_required_123", "filename": "release.zip", "project_ids": [], "project_references_known": False, "deleted": True}],
+        [],
+        [],
+    ]
+    actions: list[tuple[str, bool]] = []
+    active_record = snapshots[0][0]
+    deleted_record = snapshots[1][0]
+    surfaces = [
+        _library_surface([active_record]),
+        _library_surface([]),
+        _library_surface([active_record]),
+        _library_surface([deleted_record]),
+        _library_surface([]),
+        _library_surface([]),
+    ]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return snapshots.pop(0)
+
+    async def fake_delete(_page, *, file_id: str, filename: str, delete_forever: bool):
+        actions.append((file_id, delete_forever))
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+            required_file_ids=["file_required_123"],
+        )
+    )
+
+    assert result["ok"] is True
+    assert actions == [("file_required_123", False), ("file_required_123", True)]
+
+
+def test_library_reconciliation_deletes_retained_file_and_recently_deleted_entry(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    snapshots = [
+        [{"file_id": "file_retained_123", "filename": "release.zip", "project_ids": [], "project_references_known": True, "deleted": False}],
+        [{"file_id": "file_retained_123", "filename": "release.zip", "project_ids": [], "project_references_known": True, "deleted": True}],
+        [],
+        [],
+    ]
+    actions: list[tuple[str, bool]] = []
+    active_record = snapshots[0][0]
+    deleted_record = snapshots[1][0]
+    surfaces = [
+        _library_surface([active_record]),
+        _library_surface([]),
+        _library_surface([active_record]),
+        _library_surface([deleted_record]),
+        _library_surface([]),
+        _library_surface([]),
+    ]
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_search(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return snapshots.pop(0)
+
+    async def fake_delete(_page, *, file_id: str, filename: str, delete_forever: bool):
+        actions.append((file_id, delete_forever))
+        return {"ok": True, "status": "delete_forever_triggered" if delete_forever else "delete_triggered"}
+
+    async def fake_recent(*_args, **_kwargs) -> bool:
+        return True
+
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_search  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = fake_recent  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_goto  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "library_collision_cleared"
+    assert actions == [("file_retained_123", False), ("file_retained_123", True)]
+    assert result["remaining_records"] == []
+
+
+def test_library_reconciliation_clears_polluted_numeric_suffix_history(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    family = [
+        {"file_id": "file_family_000", "filename": "release.zip", "project_ids": [], "project_references_known": True, "deleted": False},
+        {"file_id": "file_family_001", "filename": "release(1).zip", "project_ids": [], "project_references_known": True, "deleted": False},
+        {"file_id": "file_family_002", "filename": "release (2).zip", "project_ids": [], "project_references_known": True, "deleted": False},
+    ]
+    snapshots = [family, [{**item, "deleted": True} for item in family], [], []]
+    actions: list[tuple[str, bool]] = []
+    deleted_family = [{**item, "deleted": True} for item in family]
+    surfaces = [
+        _library_surface(family),
+        _library_surface([]),
+        _library_surface(family),
+        _library_surface(deleted_family),
+        _library_surface([]),
+        _library_surface([]),
+    ]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return snapshots.pop(0)
+
+    async def fake_delete(_page, *, file_id: str, filename: str, delete_forever: bool):
+        actions.append((file_id, delete_forever))
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is True
+    assert len(result["deleted_records"]) == 3
+    assert actions == [
+        ("file_family_000", False),
+        ("file_family_001", False),
+        ("file_family_002", False),
+        ("file_family_000", True),
+        ("file_family_001", True),
+        ("file_family_002", True),
+    ]
+
+
+def test_library_reconciliation_blocks_file_referenced_by_other_project(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    deleted = {"called": False}
+    shared_record = {
+        "file_id": "file_shared_123",
+        "filename": "release.zip",
+        "project_ids": ["g-p-other"],
+        "project_references_known": True,
+        "deleted": False,
+    }
+    surfaces = [_library_surface([shared_record]), _library_surface([])]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [shared_record]
+
+    async def fake_delete(*_args, **_kwargs):
+        deleted["called"] = True
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "library_collision_ambiguous"
+    assert result["release_blocking"] is True
+    assert deleted["called"] is False
+    assert result["ambiguous_records"][0]["reason"] == "referenced_by_other_project"
+
+
+def test_library_payload_does_not_misclassify_project_id_as_file_id(browser_client: ChatGPTBrowserClient) -> None:
+    records = browser_client._extract_library_file_records_from_payload({
+        "id": "g-p-project123",
+        "filename": "release.zip",
+        "project_ids": [],
+        "type": "project_source",
+    })
+    assert records == []
+
+
+def test_upload_stream_ndjson_extracts_file_id_and_assigned_name(browser_client: ChatGPTBrowserClient) -> None:
+    body = "event: upload\n" + 'data: {"upload":{"file_id":"file_stream_123456","filename":"release(3).zip","project_ids":[]}}\n' + "data: [DONE]\n"
+    records = browser_client._extract_library_file_records_from_text(
+        body,
+        source_url="https://chatgpt.com/backend-api/files/process_upload_stream",
+    )
+    assert len(records) == 1
+    assert records[0]["file_id"] == "file_stream_123456"
+    assert records[0]["filename"] == "release(3).zip"
+    assert records[0]["project_references_known"] is True
+
+
+def test_library_reconciliation_blocks_unknown_reference_ownership(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    deleted = {"called": False}
+    unknown_record = {
+        "file_id": "file_unknown_123",
+        "filename": "release.zip",
+        "project_ids": [],
+        "project_references_known": False,
+        "deleted": False,
+    }
+    surfaces = [_library_surface([unknown_record]), _library_surface([])]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [unknown_record]
+
+    async def fake_delete(*_args, **_kwargs):
+        deleted["called"] = True
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "library_collision_ambiguous"
+    assert result["ambiguous_records"][0]["reason"] == "library_file_ownership_not_proven"
+    assert deleted["called"] is False
+
+
+def test_library_reconciliation_requires_exact_file_id(browser_client: ChatGPTBrowserClient) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    missing_id_record = {"file_id": "", "filename": "release.zip", "project_ids": [], "project_references_known": True, "deleted": False}
+    surfaces = [_library_surface([missing_id_record]), _library_surface([])]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [missing_id_record]
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "library_collision_ambiguous"
+    assert result["ambiguous_records"][0]["reason"] == "missing_file_id"
+
+
+def test_library_surface_waits_for_stable_delayed_records(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = _LibraryPage()
+    record = {
+        "file_id": "file_delayed_123",
+        "filename": "release.zip",
+        "project_ids": [],
+        "project_references_known": True,
+        "deleted": False,
+    }
+    snapshots = [[], [], [record], [record]]
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return snapshots.pop(0)
+
+    async def fake_empty(*_args, **_kwargs) -> bool:
+        return False
+
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._library_empty_state_visible = fake_empty  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name="release.zip",
+            label="test-delayed-library",
+            timeout_ms=2_000,
+            poll_ms=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["reason"] == "stable_library_snapshot"
+    assert result["family_records"] == [record]
+    assert len(result["observations"]) == 4
+
+
+def test_library_surface_zero_without_empty_state_is_not_authoritative(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class _TimedPage:
+        async def wait_for_timeout(self, milliseconds: int) -> None:
+            await asyncio.sleep(milliseconds / 1000)
+
+    page = _TimedPage()
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_empty(*_args, **_kwargs) -> bool:
+        return False
+
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._library_empty_state_visible = fake_empty  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name="release.zip",
+            label="test-not-authoritative",
+            timeout_ms=3,
+            poll_ms=1,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "library_surface_not_authoritative"
+    assert result["record_count"] == 0
+
+
+def test_library_reconciliation_accepts_file_referenced_only_by_target_project(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    active = {
+        "file_id": "file_target_123",
+        "filename": "release.zip",
+        "project_ids": ["g-p-current"],
+        "project_references_known": True,
+        "deleted": False,
+    }
+    deleted = {**active, "project_ids": [], "deleted": True}
+    surfaces = [
+        _library_surface([active]),
+        _library_surface([]),
+        _library_surface([active]),
+        _library_surface([deleted]),
+        _library_surface([]),
+        _library_surface([]),
+    ]
+    actions: list[tuple[str, bool]] = []
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_delete(_page, *, file_id: str, filename: str, delete_forever: bool):
+        actions.append((file_id, delete_forever))
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is True
+    assert actions == [("file_target_123", False), ("file_target_123", True)]
+
+
+def test_library_reconciliation_hard_deletes_preexisting_recently_deleted_collision(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+    deleted = {
+        "file_id": "file_deleted_123",
+        "filename": "release(4).zip",
+        "project_ids": [],
+        "project_references_known": True,
+        "deleted": True,
+    }
+    surfaces = [
+        _library_surface([]),
+        _library_surface([deleted]),
+        _library_surface([deleted]),
+        _library_surface([]),
+        _library_surface([]),
+    ]
+    actions: list[tuple[str, bool]] = []
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_delete(_page, *, file_id: str, filename: str, delete_forever: bool):
+        actions.append((file_id, delete_forever))
+        return {"ok": True}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    _install_library_surface_sequence(browser_client, surfaces)
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is True
+    assert actions == [("file_deleted_123", True)]
+    assert result["deleted_records"][0]["soft_delete"]["status"] == "already_in_recently_deleted"
+
+
+def test_library_delete_locator_never_falls_back_to_filename_only(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class _MissingIdLocator:
+        @property
+        def first(self):
+            return self
+
+        async def count(self) -> int:
+            return 0
+
+    class _Page:
+        def locator(self, _selector: str):
+            return _MissingIdLocator()
+
+        def get_by_text(self, *_args, **_kwargs):
+            raise AssertionError("filename-only Library deletion fallback must not be used")
+
+    result = asyncio.run(
+        browser_client._find_exact_library_file_locator(
+            _Page(),
+            file_id="file_exact_123456",
+            filename="release.zip",
+        )
+    )
+
+    assert result is None

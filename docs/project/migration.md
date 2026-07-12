@@ -1004,3 +1004,9 @@ Active repair slice: `v0.1.103.10.81 — separate candidate transport filename f
 
 `v0.1.103.10.81` keeps the strict all-all gate, sentinel normalization, authoritative Project Sources preflight/suffix rollback, and verified candidate-image reuse. It separates the unique ChatGPT attachment transport basename from the canonical repo+version release artifact, validates the transport ZIP's internal VERSION and integrity, materializes the canonical local copy, and uploads/adopts only that canonical identity.
 
+
+## v0.1.103.10.82 repair note
+
+Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip`.
+
+No command migration is required. `pbsa <file>` remains `promptbranch src add <file>`. The implementation now reconciles exact attributable Library backing files before a same-name re-upload and returns `library_collision_ambiguous` or `library_collision_not_cleared` instead of mutating when safe ownership cannot be proven.

@@ -2764,6 +2764,9 @@ def test_src_add_positional_file_delegates_as_file_source(monkeypatch, capsys, t
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
+        def browser_status(self):
+            return {"ok": True, "status": "available", "active_operation": None}
+
         def add_project_source(self, **kwargs):
             calls.update(kwargs)
             return {"ok": True, "action": "add"}
@@ -2791,6 +2794,9 @@ def test_src_add_no_queue_disables_service_profile_wait(monkeypatch, capsys, tmp
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
+        def browser_status(self):
+            return {"ok": True, "status": "available", "active_operation": None}
+
         def add_project_source(self, **kwargs):
             calls.update(kwargs)
             return {"ok": True, "action": "add"}
@@ -2813,6 +2819,9 @@ def test_main_project_source_add_file_normalizes_name_to_basename(monkeypatch, c
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
+
+        def browser_status(self):
+            return {"ok": True, "status": "available", "active_operation": None}
 
         def add_project_source(self, **kwargs):
             calls.update(kwargs)
@@ -12548,6 +12557,9 @@ def test_src_add_accepts_json_flag_after_subcommand(monkeypatch, capsys, tmp_pat
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
+        def browser_status(self):
+            return {"ok": True, "status": "available", "active_operation": None}
+
         def add_project_source(self, **kwargs):
             calls.update(kwargs)
             return {"ok": True, "action": "add", "status": "verified"}
@@ -12581,6 +12593,9 @@ def test_project_source_add_accepts_json_flag_after_subcommand(monkeypatch, caps
     class FakeServiceClient:
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
+
+        def browser_status(self):
+            return {"ok": True, "status": "available", "active_operation": None}
 
         def add_project_source(self, **kwargs):
             calls.update(kwargs)

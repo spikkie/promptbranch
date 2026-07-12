@@ -41,6 +41,7 @@ def test_promptbranch_aliases_contains_expected_shortcuts():
     assert "alias pbs='promptbranch state'" in text
     assert "alias pbtl='promptbranch task list'" in text
     assert "alias pbsl='promptbranch src list'" in text
+    assert "alias pbsa='promptbranch src add'" in text
     assert "alias pbsf='promptbranch src add --type file --file'" in text
     assert "alias pbsr='promptbranch src rm'" in text
     assert "alias pbss='promptbranch src sync'" in text

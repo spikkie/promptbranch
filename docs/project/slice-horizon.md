@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.81 — separate candidate transport filename from canonical Project Source filename
+v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files
 
 ## Recent repair context
 
