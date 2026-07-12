@@ -3111,7 +3111,7 @@ def test_release_control_installs_candidate_before_source_add_bootstrap() -> Non
 
     install_idx = script.index('# Reinstall local CLI from the release ZIP before any service-mediated source')
     ensure_idx = script.index('ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"')
-    source_add_idx = script.index('promptbranch src add "${artifact_zip}"')
+    source_add_idx = script.index('promptbranch src add "${canonical_artifact_zip}"')
     assert install_idx < ensure_idx < source_add_idx
     assert "'source_kind': 'pre_source_add_service_health'" in script
     assert "'source_kind': 'pre_source_add_docker_preflight'" in script
@@ -3809,3 +3809,121 @@ def test_release_1080_pre_source_build_uses_cache() -> None:
     pre_source = release[release.index("ensure_service_before_source_add()") : release.index("# Add release ZIP to ChatGPT Project Sources.")]
     assert "build --pull" in pre_source
     assert "build --no-cache --pull" not in pre_source
+
+
+def test_install_sh_rejects_transport_zip_internal_version_mismatch(tmp_path: Path) -> None:
+    import zipfile
+
+    transport = tmp_path / "promptbranch-transport-unique.zip"
+    with zipfile.ZipFile(transport, "w") as archive:
+        archive.writestr("VERSION", "v9.9.80\n")
+        archive.writestr("pyproject.toml", "[project]\nname='promptbranch'\nversion='9.9.80'\n")
+        archive.writestr(".gitignore", "*.zip\n")
+        archive.writestr(".not_to_zip", "*.zip\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
+
+    install = Path(__file__).resolve().parents[1] / "install.sh"
+    result = subprocess.run(
+        [str(install), "v9.9.81", str(transport)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "candidate transport ZIP VERSION mismatch" in result.stderr
+    assert "expected v9.9.81, got v9.9.80" in result.stderr
+
+
+def test_release_control_separates_transport_and_canonical_artifact_identity(tmp_path: Path) -> None:
+    import zipfile
+
+    repo = tmp_path / "chatgpt_claudecode_workflow-2"
+    repo.mkdir()
+    version = "v9.9.81"
+    transport = tmp_path / "downloads" / "unique-chatgpt-transport-b7c1de9f28.zip"
+    transport.parent.mkdir()
+    release_script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+
+    with zipfile.ZipFile(transport, "w") as archive:
+        archive.writestr("VERSION", f"{version}\n")
+        archive.writestr("pyproject.toml", "[project]\nname='promptbranch'\nversion='9.9.81'\n")
+        archive.writestr(".gitignore", "*.zip\n")
+        archive.writestr(".not_to_zip", "*.zip\n")
+        archive.writestr("chatgpt_claudecode_workflow_release_control.sh", release_script.read_text(encoding="utf-8"))
+        archive.writestr("fresh.txt", "transport payload\n")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"status\" ]]; then exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"rev-parse --short HEAD\" ]]; then echo abc1234; exit 0; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "git").chmod(0o755)
+    for command in ("promptbranch", "pipx"):
+        path = fake_bin / command
+        path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
+
+    canonical = f"chatgpt_claudecode_workflow-2_{version}.zip"
+    packager = tmp_path / "packager.sh"
+    packager.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - <<'INNERPY'\n"
+        "import zipfile\n"
+        f"with zipfile.ZipFile('{canonical}', 'w') as archive:\n"
+        f"    archive.writestr('VERSION', '{version}\\n')\n"
+        "    archive.writestr('fresh.txt', 'canonical package\\n')\n"
+        "INNERPY\n",
+        encoding="utf-8",
+    )
+    packager.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
+
+    result = subprocess.run(
+        [
+            str(release_script),
+            "--version", version,
+            "--install-from-zip", str(transport),
+            "--packager", str(packager),
+            "--skip-commit",
+            "--skip-source-add",
+            "--skip-install",
+            "--skip-chown",
+            "--skip-service",
+            "--skip-docker-logs",
+            "--skip-tests",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert f"candidate_transport_zip: {transport}" in result.stdout
+    assert f"canonical_artifact_zip:  {repo / canonical}" in result.stdout
+    assert f"artifact_zip:   {canonical}" in result.stdout
+    assert (repo / canonical).is_file()
+    assert not (repo / transport.name).exists()
+
+
+def test_release_control_uploads_only_canonical_artifact_path() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "artifact_prefix_from_zip_name" not in script
+    assert 'artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"' in script
+    assert 'candidate_transport_zip="${download_zip}"' in script
+    assert 'canonical_artifact_zip="${repo_root}/${artifact_zip}"' in script
+    assert 'cp "${download_zip}" "${canonical_artifact_zip}"' in script
+    assert 'promptbranch src add "${canonical_artifact_zip}"' in script
+    assert 'promptbranch src add "${candidate_transport_zip}"' not in script
+    assert 'pb artifact adopt "${artifact_zip}" --from-project-source' in script
+

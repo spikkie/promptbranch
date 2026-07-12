@@ -27,9 +27,10 @@ else
   repo_root="$(pwd)"
 fi
 repo_basename="$(basename "${repo_root}")"
-# Artifact identity is release-line specific. It can be pinned explicitly or
-# derived from --install-from-zip. Defaulting to the repo/worktree basename keeps
-# worktree artifact lines such as chatgpt_claudecode_workflow-2_vX.zip stable.
+# Canonical artifact identity is derived from the repository/release line, never
+# from the downloaded candidate transport filename. The transport ZIP may have a
+# unique ChatGPT attachment basename specifically to avoid backend filename
+# self-collision; the canonical Project Source name remains repo+version based.
 artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
 # Runtime/Docker identity is intentionally single-default per machine.
 # Installing from another branch/worktree replaces the active local runtime; it
@@ -283,17 +284,6 @@ normalize_version() {
   return 1
 }
 
-
-artifact_prefix_from_zip_name() {
-  local raw="$1"
-  raw="${raw##*/}"
-  raw="${raw%.zip}"
-  if [[ "${raw}" =~ ^(.+)[_-]v?[0-9]+(\.[0-9]+){2,}$ ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
-    return 0
-  fi
-  printf '%s\n' "${artifact_project_name}"
-}
 
 resolve_download_zip() {
   local ver_value="$1"
@@ -738,17 +728,24 @@ fi
 if [[ ${install_from_zip} -eq 1 ]]; then
   [[ -n "${install_zip}" ]] || fail "--install-from-zip did not provide a ZIP path"
   [[ -f "${install_zip}" ]] || fail "install ZIP not found: ${install_zip}"
-  artifact_project_name="$(artifact_prefix_from_zip_name "${install_zip}")"
-elif [[ -n "${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-}" ]]; then
-  artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME}"
-else
-  artifact_project_name="${repo_basename}"
+  install_zip="$(python3 - "${install_zip}" <<'INNERPY'
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).expanduser().resolve())
+INNERPY
+)"
 fi
+# The canonical artifact identity is never inferred from install_zip/download_zip.
+# PROMPTBRANCH_ARTIFACT_PROJECT_NAME remains an explicit release-line override;
+# otherwise the repository basename is authoritative.
+artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
 artifact_zip="${artifact_project_name}_${ver}.zip"
+canonical_artifact_zip="${repo_root}/${artifact_zip}"
 if [[ ${install_from_zip} -eq 0 ]]; then
   install_zip="$(resolve_download_zip "${ver}" "${downloads_dir}" 2>/dev/null || true)"
 fi
 download_zip="${install_zip}"
+candidate_transport_zip="${download_zip}"
 work_dir="${work_parent}/${artifact_project_name}_${ver}"
 release_log_root="${release_log_root_arg:-${repo_root}/.pb_profile/release_logs}"
 release_log_dir="${release_log_root}/${ver}"
@@ -1564,6 +1561,8 @@ printf '\n== Release control ==\n'
 printf 'repo_root:      %s\n' "${repo_root}"
 printf 'version:        %s\n' "${ver}"
 printf 'artifact_zip:   %s\n' "${artifact_zip}"
+printf 'candidate_transport_zip: %s\n' "${candidate_transport_zip}"
+printf 'canonical_artifact_zip:  %s\n' "${canonical_artifact_zip}"
 printf 'download_zip:   %s\n' "${download_zip}"
 printf 'repo_basename:  %s\n' "${repo_basename}"
 printf 'compose_name:   %s\n' "${compose_project_name}"
@@ -1623,7 +1622,12 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
-  cp "${download_zip}" "${repo_root}/${artifact_zip}"
+  # Preserve the downloaded candidate as transport evidence, then materialize
+  # the canonical repo+version path explicitly. Project Source upload and
+  # adoption use only this canonical identity.
+  cp "${download_zip}" "${canonical_artifact_zip}"
+  printf 'candidate_transport_zip: %s\n' "${candidate_transport_zip}"
+  printf 'canonical_artifact_zip:  %s\n' "${canonical_artifact_zip}"
   # ZIP archives produced by browser/download handoff may not reliably preserve
   # executable bits. Restore repository shell entrypoint permissions after
   # install before any service/test/finalizer step can evaluate them.
@@ -1634,7 +1638,8 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   if [[ -d "${repo_root}/docker" ]]; then
     find "${repo_root}/docker" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
   fi
-  echo "Installed ${download_zip} into ${repo_root}"
+  echo "Installed transport candidate ${candidate_transport_zip} into ${repo_root}"
+  echo "Canonical release artifact path: ${canonical_artifact_zip}"
 
   if [[ ${keep_workdir} -eq 0 ]]; then
     rm -rf "${work_dir}"
@@ -2299,7 +2304,10 @@ ensure_service_before_source_add() {
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
   ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
   pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
-  promptbranch src add "${artifact_zip}"
+  [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before Project Source add: ${canonical_artifact_zip}"
+  echo "candidate_transport_zip: ${candidate_transport_zip}"
+  echo "canonical_artifact_zip: ${canonical_artifact_zip}"
+  promptbranch src add "${canonical_artifact_zip}"
 else
   if [[ ${auth_only_validation} -eq 1 ]]; then
     echo "Source add skipped: --auth-only-validation"

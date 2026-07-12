@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
-active candidate version: v0.1.103.10.80
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
-next normal slice: v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip
+active candidate version: v0.1.103.10.81
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip
+next normal slice: v0.1.103.10.81 — separate candidate transport filename from canonical Project Source filename
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -26,7 +26,7 @@ The active rolling horizon is stored in `docs/project/plan-state.json` and expla
 
 ```text
 v0.1.102 — Correction-plan generation without file mutation
-v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
+v0.1.103.10.81 — separate candidate transport filename from canonical Project Source filename
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record

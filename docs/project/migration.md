@@ -994,3 +994,13 @@ Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image duri
 
 `v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
 
+## v0.1.103.10.81 repair note
+
+Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip`.
+
+Download transport artifact: `chatgpt_claudecode_workflow-2_transport_v0.1.103.10.81_b7c1de9f28.zip`.
+
+Active repair slice: `v0.1.103.10.81 — separate candidate transport filename from canonical Project Source filename`.
+
+`v0.1.103.10.81` keeps the strict all-all gate, sentinel normalization, authoritative Project Sources preflight/suffix rollback, and verified candidate-image reuse. It separates the unique ChatGPT attachment transport basename from the canonical repo+version release artifact, validates the transport ZIP's internal VERSION and integrity, materializes the canonical local copy, and uploads/adopts only that canonical identity.
+

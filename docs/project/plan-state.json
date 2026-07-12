@@ -1,10 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip",
-  "active_candidate_version": "v0.1.103.10.80",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_transport_v0.1.103.10.81_b7c1de9f28.zip",
+  "active_candidate_version": "v0.1.103.10.81",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.80 \u2014 reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache",
+  "active_slice": "v0.1.103.10.81 \u2014 separate candidate transport filename from canonical Project Source filename",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -101,9 +102,9 @@
   "last_completed_repair": "v0.1.103.10.71 \u2014 final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
   "last_updated": "2026-07-12",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip",
-  "next_normal_slice": "v0.1.103.10.80 \u2014 reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache",
-  "next_normal_version": "v0.1.103.10.80",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip",
+  "next_normal_slice": "v0.1.103.10.81 \u2014 separate candidate transport filename from canonical Project Source filename",
+  "next_normal_version": "v0.1.103.10.81",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -388,12 +389,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip",
       "release_mode": "repair",
-      "scope": "Reuse the already health/version-verified candidate image during pre-source-add auth bootstrap, preserve stable Docker dependency layers across release metadata changes, pin browser automation versions, and classify exhausted browser dependency transport downloads precisely.",
-      "slice": "v0.1.103.10.80 \u2014 reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache",
+      "scope": "Separate the downloadable candidate transport basename from the canonical repo+version Project Source artifact, verify internal VERSION/integrity, and ensure only the canonical local copy is uploaded and adopted.",
+      "slice": "v0.1.103.10.81 \u2014 separate candidate transport filename from canonical Project Source filename",
       "status": "active",
-      "version": "v0.1.103.10.80"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_transport_v0.1.103.10.81_b7c1de9f28.zip",
+      "version": "v0.1.103.10.81"
     },
     {
       "release_mode": "normal",
@@ -437,5 +439,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.80"
+  "updated_for": "v0.1.103.10.81"
 }

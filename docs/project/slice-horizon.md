@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
+v0.1.103.10.81 — separate candidate transport filename from canonical Project Source filename
 
 ## Recent repair context
 

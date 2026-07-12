@@ -9,7 +9,9 @@ Strict all-all Promptbranch release gate for a new ZIP release.
 
 Arguments:
   version   Canonical v-prefixed version, for example v0.1.103.10.69
-  zip-path  Optional candidate ZIP path. Defaults to:
+  zip-path  Optional candidate transport ZIP path. Its basename may be unique
+            and must not define the canonical Project Source identity.
+            Defaults to:
             $HOME/Downloads/chatgpt_claudecode_workflow-2_<version>.zip
 
 This command installs the candidate ZIP, runs product validation, runs explicit
@@ -43,6 +45,36 @@ if [[ ! -f "${zip}" ]]; then
   echo "ERROR: candidate ZIP not found: ${zip}" >&2
   exit 66
 fi
+
+# Validate the transport artifact before delegating to any script contained in
+# it. The transport basename is intentionally non-canonical; internal VERSION,
+# CRC integrity and the release-control entrypoint are authoritative.
+python3 - "${zip}" "${ver}" <<'PYVERIFY'
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1]).expanduser().resolve()
+expected_version = sys.argv[2]
+try:
+    with zipfile.ZipFile(zip_path) as archive:
+        bad_crc = archive.testzip()
+        if bad_crc:
+            raise SystemExit(f"ERROR: candidate transport ZIP CRC failure at {bad_crc}")
+        names = set(archive.namelist())
+        required = {"VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", "chatgpt_claudecode_workflow_release_control.sh"}
+        missing = sorted(required - names)
+        if missing:
+            raise SystemExit("ERROR: candidate transport ZIP missing required root entries: " + ", ".join(missing))
+        internal_version = archive.read("VERSION").decode("utf-8").strip()
+except zipfile.BadZipFile as exc:
+    raise SystemExit(f"ERROR: invalid candidate transport ZIP: {exc}") from exc
+if internal_version != expected_version:
+    raise SystemExit(
+        f"ERROR: candidate transport ZIP VERSION mismatch: expected {expected_version}, got {internal_version}"
+    )
+print(f"Candidate transport ZIP verified: {zip_path}")
+PYVERIFY
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${script_dir}"

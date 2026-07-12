@@ -635,3 +635,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-251 | verified candidate image reuse and stable Docker dependency cache | in_progress | Pre-source auth bootstrap uses `--no-recreate`; Docker metadata is consumed after pinned stable dependencies; transport retry exhaustion maps to `docker_browser_dependency_download_failed`. | v0.1.103.10.80 |
+
+## v0.1.103.10.81
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-252 | Candidate transport identity is separate from canonical Project Source identity | in_progress | Unique transport basename `chatgpt_claudecode_workflow-2_transport_v0.1.103.10.81_b7c1de9f28.zip` is accepted only after internal VERSION/CRC validation; canonical `chatgpt_claudecode_workflow-2_v0.1.103.10.81.zip` is derived from version and is the only source/adoption identity. | v0.1.103.10.81 |
+
