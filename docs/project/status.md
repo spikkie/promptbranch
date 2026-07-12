@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip
-active candidate version: v0.1.103.10.83
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip
-next normal slice: v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip
+active candidate version: v0.1.103.10.84
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip
+next normal slice: v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip
-release status: v0.1.103.10.83 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip
+release status: v0.1.103.10.84 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,13 +65,13 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103.10.83 as the active repair candidate from the last accepted/current operational baseline.
+Validate and package v0.1.103.10.84 as the active repair candidate from the last accepted/current operational baseline.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-./install.sh v0.1.103.10.83 "$HOME/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip"
+./install.sh v0.1.103.10.84 "$HOME/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip"
 ```
 
 ## v0.1.102 candidate status
@@ -1192,7 +1192,7 @@ Active repair slice: `v0.1.103.10.79 — require stable Project Sources prefligh
 
 Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip`.
 
-Active repair slice: `v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities`.
+Active repair slice: `v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity`.
 
 `v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
 

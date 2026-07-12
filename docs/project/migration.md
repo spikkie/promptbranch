@@ -1017,3 +1017,7 @@ Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip`.
 
 No command migration is required. `pbsa <file>` remains `promptbranch src add <file>`. Library empty/search results now require stable authoritative observations on the actual Library route; Recently deleted must be opened and authoritative. Upload responses retain bounded diagnostics and extract exact backing file IDs from JSON, NDJSON/SSE, headers, and redirect URLs. Missing suffix backing identity fails closed as `library_backing_file_identity_missing`.
 
+## v0.1.103.10.84 repair note
+
+Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip`. The repair retains the existing `pbsa <file> -> promptbranch src add <file>` command contract while changing only the internal file-source transaction classifier: fresh add, exact-source replacement, or proven suffix collision.
+

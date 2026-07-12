@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities
+v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity
 
 ## Recent repair context
 
@@ -17,7 +17,7 @@ v0.1.103.10.83 — make Library reconciliation authoritative and capture live up
 - v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 - v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
 - v0.1.103.10.82 — reconcile exact Library backing-file IDs for same-name Project Source overwrite
-- v0.1.103.10.83 — require authoritative Library surfaces and capture exact live upload file identities
+- v0.1.103.10.84 — restore normal fresh add, attempt non-destructive exact-source replacement, and reserve Library cleanup for proven suffix collisions
 
 ## Planned normal horizon after repair acceptance
 

@@ -655,3 +655,11 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 |---|---|---|---|---|
 | DOD-254 | Authoritative Library reconciliation and exact live upload identity capture | in_progress | Stable Library/Recently deleted authority, JSON/NDJSON/SSE/header file-ID capture, exact-ID suffix cleanup, missing-ID fail-closed status, direct/localhost release validation, and unchanged `pbsa` command surface. | v0.1.103.10.83 |
 
+## v0.1.103.10.84
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-255 | Fresh Project Source file add bypasses Library and Recently deleted | in_progress | Project Source regression tests and live release-control validation | v0.1.103.10.84 |
+| DOD-256 | Same-name overwrite uses exact-source replace/update when exposed and never falls back to live remove-and-reupload | in_progress | Replace capability diagnostics and live integration overwrite test | v0.1.103.10.84 |
+| DOD-257 | Library cleanup is invoked only after concrete suffix collision evidence | in_progress | Visible/backend suffix regression tests | v0.1.103.10.84 |
+

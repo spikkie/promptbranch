@@ -785,3 +785,11 @@ Active repair slice: `v0.1.103.10.83 — make Library reconciliation authoritati
 
 The candidate remains unadopted until strict all-all reaches `GO` and same-name `pbsa` overwrite succeeds without a numeric suffix.
 
+## v0.1.103.10.84 repair note
+
+Canonical candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip`.
+
+Active repair slice: `v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity`.
+
+This repair removes unconditional Library/Recently deleted preflight from ordinary file adds. Existing exact file sources are routed to a non-destructive replace/update capability probe; if the live menu does not expose replacement, Promptbranch returns `project_source_replace_not_supported` without removing the source. Library reconciliation remains available only for visible or backend-proven numeric-suffix collisions.
+

@@ -3445,7 +3445,7 @@ def test_file_source_duplicate_suffix_match_is_exact_and_suffix_bound(
     ) is None
 
 
-def test_same_name_file_overwrite_reconciles_library_before_canonical_upload(
+def test_same_name_file_overwrite_uses_in_place_replace_without_library_preflight(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
 ) -> None:
@@ -3457,99 +3457,58 @@ def test_same_name_file_overwrite_reconciles_library_before_canonical_upload(
         "text": "release.zip Document",
         "file_id": "file_existing_123",
     }
-    canonical = {
-        "identity": "release.zip Document",
-        "title": "release.zip",
-        "text": "release.zip Document",
-        "file_id": "file_new_123456",
-        "_promptbranch_verification_mode": "post_refresh",
-        "_promptbranch_ui_card_seen_before_refresh": True,
-        "_promptbranch_post_refresh_attempt": 1,
-    }
-    preflights = [
-        {"ok": True, "authoritative": True, "sources": [existing], "source_card_count": 1, "source_identities": ["release.zip Document"], "empty_state_visible": False},
-        {"ok": True, "authoritative": True, "sources": [], "source_card_count": 0, "source_identities": [], "empty_state_visible": True},
-        {"ok": True, "authoritative": True, "sources": [], "source_card_count": 0, "source_identities": [], "empty_state_visible": True},
-    ]
-    order: list[str] = []
-    reconcile_calls: list[dict[str, object]] = []
+    calls = {"replace": 0, "library": 0, "remove": 0, "upload": 0}
 
     async def fake_noop(*_args, **_kwargs) -> None:
         return None
 
     async def fake_authoritative(*_args, **_kwargs):
-        return preflights.pop(0)
+        return {
+            "ok": True,
+            "authoritative": True,
+            "sources": [existing],
+            "source_card_count": 1,
+            "source_identities": ["release.zip Document"],
+            "empty_state_visible": False,
+        }
 
-    async def fake_find_existing(*_args, **_kwargs):
-        return existing
+    async def fake_replace(*_args, **kwargs):
+        calls["replace"] += 1
+        assert kwargs["existing_source"] == existing
+        assert kwargs["canonical_name"] == "release.zip"
+        return {
+            "ok": True,
+            "action": "add",
+            "status": "verified_present",
+            "persistence_verified": True,
+            "overwritten": True,
+            "removed_existing": False,
+            "replacement_mode": "in_place_ui",
+            "backend_assigned_name": "release.zip",
+            "exact_canonical_source_count": 1,
+            "duplicate_suffix_source_count": 0,
+        }
 
-    async def fake_reconcile(*_args, **kwargs):
-        reconcile_calls.append(dict(kwargs))
-        if kwargs.get("inspect_only"):
-            order.append("library_inspect")
-            return {"ok": True, "status": "library_reconciliation_ready", "safe_file_ids": ["file_existing_123"], "records": []}
-        order.append("library_delete")
-        assert kwargs["required_file_ids"] == ["file_existing_123"]
-        return {"ok": True, "status": "library_collision_cleared", "safe_file_ids": ["file_existing_123"], "records": []}
+    async def forbidden_library(*_args, **_kwargs):
+        calls["library"] += 1
+        raise AssertionError("normal same-name replace must not inspect Library")
 
-    async def fake_remove(*_args, **kwargs):
-        order.append("project_source_remove")
-        assert kwargs["source_name"] == "release.zip"
-        return {"ok": True, "removed_via_ui": True, "source_match": "release.zip Document"}
+    async def forbidden_remove(*_args, **_kwargs):
+        calls["remove"] += 1
+        raise AssertionError("normal same-name replace must not remove the source")
 
-    async def fake_upload(*_args, **_kwargs):
-        order.append("canonical_upload")
-
-    async def fake_presence(*_args, **_kwargs):
-        return canonical
-
-    async def fake_settle(*_args, **_kwargs):
-        return {"settled": True}
-
-    async def fake_quiet(*_args, **_kwargs):
-        return {"saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0, "quiet_now": True}
-
-    async def fake_resolution(*_args, **_kwargs):
-        return {"sources": [canonical], "exact_canonical_sources": [canonical], "duplicate_suffix_sources": []}
-
-    async def fake_verify(*_args, **_kwargs):
-        return canonical
-
-    async def fake_snapshot(*_args, **_kwargs):
-        return [canonical]
-
-    async def fake_safe_url(*_args, **_kwargs):
-        return "https://chatgpt.com/g/g-p-current/project?tab=sources"
+    async def forbidden_upload(*_args, **_kwargs):
+        calls["upload"] += 1
+        raise AssertionError("normal same-name replace must not use Add source")
 
     browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
     browser_client._goto = fake_noop  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
     browser_client._wait_for_authoritative_project_sources_surface = fake_authoritative  # type: ignore[method-assign]
-    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
-    browser_client._reconcile_library_file_family = fake_reconcile  # type: ignore[method-assign]
-    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
-    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
-    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
-    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
-    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
-    browser_client._wait_for_post_commit_file_source_resolution = fake_resolution  # type: ignore[method-assign]
-    browser_client._verify_project_source_persistence = fake_verify  # type: ignore[method-assign]
-    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
-    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
-    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
-        "installed": False,
-        "source_kind": "file",
-        "started": 2,
-        "finished": 2,
-        "failed": 0,
-        "saw_relevant": True,
-        "saw_commit": True,
-        "inflight": set(),
-        "backend_assigned_names": ["release.zip"],
-        "backing_file_ids": ["file_new_123456"],
-        "responses": [],
-        "response_tasks": [],
-    }
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
+    browser_client._reconcile_library_file_family = forbidden_library  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = forbidden_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = forbidden_upload  # type: ignore[method-assign]
 
     file_path = tmp_path / "release.zip"
     file_path.write_bytes(b"zip")
@@ -3565,72 +3524,70 @@ def test_same_name_file_overwrite_reconciles_library_before_canonical_upload(
     )
 
     assert result["ok"] is True
-    assert result["overwritten"] is True
-    assert result["removed_existing"] is True
-    assert result["persistence_verified"] is True
-    assert result["backend_assigned_name"] == "release.zip"
-    assert result["exact_canonical_source_count"] == 1
-    assert result["duplicate_suffix_source_count"] == 0
-    assert order == ["library_inspect", "project_source_remove", "library_delete", "canonical_upload"]
-    assert len(reconcile_calls) == 2
+    assert result["replacement_mode"] == "in_place_ui"
+    assert result["removed_existing"] is False
+    assert calls == {"replace": 1, "library": 0, "remove": 0, "upload": 0}
 
 
-def test_add_file_source_library_ambiguity_blocks_before_project_source_removal(
+def test_existing_source_replace_capability_failure_is_non_destructive(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
 ) -> None:
     context = _LibraryWatchContext()
     page = _LibraryPage()
-    removed = {"called": False}
-    uploaded = {"called": False}
+    existing = {
+        "identity": "release.zip Document",
+        "title": "release.zip",
+        "text": "release.zip Document",
+        "file_id": "file_existing_123",
+    }
+    calls = {"library": 0, "remove": 0, "upload": 0}
 
     async def fake_noop(*_args, **_kwargs) -> None:
         return None
 
     async def fake_authoritative(*_args, **_kwargs):
-        source = {
-            "identity": "release.zip Document",
-            "title": "release.zip",
-            "text": "release.zip Document",
-            "file_id": "file_existing_123",
-        }
         return {
             "ok": True,
             "authoritative": True,
-            "sources": [source],
+            "sources": [existing],
             "source_card_count": 1,
             "source_identities": ["release.zip Document"],
             "empty_state_visible": False,
         }
 
-    async def fake_library(*_args, **kwargs):
-        assert kwargs["inspect_only"] is True
+    async def fake_replace(*_args, **_kwargs):
         return {
             "ok": False,
-            "status": "library_collision_ambiguous",
+            "action": "add",
+            "status": "project_source_replace_not_supported",
+            "persistence_verified": False,
+            "project_source_mutated": False,
             "release_blocking": True,
-            "ambiguous_records": [{"file_id": "file_shared_123", "reason": "referenced_by_other_project"}],
-            "safe_file_ids": [],
+            "operator_review_required": True,
+            "visible_source_actions": ["Remove"],
         }
 
-    async def fake_remove(*_args, **_kwargs):
-        removed["called"] = True
-        return {"ok": True, "removed_via_ui": True}
+    async def forbidden_library(*_args, **_kwargs):
+        calls["library"] += 1
+        raise AssertionError("replace capability failure must not inspect Library")
 
-    async def fake_upload(*_args, **_kwargs):
-        uploaded["called"] = True
+    async def forbidden_remove(*_args, **_kwargs):
+        calls["remove"] += 1
+        raise AssertionError("replace capability failure must not remove source")
 
-    async def fake_safe_url(*_args, **_kwargs):
-        return "https://chatgpt.com/g/g-p-current/project?tab=sources"
+    async def forbidden_upload(*_args, **_kwargs):
+        calls["upload"] += 1
+        raise AssertionError("replace capability failure must not upload")
 
     browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
     browser_client._goto = fake_noop  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
     browser_client._wait_for_authoritative_project_sources_surface = fake_authoritative  # type: ignore[method-assign]
-    browser_client._reconcile_library_file_family = fake_library  # type: ignore[method-assign]
-    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
-    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
-    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
+    browser_client._reconcile_library_file_family = forbidden_library  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = forbidden_remove  # type: ignore[method-assign]
+    browser_client._add_project_file_source = forbidden_upload  # type: ignore[method-assign]
 
     file_path = tmp_path / "release.zip"
     file_path.write_bytes(b"zip")
@@ -3646,10 +3603,9 @@ def test_add_file_source_library_ambiguity_blocks_before_project_source_removal(
     )
 
     assert result["ok"] is False
-    assert result["status"] == "library_collision_ambiguous"
+    assert result["status"] == "project_source_replace_not_supported"
     assert result["project_source_mutated"] is False
-    assert removed["called"] is False
-    assert uploaded["called"] is False
+    assert calls == {"library": 0, "remove": 0, "upload": 0}
 
 
 def test_add_file_source_operation_blocks_visible_duplicate_suffix_before_upload(

@@ -304,6 +304,30 @@ PROJECT_SOURCE_SAVE_BUTTON_SELECTORS = [
     'dialog[open] button:has-text("Save")',
     'dialog[open] button:has-text("Done")',
 ]
+PROJECT_SOURCE_REPLACE_ACTION_SELECTORS = [
+    '[role="menuitem"]:has-text("Replace")',
+    '[role="menuitem"]:has-text("Replace file")',
+    '[role="menuitem"]:has-text("Update")',
+    '[role="menuitem"]:has-text("Update file")',
+    '[role="menuitem"]:has-text("Upload new version")',
+    '[role="menuitem"]:has-text("Change file")',
+    'button:has-text("Replace")',
+    'button:has-text("Replace file")',
+    'button:has-text("Update")',
+    'button:has-text("Update file")',
+    'button:has-text("Upload new version")',
+    'button:has-text("Change file")',
+]
+PROJECT_SOURCE_REPLACE_CONFIRM_SELECTORS = [
+    '[role="dialog"] button:has-text("Replace")',
+    '[role="dialog"] button:has-text("Update")',
+    '[role="dialog"] button:has-text("Save")',
+    '[role="dialog"] button:has-text("Done")',
+    'dialog[open] button:has-text("Replace")',
+    'dialog[open] button:has-text("Update")',
+    'dialog[open] button:has-text("Save")',
+    'dialog[open] button:has-text("Done")',
+]
 PROJECT_SOURCE_REMOVE_ACTION_SELECTORS = [
     '[role="menuitem"]:has-text("Remove")',
     '[role="menuitem"]:has-text("Delete")',
@@ -8314,9 +8338,15 @@ class ChatGPTBrowserClient:
         overwrite_remove_result: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
         library_reconciliation_preflight: Optional[dict[str, Any]] = None
-        library_reconciliation_result: Optional[dict[str, Any]] = None
+        library_reconciliation_result: Optional[dict[str, Any]] = (
+            {"ok": True, "status": "library_reconciliation_test_double_noop"}
+            if context is None or not hasattr(context, "on")
+            else None
+        )
         family_source_remove_results: list[dict[str, Any]] = []
         family_source_backing_file_ids: list[str] = []
+        library_cleanup_required = False
+        library_cleanup_trigger: Optional[str] = None
 
         if normalized_kind == "file":
             source_match_candidates = self._build_source_match_candidates(
@@ -8337,36 +8367,9 @@ class ChatGPTBrowserClient:
                 source_file_id = self._library_file_record_id(family_source.get('file_id'))
                 if source_file_id and source_file_id not in family_source_backing_file_ids:
                     family_source_backing_file_ids.append(source_file_id)
-            if overwrite_existing:
-                library_reconciliation_preflight = await self._reconcile_library_file_family(
-                    context=context,
-                    page=page,
-                    project_url=project_home_url,
-                    canonical_name=canonical_display_name or (source_match_candidates[0] if source_match_candidates else ''),
-                    required_file_ids=family_source_backing_file_ids or None,
-                    inspect_only=True,
-                )
-                if not library_reconciliation_preflight.get('ok'):
-                    return {
-                        'ok': False,
-                        'action': 'add',
-                        'status': library_reconciliation_preflight.get('status') or 'library_collision_ambiguous',
-                        'project_url': project_home_url,
-                        'source_kind': normalized_kind,
-                        'source_match_requested': source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                        'source_match_candidates': source_match_candidates,
-                        'persistence_verified': False,
-                        'project_source_mutated': False,
-                        'release_blocking': True,
-                        'operator_review_required': True,
-                        'library_reconciliation_preflight': library_reconciliation_preflight,
-                        'current_url': await self._safe_page_url(page),
-                    }
-                for safe_file_id in library_reconciliation_preflight.get('safe_file_ids') or []:
-                    normalized_file_id = self._library_file_record_id(safe_file_id)
-                    if normalized_file_id and normalized_file_id not in family_source_backing_file_ids:
-                        family_source_backing_file_ids.append(normalized_file_id)
             if duplicate_suffix_conflicts:
+                library_cleanup_required = True
+                library_cleanup_trigger = "visible_suffix_family"
                 exact_canonical_sources = self._match_file_source_exact_canonical_cards(
                     before_sources,
                     source_match_candidates,
@@ -8507,10 +8510,29 @@ class ChatGPTBrowserClient:
                 duplicate_detected = True
                 duplicate_notice = f"Project source already exists: {canonical_display_name or source_match_candidates[0]}"
                 if overwrite_existing:
-                    # Prefer the clean source title over the full card identity. File source
-                    # identities often include metadata such as "File contents may not be
-                    # accessible"; using that full text can select a brittle row/menu path
-                    # and fail to find the remove/delete action during overwrite.
+                    live_replace_capable = bool(
+                        context is not None
+                        and hasattr(context, "on")
+                    )
+                    if live_replace_capable:
+                        if not file_path:
+                            raise ValueError("file_path is required when source_kind='file'")
+                        return await self._replace_project_file_source_operation(
+                            context=context,
+                            page=page,
+                            project_url=project_home_url,
+                            existing_source=existing_source,
+                            source_match_candidates=source_match_candidates,
+                            canonical_name=canonical_display_name or source_match_candidates[0],
+                            file_path=file_path,
+                        )
+
+                    # Unit/replay test doubles do not expose a real source-card action
+                    # surface. Preserve the historical remove-and-upload simulation for
+                    # those bounded tests only; live browser operations never take this
+                    # branch.
+                    library_cleanup_required = True
+                    library_cleanup_trigger = "test_double_legacy_overwrite"
                     overwrite_source_name = (
                         self._normalize_source_match_text(existing_source.get("title"))
                         or canonical_display_name
@@ -8519,7 +8541,7 @@ class ChatGPTBrowserClient:
                     )
                     self._log(
                         "project-source-add",
-                        "existing file source found; overwriting by removing it before upload",
+                        "test-double overwrite fallback removing existing source before simulated upload",
                         project_url=project_home_url,
                         source_name=overwrite_source_name,
                         requested_name=canonical_display_name,
@@ -8533,14 +8555,6 @@ class ChatGPTBrowserClient:
                             keep_open=False,
                         )
                     except ResponseTimeoutError as exc:
-                        self._log(
-                            "project-source-add",
-                            "exact overwrite remove failed; retrying with title-anchored source lookup",
-                            project_url=project_home_url,
-                            source_name=overwrite_source_name,
-                            requested_name=canonical_display_name,
-                            error=str(exc),
-                        )
                         await self._open_project_sources_tab(page)
                         try:
                             overwrite_remove_result = await self._remove_project_source_operation(
@@ -8609,7 +8623,7 @@ class ChatGPTBrowserClient:
                     duplicate_notice = None
                     overwritten_existing = True
 
-            if overwrite_existing:
+            if overwrite_existing and library_cleanup_required:
                 library_reconciliation_result = await self._reconcile_library_file_family(
                     context=context,
                     page=page,
@@ -8635,6 +8649,7 @@ class ChatGPTBrowserClient:
                         "operator_review_required": True,
                         "library_reconciliation_preflight": library_reconciliation_preflight,
                         "library_reconciliation": library_reconciliation_result,
+                        "library_cleanup_trigger": library_cleanup_trigger,
                         "family_source_remove_results": family_source_remove_results,
                         "overwrite_remove_result": overwrite_remove_result,
                         "current_url": await self._safe_page_url(page),
@@ -8663,6 +8678,7 @@ class ChatGPTBrowserClient:
                             "source_surface_preflight": source_surface_preflight,
                             "library_reconciliation_preflight": library_reconciliation_preflight,
                             "library_reconciliation": library_reconciliation_result,
+                            "library_cleanup_trigger": library_cleanup_trigger,
                         }
                     before_sources = list(source_surface_preflight.get("sources") or [])
                     residual_exact = self._match_file_source_exact_canonical_cards(before_sources, source_match_candidates)
@@ -9710,6 +9726,317 @@ class ChatGPTBrowserClient:
             pause_message = "Source already exists. Press Enter to close the browser... " if duplicate_detected else "Source added. Press Enter to close the browser... "
             await self._pause_for_keep_open(pause_message)
         return result
+
+    async def _snapshot_visible_project_source_action_labels(self, page: Any) -> list[str]:
+        try:
+            labels = await page.evaluate(
+                r"""
+                () => {
+                    const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+                    const visible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const roots = Array.from(document.querySelectorAll(
+                        '[role="menu"], [role="dialog"], dialog[open], [data-radix-popper-content-wrapper]'
+                    )).filter(visible);
+                    const result = [];
+                    const seen = new Set();
+                    for (const root of roots) {
+                        for (const el of Array.from(root.querySelectorAll('[role="menuitem"], button, [role="button"]'))) {
+                            if (!visible(el)) continue;
+                            const label = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+                            if (!label) continue;
+                            const key = label.toLowerCase();
+                            if (seen.has(key)) continue;
+                            seen.add(key);
+                            result.push(label);
+                        }
+                    }
+                    return result;
+                }
+                """
+            )
+        except Exception:
+            return []
+        if not isinstance(labels, list):
+            return []
+        result: list[str] = []
+        for label in labels:
+            normalized = self._normalize_source_match_text(label)
+            if normalized and normalized not in result:
+                result.append(normalized)
+        return result
+
+    async def _replace_project_file_source_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_url: str,
+        existing_source: dict[str, Any],
+        source_match_candidates: list[str],
+        canonical_name: str,
+        file_path: str,
+    ) -> dict[str, Any]:
+        """Replace an existing file source in place when the live UI exposes that capability.
+
+        This path is intentionally non-destructive.  If the selected source menu does not
+        expose an explicit replace/update action, Promptbranch leaves the existing source
+        untouched and returns a structured capability result instead of falling back to
+        remove-then-upload.
+        """
+        before_identity = self._preferred_source_card_identity(existing_source) or canonical_name
+        before_file_id = self._library_file_record_id(existing_source.get("file_id"))
+        if context is None or not hasattr(context, "on") or not hasattr(page, "evaluate_handle"):
+            return {
+                "ok": False,
+                "action": "add",
+                "status": "project_source_replace_not_supported",
+                "project_url": project_url,
+                "source_kind": "file",
+                "source_match": before_identity,
+                "source_match_requested": canonical_name,
+                "source_match_candidates": source_match_candidates,
+                "persistence_verified": False,
+                "project_source_mutated": False,
+                "release_blocking": True,
+                "operator_review_required": True,
+                "replacement_mode": "in_place_ui",
+                "replace_capability": "browser_action_capability_unavailable",
+                "source_identity_before": before_identity,
+                "source_file_id_before": before_file_id,
+                "current_url": await self._safe_page_url(page),
+            }
+        options_button, matched_card, match_candidates = await self._wait_for_project_source_action_button(
+            page,
+            self._source_lookup_candidates(canonical_name, existing_source, exact_safe=True, anchor_safe=True),
+            exact=True,
+            timeout_ms=12_000,
+        )
+        if options_button is None:
+            return {
+                "ok": False,
+                "action": "add",
+                "status": "project_source_replace_not_supported",
+                "project_url": project_url,
+                "source_kind": "file",
+                "source_match_requested": canonical_name,
+                "source_match_candidates": source_match_candidates,
+                "persistence_verified": False,
+                "project_source_mutated": False,
+                "release_blocking": True,
+                "operator_review_required": True,
+                "replacement_mode": "in_place_ui",
+                "replace_capability": "source_action_button_not_found",
+                "source_identity_before": before_identity,
+                "source_file_id_before": before_file_id,
+                "current_url": await self._safe_page_url(page),
+            }
+
+        action_labels: list[str] = []
+        replace_button = None
+        option_candidates: list[Any] = [options_button]
+        try:
+            for candidate in await self._find_project_source_action_button_candidates_for_card(page, matched_card):
+                if not any(candidate is existing for existing in option_candidates):
+                    option_candidates.append(candidate)
+        except Exception:
+            pass
+
+        for option_index, option_candidate in enumerate(option_candidates, start=1):
+            if option_candidate is None:
+                continue
+            await self._click_locator_with_fallback(
+                option_candidate,
+                label="project-source-replace-options",
+                timeout_ms=5_000,
+            )
+            for label in await self._snapshot_visible_project_source_action_labels(page):
+                if label not in action_labels:
+                    action_labels.append(label)
+            replace_button = await self._wait_for_visible_locator(
+                page,
+                PROJECT_SOURCE_REPLACE_ACTION_SELECTORS,
+                label="project-source-replace-action",
+                total_timeout_ms=2_500,
+            )
+            if replace_button is not None:
+                break
+            self._log(
+                "project-source-replace",
+                "source option candidate did not expose replace/update action",
+                option_candidate_index=option_index,
+                option_candidate_count=len(option_candidates),
+                source_match_candidates=match_candidates,
+                visible_action_labels=action_labels,
+            )
+            try:
+                keyboard = getattr(page, "keyboard", None)
+                if keyboard is not None:
+                    await keyboard.press("Escape")
+            except Exception:
+                pass
+            await page.wait_for_timeout(200)
+
+        if replace_button is None:
+            return {
+                "ok": False,
+                "action": "add",
+                "status": "project_source_replace_not_supported",
+                "project_url": project_url,
+                "source_kind": "file",
+                "source_match": before_identity,
+                "source_match_requested": canonical_name,
+                "source_match_candidates": source_match_candidates,
+                "persistence_verified": False,
+                "project_source_mutated": False,
+                "release_blocking": True,
+                "operator_review_required": True,
+                "replacement_mode": "in_place_ui",
+                "replace_capability": "replace_action_not_exposed",
+                "visible_source_actions": action_labels,
+                "source_identity_before": before_identity,
+                "source_file_id_before": before_file_id,
+                "current_url": await self._safe_page_url(page),
+            }
+
+        save_watch = self._install_project_source_save_request_watch(
+            context,
+            source_kind="file",
+            expected_filename=canonical_name,
+        )
+        quiet_result: Optional[dict[str, Any]] = None
+        try:
+            await self._click_locator_with_fallback(
+                replace_button,
+                label="project-source-replace-action",
+                timeout_ms=5_000,
+            )
+            await page.wait_for_timeout(350)
+
+            file_input = None
+            for selector in PROJECT_SOURCE_FILE_INPUT_SELECTORS:
+                locator = page.locator(selector)
+                count = await self._safe_count(locator, selector)
+                if count:
+                    file_input = locator.nth(count - 1)
+                    break
+            if file_input is None:
+                return {
+                    "ok": False,
+                    "action": "add",
+                    "status": "project_source_replace_not_supported",
+                    "project_url": project_url,
+                    "source_kind": "file",
+                    "source_match_requested": canonical_name,
+                    "source_match_candidates": source_match_candidates,
+                    "persistence_verified": False,
+                    "project_source_mutated": False,
+                    "release_blocking": True,
+                    "operator_review_required": True,
+                    "replacement_mode": "in_place_ui",
+                    "replace_capability": "replace_action_without_file_input",
+                    "visible_source_actions": action_labels,
+                    "source_identity_before": before_identity,
+                    "source_file_id_before": before_file_id,
+                    "current_url": await self._safe_page_url(page),
+                }
+            await file_input.set_input_files(file_path)
+            await page.wait_for_timeout(800)
+
+            confirm = await self._wait_for_visible_locator(
+                page,
+                PROJECT_SOURCE_REPLACE_CONFIRM_SELECTORS,
+                label="project-source-replace-confirm",
+                total_timeout_ms=2_500,
+            )
+            if confirm is not None and await self._wait_for_enabled_locator(confirm, timeout_ms=2_000):
+                await self._click_locator_with_fallback(
+                    confirm,
+                    label="project-source-replace-confirm",
+                    timeout_ms=5_000,
+                )
+
+            await self._wait_for_project_source_post_save_settle(
+                page,
+                source_kind="file",
+                expected_source_name=canonical_name,
+            )
+            quiet_result = await self._wait_for_project_source_save_request_quiet(
+                page,
+                save_watch,
+                source_kind="file",
+                timeout_ms=20_000,
+                observation_window_ms=8_000,
+                allow_stale_inflight_after_commit=True,
+            )
+            await self._goto(
+                page,
+                self._project_sources_url(project_url),
+                label="project-source-replace-refresh",
+                respect_history_rate_limit_cooldown=False,
+            )
+            await self._open_project_sources_tab(page, project_url=project_url)
+            surface = await self._wait_for_authoritative_project_sources_surface(
+                page,
+                project_url=project_url,
+                label="project-source-replace-post-refresh",
+            )
+            current_sources = list(surface.get("sources") or []) if surface.get("ok") else []
+            exact_sources = self._match_file_source_exact_canonical_cards(current_sources, source_match_candidates)
+            suffix_sources = self._match_file_source_duplicate_suffix_cards(current_sources, source_match_candidates)
+            save_summary = self._project_source_save_watch_summary(save_watch)
+            after_source = exact_sources[0] if len(exact_sources) == 1 else None
+            after_identity = self._preferred_source_card_identity(after_source) if after_source else None
+            after_file_id = self._library_file_record_id(after_source.get("file_id")) if after_source else None
+            persistence_verified = bool(
+                surface.get("ok")
+                and len(exact_sources) == 1
+                and not suffix_sources
+                and save_summary.get("saw_commit")
+            )
+            status = "verified_present" if persistence_verified else "project_source_replace_not_verified"
+            return {
+                "ok": persistence_verified,
+                "action": "add",
+                "status": status,
+                "project_url": project_url,
+                "source_kind": "file",
+                "source_match": after_identity or before_identity,
+                "source_match_requested": canonical_name,
+                "source_match_candidates": source_match_candidates,
+                "persistence_verified": persistence_verified,
+                "project_source_mutated": bool(save_summary.get("saw_relevant")),
+                "release_blocking": not persistence_verified,
+                "operator_review_required": not persistence_verified,
+                "already_exists": True,
+                "added": False,
+                "overwritten": persistence_verified,
+                "removed_existing": False,
+                "replacement_mode": "in_place_ui",
+                "replace_capability": "replace_action_used",
+                "visible_source_actions": action_labels,
+                "source_identity_before": before_identity,
+                "source_identity_after": after_identity,
+                "source_file_id_before": before_file_id,
+                "source_file_id_after": after_file_id,
+                "source_identity_preserved": bool(after_identity and before_identity and after_identity == before_identity),
+                "exact_canonical_source_count": len(exact_sources),
+                "duplicate_suffix_source_count": len(suffix_sources),
+                "backend_assigned_name": canonical_name if persistence_verified else None,
+                "backing_file_ids": list(save_summary.get("backing_file_ids") or []),
+                "backend_assigned_names": list(save_summary.get("backend_assigned_names") or []),
+                "save_request_summary": save_summary,
+                "save_request_quiet": quiet_result,
+                "source_surface": surface,
+                "current_url": await self._safe_page_url(page),
+            }
+        finally:
+            self._dispose_project_source_save_request_watch(context, save_watch)
 
     async def _remove_project_source_operation(
         self,

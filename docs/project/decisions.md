@@ -792,3 +792,7 @@ Decision: keep `pbsa <file>` unchanged and replace the obsolete assumption that 
 
 Decision: Library and Recently deleted are separate release-blocking evidence surfaces. Empty results require the configured stable observation count on the actual loaded route. An unavailable Recently deleted surface is not equivalent to empty. File upload responses retain bounded, redacted diagnostics and must provide an exact backing file ID before suffix cleanup is considered reconcilable.
 
+## v0.1.103.10.84 — source replacement before Library cleanup
+
+Decision: normal fresh file adds must not inspect Library or Recently deleted. Same-name overwrite must first use an explicit replace/update action bound to the exact existing Project Source identity. Remove-and-reupload is not a live fallback. Library cleanup is evidence-driven and may run only after a visible suffix family or a backend-assigned suffix proves a collision.
+
