@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip
-active candidate version: v0.1.103.10.78
-next normal slice: v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip
+active candidate version: v0.1.103.10.79
+next normal slice: v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -740,3 +740,12 @@ Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
 This repair requires exact canonical file names for normal `pb src add` / `pbsa`, blocks visible suffix-renamed collisions before upload, and reports backend-created suffixes as `backend_renamed_source` instead of accepting them as success.
+
+
+## v0.1.103.10.79 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip`.
+
+Active repair slice: `v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names`.
+
+`v0.1.103.10.79` keeps the strict all-all install gate, release-live sentinel normalization, and exact canonical Project Source naming. Before a file upload, it requires either an explicit empty Project Sources state or multiple stable non-empty snapshots. Zero cards without an explicit empty state are classified as `source_preflight_not_authoritative` and no upload occurs. After a committed upload, a newly visible suffix-renamed source is classified immediately as `backend_renamed_source`, rolled back when uniquely identifiable, and returned before the exact-name persistence retry loop. Source-add read timeouts include the configured timeout and active-operation details.

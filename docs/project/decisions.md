@@ -759,3 +759,8 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.78 repair decision
 
 `v0.1.103.10.78` keeps sentinel normalization and product-clean `LIVE_BLOCKED` classification. The decision is to require exact canonical filenames for normal `pb src add` / `pbsa`: visible suffix-renamed sources such as `name(1).zip` block before upload, and backend-created suffixes after upload return `backend_renamed_source` instead of success.
+
+
+## v0.1.103.10.79 repair decision
+
+`v0.1.103.10.79` preserves exact canonical file-source semantics and adds an authoritative surface gate. A zero-card snapshot without an explicit empty-state marker is a loading/unknown state, not proof that the project is empty. Backend suffix allocation is detected immediately after a committed upload and never accepted as success.

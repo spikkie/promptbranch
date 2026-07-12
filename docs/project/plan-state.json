@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
-  "active_candidate_version": "v0.1.103.10.78",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
+  "active_candidate_version": "v0.1.103.10.79",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
+  "active_slice": "v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -100,10 +100,10 @@
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
-  "last_updated": "2026-07-08",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
-  "next_normal_slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
-  "next_normal_version": "v0.1.103.10.78",
+  "last_updated": "2026-07-12",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
+  "next_normal_slice": "v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names",
+  "next_normal_version": "v0.1.103.10.79",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -324,6 +324,14 @@
       "slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
       "status": "candidate_built",
       "version": "v0.1.103.10.53"
+    },
+    {
+      "version": "v0.1.103.10.79",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names",
+      "status": "candidate",
+      "summary": "Requires stable authoritative Project Sources preflight, treats zero cards without explicit empty state as not ready, detects backend-assigned suffix names immediately after commit, rolls them back before persistence retries, and returns structured source-add timeout diagnostics."
     }
   ],
   "release_mode": "repair",
@@ -380,12 +388,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
       "release_mode": "repair",
-      "scope": "Require exact canonical file-source names for `pb src add` / `pbsa`; block visible suffix-renamed collisions before upload and fail as `backend_renamed_source` if ChatGPT renames the upload after commit.",
-      "slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
+      "scope": "Require an authoritative, stable Project Sources preflight before file upload; fail before upload when the surface is not authoritative, and detect/rollback backend-assigned suffix names before the exact-name persistence retry loop.",
+      "slice": "v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names",
       "status": "active",
-      "version": "v0.1.103.10.78"
+      "version": "v0.1.103.10.79"
     },
     {
       "release_mode": "normal",
@@ -429,5 +437,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.78"
+  "updated_for": "v0.1.103.10.79"
 }

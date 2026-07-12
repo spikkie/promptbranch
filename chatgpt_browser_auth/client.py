@@ -3020,6 +3020,236 @@ class ChatGPTBrowserClient:
             await self._pause_for_keep_open("Project source capabilities discovered. Press Enter to close the browser... ")
         return result
 
+    def _project_source_surface_signature(self, sources: Optional[list[dict[str, str]]]) -> tuple[str, ...]:
+        identities: list[str] = []
+        for source in sources or []:
+            identity = self._normalize_source_match_text(
+                self._preferred_source_card_identity(source)
+                or source.get("title")
+                or source.get("identity")
+                or source.get("text")
+            )
+            if identity:
+                identities.append(identity.casefold())
+        return tuple(sorted(set(identities)))
+
+    async def _project_source_probe_pause(self, page: Any, milliseconds: int) -> None:
+        waiter = getattr(page, "wait_for_timeout", None)
+        if callable(waiter):
+            await waiter(milliseconds)
+        else:
+            await asyncio.sleep(0)
+
+    async def _wait_for_authoritative_project_sources_surface(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        label: str,
+        timeout_ms: int = 12_000,
+        required_stable_observations: int = 2,
+        poll_interval_ms: int = 350,
+    ) -> dict[str, Any]:
+        deadline = asyncio.get_running_loop().time() + (max(timeout_ms, 1) / 1000)
+        previous_signature: Optional[tuple[str, ...]] = None
+        stable_observations = 0
+        observations = 0
+        last_sources: list[dict[str, str]] = []
+        last_empty_state = False
+
+        while asyncio.get_running_loop().time() < deadline:
+            observations += 1
+            last_sources = await self._snapshot_project_source_cards(page)
+            last_empty_state = await self._project_sources_empty_state_visible(page)
+            authoritative_candidate = bool(last_sources) or last_empty_state
+            signature: Optional[tuple[str, ...]] = None
+            if authoritative_candidate:
+                signature = self._project_source_surface_signature(last_sources)
+                if signature == previous_signature:
+                    stable_observations += 1
+                else:
+                    previous_signature = signature
+                    stable_observations = 1
+            else:
+                previous_signature = None
+                stable_observations = 0
+
+            source_identities = [
+                self._preferred_source_card_identity(source) or source.get("text") or ""
+                for source in last_sources
+            ]
+            self._log(
+                "project-source-add",
+                "project sources preflight authority probe",
+                label=label,
+                project_url=project_url,
+                observation=observations,
+                source_card_count=len(last_sources),
+                empty_state_visible=last_empty_state,
+                authoritative_candidate=authoritative_candidate,
+                stable_observations=stable_observations,
+                required_stable_observations=required_stable_observations,
+                source_identities=source_identities[:10],
+                current_url=await self._safe_page_url(page),
+            )
+            if authoritative_candidate and stable_observations >= max(required_stable_observations, 1):
+                return {
+                    "ok": True,
+                    "status": "authoritative_empty" if last_empty_state and not last_sources else "authoritative_non_empty",
+                    "label": label,
+                    "project_url": project_url,
+                    "sources": last_sources,
+                    "source_card_count": len(last_sources),
+                    "source_identities": source_identities,
+                    "empty_state_visible": last_empty_state,
+                    "observations": observations,
+                    "stable_observations": stable_observations,
+                    "required_stable_observations": required_stable_observations,
+                    "timeout_ms": timeout_ms,
+                }
+            await self._project_source_probe_pause(page, poll_interval_ms)
+
+        return {
+            "ok": False,
+            "status": "source_preflight_not_authoritative",
+            "label": label,
+            "project_url": project_url,
+            "sources": last_sources,
+            "source_card_count": len(last_sources),
+            "source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text") or ""
+                for source in last_sources
+            ],
+            "empty_state_visible": last_empty_state,
+            "observations": observations,
+            "stable_observations": stable_observations,
+            "required_stable_observations": required_stable_observations,
+            "timeout_ms": timeout_ms,
+            "source_surface_not_ready": not last_sources and not last_empty_state,
+        }
+
+    async def _wait_for_post_commit_file_source_resolution(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        source_match_candidates: list[str],
+        before_sources: Optional[list[dict[str, str]]],
+        timeout_ms: int = 8_000,
+        poll_interval_ms: int = 300,
+        required_stable_observations: int = 2,
+    ) -> dict[str, Any]:
+        deadline = asyncio.get_running_loop().time() + (max(timeout_ms, 1) / 1000)
+        previous_resolution_signature: Optional[tuple[str, ...]] = None
+        stable_observations = 0
+        observations = 0
+        last_sources: list[dict[str, str]] = []
+        last_exact: list[dict[str, str]] = []
+        last_suffix: list[dict[str, str]] = []
+        before_signature = self._project_source_surface_signature(before_sources)
+
+        while asyncio.get_running_loop().time() < deadline:
+            observations += 1
+            last_sources = await self._snapshot_project_source_cards(page)
+            last_exact = self._match_file_source_exact_canonical_cards(last_sources, source_match_candidates)
+            last_suffix = self._match_file_source_duplicate_suffix_cards(last_sources, source_match_candidates)
+            resolution_sources = last_suffix or last_exact
+            resolution_signature = self._project_source_surface_signature(resolution_sources) if resolution_sources else None
+            if resolution_signature is not None and resolution_signature == previous_resolution_signature:
+                stable_observations += 1
+            elif resolution_signature is not None:
+                previous_resolution_signature = resolution_signature
+                stable_observations = 1
+            else:
+                previous_resolution_signature = None
+                stable_observations = 0
+
+            self._log(
+                "project-source-add",
+                "post-commit file source resolution probe",
+                project_url=project_url,
+                observation=observations,
+                source_card_count=len(last_sources),
+                source_surface_changed=self._project_source_surface_signature(last_sources) != before_signature,
+                exact_canonical_count=len(last_exact),
+                duplicate_suffix_count=len(last_suffix),
+                stable_observations=stable_observations,
+                required_stable_observations=required_stable_observations,
+                current_url=await self._safe_page_url(page),
+            )
+            if resolution_sources and stable_observations >= max(required_stable_observations, 1):
+                return {
+                    "ok": True,
+                    "status": "backend_renamed_source_visible" if last_suffix else "exact_canonical_source_visible",
+                    "project_url": project_url,
+                    "sources": last_sources,
+                    "exact_canonical_sources": last_exact,
+                    "duplicate_suffix_sources": last_suffix,
+                    "observations": observations,
+                    "stable_observations": stable_observations,
+                    "timeout_ms": timeout_ms,
+                }
+            await self._project_source_probe_pause(page, poll_interval_ms)
+
+        return {
+            "ok": False,
+            "status": "post_commit_file_source_resolution_timeout",
+            "project_url": project_url,
+            "sources": last_sources,
+            "exact_canonical_sources": last_exact,
+            "duplicate_suffix_sources": last_suffix,
+            "observations": observations,
+            "stable_observations": stable_observations,
+            "timeout_ms": timeout_ms,
+        }
+
+    async def _rollback_backend_renamed_file_source(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_url: str,
+        duplicate_suffix_sources: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        if len(duplicate_suffix_sources) != 1:
+            return {
+                "attempted": False,
+                "status": "rollback_not_safe_ambiguous_suffix_sources",
+                "duplicate_suffix_source_count": len(duplicate_suffix_sources),
+            }
+        source = duplicate_suffix_sources[0]
+        source_name = (
+            self._normalize_source_match_text(source.get("title"))
+            or self._preferred_source_card_identity(source)
+            or self._normalize_source_match_text(source.get("text"))
+        )
+        if not source_name:
+            return {"attempted": False, "status": "rollback_not_safe_missing_source_identity"}
+        try:
+            remove_result = await self._remove_project_source_operation(
+                context=context,
+                page=page,
+                source_name=source_name,
+                exact=True,
+                keep_open=False,
+            )
+        except Exception as exc:
+            return {
+                "attempted": True,
+                "status": "rollback_failed",
+                "source_name": source_name,
+                "error": str(exc),
+            }
+        removed = bool(isinstance(remove_result, dict) and (remove_result.get("removed_via_ui") or remove_result.get("already_absent")))
+        return {
+            "attempted": True,
+            "status": "rolled_back_backend_renamed_source" if removed else "rollback_not_verified",
+            "source_name": source_name,
+            "removed": removed,
+            "remove_result": remove_result,
+            "project_url": project_url,
+        }
+
     async def _find_existing_file_source_for_overwrite(
         self,
         page: Any,
@@ -3130,7 +3360,34 @@ class ChatGPTBrowserClient:
         if normalized_kind == "file":
             canonical_display_name = self._normalize_file_source_display_name(display_name, file_path)
 
-        before_sources = await self._snapshot_project_source_cards(page)
+        source_surface_preflight: Optional[dict[str, Any]] = None
+        if normalized_kind == "file":
+            source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
+                page,
+                project_url=project_home_url,
+                label="project-source-add-preflight",
+            )
+            if not source_surface_preflight.get("ok"):
+                return {
+                    "ok": False,
+                    "action": "add",
+                    "status": "source_preflight_not_authoritative",
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match_requested": canonical_display_name,
+                    "persistence_verified": False,
+                    "project_source_mutated": False,
+                    "release_blocking": True,
+                    "source_surface_not_ready": True,
+                    "operator_review_required": False,
+                    "source_surface_preflight": source_surface_preflight,
+                    "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
+                    "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
+                    "current_url": await self._safe_page_url(page),
+                }
+            before_sources = list(source_surface_preflight.get("sources") or [])
+        else:
+            before_sources = await self._snapshot_project_source_cards(page)
 
         source_match_candidates: list[str] = []
         requested_match: Optional[str] = None
@@ -3257,7 +3514,36 @@ class ChatGPTBrowserClient:
                                 "current_url": await self._safe_page_url(page),
                             }
                     await self._open_project_sources_tab(page)
-                    before_sources = await self._snapshot_project_source_cards(page)
+                    source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
+                        page,
+                        project_url=project_home_url,
+                        label="project-source-add-post-overwrite-remove-preflight",
+                    )
+                    if not source_surface_preflight.get("ok"):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_preflight_not_authoritative",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "source_surface_not_ready": True,
+                            "already_exists": True,
+                            "added": False,
+                            "overwritten": True,
+                            "removed_existing": True,
+                            "operator_review_required": True,
+                            "source_surface_preflight": source_surface_preflight,
+                            "overwrite_remove_result": overwrite_remove_result,
+                            "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
+                            "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    before_sources = list(source_surface_preflight.get("sources") or [])
                     matched_source = None
                     duplicate_detected = False
                     duplicate_notice = None
@@ -3357,7 +3643,37 @@ class ChatGPTBrowserClient:
                             "current_url": await self._safe_page_url(page),
                         }
                     await self._open_project_sources_tab(page)
-                    before_sources = await self._snapshot_project_source_cards(page)
+                    source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
+                        page,
+                        project_url=project_home_url,
+                        label="project-source-add-post-capacity-prune-preflight",
+                    )
+                    if not source_surface_preflight.get("ok"):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_preflight_not_authoritative",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "source_surface_not_ready": True,
+                            "already_exists": False,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "capacity_pruned": True,
+                            "operator_review_required": True,
+                            "source_surface_preflight": source_surface_preflight,
+                            "capacity_prune_result": capacity_prune_result,
+                            "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
+                            "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    before_sources = list(source_surface_preflight.get("sources") or [])
                 elif self._parse_release_source_filename(canonical_display_name or file_path) is not None:
                     self._log(
                         "project-source-add",
@@ -3446,11 +3762,62 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     expected_source_name=canonical_display_name if normalized_kind == "file" else display_name,
                 )
-                await self._wait_for_project_source_save_request_quiet(
+                save_request_quiet = await self._wait_for_project_source_save_request_quiet(
                     page,
                     save_request_watch,
                     source_kind=normalized_kind,
                 )
+                if normalized_kind == "file" and bool(
+                    self._project_source_save_watch_summary(save_request_watch).get("saw_commit")
+                ):
+                    post_commit_resolution = await self._wait_for_post_commit_file_source_resolution(
+                        page,
+                        project_url=project_home_url,
+                        source_match_candidates=source_match_candidates,
+                        before_sources=before_sources,
+                    )
+                    backend_renamed_sources = list(post_commit_resolution.get("duplicate_suffix_sources") or [])
+                    if backend_renamed_sources:
+                        exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
+                        rollback = await self._rollback_backend_renamed_file_source(
+                            context=context,
+                            page=page,
+                            project_url=project_home_url,
+                            duplicate_suffix_sources=backend_renamed_sources,
+                        )
+                        return self._file_source_exact_name_conflict_result(
+                            project_url=project_home_url,
+                            source_kind=normalized_kind,
+                            requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            source_match_candidates=source_match_candidates,
+                            current_sources=list(post_commit_resolution.get("sources") or []),
+                            duplicate_suffix_sources=backend_renamed_sources,
+                            exact_canonical_sources=exact_canonical_sources,
+                            status="backend_renamed_source",
+                            conflict_reason=(
+                                "backend_created_suffix_renamed_source_alongside_canonical"
+                                if exact_canonical_sources
+                                else "backend_created_suffix_renamed_source_without_canonical"
+                            ),
+                            already_exists=duplicate_detected or overwritten_existing,
+                            overwritten=overwritten_existing,
+                            removed_existing=bool(
+                                (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+                                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+                            ),
+                            save_summary=self._project_source_save_watch_summary(save_request_watch),
+                            save_request_quiet=save_request_quiet,
+                            transaction={
+                                "transaction_status": "commit_seen_but_backend_renamed_source",
+                                "release_blocking": True,
+                                "save_saw_commit": bool(self._project_source_save_watch_summary(save_request_watch).get("saw_commit")),
+                            },
+                            current_url=await self._safe_page_url(page),
+                            post_commit_recovery=rollback,
+                        )
+                    exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
+                    if exact_canonical_sources:
+                        matched_source = exact_canonical_sources[0]
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
             duplicate_detected = True
@@ -3535,6 +3902,12 @@ class ChatGPTBrowserClient:
                         current_sources,
                         persistence_candidates,
                     )
+                    rollback = await self._rollback_backend_renamed_file_source(
+                        context=context,
+                        page=page,
+                        project_url=project_home_url,
+                        duplicate_suffix_sources=backend_renamed_sources,
+                    )
                     return self._file_source_exact_name_conflict_result(
                         project_url=project_home_url,
                         source_kind=normalized_kind,
@@ -3561,10 +3934,7 @@ class ChatGPTBrowserClient:
                         },
                         persistence_error=str(exc),
                         current_url=await self._safe_page_url(page),
-                        post_commit_recovery={
-                            "attempted": False,
-                            "status": "blocked_backend_renamed_source",
-                        },
+                        post_commit_recovery=rollback,
                     )
             persistence_false_negative_possible = bool(
                 save_summary.get("saw_commit")

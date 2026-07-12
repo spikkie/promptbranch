@@ -100,3 +100,36 @@ def test_source_add_busy_payload_is_top_level_operator_result() -> None:
     assert payload["queue_enabled"] is False
     assert payload["active_operation"] == "ask_question"
     assert "--wait-for-profile" in payload["next_safe_commands"][1]
+
+
+def test_source_add_read_timeout_includes_configured_timeout_and_active_operation() -> None:
+    args = argparse.Namespace(
+        command="src",
+        src_command="add",
+        type="file",
+        file="/tmp/platform-gitops_v0.0.6.6.zip",
+        file_path=None,
+        name=None,
+        no_overwrite=False,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+        service_timeout_seconds=180.0,
+    )
+    request = httpx.Request("POST", "http://localhost:8000/v1/project-sources")
+    exc = httpx.ReadTimeout("timed out", request=request)
+
+    payload = _service_exception_payload(exc, args)
+
+    assert payload is not None
+    assert payload["action"] == "src_add"
+    assert payload["status"] == "service_client_read_timeout"
+    assert payload["configured_timeout_seconds"] == 180.0
+    assert payload["active_operation"] == {
+        "name": "project_source_add",
+        "state": "service_request_may_still_be_running",
+        "source_kind": "file",
+        "file_path": "/tmp/platform-gitops_v0.0.6.6.zip",
+        "display_name": "platform-gitops_v0.0.6.6.zip",
+        "overwrite_existing": True,
+        "project_url": "https://chatgpt.com/g/g-p-123/project",
+        "configured_timeout_seconds": 180.0,
+    }

@@ -5506,10 +5506,18 @@ def _project_source_add_exception_payload(
     }
     if service_payload:
         payload["service_status"] = service_status
-        if service_payload.get("runtime") is not None:
-            payload["runtime"] = service_payload.get("runtime")
-        if service_payload.get("release_blocking") is not None:
-            payload["release_blocking"] = service_payload.get("release_blocking")
+        for field in (
+            "runtime",
+            "release_blocking",
+            "timeout_layer",
+            "service_timeout_seconds",
+            "configured_timeout_seconds",
+            "active_operation",
+            "operator_action",
+            "recovery_hint",
+        ):
+            if service_payload.get(field) is not None:
+                payload[field] = service_payload.get(field)
 
     if status == "project_source_mutation_gate_closed":
         recommended = _candidate_validation_command_from_file(file_path)
@@ -24550,17 +24558,37 @@ def _service_exception_payload(exc: Exception, args: argparse.Namespace) -> dict
             payload.setdefault("operator_action", "retry_after_active_browser_operation_or_use_async_job_status")
         return payload
     if isinstance(exc, (httpx.ReadTimeout, httpx.TimeoutException)):
-        return {
+        service_timeout_seconds = float(getattr(args, "service_timeout_seconds", DEFAULT_SERVICE_TIMEOUT_SECONDS) or DEFAULT_SERVICE_TIMEOUT_SECONDS)
+        payload: dict[str, Any] = {
             "ok": False,
             "action": action,
             "status": "service_client_read_timeout",
             "error": str(exc) or "service request timed out while waiting for response headers",
             "error_type": type(exc).__name__,
             "timeout_layer": "service_client",
-            "service_timeout_seconds": float(getattr(args, "service_timeout_seconds", DEFAULT_SERVICE_TIMEOUT_SECONDS) or DEFAULT_SERVICE_TIMEOUT_SECONDS),
+            "service_timeout_seconds": service_timeout_seconds,
+            "configured_timeout_seconds": service_timeout_seconds,
             "operator_action": "do_not_assume_failure; inspect task/source state before retrying",
             "recovery_hint": "The browser service may still finish after the CLI timed out. Use task show/message inspection for ask operations; retry browser-backed reads after the active operation completes.",
         }
+        if action in {"source_add", "src_add"}:
+            file_path = getattr(args, "file", None) or getattr(args, "file_path", None)
+            display_name = getattr(args, "name", None) or (Path(file_path).name if file_path else None)
+            payload["active_operation"] = {
+                "name": "project_source_add",
+                "state": "service_request_may_still_be_running",
+                "source_kind": getattr(args, "type", None) or "file",
+                "file_path": file_path,
+                "display_name": display_name,
+                "overwrite_existing": not bool(getattr(args, "no_overwrite", False)),
+                "project_url": getattr(args, "project_url", None),
+                "configured_timeout_seconds": service_timeout_seconds,
+            }
+            payload["recovery_hint"] = (
+                "The Project Source browser operation may still be classifying or rolling back a backend-renamed source. "
+                "Do not retry the same filename until the active browser operation is idle and `pb src list --json` has been inspected."
+            )
+        return payload
     return None
 
 

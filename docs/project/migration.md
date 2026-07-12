@@ -980,3 +980,8 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.78 repair decision
 
 `v0.1.103.10.78` migrates overwrite-file persistence verification from exact-only refreshed surface matching to exact-or-duplicate-suffix matching when a save commit is observed and the operation is already in the overwrite path.
+
+
+## v0.1.103.10.79 repair migration
+
+`v0.1.103.10.79` migrates file-source preflight from a single immediate DOM snapshot to an authoritative-state contract: explicit empty state or stable non-empty snapshots. It also moves backend-suffix detection and uniquely identifiable rollback ahead of the exact-name persistence retry loop, so the CLI receives the final classification instead of timing out while the service continues recovery.

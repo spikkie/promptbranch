@@ -622,3 +622,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Capability | Status | Done means | Version |
 | --- | --- | --- | --- | --- |
 | DOD-249 | exact-name Project Source upsert guard | in_progress | `pb src add` / `pbsa` require exact canonical file names; visible suffix-renamed sources block before upload, and backend-created suffixes after upload fail as `backend_renamed_source`. | v0.1.103.10.78 |
+
+
+## v0.1.103.10.79
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-250 | authoritative Project Sources preflight and early suffix rollback | in_progress | File uploads require explicit empty state or stable non-empty snapshots; non-authoritative surfaces block before upload, and backend-assigned suffix names are rolled back before exact-name persistence retries. | v0.1.103.10.79 |
