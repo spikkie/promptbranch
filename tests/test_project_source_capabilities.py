@@ -3827,14 +3827,16 @@ def test_add_file_source_operation_blocks_duplicate_suffix_after_committed_uploa
 
     assert calls == {"removed": True, "added": True}
     assert result["ok"] is False
-    assert result["status"] == "library_collision_not_cleared"
+    assert result["status"] == "library_backing_file_identity_missing"
     assert result["conflict_reason"] == "backend_created_suffix_renamed_source_without_canonical"
     assert result["already_exists"] is True
     assert result["overwritten"] is True
     assert result["removed_existing"] is True
     assert result["persistence_verified"] is False
     assert result["backend_renamed_source"] is True
-    assert result["library_collision_not_cleared"] is True
+    assert result["library_collision_not_cleared"] is False
+    assert result["library_backing_file_identity_missing"] is True
+    assert result["operator_review_required"] is True
     assert result["release_blocking"] is True
     assert result["operator_review_required"] is True
     assert result["duplicate_suffix_source_identities"] == ["release(1).zip Document"]
@@ -4216,7 +4218,7 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
     tmp_path: Path,
 ) -> None:
     page = object()
-    calls = {"uploaded": False, "verified": False, "rollback": False}
+    calls = {"uploaded": False, "verified": False, "rollback": False, "library_cleanup": False}
     suffix_card = {"identity": "release(1).zip Document", "title": "release(1).zip", "text": "release(1).zip Document"}
 
     async def fake_ensure(*_args, **_kwargs) -> None:
@@ -4263,6 +4265,13 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
         calls["verified"] = True
         raise AssertionError("exact persistence retry loop must not run after suffix detection")
 
+    async def fake_reconcile(*_args, **kwargs):
+        if kwargs.get("inspect_only") or not kwargs.get("required_file_ids"):
+            return {"ok": True, "status": "library_family_absent", "release_blocking": False, "safe_file_ids": []}
+        calls["library_cleanup"] = True
+        assert kwargs["required_file_ids"] == ["file_suffix_123456"]
+        return {"ok": True, "status": "library_collision_cleared", "release_blocking": False}
+
     async def fake_safe_url(*_args, **_kwargs) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
 
@@ -4278,6 +4287,7 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
     browser_client._wait_for_post_commit_file_source_resolution = fake_resolution  # type: ignore[method-assign]
     browser_client._rollback_backend_renamed_file_source = fake_rollback  # type: ignore[method-assign]
     browser_client._verify_project_source_persistence = fail_verify  # type: ignore[method-assign]
+    browser_client._reconcile_library_file_family = fake_reconcile  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
     browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
         "installed": True,
@@ -4288,6 +4298,8 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
         "saw_relevant": True,
         "saw_commit": True,
         "inflight": set(),
+        "backing_file_ids": ["file_suffix_123456"],
+        "backend_assigned_names": ["release(1).zip"],
     }
     browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
@@ -4305,13 +4317,15 @@ def test_backend_suffix_is_detected_and_rolled_back_before_exact_persistence_ret
         )
     )
 
-    assert calls == {"uploaded": True, "verified": False, "rollback": True}
+    assert calls == {"uploaded": True, "verified": False, "rollback": True, "library_cleanup": True}
     assert result["ok"] is False
     assert result["status"] == "library_collision_not_cleared"
     assert result["added"] is False
     assert result["persistence_verified"] is False
     assert result["backend_renamed_source_rollback"]["status"] == "removed"
     assert result["library_collision_not_cleared"] is True
+    assert result["library_backing_file_identity_missing"] is False
+    assert result["library_backing_file_cleanup"]["status"] == "library_collision_cleared"
 
 
 def test_backend_suffix_rollback_waits_for_remove_result_before_returning(
@@ -4380,6 +4394,8 @@ class _LibraryWatchContext:
 
 
 class _LibraryPage:
+    url = "https://chatgpt.com/library"
+
     async def wait_for_timeout(self, _milliseconds: int) -> None:
         return None
 
@@ -4673,6 +4689,7 @@ def test_library_reconciliation_blocks_file_referenced_by_other_project(
     browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
     _install_library_surface_sequence(browser_client, surfaces)
 
     result = asyncio.run(
@@ -4743,6 +4760,7 @@ def test_library_reconciliation_blocks_unknown_reference_ownership(
     browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._delete_library_file_record_via_ui = fake_delete  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
     _install_library_surface_sequence(browser_client, surfaces)
 
     result = asyncio.run(
@@ -4776,6 +4794,7 @@ def test_library_reconciliation_requires_exact_file_id(browser_client: ChatGPTBr
     browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
     browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=True)  # type: ignore[method-assign]
     _install_library_surface_sequence(browser_client, surfaces)
 
     result = asyncio.run(
@@ -4989,3 +5008,201 @@ def test_library_delete_locator_never_falls_back_to_filename_only(
     )
 
     assert result is None
+
+
+
+def test_library_surface_stable_empty_requires_two_observations(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = _LibraryPage()
+    calls = {"snapshot": 0, "empty": 0}
+
+    async def fake_snapshot(*_args, **_kwargs):
+        calls["snapshot"] += 1
+        return []
+
+    async def fake_empty(*_args, **_kwargs) -> bool:
+        calls["empty"] += 1
+        return True
+
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._library_empty_state_visible = fake_empty  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name="release.zip",
+            label="stable-empty",
+            timeout_ms=1_000,
+            poll_ms=1,
+            required_stable_observations=2,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["reason"] == "stable_explicit_empty_state"
+    assert result["stable_observations"] == 2
+    assert calls == {"snapshot": 2, "empty": 2}
+
+
+def test_library_surface_transient_empty_followed_by_records_is_not_accepted(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = _LibraryPage()
+    record = {
+        "file_id": "file_after_empty_123456",
+        "filename": "release.zip",
+        "project_ids": [],
+        "project_references_known": True,
+        "deleted": False,
+    }
+    snapshots = [[], [record], [record]]
+    empty_states = [True, False, False]
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return snapshots.pop(0)
+
+    async def fake_empty(*_args, **_kwargs) -> bool:
+        return empty_states.pop(0)
+
+    browser_client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._library_empty_state_visible = fake_empty  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name="release.zip",
+            label="transient-empty",
+            timeout_ms=1_000,
+            poll_ms=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["reason"] == "stable_library_snapshot"
+    assert result["family_records"] == [record]
+    assert len(result["observations"]) == 3
+
+
+def test_library_reconciliation_recently_deleted_unavailable_fails_closed(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+    page = _LibraryPage()
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_surface(*_args, **_kwargs):
+        return _library_surface([])
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._library_search_exact_family = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_library_family_surface = fake_surface  # type: ignore[method-assign]
+    browser_client._open_library_recently_deleted = lambda *_args, **_kwargs: asyncio.sleep(0, result=False)  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._reconcile_library_file_family(
+            context=context,
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-current/project",
+            canonical_name="release.zip",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "library_recently_deleted_not_authoritative"
+    assert result["release_blocking"] is True
+    assert result["deleted_surface"]["authoritative"] is False
+
+
+def test_production_upload_json_without_filename_uses_expected_canonical_name(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    body = '{"status":"success","result":{"upload":{"file_id":"file-live-prod-123456789"}}}'
+    records = browser_client._extract_upload_response_records(
+        body=body,
+        source_url="https://chatgpt.com/backend-api/files/process_upload_stream",
+        headers={"content-type": "application/json"},
+        expected_filename="release.zip",
+    )
+    assert records == [{
+        "file_id": "file-live-prod-123456789",
+        "filename": "release.zip",
+        "project_ids": [],
+        "project_references_known": False,
+        "deleted": False,
+        "source_url": "https://chatgpt.com/backend-api/files/process_upload_stream",
+    }]
+
+
+def test_streaming_upload_response_without_filename_captures_expected_name(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    body = 'event: upload\ndata: {"result":{"file":{"id":"file-stream-live-123456789","type":"file"}}}\ndata: [DONE]\n'
+    records = browser_client._extract_upload_response_records(
+        body=body,
+        source_url="https://chatgpt.com/backend-api/files/process_upload_stream",
+        headers={"content-type": "text/event-stream"},
+        expected_filename="release.zip",
+    )
+    assert [(record["file_id"], record["filename"]) for record in records] == [
+        ("file-stream-live-123456789", "release.zip")
+    ]
+
+
+def test_upload_identity_can_be_captured_from_location_header(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    records = browser_client._extract_upload_response_records(
+        body="",
+        source_url="https://chatgpt.com/backend-api/files/process_upload_stream",
+        headers={
+            "content-type": "application/json",
+            "location": "https://chatgpt.com/backend-api/files/file-header-123456789",
+            "content-disposition": 'attachment; filename="release(4).zip"',
+        },
+        expected_filename="release.zip",
+    )
+    assert [(record["file_id"], record["filename"]) for record in records] == [
+        ("file-header-123456789", "release(4).zip")
+    ]
+
+
+def test_save_watch_persists_bounded_upload_response_diagnostics(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+
+    class Response:
+        url = "https://chatgpt.com/backend-api/files/process_upload_stream"
+        status = 200
+
+        async def text(self) -> str:
+            return '{"status":"success","file_id":"file-diagnostic-123456789"}'
+
+        async def all_headers(self):
+            return {"content-type": "application/json"}
+
+    async def run():
+        watch = browser_client._install_project_source_save_request_watch(
+            context,
+            source_kind="file",
+            expected_filename="release.zip",
+        )
+        context.handlers["response"](Response())
+        await asyncio.gather(*watch["response_tasks"])
+        return browser_client._project_source_save_watch_summary(watch)
+
+    summary = asyncio.run(run())
+    assert summary["backing_file_ids"] == ["file-diagnostic-123456789"]
+    assert summary["backend_assigned_names"] == ["release.zip"]
+    assert summary["backing_file_identity_captured"] is True
+    diagnostic = summary["response_diagnostics"][0]
+    assert diagnostic["status"] == 200
+    assert diagnostic["content_type"] == "application/json"
+    assert diagnostic["body_schema"]["format"] == "json"
+    assert diagnostic["extracted_file_ids"] == ["file-diagnostic-123456789"]
+    assert diagnostic["extracted_filenames"] == ["release.zip"]
+    assert len(diagnostic["body_sample"]) <= 2048

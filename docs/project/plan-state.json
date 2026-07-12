@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
-  "active_candidate_version": "v0.1.103.10.82",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+  "active_candidate_version": "v0.1.103.10.83",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files",
+  "active_slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -95,6 +95,13 @@
       "slice": "v0.1.103.10.73 — make version_surface tests derive expected version from release metadata",
       "status": "candidate",
       "version": "v0.1.103.10.73"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+      "created_at": "2026-07-12T20:15:00Z",
+      "slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
+      "status": "candidate",
+      "version": "v0.1.103.10.83"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -102,9 +109,9 @@
   "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
   "last_updated": "2026-07-12",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
-  "next_normal_slice": "v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files",
-  "next_normal_version": "v0.1.103.10.82",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+  "next_normal_slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
+  "next_normal_version": "v0.1.103.10.83",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -341,6 +348,14 @@
       "status": "candidate",
       "summary": "Reconciles exact ChatGPT Library backing-file IDs and Recently deleted entries before same-name Project Source re-upload, preserving canonical naming and failing closed on ambiguous cross-project ownership.",
       "version": "v0.1.103.10.82"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
+      "status": "candidate",
+      "summary": "Requires stable authoritative Library and Recently deleted surfaces, captures backing file identities from live upload response bodies/streams/headers, and fails closed when exact suffix backing identity is unavailable.",
+      "version": "v0.1.103.10.83"
     }
   ],
   "release_mode": "repair",
@@ -373,6 +388,12 @@
       "status": "candidate",
       "summary": "Control-surface active candidate sync and product-failure precedence over external-live blockage classification.",
       "version": "v0.1.103.10.73"
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Make Library empty-state and Recently deleted checks authoritative across stable observations; capture exact upload backing file IDs with bounded diagnostics and block suffix rollback when identity is missing.",
+      "version": "v0.1.103.10.83"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -397,13 +418,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
       "release_mode": "repair",
-      "scope": "Restore the unchanged pbsa same-name overwrite contract by reconciling exact ChatGPT Library backing-file IDs, including Recently deleted, before canonical re-upload; fail closed on ambiguous ownership.",
-      "slice": "v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files",
+      "scope": "Require authoritative stable Library and Recently deleted surfaces, capture exact live upload file identities from production response formats, and delete exact suffix backing files before returning fail-closed collision status.",
+      "slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
-      "version": "v0.1.103.10.82"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
+      "version": "v0.1.103.10.83"
     },
     {
       "release_mode": "normal",
@@ -447,5 +468,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.82"
+  "updated_for": "v0.1.103.10.83"
 }

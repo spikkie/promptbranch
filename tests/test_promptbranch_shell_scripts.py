@@ -745,7 +745,7 @@ def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_fil
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,profile,debug_artifacts"' in text
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in text
     assert '! -name "debug_artifacts"' in text
     assert "--exclude='debug_artifacts/'" in text
     assert "--exclude='.env'" in text
@@ -794,11 +794,12 @@ def test_release_control_recreates_docker_service_and_verifies_version() -> None
     assert 'service version mismatch: ' in script
     assert 'actual_normalized == expected_normalized' in script
     assert 'Docker container was not recreated' in script
-    assert 'deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"' in script
+    assert 'if ! deploy_promptbranch_service_detached; then' in script
+    assert 'fail "Docker service recreate/version verification failed"' in script
     assert 'up --build --force-recreate "$@"' in run_script
     assert 'PROMPTBRANCH_SERVICE_IMAGE_TAG' in script
     assert 'promptbranch_service_image_ref' in script
-    assert 'export PROMPTBRANCH_SERVICE_IMAGE="$(promptbranch_service_image_ref)"' in script
+    assert 'PROMPTBRANCH_SERVICE_IMAGE="${image_ref}"' in script
     assert 'PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE' in script
     assert 'release_version_plain_from_version_file' in script
 
@@ -1124,7 +1125,7 @@ def test_release_control_adopt_if_green_is_explicitly_guarded() -> None:
     text = script.read_text(encoding="utf-8")
 
     assert "--adopt-if-green" in text
-    assert 'report_is_green "${report_json}"' in text
+    assert 'report_is_green "${selected_report_json}"' in text
     assert "adopt_current_artifact" in text
     assert "--adopt-if-green is only supported with --tests-only" in text
     assert "--tests-only = no baseline mutation" not in text  # behavior is enforced by explicit flag checks, not prose

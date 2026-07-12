@@ -648,3 +648,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-253 | Library-backed exact-name Project Source overwrite | in_progress | `pbsa <file>` remains an alias for `promptbranch src add <file>`; same-name overwrite removes the exact Project Source association, reconciles exact attributable Library file IDs and Recently deleted entries, uploads the canonical basename, and succeeds only with one exact canonical source and zero numeric suffix variants. Ambiguous cross-project ownership fails closed. | v0.1.103.10.82 |
+
+## v0.1.103.10.83
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-254 | Authoritative Library reconciliation and exact live upload identity capture | in_progress | Stable Library/Recently deleted authority, JSON/NDJSON/SSE/header file-ID capture, exact-ID suffix cleanup, missing-ID fail-closed status, direct/localhost release validation, and unchanged `pbsa` command surface. | v0.1.103.10.83 |
+

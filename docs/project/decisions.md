@@ -787,3 +787,8 @@ Active repair slice: `v0.1.103.10.81 — separate candidate transport filename f
 ## v0.1.103.10.82 — Library-backed overwrite reconciliation
 
 Decision: keep `pbsa <file>` unchanged and replace the obsolete assumption that removing a Project Source frees its filename. Same-name overwrite must reconcile only exact, attributable backing file IDs in ChatGPT Library and Recently deleted before canonical re-upload. Loose text deletion and ambiguous cross-project deletion are prohibited.
+
+## v0.1.103.10.83 — authoritative Library surfaces and upload identity capture
+
+Decision: Library and Recently deleted are separate release-blocking evidence surfaces. Empty results require the configured stable observation count on the actual loaded route. An unavailable Recently deleted surface is not equivalent to empty. File upload responses retain bounded, redacted diagnostics and must provide an exact backing file ID before suffix cleanup is considered reconcilable.
+

@@ -776,3 +776,12 @@ Canonical candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip`
 Active repair slice: `v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files`.
 
 This repair keeps the existing `pbsa` command and reconciles exact attributable ChatGPT Library backing-file IDs, including Recently deleted entries, before a same-name canonical Project Source upload. It fails closed on missing file IDs, cross-project references, or an uncleared filename family.
+
+## v0.1.103.10.83 repair note
+
+Canonical candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip`.
+
+Active repair slice: `v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities`.
+
+The candidate remains unadopted until strict all-all reaches `GO` and same-name `pbsa` overwrite succeeds without a numeric suffix.
+

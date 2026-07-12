@@ -6913,22 +6913,31 @@ class ChatGPTBrowserClient:
         payload: Any,
         *,
         source_url: Optional[str] = None,
+        expected_filename: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         filename_keys = (
-            'filename', 'file_name', 'name', 'display_name', 'original_name',
-            'original_filename', 'title',
+            'filename', 'file_name', 'fileName', 'name', 'display_name', 'displayName',
+            'original_name', 'originalName', 'original_filename', 'originalFilename', 'title',
         )
-        id_keys = ('file_id', 'upload_id', 'asset_id')
-        project_keys = ('project_id', 'gizmo_id', 'project_ids', 'gizmo_ids', 'projects', 'gizmos')
+        id_keys = (
+            'file_id', 'fileId', 'upload_id', 'uploadId', 'asset_id', 'assetId',
+            'content_id', 'contentId',
+        )
+        project_keys = (
+            'project_id', 'projectId', 'gizmo_id', 'gizmoId', 'project_ids', 'projectIds',
+            'gizmo_ids', 'gizmoIds', 'projects', 'gizmos',
+        )
+        expected = self._file_source_family_filename(expected_filename)
+        upload_response = bool(source_url and '/backend-api/files/process_upload_stream' in source_url.lower())
 
         def scalar_project_ids(value: Any) -> list[str]:
             found: list[str] = []
             values = value if isinstance(value, list) else [value]
             for item in values:
                 if isinstance(item, dict):
-                    for key in ('id', 'project_id', 'gizmo_id'):
+                    for key in ('id', 'project_id', 'projectId', 'gizmo_id', 'gizmoId'):
                         candidate = self._library_file_record_id(item.get(key))
                         if candidate and candidate not in found:
                             found.append(candidate)
@@ -6938,33 +6947,40 @@ class ChatGPTBrowserClient:
                         found.append(candidate)
             return found
 
-        def visit(node: Any) -> None:
-            if isinstance(node, list):
-                for item in node[:1000]:
-                    visit(item)
-                return
-            if not isinstance(node, dict):
-                return
-            filename = None
+        def first_filename(node: dict[str, Any]) -> Optional[str]:
             for key in filename_keys:
                 raw = node.get(key)
                 if isinstance(raw, str) and ('.' in raw or raw.lower().endswith('zip archive')):
-                    filename = self._file_source_family_filename(raw)
-                    if filename:
-                        break
-            file_id = None
+                    normalized = self._file_source_family_filename(raw)
+                    if normalized:
+                        return normalized
+            return None
+
+        def first_file_id(node: dict[str, Any]) -> Optional[str]:
             for key in id_keys:
-                file_id = self._library_file_record_id(node.get(key))
-                if file_id:
-                    break
-            if not file_id:
-                generic_id = self._library_file_record_id(node.get('id'))
-                object_type = str(node.get('object') or node.get('type') or node.get('kind') or '').lower()
-                if generic_id and (
-                    generic_id.lower().startswith(('file_', 'file-', 'asset_', 'asset-'))
-                    or object_type in {'file', 'upload', 'asset', 'library_file'}
-                ):
-                    file_id = generic_id
+                candidate = self._library_file_record_id(node.get(key))
+                if candidate:
+                    return candidate
+            generic_id = self._library_file_record_id(node.get('id'))
+            object_type = str(node.get('object') or node.get('type') or node.get('kind') or '').lower()
+            if generic_id and (
+                generic_id.lower().startswith(('file_', 'file-', 'asset_', 'asset-'))
+                or object_type in {'file', 'upload', 'asset', 'library_file', 'file_upload'}
+            ):
+                return generic_id
+            return None
+
+        def visit(node: Any, inherited_filename: Optional[str] = None) -> None:
+            if isinstance(node, list):
+                for item in node[:1000]:
+                    visit(item, inherited_filename)
+                return
+            if not isinstance(node, dict):
+                return
+            filename = first_filename(node) or inherited_filename
+            file_id = first_file_id(node)
+            if file_id and not filename and upload_response:
+                filename = expected or None
             if filename and file_id:
                 project_ids: list[str] = []
                 project_references_known = any(key in node for key in project_keys)
@@ -6974,6 +6990,8 @@ class ChatGPTBrowserClient:
                             project_ids.append(project_id)
                 if any(key in node for key in ('unreferenced', 'is_unreferenced', 'referenced', 'is_referenced')):
                     project_references_known = True
+                # A successful upload response does not itself prove project-reference ownership.
+                # Mark an explicitly present empty project list as known; otherwise retain unknown.
                 key = (file_id.casefold(), filename.casefold())
                 if key not in seen:
                     seen.add(key)
@@ -6985,11 +7003,12 @@ class ChatGPTBrowserClient:
                         'deleted': bool(node.get('deleted') or node.get('is_deleted') or node.get('trashed')),
                         'source_url': source_url,
                     })
+            child_filename = filename or inherited_filename
             for value in node.values():
                 if isinstance(value, (dict, list)):
-                    visit(value)
+                    visit(value, child_filename)
 
-        visit(payload)
+        visit(payload, expected or None)
         return records
 
     def _extract_library_file_records_from_text(
@@ -6997,6 +7016,7 @@ class ChatGPTBrowserClient:
         body: str,
         *,
         source_url: Optional[str] = None,
+        expected_filename: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         text = str(body or "")
         payloads: list[Any] = []
@@ -7033,12 +7053,166 @@ class ChatGPTBrowserClient:
         records: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for payload in payloads:
-            for record in self._extract_library_file_records_from_payload(payload, source_url=source_url):
+            for record in self._extract_library_file_records_from_payload(
+                payload,
+                source_url=source_url,
+                expected_filename=expected_filename,
+            ):
                 key = (str(record.get("file_id") or "").casefold(), str(record.get("filename") or "").casefold())
                 if key in seen:
                     continue
                 seen.add(key)
                 records.append(record)
+        return records
+
+    def _response_headers_snapshot(self, headers: Any) -> dict[str, str]:
+        if not isinstance(headers, dict):
+            return {}
+        result: dict[str, str] = {}
+        for key, value in headers.items():
+            normalized_key = str(key or '').strip().lower()
+            if not normalized_key:
+                continue
+            normalized_value = str(value or '').strip()
+            if len(normalized_value) > 2048:
+                normalized_value = normalized_value[:2048] + '…'
+            result[normalized_key] = normalized_value
+        return result
+
+    async def _read_response_headers(self, response: Any) -> dict[str, str]:
+        try:
+            all_headers = getattr(response, 'all_headers', None)
+            if callable(all_headers):
+                value = all_headers()
+                if inspect.isawaitable(value):
+                    value = await value
+                return self._response_headers_snapshot(value)
+        except Exception:
+            pass
+        try:
+            value = getattr(response, 'headers', None)
+            if callable(value):
+                value = value()
+            if inspect.isawaitable(value):
+                value = await value
+            return self._response_headers_snapshot(value)
+        except Exception:
+            return {}
+
+    def _extract_file_id_from_url_or_headers(
+        self,
+        *,
+        source_url: str,
+        headers: dict[str, str],
+    ) -> list[str]:
+        candidates: list[str] = []
+        values = [source_url]
+        for key in ('location', 'content-location', 'x-file-id', 'openai-file-id', 'x-upload-id', 'x-asset-id'):
+            value = headers.get(key)
+            if value:
+                values.append(value)
+        for value in values:
+            parsed = urlparse(str(value or ''))
+            for _key, raw in parse_qsl(parsed.query, keep_blank_values=False):
+                if _key.lower() in {'file_id', 'fileid', 'upload_id', 'uploadid', 'asset_id', 'assetid', 'id'}:
+                    candidate = self._library_file_record_id(raw)
+                    if candidate and candidate not in candidates:
+                        candidates.append(candidate)
+            for pattern in (
+                r'/(?:files?|uploads?|assets?)/([A-Za-z0-9_-]{8,})(?:[/?#]|$)',
+                r'\b((?:file|asset)[_-][A-Za-z0-9_-]{6,})\b',
+            ):
+                for match in re.finditer(pattern, str(value or ''), flags=re.IGNORECASE):
+                    candidate = self._library_file_record_id(match.group(1))
+                    if candidate and candidate.lower() in {
+                        'process_upload_stream', 'upload', 'uploads', 'list', 'search',
+                        'library', 'recently_deleted', 'recently-deleted',
+                    }:
+                        candidate = None
+                    if candidate and candidate not in candidates:
+                        candidates.append(candidate)
+        return candidates
+
+    def _extract_filename_from_headers(self, headers: dict[str, str]) -> Optional[str]:
+        disposition = headers.get('content-disposition', '')
+        for pattern in (r"filename\*=UTF-8''([^;]+)", r'filename="([^"]+)"', r'filename=([^;]+)'):
+            match = re.search(pattern, disposition, flags=re.IGNORECASE)
+            if match:
+                value = match.group(1).strip().strip('"')
+                try:
+                    from urllib.parse import unquote
+                    value = unquote(value)
+                except Exception:
+                    pass
+                normalized = self._file_source_family_filename(value)
+                if normalized:
+                    return normalized
+        return None
+
+    def _upload_response_body_schema(self, body: str, *, content_type: str) -> dict[str, Any]:
+        text = str(body or '')
+        schema: dict[str, Any] = {
+            'content_type': content_type or None,
+            'body_bytes': len(text.encode('utf-8', errors='replace')),
+            'line_count': len(text.splitlines()),
+        }
+        try:
+            payload = json.loads(text)
+            schema['format'] = 'json'
+            schema['top_level_type'] = type(payload).__name__
+            if isinstance(payload, dict):
+                schema['top_level_keys'] = sorted(str(key) for key in payload.keys())[:40]
+            elif isinstance(payload, list):
+                schema['item_count'] = len(payload)
+            return schema
+        except Exception:
+            pass
+        data_lines = [line.strip()[5:].strip() for line in text.splitlines() if line.strip().lower().startswith('data:')]
+        if data_lines:
+            schema['format'] = 'sse_or_data_lines'
+            schema['data_line_count'] = len(data_lines)
+        elif len([line for line in text.splitlines() if line.strip()]) > 1:
+            schema['format'] = 'ndjson_or_text_lines'
+        else:
+            schema['format'] = 'text'
+        return schema
+
+    def _bounded_upload_response_sample(self, body: str, *, limit: int = 2048) -> str:
+        sample = str(body or '')[:max(limit, 0)]
+        sample = re.sub(r'(?i)(authorization|access_token|refresh_token|session_token)(["\s:=]+)[^,"\s}]+', r'\1\2<redacted>', sample)
+        sample = re.sub(r'(?i)(https?://[^\s"\']+\?[^\s"\']*)', lambda m: str(self._redact_backend_api_url(m.group(1)).get('redacted_url') or '<redacted-url>'), sample)
+        return sample
+
+    def _extract_upload_response_records(
+        self,
+        *,
+        body: str,
+        source_url: str,
+        headers: dict[str, str],
+        expected_filename: Optional[str],
+    ) -> list[dict[str, Any]]:
+        records = self._extract_library_file_records_from_text(
+            body,
+            source_url=source_url,
+            expected_filename=expected_filename,
+        )
+        seen = {(str(item.get('file_id')), str(item.get('filename')).casefold()) for item in records}
+        filename = self._extract_filename_from_headers(headers) or self._file_source_family_filename(expected_filename)
+        for file_id in self._extract_file_id_from_url_or_headers(source_url=source_url, headers=headers):
+            if not filename:
+                continue
+            key = (file_id, filename.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append({
+                'file_id': file_id,
+                'filename': filename,
+                'project_ids': [],
+                'project_references_known': False,
+                'deleted': False,
+                'source_url': source_url,
+            })
         return records
 
     def _is_library_backend_url(self, url: str) -> bool:
@@ -7411,6 +7585,65 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(800)
         return True
 
+    async def _library_route_state(self, page: Any, *, surface_kind: str = 'active') -> dict[str, Any]:
+        current_url = await self._safe_page_url(page)
+        parsed = urlparse(current_url if current_url != '<url-unavailable>' else '')
+        normalized_path = (parsed.path or '').rstrip('/').lower()
+        route_ok = normalized_path == '/library' or normalized_path.endswith('/library') or '/library/' in normalized_path
+        app_loaded = route_ok
+        recently_deleted_active = False
+        loading_visible = False
+        try:
+            state = await page.evaluate(
+                r"""
+                () => {
+                    const visible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    };
+                    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const mainVisible = Array.from(document.querySelectorAll('main,[role="main"]')).some(visible);
+                    const loadingVisible = Array.from(document.querySelectorAll(
+                        '[aria-busy="true"], [role="progressbar"], [data-testid*="loading" i], [data-testid*="skeleton" i]'
+                    )).some(visible);
+                    const recentControls = Array.from(document.querySelectorAll('a,button,[role="tab"]')).filter(visible).filter(el =>
+                        normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '').includes('recently deleted')
+                    );
+                    const recentActive = recentControls.some(el =>
+                        el.getAttribute('aria-selected') === 'true' ||
+                        el.getAttribute('data-state') === 'active' ||
+                        el.getAttribute('aria-current') === 'page' ||
+                        normalize(el.className).includes('active')
+                    );
+                    return {mainVisible, loadingVisible, recentActive, recentControlCount: recentControls.length};
+                }
+                """
+            )
+            if isinstance(state, dict):
+                loading_visible = bool(state.get('loadingVisible'))
+                app_loaded = route_ok and bool(state.get('mainVisible')) and not loading_visible
+                recently_deleted_active = bool(state.get('recentActive'))
+        except Exception:
+            # Test doubles can omit DOM evaluation; the real browser must still prove the route.
+            app_loaded = route_ok
+        query_text = (parsed.query or '').lower()
+        path_text = normalized_path
+        if surface_kind == 'recently_deleted':
+            route_surface_ok = recently_deleted_active or any(token in query_text or token in path_text for token in ('recently_deleted', 'recently-deleted', 'deleted'))
+        else:
+            route_surface_ok = route_ok
+        return {
+            'current_url': current_url,
+            'route_ok': route_ok,
+            'app_loaded': app_loaded,
+            'loading_visible': loading_visible,
+            'surface_kind': surface_kind,
+            'surface_active': route_surface_ok,
+            'ready': bool(route_ok and app_loaded and route_surface_ok),
+        }
+
     async def _library_empty_state_visible(self, page: Any) -> bool:
         try:
             return bool(
@@ -7455,24 +7688,28 @@ class ChatGPTBrowserClient:
         timeout_ms: int = 12_000,
         poll_ms: int = 350,
         required_stable_observations: int = 2,
+        surface_kind: str = 'active',
     ) -> dict[str, Any]:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(timeout_ms, 1) / 1000
+        required = max(required_stable_observations, 1)
         stable_observations = 0
         last_signature: Optional[tuple[Any, ...]] = None
         observations: list[dict[str, Any]] = []
         last_records: list[dict[str, Any]] = []
         last_family_records: list[dict[str, Any]] = []
         last_empty_state = False
+        last_route_state: dict[str, Any] = {}
 
         while True:
+            route_state = await self._library_route_state(page, surface_kind=surface_kind)
             records = await self._snapshot_library_file_cards(page)
             family_records = [
                 item for item in records
                 if self._file_source_family_member(item.get('filename'), canonical_name)
             ]
             empty_state_visible = await self._library_empty_state_visible(page)
-            signature = tuple(
+            record_signature = tuple(
                 sorted(
                     (
                         str(item.get('file_id') or ''),
@@ -7483,13 +7720,19 @@ class ChatGPTBrowserClient:
                     for item in records
                 )
             )
-            authoritative_candidate = bool(records) or empty_state_visible
+            surface_signature = (
+                'empty' if empty_state_visible and not records else 'records',
+                record_signature,
+                bool(route_state.get('ready')),
+                surface_kind,
+            )
+            authoritative_candidate = bool(route_state.get('ready')) and (bool(records) or empty_state_visible)
             if authoritative_candidate:
-                if signature == last_signature:
+                if surface_signature == last_signature:
                     stable_observations += 1
                 else:
                     stable_observations = 1
-                    last_signature = signature
+                    last_signature = surface_signature
             else:
                 stable_observations = 0
                 last_signature = None
@@ -7499,30 +7742,34 @@ class ChatGPTBrowserClient:
                 'record_count': len(records),
                 'family_record_count': len(family_records),
                 'empty_state_visible': empty_state_visible,
+                'route_ready': bool(route_state.get('ready')),
+                'route_state': route_state,
+                'surface_kind': surface_kind,
                 'authoritative_candidate': authoritative_candidate,
                 'stable_observations': stable_observations,
-                'required_stable_observations': required_stable_observations,
+                'required_stable_observations': required,
             }
             observations.append(observation)
             self._log('project-source-add', 'Library surface authority probe', label=label, canonical_name=canonical_name, **observation)
             last_records = records
             last_family_records = family_records
             last_empty_state = empty_state_visible
+            last_route_state = route_state
 
-            if empty_state_visible or (
-                authoritative_candidate
-                and stable_observations >= max(required_stable_observations, 1)
-            ):
+            if authoritative_candidate and stable_observations >= required:
                 return {
                     'ok': True,
                     'authoritative': True,
-                    'reason': 'explicit_empty_state' if empty_state_visible else 'stable_library_snapshot',
+                    'reason': 'stable_explicit_empty_state' if empty_state_visible and not records else 'stable_library_snapshot',
                     'records': records,
                     'family_records': family_records,
                     'record_count': len(records),
                     'family_record_count': len(family_records),
                     'empty_state_visible': empty_state_visible,
                     'stable_observations': stable_observations,
+                    'required_stable_observations': required,
+                    'surface_kind': surface_kind,
+                    'route_state': route_state,
                     'observations': observations,
                 }
 
@@ -7537,6 +7784,9 @@ class ChatGPTBrowserClient:
                     'family_record_count': len(last_family_records),
                     'empty_state_visible': last_empty_state,
                     'stable_observations': stable_observations,
+                    'required_stable_observations': required,
+                    'surface_kind': surface_kind,
+                    'route_state': last_route_state,
                     'observations': observations,
                 }
             await page.wait_for_timeout(max(poll_ms, 1))
@@ -7608,6 +7858,7 @@ class ChatGPTBrowserClient:
                     page,
                     canonical_name=canonical_name,
                     label='library-reconciliation-recently-deleted',
+                    surface_kind='recently_deleted',
                 )
                 if not deleted_surface.get('ok'):
                     return {
@@ -7631,15 +7882,34 @@ class ChatGPTBrowserClient:
                     }
             else:
                 deleted_surface = {
-                    'ok': True,
-                    'authoritative': True,
-                    'reason': 'recently_deleted_not_available',
+                    'ok': False,
+                    'authoritative': False,
+                    'reason': 'library_recently_deleted_not_authoritative',
                     'records': [],
                     'family_records': [],
                     'record_count': 0,
                     'family_record_count': 0,
-                    'empty_state_visible': True,
+                    'empty_state_visible': False,
                     'observations': [],
+                }
+                return {
+                    'ok': False,
+                    'status': 'library_recently_deleted_not_authoritative',
+                    'release_blocking': True,
+                    'canonical_name': canonical_name,
+                    'records': [],
+                    'ambiguous_records': [{
+                        'file_id': None,
+                        'filename': canonical_name,
+                        'project_ids': [],
+                        'project_references_known': False,
+                        'reason': 'recently_deleted_surface_not_available',
+                    }],
+                    'active_surface': active_surface,
+                    'deleted_surface': deleted_surface,
+                    'deleted_records': [],
+                    'safe_file_ids': [],
+                    'inspect_only': inspect_only,
                 }
 
             await self._settle_library_response_watch(watch)
@@ -7806,6 +8076,7 @@ class ChatGPTBrowserClient:
                     page,
                     canonical_name=canonical_name,
                     label='library-reconciliation-hard-delete-ready',
+                    surface_kind='recently_deleted',
                 )
                 if not hard_delete_surface.get('ok'):
                     return {
@@ -7872,13 +8143,27 @@ class ChatGPTBrowserClient:
                 active_remaining = list(active_verify.get('family_records') or [])
 
                 deleted_remaining: list[dict[str, Any]] = []
-                deleted_verify: dict[str, Any] = {
-                    'ok': True,
-                    'authoritative': True,
-                    'reason': 'recently_deleted_not_available',
-                    'family_records': [],
-                }
                 recently_deleted_opened = await self._open_library_recently_deleted(page)
+                if not recently_deleted_opened:
+                    deleted_verify = {
+                        'ok': False,
+                        'authoritative': False,
+                        'reason': 'library_recently_deleted_not_authoritative',
+                        'family_records': [],
+                    }
+                    verification_surfaces.append({'attempt': attempt, 'active': active_verify, 'deleted': deleted_verify})
+                    return {
+                        'ok': False,
+                        'status': 'library_recently_deleted_not_authoritative',
+                        'release_blocking': True,
+                        'canonical_name': canonical_name,
+                        'records': records,
+                        'deleted_records': deleted_records,
+                        'remaining_records': active_remaining,
+                        'verification_observations': verification_observations,
+                        'verification_surfaces': verification_surfaces,
+                    }
+                deleted_verify: dict[str, Any] = {}
                 if recently_deleted_opened:
                     await self._library_search_exact_family(page, canonical_name)
                     deleted_verify = await self._wait_for_authoritative_library_family_surface(
@@ -7886,6 +8171,7 @@ class ChatGPTBrowserClient:
                         canonical_name=canonical_name,
                         label=f'library-reconciliation-verify-deleted-{attempt}',
                         timeout_ms=6_000,
+                        surface_kind='recently_deleted',
                     )
                     if not deleted_verify.get('ok'):
                         verification_surfaces.append({'attempt': attempt, 'active': active_verify, 'deleted': deleted_verify})
@@ -8390,7 +8676,7 @@ class ChatGPTBrowserClient:
                             current_sources=before_sources,
                             duplicate_suffix_sources=residual_suffix,
                             exact_canonical_sources=residual_exact,
-                            status="library_collision_not_cleared",
+                            status=conflict_status,
                             conflict_reason="project_source_family_still_visible_after_library_reconciliation",
                             already_exists=bool(residual_exact),
                             overwritten=overwritten_existing,
@@ -8726,6 +9012,7 @@ class ChatGPTBrowserClient:
             save_request_watch = self._install_project_source_save_request_watch(
                 context,
                 source_kind=normalized_kind,
+                expected_filename=canonical_display_name if normalized_kind == 'file' else display_name,
             )
 
         try:
@@ -8817,13 +9104,35 @@ class ChatGPTBrowserClient:
                             before_sources=before_sources,
                         )
                         save_summary = self._project_source_save_watch_summary(save_request_watch)
-                        library_cleanup = await self._reconcile_library_file_family(
-                            context=context,
-                            page=page,
-                            project_url=project_home_url,
-                            canonical_name=canonical_display_name or (source_match_candidates[0] if source_match_candidates else ""),
-                            required_file_ids=list(save_summary.get("backing_file_ids") or []) or None,
-                        )
+                        backing_file_ids = list(save_summary.get("backing_file_ids") or [])
+                        if backing_file_ids:
+                            library_cleanup = await self._reconcile_library_file_family(
+                                context=context,
+                                page=page,
+                                project_url=project_home_url,
+                                canonical_name=canonical_display_name or (source_match_candidates[0] if source_match_candidates else ""),
+                                required_file_ids=backing_file_ids,
+                            )
+                            conflict_status = "library_collision_not_cleared"
+                        else:
+                            library_cleanup = {
+                                "ok": False,
+                                "status": "library_backing_file_identity_missing",
+                                "release_blocking": True,
+                                "operator_review_required": True,
+                                "canonical_name": canonical_display_name or (source_match_candidates[0] if source_match_candidates else ""),
+                                "response_diagnostics": list(save_summary.get("response_diagnostics") or []),
+                            }
+                            conflict_status = "library_backing_file_identity_missing"
+                        if library_cleanup.get("status") == "library_family_absent":
+                            library_cleanup = {
+                                **library_cleanup,
+                                "ok": False,
+                                "status": "library_collision_not_cleared",
+                                "release_blocking": True,
+                                "previous_status": "library_family_absent",
+                                "post_upload_reservation_proven": True,
+                            }
                         conflict_result = self._file_source_exact_name_conflict_result(
                             project_url=project_home_url,
                             source_kind=normalized_kind,
@@ -8832,7 +9141,7 @@ class ChatGPTBrowserClient:
                             current_sources=list(post_commit_resolution.get("sources") or []),
                             duplicate_suffix_sources=backend_renamed_sources,
                             exact_canonical_sources=exact_canonical_sources,
-                            status="library_collision_not_cleared",
+                            status=conflict_status,
                             conflict_reason=(
                                 "backend_created_suffix_renamed_source_alongside_canonical"
                                 if exact_canonical_sources
@@ -8860,7 +9169,9 @@ class ChatGPTBrowserClient:
                         )
                         conflict_result.update({
                             "backend_renamed_source": True,
-                            "library_collision_not_cleared": True,
+                            "library_collision_not_cleared": conflict_status == "library_collision_not_cleared",
+                            "library_backing_file_identity_missing": conflict_status == "library_backing_file_identity_missing",
+                            "operator_review_required": conflict_status == "library_backing_file_identity_missing",
                             "library_backing_file_cleanup": library_cleanup,
                             "backing_file_ids": list(save_summary.get("backing_file_ids") or []),
                             "backend_assigned_names": list(save_summary.get("backend_assigned_names") or []),
@@ -8965,13 +9276,35 @@ class ChatGPTBrowserClient:
                         duplicate_suffix_sources=backend_renamed_sources,
                         before_sources=before_sources,
                     )
-                    library_cleanup = await self._reconcile_library_file_family(
-                        context=context,
-                        page=page,
-                        project_url=project_home_url,
-                        canonical_name=canonical_display_name or requested_match or "",
-                        required_file_ids=list(save_summary.get("backing_file_ids") or []) or None,
-                    )
+                    backing_file_ids = list(save_summary.get("backing_file_ids") or [])
+                    if backing_file_ids:
+                        library_cleanup = await self._reconcile_library_file_family(
+                            context=context,
+                            page=page,
+                            project_url=project_home_url,
+                            canonical_name=canonical_display_name or requested_match or "",
+                            required_file_ids=backing_file_ids,
+                        )
+                        conflict_status = "library_collision_not_cleared"
+                    else:
+                        library_cleanup = {
+                            "ok": False,
+                            "status": "library_backing_file_identity_missing",
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "canonical_name": canonical_display_name or requested_match or "",
+                            "response_diagnostics": list(save_summary.get("response_diagnostics") or []),
+                        }
+                        conflict_status = "library_backing_file_identity_missing"
+                    if library_cleanup.get("status") == "library_family_absent":
+                        library_cleanup = {
+                            **library_cleanup,
+                            "ok": False,
+                            "status": "library_collision_not_cleared",
+                            "release_blocking": True,
+                            "previous_status": "library_family_absent",
+                            "post_upload_reservation_proven": True,
+                        }
                     conflict_result = self._file_source_exact_name_conflict_result(
                         project_url=project_home_url,
                         source_kind=normalized_kind,
@@ -8980,7 +9313,7 @@ class ChatGPTBrowserClient:
                         current_sources=current_sources,
                         duplicate_suffix_sources=backend_renamed_sources,
                         exact_canonical_sources=exact_canonical_sources,
-                        status="library_collision_not_cleared",
+                        status=conflict_status,
                         conflict_reason=(
                             "backend_created_suffix_renamed_source_alongside_canonical"
                             if exact_canonical_sources
@@ -9002,7 +9335,9 @@ class ChatGPTBrowserClient:
                     )
                     conflict_result.update({
                         "backend_renamed_source": True,
-                        "library_collision_not_cleared": True,
+                        "library_collision_not_cleared": conflict_status == "library_collision_not_cleared",
+                        "library_backing_file_identity_missing": conflict_status == "library_backing_file_identity_missing",
+                        "operator_review_required": conflict_status == "library_backing_file_identity_missing",
                         "library_backing_file_cleanup": library_cleanup,
                         "backing_file_ids": list(save_summary.get("backing_file_ids") or []),
                         "backend_assigned_names": list(save_summary.get("backend_assigned_names") or []),
@@ -20643,9 +20978,16 @@ class ChatGPTBrowserClient:
             return True
         return False
 
-    def _install_project_source_save_request_watch(self, context: Any, *, source_kind: str) -> dict[str, Any]:
+    def _install_project_source_save_request_watch(
+        self,
+        context: Any,
+        *,
+        source_kind: str,
+        expected_filename: Optional[str] = None,
+    ) -> dict[str, Any]:
         watch: dict[str, Any] = {
             "source_kind": source_kind,
+            "expected_filename": self._file_source_family_filename(expected_filename),
             "installed": False,
             "started": 0,
             "finished": 0,
@@ -20708,27 +21050,51 @@ class ChatGPTBrowserClient:
             )
 
         async def capture_response(resp: Any) -> None:
-            try:
-                url = str(getattr(resp, "url", "") or "")
-                if not self._is_project_source_save_request(url, source_kind=source_kind):
-                    return
-                body_text = await resp.text()
-                records = self._extract_library_file_records_from_text(body_text, source_url=url)
-                response_record = {
-                    "url": self._redact_backend_api_url(url).get("redacted_url"),
-                    "status": getattr(resp, "status", None),
-                    "records": records,
-                }
-                watch.setdefault("responses", []).append(response_record)
-                for record in records:
-                    filename = self._file_source_family_filename(record.get("filename"))
-                    file_id = self._library_file_record_id(record.get("file_id"))
-                    if filename and filename not in watch.setdefault("backend_assigned_names", []):
-                        watch["backend_assigned_names"].append(filename)
-                    if file_id and file_id not in watch.setdefault("backing_file_ids", []):
-                        watch["backing_file_ids"].append(file_id)
-            except Exception:
+            url = str(getattr(resp, "url", "") or "")
+            if not self._is_project_source_save_request(url, source_kind=source_kind):
                 return
+            body_text = ""
+            body_error = None
+            try:
+                body_text = await resp.text()
+            except Exception as exc:
+                body_error = repr(exc)
+            headers = await self._read_response_headers(resp)
+            content_type = headers.get('content-type', '')
+            records = self._extract_upload_response_records(
+                body=body_text,
+                source_url=url,
+                headers=headers,
+                expected_filename=watch.get('expected_filename'),
+            )
+            response_record = {
+                "url": self._redact_backend_api_url(url).get("redacted_url"),
+                "status": getattr(resp, "status", None),
+                "content_type": content_type or None,
+                "body_schema": self._upload_response_body_schema(body_text, content_type=content_type),
+                "body_sample": self._bounded_upload_response_sample(body_text),
+                "body_error": body_error,
+                "extracted_filenames": [],
+                "extracted_file_ids": [],
+                "records": records,
+            }
+            for record in records:
+                filename = self._file_source_family_filename(record.get("filename"))
+                file_id = self._library_file_record_id(record.get("file_id"))
+                if filename and filename not in response_record["extracted_filenames"]:
+                    response_record["extracted_filenames"].append(filename)
+                if file_id and file_id not in response_record["extracted_file_ids"]:
+                    response_record["extracted_file_ids"].append(file_id)
+                if filename and filename not in watch.setdefault("backend_assigned_names", []):
+                    watch["backend_assigned_names"].append(filename)
+                if file_id and file_id not in watch.setdefault("backing_file_ids", []):
+                    watch["backing_file_ids"].append(file_id)
+            watch.setdefault("responses", []).append(response_record)
+            self._log(
+                "project-source-add",
+                "captured project source upload response identity",
+                response=response_record,
+            )
 
         def on_response(resp: Any) -> None:
             try:
@@ -21552,6 +21918,20 @@ class ChatGPTBrowserClient:
         if not isinstance(watch, dict):
             return {"installed": False}
         inflight = watch.get("inflight") or set()
+        diagnostics = []
+        for item in list(watch.get('responses') or [])[:20]:
+            if not isinstance(item, dict):
+                continue
+            diagnostics.append({
+                'url': item.get('url'),
+                'status': item.get('status'),
+                'content_type': item.get('content_type'),
+                'body_schema': item.get('body_schema'),
+                'body_sample': item.get('body_sample'),
+                'body_error': item.get('body_error'),
+                'extracted_filenames': list(item.get('extracted_filenames') or []),
+                'extracted_file_ids': list(item.get('extracted_file_ids') or []),
+            })
         return {
             "installed": bool(watch.get("installed")),
             "source_kind": watch.get("source_kind"),
@@ -21563,7 +21943,9 @@ class ChatGPTBrowserClient:
             "inflight": len(inflight),
             "backend_assigned_names": list(watch.get("backend_assigned_names") or []),
             "backing_file_ids": list(watch.get("backing_file_ids") or []),
+            "backing_file_identity_captured": bool(watch.get("backing_file_ids")),
             "response_count": len(watch.get("responses") or []),
+            "response_diagnostics": diagnostics,
         }
 
     def _project_source_mutation_transaction_status(

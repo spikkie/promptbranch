@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files
+v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities
 
 ## Recent repair context
 
@@ -16,6 +16,8 @@ v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Libra
 
 - v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 - v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
+- v0.1.103.10.82 — reconcile exact Library backing-file IDs for same-name Project Source overwrite
+- v0.1.103.10.83 — require authoritative Library surfaces and capture exact live upload file identities
 
 ## Planned normal horizon after repair acceptance
 
