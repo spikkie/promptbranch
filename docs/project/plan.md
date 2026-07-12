@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip
-active candidate version: v0.1.103.10.77
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip
-next normal slice: v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip
+active candidate version: v0.1.103.10.78
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip
+next normal slice: v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -26,7 +26,7 @@ The active rolling horizon is stored in `docs/project/plan-state.json` and expla
 
 ```text
 v0.1.102 — Correction-plan generation without file mutation
-v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence
+v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
@@ -1621,7 +1621,7 @@ Out of scope:
 - Creating patch/diff artifacts.
 - Deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and ChatGPT Project deletion.
 
-Planned after v0.1.102 acceptance: v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence.
+Planned after v0.1.102 acceptance: v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads.
 
 ## v0.1.101 — Read-only command result diagnosis and blocked/failed classification
 
@@ -2141,26 +2141,26 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-`v0.1.103.10.77` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.
+`v0.1.103.10.78` keeps the `v0.1.103.10.69` strict `install.sh` all-all gate and the `v0.1.103.10.71` live bootstrap guardrail cascade normalization. It updates the project control surface so the active candidate, next-normal metadata, plan-state horizon, and Markdown current-baseline blocks agree. It also tightens final verdict aggregation: product validation failures keep the final verdict `FIX`, while `LIVE_BLOCKED` is reserved for otherwise-clean product validation with external-live guardrail/challenge blockage.
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-`v0.1.103.10.77` keeps the strict all-all install gate, product-clean `LIVE_BLOCKED` classification, and precise `bootstrap_sentinel_missing_after_ask_success` status. It changes only release-live sentinel validation so known visible thinking preambles are normalized before exact single-token matching. Arbitrary extra text remains a failure.
+`v0.1.103.10.78` keeps the strict all-all install gate, product-clean `LIVE_BLOCKED` classification, and precise `bootstrap_sentinel_missing_after_ask_success` status. It changes only release-live sentinel validation so known visible thinking preambles are normalized before exact single-token matching. Arbitrary extra text remains a failure.
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-This repair accepts ChatGPT duplicate-suffixed file names only as overwrite-file persistence evidence after a committed save, while preserving exact add verification and fail-closed behavior for genuinely ambiguous Project Source states.
+This repair requires exact canonical file names for normal `pb src add` / `pbsa`, blocks visible suffix-renamed collisions before upload, and reports backend-created suffixes as `backend_renamed_source` instead of accepting them as success.

@@ -617,8 +617,8 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | --- | --- | --- | --- | --- |
 | DOD-248 | release-live visible thinking preamble normalization | in_progress | `release-live-continuous` must accept only known visible thinking preambles before an exact expected sentinel line and reject arbitrary extra text. | v0.1.103.10.76 |
 
-## v0.1.103.10.77
+## v0.1.103.10.78
 
 | ID | Capability | Status | Done means | Version |
 | --- | --- | --- | --- | --- |
-| DOD-249 | overwrite-file duplicate suffix persistence evidence | in_progress | File-source overwrite verification accepts `name(1).ext` / `name (1).ext` only after a committed overwrite save and still rejects arbitrary extra names or uncommitted states. | v0.1.103.10.77 |
+| DOD-249 | exact-name Project Source upsert guard | in_progress | `pb src add` / `pbsa` require exact canonical file names; visible suffix-renamed sources block before upload, and backend-created suffixes after upload fail as `backend_renamed_source`. | v0.1.103.10.78 |

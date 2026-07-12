@@ -1,10 +1,10 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip",
-  "active_candidate_version": "v0.1.103.10.77",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
+  "active_candidate_version": "v0.1.103.10.78",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence",
+  "active_slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -16,7 +16,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -101,9 +101,9 @@
   "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
   "last_updated": "2026-07-08",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip",
-  "next_normal_slice": "v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence",
-  "next_normal_version": "v0.1.103.10.77",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
+  "next_normal_slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
+  "next_normal_version": "v0.1.103.10.78",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -380,12 +380,12 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip",
       "release_mode": "repair",
-      "scope": "Accept ChatGPT duplicate-suffixed file-source identities as overwrite persistence evidence only after a committed save, while preserving exact add verification and fail-closed behavior for ambiguous source states.",
-      "slice": "v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence",
+      "scope": "Require exact canonical file-source names for `pb src add` / `pbsa`; block visible suffix-renamed collisions before upload and fail as `backend_renamed_source` if ChatGPT renames the upload after commit.",
+      "slice": "v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads",
       "status": "active",
-      "version": "v0.1.103.10.77"
+      "version": "v0.1.103.10.78"
     },
     {
       "release_mode": "normal",
@@ -429,5 +429,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.77"
+  "updated_for": "v0.1.103.10.78"
 }

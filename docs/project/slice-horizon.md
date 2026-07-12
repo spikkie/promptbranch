@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence
+v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 
 ## Recent repair context
 

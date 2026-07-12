@@ -5,9 +5,9 @@
 ```text
 accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
 accepted/current version: v0.1.102
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip
-active candidate version: v0.1.103.10.77
-next normal slice: v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip
+active candidate version: v0.1.103.10.78
+next normal slice: v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -717,26 +717,26 @@ Active repair slice: `v0.1.103.10.71 — final verdict aggregation maps live_boo
 Out of scope: Cloudflare/rate-limit bypass, host-CDP/session-manager, copied-profile trust, ChatGPT Project deletion, and release adoption claims.
 
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-`v0.1.103.10.77` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.
+`v0.1.103.10.78` repairs project control-surface active-candidate drift and final verdict precedence. If product validation fails, the all-all final verdict remains `FIX` even when external-live also reports `live_bootstrap_guardrail`; if product validation is clean and only external-live is blocked, the final verdict is `LIVE_BLOCKED` and adoption remains refused.
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-`v0.1.103.10.77` keeps the strict all-all install gate, product-clean `LIVE_BLOCKED` classification, and precise `bootstrap_sentinel_missing_after_ask_success` status. It changes only release-live sentinel validation so known visible thinking preambles are normalized before exact single-token matching. Arbitrary extra text remains a failure.
+`v0.1.103.10.78` keeps the strict all-all install gate, product-clean `LIVE_BLOCKED` classification, and precise `bootstrap_sentinel_missing_after_ask_success` status. It changes only release-live sentinel validation so known visible thinking preambles are normalized before exact single-token matching. Arbitrary extra text remains a failure.
 
-## v0.1.103.10.77 repair note
+## v0.1.103.10.78 repair note
 
-Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.77.zip`.
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.78.zip`.
 
-Active repair slice: `v0.1.103.10.77 — accept ChatGPT duplicate-suffix filename as valid overwrite persistence evidence`.
+Active repair slice: `v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads`.
 
-This repair accepts ChatGPT duplicate-suffixed file names only as overwrite-file persistence evidence after a committed save, while preserving exact add verification and fail-closed behavior for genuinely ambiguous Project Source states.
+This repair requires exact canonical file names for normal `pb src add` / `pbsa`, blocks visible suffix-renamed collisions before upload, and reports backend-created suffixes as `backend_renamed_source` instead of accepting them as success.

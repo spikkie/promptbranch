@@ -6505,15 +6505,6 @@ class ChatGPTBrowserClient:
                 exact_safe=False,
                 anchor_safe=True,
             )
-        if existing_source is None:
-            # ChatGPT may keep a prior overwrite attempt under a duplicate
-            # filename such as ``name(1).txt``.  Treat that as an existing
-            # overwrite target during preflight so the normal remove-then-add
-            # path can restore deterministic test semantics.
-            existing_source = self._match_file_source_duplicate_suffix_card(
-                initial_sources,
-                source_match_candidates,
-            )
         if existing_source is not None:
             self._log(
                 "project-source-add",
@@ -6609,6 +6600,37 @@ class ChatGPTBrowserClient:
                 display_name=canonical_display_name,
                 file_path=file_path,
             )
+            duplicate_suffix_conflicts = self._match_file_source_duplicate_suffix_cards(
+                before_sources,
+                source_match_candidates,
+            )
+            if duplicate_suffix_conflicts:
+                exact_canonical_sources = self._match_file_source_exact_canonical_cards(
+                    before_sources,
+                    source_match_candidates,
+                )
+                return self._file_source_exact_name_conflict_result(
+                    project_url=project_home_url,
+                    source_kind=normalized_kind,
+                    requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                    source_match_candidates=source_match_candidates,
+                    current_sources=before_sources,
+                    duplicate_suffix_sources=duplicate_suffix_conflicts,
+                    exact_canonical_sources=exact_canonical_sources,
+                    status="blocked_conflict",
+                    conflict_reason=(
+                        "suffix_renamed_source_visible_alongside_canonical"
+                        if exact_canonical_sources
+                        else "suffix_renamed_source_visible_without_canonical"
+                    ),
+                    already_exists=bool(exact_canonical_sources),
+                    overwritten=False,
+                    removed_existing=False,
+                    save_summary=None,
+                    save_request_quiet=None,
+                    transaction=None,
+                    current_url=await self._safe_page_url(page),
+                )
             existing_source = await self._find_existing_file_source_for_overwrite(
                 page,
                 source_match_candidates=source_match_candidates,
@@ -7135,6 +7157,90 @@ class ChatGPTBrowserClient:
                 save_summary=save_summary,
                 persistence_verified=False,
             )
+            if normalized_kind == "file" and bool(transaction.get("save_saw_commit")) and not int(transaction.get("save_failed") or 0):
+                backend_renamed_sources = self._match_file_source_duplicate_suffix_cards(
+                    current_sources,
+                    persistence_candidates,
+                )
+                if backend_renamed_sources:
+                    exact_canonical_sources = self._match_file_source_exact_canonical_cards(
+                        current_sources,
+                        persistence_candidates,
+                    )
+                    before_source_identities = {
+                        (self._preferred_source_card_identity(source) or source.get("text") or "").lower()
+                        for source in before_sources or []
+                    }
+                    new_backend_renamed_sources = [
+                        source for source in backend_renamed_sources
+                        if (self._preferred_source_card_identity(source) or source.get("text") or "").lower()
+                        not in before_source_identities
+                    ]
+                    backend_rollback_result: dict[str, Any]
+                    if len(new_backend_renamed_sources) == 1:
+                        rollback_source = new_backend_renamed_sources[0]
+                        rollback_source_name = (
+                            self._normalize_source_match_text(rollback_source.get("title"))
+                            or self._preferred_source_card_identity(rollback_source)
+                            or rollback_source.get("text")
+                        )
+                        try:
+                            remove_result = await self._remove_project_source_operation(
+                                context=context,
+                                page=page,
+                                source_name=str(rollback_source_name),
+                                exact=True,
+                                keep_open=False,
+                            )
+                            await self._open_project_sources_tab(page)
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            backend_rollback_result = {
+                                "attempted": True,
+                                "status": "removed" if bool(remove_result.get("ok")) else "remove_not_verified",
+                                "source_name": rollback_source_name,
+                                "remove_result": remove_result,
+                            }
+                        except Exception as rollback_exc:
+                            backend_rollback_result = {
+                                "attempted": True,
+                                "status": "remove_failed",
+                                "source_name": rollback_source_name,
+                                "error": repr(rollback_exc),
+                            }
+                    else:
+                        backend_rollback_result = {
+                            "attempted": False,
+                            "status": "not_unambiguous",
+                            "candidate_count": len(new_backend_renamed_sources),
+                        }
+                    return self._file_source_exact_name_conflict_result(
+                        project_url=project_home_url,
+                        source_kind=normalized_kind,
+                        requested_match=requested_match,
+                        source_match_candidates=persistence_candidates,
+                        current_sources=current_sources,
+                        duplicate_suffix_sources=backend_renamed_sources,
+                        exact_canonical_sources=exact_canonical_sources,
+                        status="backend_renamed_source",
+                        conflict_reason=(
+                            "backend_created_suffix_renamed_source_alongside_canonical"
+                            if exact_canonical_sources
+                            else "backend_created_suffix_renamed_source_without_canonical"
+                        ),
+                        already_exists=duplicate_detected or overwritten_existing,
+                        overwritten=overwritten_existing,
+                        removed_existing=removed_existing_via_ui,
+                        save_summary=save_summary,
+                        save_request_quiet=save_request_quiet_result,
+                        transaction=transaction,
+                        persistence_error=str(exc),
+                        current_url=await self._safe_page_url(page),
+                        post_commit_recovery={
+                            "attempted": False,
+                            "status": "blocked_backend_renamed_source",
+                        },
+                        rollback_result=backend_rollback_result,
+                    )
             recovered_source: Optional[dict[str, str]] = None
             if self._project_source_post_commit_recovery_allowed(
                 source_kind=normalized_kind,
@@ -7190,14 +7296,6 @@ class ChatGPTBrowserClient:
                             source_match_candidates=persistence_candidates,
                             error=repr(snapshot_exc),
                         )
-                if snapshot_recovered_source is None and normalized_kind == "file" and overwritten_existing:
-                    snapshot_recovered_source = self._match_file_source_duplicate_suffix_card(
-                        post_recovery_sources,
-                        persistence_candidates,
-                    )
-                    if snapshot_recovered_source is not None:
-                        snapshot_recovered_source = dict(snapshot_recovered_source)
-                        snapshot_recovered_source["_promptbranch_verification_mode"] = "post_commit_duplicate_suffix_snapshot_recovered"
                 if snapshot_recovered_source is not None and bool(transaction.get("save_saw_commit")) and not int(transaction.get("save_failed") or 0):
                     persisted_source = dict(snapshot_recovered_source)
                     persisted_source["_promptbranch_verification_mode"] = persisted_source.get(
@@ -17025,22 +17123,166 @@ class ChatGPTBrowserClient:
                 }
         return None
 
-    def _match_file_source_duplicate_suffix_card(
+    def _match_file_source_duplicate_suffix_cards(
         self,
         cards: Optional[list[dict[str, str]]],
         source_match_candidates: Optional[list[str]],
-    ) -> Optional[dict[str, str]]:
+    ) -> list[dict[str, str]]:
+        matches: list[dict[str, str]] = []
+        seen: set[str] = set()
         for card in cards or []:
             for identity in self._source_card_identity_candidates(card):
                 details = self._file_source_duplicate_suffix_match_details(
                     requested_candidates=source_match_candidates,
                     observed_identity=identity,
                 )
-                if details:
-                    matched = dict(card)
-                    matched["_promptbranch_duplicate_suffix_match"] = details
-                    return matched
+                if not details:
+                    continue
+                matched = dict(card)
+                matched["_promptbranch_duplicate_suffix_match"] = details
+                key = (self._preferred_source_card_identity(matched) or identity or "").lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(matched)
+                break
+        return matches
+
+    def _match_file_source_duplicate_suffix_card(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        source_match_candidates: Optional[list[str]],
+    ) -> Optional[dict[str, str]]:
+        matches = self._match_file_source_duplicate_suffix_cards(cards, source_match_candidates)
+        return matches[0] if matches else None
+
+    def _file_source_exact_canonical_match_details(
+        self,
+        *,
+        requested_candidates: Optional[list[str]],
+        observed_identity: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        observed = self._normalize_file_source_identity_for_duplicate_suffix_match(observed_identity)
+        if not observed:
+            return None
+        # Reject collision-suffixed identities here; they are explicit conflicts,
+        # not canonical exact-name evidence.
+        if self._strip_file_duplicate_suffix(observed).lower() != observed.lower():
+            return None
+        for candidate in requested_candidates or []:
+            requested = self._normalize_file_source_identity_for_duplicate_suffix_match(candidate)
+            if not requested:
+                continue
+            if self._strip_file_duplicate_suffix(requested).lower() != requested.lower():
+                continue
+            if observed.lower() == requested.lower():
+                return {
+                    "requested": requested,
+                    "observed": observed,
+                    "match_kind": "file_exact_canonical",
+                }
         return None
+
+    def _match_file_source_exact_canonical_cards(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        source_match_candidates: Optional[list[str]],
+    ) -> list[dict[str, str]]:
+        matches: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for card in cards or []:
+            for identity in self._source_card_identity_candidates(card):
+                details = self._file_source_exact_canonical_match_details(
+                    requested_candidates=source_match_candidates,
+                    observed_identity=identity,
+                )
+                if not details:
+                    continue
+                matched = dict(card)
+                matched["_promptbranch_exact_canonical_match"] = details
+                key = (self._preferred_source_card_identity(matched) or identity or "").lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(matched)
+                break
+        return matches
+
+    def _file_source_exact_name_conflict_result(
+        self,
+        *,
+        project_url: str,
+        source_kind: str,
+        requested_match: Optional[str],
+        source_match_candidates: Optional[list[str]],
+        current_sources: Optional[list[dict[str, str]]],
+        duplicate_suffix_sources: Optional[list[dict[str, str]]],
+        exact_canonical_sources: Optional[list[dict[str, str]]],
+        status: str,
+        conflict_reason: str,
+        already_exists: bool,
+        overwritten: bool,
+        removed_existing: bool,
+        save_summary: Optional[dict[str, Any]] = None,
+        save_request_quiet: Optional[dict[str, Any]] = None,
+        transaction: Optional[dict[str, Any]] = None,
+        persistence_error: Optional[str] = None,
+        current_url: Optional[str] = None,
+        post_commit_recovery: Optional[dict[str, Any]] = None,
+        rollback_result: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        duplicate_suffix_sources = duplicate_suffix_sources or []
+        exact_canonical_sources = exact_canonical_sources or []
+        current_sources = current_sources or []
+
+        def source_identity(source: dict[str, str]) -> str:
+            return self._preferred_source_card_identity(source) or source.get("text") or ""
+
+        duplicate_identities = [source_identity(source) for source in duplicate_suffix_sources]
+        exact_identities = [source_identity(source) for source in exact_canonical_sources]
+        result: dict[str, Any] = {
+            "ok": False,
+            "action": "add",
+            "status": status,
+            "project_url": project_url,
+            "source_kind": source_kind,
+            "source_match_requested": requested_match,
+            "source_match_candidates": list(source_match_candidates or []),
+            "persistence_verified": False,
+            "persistence_error": persistence_error,
+            "persistence_false_negative_possible": False,
+            "exact_name_required": True,
+            "conflict_reason": conflict_reason,
+            "blocked_conflict": True,
+            "hidden_stale_collision": "without_canonical" in conflict_reason,
+            "backend_renamed_source": status == "backend_renamed_source",
+            "duplicate_suffix_conflict": True,
+            "duplicate_suffix_source_count": len(duplicate_suffix_sources),
+            "duplicate_suffix_source_identities": duplicate_identities,
+            "exact_canonical_source_count": len(exact_canonical_sources),
+            "exact_canonical_source_identities": exact_identities,
+            "source_mutation_transaction": transaction,
+            "transaction_status": (transaction or {}).get("transaction_status"),
+            "release_blocking": True,
+            "save_request_summary": save_summary,
+            "save_request_quiet": save_request_quiet,
+            "already_exists": already_exists,
+            "added": False,
+            "overwritten": overwritten,
+            "removed_existing": removed_existing,
+            "post_commit_recovery": post_commit_recovery or {"attempted": False, "status": "not_applicable_exact_name_conflict"},
+            "backend_renamed_source_rollback": rollback_result or {"attempted": False, "status": "not_attempted"},
+            "operator_review_required": True,
+            "recovery_guidance": [
+                "Run `pb src list --json` and inspect the ChatGPT Project Sources UI before retrying.",
+                "Remove or reconcile suffix-renamed Project Sources before adding this canonical filename again.",
+                "Do not retry `pb src add` for the same file while suffix-renamed variants are visible; each retry can create another indexed source.",
+            ],
+            "current_source_count": len(current_sources),
+            "current_source_identities": [source_identity(source) for source in current_sources[:10]],
+            "current_url": current_url,
+        }
+        return result
 
     def _source_card_match_candidates(
         self,

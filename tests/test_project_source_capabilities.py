@@ -3404,9 +3404,80 @@ def test_file_source_duplicate_suffix_match_is_exact_and_suffix_bound(
         requested_candidates=["release.zip"],
         observed_identity="release-copy.zip Document",
     ) is None
+    assert browser_client._file_source_exact_canonical_match_details(
+        requested_candidates=["release.zip", "release.zip Document"],
+        observed_identity="release.zip Document",
+    ) == {
+        "requested": "release.zip",
+        "observed": "release.zip",
+        "match_kind": "file_exact_canonical",
+    }
+    assert browser_client._file_source_exact_canonical_match_details(
+        requested_candidates=["release.zip"],
+        observed_identity="release(1).zip Document",
+    ) is None
 
 
-def test_add_file_source_operation_accepts_duplicate_suffix_after_committed_overwrite(
+def test_add_file_source_operation_blocks_visible_duplicate_suffix_before_upload(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return [{
+            "identity": "release(1).zip Document",
+            "title": "release(1).zip",
+            "text": "release(1).zip File contents may not be accessible",
+        }]
+
+    async def fail_add_file_source(*_args, **_kwargs) -> None:
+        raise AssertionError("suffix-renamed source conflict must block before upload")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fail_add_file_source  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "blocked_conflict"
+    assert result["conflict_reason"] == "suffix_renamed_source_visible_without_canonical"
+    assert result["hidden_stale_collision"] is True
+    assert result["release_blocking"] is True
+    assert result["operator_review_required"] is True
+    assert result["added"] is False
+    assert result["duplicate_suffix_source_identities"] == ["release(1).zip Document"]
+
+
+def test_add_file_source_operation_blocks_duplicate_suffix_after_committed_upload(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
 ) -> None:
@@ -3458,7 +3529,7 @@ def test_add_file_source_operation_accepts_duplicate_suffix_after_committed_over
         raise ResponseTimeoutError("Timed out waiting for project source to appear: release.zip")
 
     async def fake_recover(*_args, **_kwargs):
-        raise AssertionError("commit_seen_but_not_verified_present should use visible duplicate-suffix snapshot reconciliation")
+        raise AssertionError("backend-renamed source should block before post-commit recovery")
 
     async def fake_safe_page_url(*_args, **_kwargs) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
@@ -3502,15 +3573,18 @@ def test_add_file_source_operation_accepts_duplicate_suffix_after_committed_over
     )
 
     assert calls == {"removed": True, "added": True}
-    assert result["ok"] is True
+    assert result["ok"] is False
+    assert result["status"] == "backend_renamed_source"
+    assert result["conflict_reason"] == "backend_created_suffix_renamed_source_without_canonical"
     assert result["already_exists"] is True
     assert result["overwritten"] is True
     assert result["removed_existing"] is True
-    assert result["persistence_verified"] is True
-    assert result["source_match"] == "release(1).zip Document"
-    assert result["verification_mode"] == "post_commit_duplicate_suffix_snapshot_recovered"
-    assert result["post_commit_recovery"]["status"] == "recovered_from_duplicate_suffix_visible_surface_snapshot"
-    assert result["post_commit_recovery"]["duplicate_suffix_match"]["observed"] == "release(1).zip"
+    assert result["persistence_verified"] is False
+    assert result["backend_renamed_source"] is True
+    assert result["release_blocking"] is True
+    assert result["operator_review_required"] is True
+    assert result["duplicate_suffix_source_identities"] == ["release(1).zip Document"]
+    assert result["post_commit_recovery"]["status"] == "blocked_backend_renamed_source"
 
 def test_stale_inflight_post_commit_absent_source_is_classified_as_true_absence(
     browser_client: ChatGPTBrowserClient,
