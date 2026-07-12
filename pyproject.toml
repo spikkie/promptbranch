@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promptbranch"
-version = "0.1.103.10.79"
+version = "0.1.103.10.80"
 description = "Stateful ChatGPT workflow CLI and reusable browser-automation service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi",
   "httpx",
-  "patchright",
-  "playwright",
+  "patchright==1.58.2",
+  "playwright==1.52.0",
   "pydantic",
   "python-dotenv",
   "python-multipart",

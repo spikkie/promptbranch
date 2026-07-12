@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
+v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
 
 ## Recent repair context
 
@@ -15,6 +15,7 @@ v0.1.103.10.79 — require stable Project Sources preflight and fail fast on bac
 - v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean
 
 - v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
+- v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
 
 ## Planned normal horizon after repair acceptance
 

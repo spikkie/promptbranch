@@ -27,6 +27,7 @@ bootstrap_url="${PROMPTBRANCH_BROWSER_BOOTSTRAP_URL:-}"
 max_wait_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_MAX_WAIT_SECONDS:-300}"
 poll_seconds="${PROMPTBRANCH_CLOUDFLARE_CHECK_POLL_SECONDS:-10}"
 allow_project_page_ready="${PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY:-0}"
+no_recreate="${PROMPTBRANCH_BROWSER_VALIDATION_NO_RECREATE:-0}"
 
 usage() {
   cat <<'HELP'
@@ -51,6 +52,7 @@ Options:
   --host-bootstrap           Compatibility mode: open host Chrome directly.
   --max-wait-seconds N       Cloudflare check timeout. Default: 300.
   --poll-seconds N           Cloudflare check polling interval. Default: 10.
+  --no-recreate              Reuse an already health/version-verified candidate service.
   --help                     Show this help.
 
 Environment equivalents:
@@ -62,6 +64,7 @@ Environment equivalents:
   PROMPTBRANCH_BROWSER_BOOTSTRAP_MODE=docker|host
   PROMPTBRANCH_BROWSER_VALIDATION_URL
   PROMPTBRANCH_BROWSER_BOOTSTRAP_URL
+  PROMPTBRANCH_BROWSER_VALIDATION_NO_RECREATE=0|1
 
 Success criteria:
   - docker profile mode is standard-browser
@@ -172,6 +175,10 @@ while [[ $# -gt 0 ]]; do
       poll_seconds="${2:-}"
       shift 2
       ;;
+    --no-recreate)
+      no_recreate=1
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -227,6 +234,7 @@ log "target_url=${target_url}"
 log "bootstrap_url=${bootstrap_url}"
 log "fresh_profile=${fresh_profile}"
 log "allow_project_page_ready=${allow_project_page_ready}"
+log "no_recreate=${no_recreate}"
 
 if [[ -n "${install_artifact}" ]]; then
   if [[ -z "${install_version}" ]]; then
@@ -256,8 +264,17 @@ if [[ "${skip_bootstrap}" == "0" ]]; then
   case "${bootstrap_mode}" in
     docker)
       log "== visible Docker Chrome login bootstrap =="
+      bootstrap_rc=0
       ./scripts/pb-docker-browser-profile-bootstrap.sh "${bootstrap_args[@]}" \
-        2>&1 | tee "${validation_dir}/bootstrap.log"
+        2>&1 | tee "${validation_dir}/bootstrap.log" || bootstrap_rc=$?
+      if [[ ${bootstrap_rc} -ne 0 ]]; then
+        if grep -q "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED" "${validation_dir}/bootstrap.log"; then
+          printf '%s\n' '{"ok":false,"status":"docker_browser_dependency_download_failed","action":"pb_browser_cloudflare_validation","release_blocking":true}' > "${validation_dir}/validation-summary.json"
+          echo "status: docker_browser_dependency_download_failed" >&2
+          exit 86
+        fi
+        exit "${bootstrap_rc}"
+      fi
       ;;
     host)
       log "== visible host Chrome login bootstrap =="
@@ -292,14 +309,17 @@ rm -f \
 log "== Docker standard browser Cloudflare check =="
 check_start_epoch="$(date +%s)"
 check_rc=0
-CHATGPT_PROJECT_URL="${target_url}" \
-PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser \
-PROMPTBRANCH_HOST_PROFILE_DIR="${profile_dir}" \
-PROMPTBRANCH_PROFILE_DIR=/app/profile \
-PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-${max_wait_seconds}}" \
-./scripts/docker-browser-parity-cloudflare-check.sh \
-  --max-wait-seconds "${max_wait_seconds}" \
-  --poll-seconds "${poll_seconds}" \
+check_args=(--max-wait-seconds "${max_wait_seconds}" --poll-seconds "${poll_seconds}")
+if [[ "${no_recreate}" =~ ^(1|true|yes|on)$ ]]; then
+  check_args=(--no-recreate "${check_args[@]}")
+fi
+env \
+  CHATGPT_PROJECT_URL="${target_url}" \
+  PROMPTBRANCH_DOCKER_BROWSER_PROFILE=standard-browser \
+  PROMPTBRANCH_HOST_PROFILE_DIR="${profile_dir}" \
+  PROMPTBRANCH_PROFILE_DIR=/app/profile \
+  PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS:-${max_wait_seconds}}" \
+  ./scripts/docker-browser-parity-cloudflare-check.sh "${check_args[@]}" \
   2>&1 | tee "${validation_dir}/cloudflare-check.log" || check_rc=$?
 printf '%s\n' "${check_rc}" > "${validation_dir}/cloudflare-check.exit_code"
 
@@ -330,6 +350,11 @@ PY
 )"
 
 if [[ -z "${summary_path}" || ! -f "${summary_path}" ]]; then
+  if grep -q "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED" "${validation_dir}/cloudflare-check.log" 2>/dev/null; then
+    printf '%s\n' '{"ok":false,"status":"docker_browser_dependency_download_failed","action":"pb_browser_cloudflare_validation","release_blocking":true}' > "${validation_dir}/validation-summary.json"
+    echo "status: docker_browser_dependency_download_failed" >&2
+    exit 86
+  fi
   echo "ERROR: no Cloudflare check summary.json found after validation run" >&2
   exit 2
 fi

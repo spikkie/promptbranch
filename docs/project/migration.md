@@ -985,3 +985,12 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.79 repair migration
 
 `v0.1.103.10.79` migrates file-source preflight from a single immediate DOM snapshot to an authoritative-state contract: explicit empty state or stable non-empty snapshots. It also moves backend-suffix detection and uniquely identifiable rollback ahead of the exact-name persistence retry loop, so the CLI receives the final classification instead of timing out while the service continues recovery.
+
+## v0.1.103.10.80 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip`.
+
+Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache`.
+
+`v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
+

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${repo_root}/scripts/promptbranch-docker-build-metadata.sh"
+promptbranch_export_docker_build_metadata "${repo_root}"
 
 export PROMPTBRANCH_DOCKER_UID="${PROMPTBRANCH_DOCKER_UID:-$(id -u)}"
 export PROMPTBRANCH_DOCKER_GID="${PROMPTBRANCH_DOCKER_GID:-$(id -g)}"

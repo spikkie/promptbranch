@@ -1463,6 +1463,7 @@ pb_auth_bootstrap() {
   local bootstrap_log="${release_log_dir}/release_control_auth_bootstrap.${phase}.${ver}.log"
   local bootstrap_url
   local bootstrap_keep_open_seconds="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_KEEP_OPEN_SECONDS:-1}"
+  local validation_no_recreate=0
 
   if [[ ${auth_only_validation} -eq 1 ]]; then
     echo "Release-control auth bootstrap skipped for ${phase}: --auth-only-validation is already the auth bootstrap path."
@@ -1482,6 +1483,12 @@ pb_auth_bootstrap() {
   local project_page_fallback=0
   if [[ "${phase}" == "pre_source_add" ]]; then
     allow_project_page_ready=1
+    if pre_source_add_service_version_ready >/dev/null 2>/dev/null; then
+      validation_no_recreate=1
+    else
+      echo "ERROR: exact candidate service is not health/version verified before pre_source_add auth bootstrap" >&2
+      return 1
+    fi
   elif [[ "${phase}" == "pre_tests" ]] && release_control_url_is_project_page "${bootstrap_url}"; then
     project_page_fallback="${PROMPTBRANCH_RELEASE_AUTH_BOOTSTRAP_PRE_TESTS_PROJECT_PAGE_FALLBACK:-1}"
     if [[ "${project_page_fallback}" == "1" ]]; then
@@ -1492,11 +1499,13 @@ pb_auth_bootstrap() {
   echo "auth_bootstrap_url: ${bootstrap_url}"
   echo "pre_tests_project_page_fallback: ${project_page_fallback}"
   echo "allow_project_page_ready: ${allow_project_page_ready}"
+  echo "validation_no_recreate: ${validation_no_recreate}"
   echo "output -> ${bootstrap_log}"
   PROMPTBRANCH_BROWSER_VALIDATION_URL="${bootstrap_url}" \
   PROMPTBRANCH_BROWSER_BOOTSTRAP_URL="${bootstrap_url}" \
   PROMPTBRANCH_BROWSER_VALIDATION_ALLOW_PROJECT_PAGE_READY="${allow_project_page_ready}" \
   PROMPTBRANCH_AUTH_READINESS_KEEP_OPEN_SECONDS="${bootstrap_keep_open_seconds}" \
+  PROMPTBRANCH_BROWSER_VALIDATION_NO_RECREATE="${validation_no_recreate}" \
   ./scripts/pb-browser-cloudflare-validation.sh \
     --url "${bootstrap_url}" \
     --bootstrap-url "${bootstrap_url}" \
@@ -2160,7 +2169,9 @@ INNERPY
 classify_pre_source_add_bootstrap_failure() {
   local reason="${1:-pre_source_add_bootstrap_command_failed}"
   local status="${reason}"
-  if grep -q "Docker build context fingerprint mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
+  if grep -q "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED" "${pre_source_add_service_start_log}" 2>/dev/null; then
+    status="docker_browser_dependency_download_failed"
+  elif grep -q "Docker build context fingerprint mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
     status="pre_source_add_docker_build_context_stale"
   elif grep -q "Docker build context version mismatch" "${pre_source_add_service_start_log}" 2>/dev/null; then
     status="pre_source_add_docker_build_context_version_mismatch"
@@ -2246,8 +2257,8 @@ ensure_service_before_source_add() {
     write_pre_source_add_build_context_snapshot
     echo "+ docker compose --project-directory ${repo_root} down --remove-orphans"
     run_pre_source_add_docker_compose down --remove-orphans || exit $?
-    echo "+ docker compose --project-directory ${repo_root} build --no-cache --pull"
-    run_pre_source_add_docker_compose build --no-cache --pull || exit $?
+    echo "+ docker compose --project-directory ${repo_root} build --pull"
+    run_pre_source_add_docker_compose build --pull || exit $?
     echo "+ docker compose --project-directory ${repo_root} up -d --no-build --force-recreate --remove-orphans"
     run_pre_source_add_docker_compose up -d --no-build --force-recreate --remove-orphans || exit $?
     echo "+ docker compose ps ${compose_service_name}"
@@ -3577,7 +3588,13 @@ if [[ ${skip_service} -eq 0 ]]; then
   if [[ "${service_mode}" == "detached" ]]; then
     echo "Recreating Docker service detached; output -> ${service_start_log}"
     rm -f "${service_pid_file}"
-    deploy_promptbranch_service_detached || fail "Docker service recreate/version verification failed"
+    if ! deploy_promptbranch_service_detached; then
+      if grep -q "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED" "${service_start_log}" 2>/dev/null; then
+        echo "status: docker_browser_dependency_download_failed" >&2
+        fail "docker_browser_dependency_download_failed"
+      fi
+      fail "Docker service recreate/version verification failed"
+    fi
   else
     echo "Running ./run_chatgpt_service.sh in foreground with ${service_timeout_seconds}s timeout."
     if ! timeout --foreground "${service_timeout_seconds}" ./run_chatgpt_service.sh --build --force-recreate --remove-orphans; then

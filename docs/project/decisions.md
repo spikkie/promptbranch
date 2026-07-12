@@ -764,3 +764,12 @@ No Cloudflare/rate-limit bypass, host-CDP/session-manager, or copied-profile tru
 ## v0.1.103.10.79 repair decision
 
 `v0.1.103.10.79` preserves exact canonical file-source semantics and adds an authoritative surface gate. A zero-card snapshot without an explicit empty-state marker is a loading/unknown state, not proof that the project is empty. Backend suffix allocation is detected immediately after a committed upload and never accepted as success.
+
+## v0.1.103.10.80 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip`.
+
+Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache`.
+
+`v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
+

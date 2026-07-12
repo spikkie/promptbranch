@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-VERSION = "v0.1.103.10.79"
+VERSION = "v0.1.103.10.80"
 
 StepStatus = Literal["passed", "failed", "skipped"]
 

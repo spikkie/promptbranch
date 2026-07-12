@@ -629,3 +629,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-250 | authoritative Project Sources preflight and early suffix rollback | in_progress | File uploads require explicit empty state or stable non-empty snapshots; non-authoritative surfaces block before upload, and backend-assigned suffix names are rolled back before exact-name persistence retries. | v0.1.103.10.79 |
+
+## v0.1.103.10.80
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-251 | verified candidate image reuse and stable Docker dependency cache | in_progress | Pre-source auth bootstrap uses `--no-recreate`; Docker metadata is consumed after pinned stable dependencies; transport retry exhaustion maps to `docker_browser_dependency_download_failed`. | v0.1.103.10.80 |

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip
-active candidate version: v0.1.103.10.79
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip
-next normal slice: v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
+active candidate version: v0.1.103.10.80
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
+next normal slice: v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -26,7 +26,7 @@ The active rolling horizon is stored in `docs/project/plan-state.json` and expla
 
 ```text
 v0.1.102 — Correction-plan generation without file mutation
-v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
+v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
@@ -2173,3 +2173,12 @@ Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip`.
 Active repair slice: `v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names`.
 
 `v0.1.103.10.79` keeps the strict all-all install gate, release-live sentinel normalization, and exact canonical Project Source naming. Before a file upload, it requires either an explicit empty Project Sources state or multiple stable non-empty snapshots. Zero cards without an explicit empty state are classified as `source_preflight_not_authoritative` and no upload occurs. After a committed upload, a newly visible suffix-renamed source is classified immediately as `backend_renamed_source`, rolled back when uniquely identifiable, and returned before the exact-name persistence retry loop. Source-add read timeouts include the configured timeout and active-operation details.
+
+## v0.1.103.10.80 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip`.
+
+Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache`.
+
+`v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
+

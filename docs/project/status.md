@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip
-active candidate version: v0.1.103.10.79
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip
-next normal slice: v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
+active candidate version: v0.1.103.10.80
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip
+next normal slice: v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip candidate once packaged
-release status: v0.1.103.10.79 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
+latest created ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip candidate once packaged
+release status: v0.1.103.10.80 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,13 +65,13 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103.10.79 as the active repair candidate from the last accepted/current operational baseline.
+Validate and package v0.1.103.10.80 as the active repair candidate from the last accepted/current operational baseline.
 ```
 
 Operator promotion command after candidate ZIP creation:
 
 ```bash
-./install.sh v0.1.103.10.79
+./install.sh v0.1.103.10.80
 ```
 
 ## v0.1.102 candidate status
@@ -1187,3 +1187,12 @@ Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip`.
 Active repair slice: `v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names`.
 
 `v0.1.103.10.79` keeps the strict all-all install gate, release-live sentinel normalization, and exact canonical Project Source naming. Before a file upload, it requires either an explicit empty Project Sources state or multiple stable non-empty snapshots. Zero cards without an explicit empty state are classified as `source_preflight_not_authoritative` and no upload occurs. After a committed upload, a newly visible suffix-renamed source is classified immediately as `backend_renamed_source`, rolled back when uniquely identifiable, and returned before the exact-name persistence retry loop. Source-add read timeouts include the configured timeout and active-operation details.
+
+## v0.1.103.10.80 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.80.zip`.
+
+Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image during auth bootstrap and preserve Docker dependency cache`.
+
+`v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
+

@@ -3078,7 +3078,7 @@ def test_release_control_pre_source_add_service_bootstrap_is_clean_system_safe()
     assert 'pre_source_add_service_unavailable' in script
     assert 'Pre-source-add service unavailable or stale; bootstrapping candidate service before Project Source add.' in script
     assert 'docker compose --project-directory "${repo_root}" -p "${compose_project_name}" -f "${compose_file}" "$@"' in script
-    assert 'run_pre_source_add_docker_compose build --no-cache --pull' in script
+    assert 'run_pre_source_add_docker_compose build --pull' in script
     assert 'run_pre_source_add_docker_compose up -d --no-build --force-recreate --remove-orphans' in script
     assert 'run_pre_source_add_docker_compose ps "${compose_service_name}"' in script
     assert 'pre_source_add_build_context_json="${release_log_dir}/pre_source_add_build_context.${ver}.json"' in script
@@ -3762,3 +3762,50 @@ def test_install_sh_is_executable() -> None:
     script = Path(__file__).resolve().parents[1] / "install.sh"
     assert script.is_file()
     assert script.stat().st_mode & 0o111
+
+
+
+def test_release_1080_reuses_verified_candidate_service_for_pre_source_auth() -> None:
+    root = Path(__file__).resolve().parents[1]
+    release = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    validation = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+    assert 'validation_no_recreate=1' in release
+    assert 'PROMPTBRANCH_BROWSER_VALIDATION_NO_RECREATE="${validation_no_recreate}"' in release
+    assert '--no-recreate "${check_args[@]}"' in validation
+    assert 'validation_no_recreate:' in release
+
+
+def test_release_1080_docker_dependency_layers_precede_release_metadata() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert dockerfile.index("RUN bash -lc") < dockerfile.index("ARG PROMPTBRANCH_VERSION")
+    assert dockerfile.index("RUN playwright install --with-deps chromium") < dockerfile.index("ARG PROMPTBRANCH_VERSION")
+    assert "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED" in dockerfile
+    assert "Retrying Patchright Chrome transport failure once" in dockerfile
+
+
+def test_release_1080_pins_browser_automation_dependencies() -> None:
+    root = Path(__file__).resolve().parents[1]
+    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "patchright==1.58.2" in requirements
+    assert "playwright==1.52.0" in requirements
+    assert '"patchright==1.58.2"' in pyproject
+    assert '"playwright==1.52.0"' in pyproject
+
+
+def test_release_1080_classifies_browser_dependency_download_failure_precisely() -> None:
+    root = Path(__file__).resolve().parents[1]
+    release = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    validation = (root / "scripts" / "pb-browser-cloudflare-validation.sh").read_text(encoding="utf-8")
+    assert 'status="docker_browser_dependency_download_failed"' in release
+    assert 'fail "docker_browser_dependency_download_failed"' in release
+    assert '"status":"docker_browser_dependency_download_failed"' in validation
+    assert "no Cloudflare check summary.json" in validation
+
+
+def test_release_1080_pre_source_build_uses_cache() -> None:
+    release = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    pre_source = release[release.index("ensure_service_before_source_add()") : release.index("# Add release ZIP to ChatGPT Project Sources.")]
+    assert "build --pull" in pre_source
+    assert "build --no-cache --pull" not in pre_source

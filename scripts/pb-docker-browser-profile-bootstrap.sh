@@ -12,6 +12,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/promptbranch-docker-build-metadata.sh"
+promptbranch_export_docker_build_metadata "${repo_root}"
 
 standard_profile_dir="${repo_root}/.pb_profile/browser/default"
 profile_dir="${PROMPTBRANCH_HOST_PROFILE_DIR:-${standard_profile_dir}}"

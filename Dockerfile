@@ -5,31 +5,37 @@ FROM mcr.microsoft.com/playwright/python:v1.52.0-jammy
 
 WORKDIR /app
 
+# Stable OS/Python/browser dependencies are intentionally built before release
+# metadata is consumed so a version/SHA-only release change can reuse them.
+RUN apt-get update && \
+    apt-get install -y tesseract-ocr libtesseract-dev libglib2.0-0 libnss3 libgconf-2-4 libfontconfig1 libx11-xcb1 xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Retry exactly once only for transient transport failures. Non-transport
+# failures remain fail-fast. The terminal marker is consumed by release-control.
+RUN bash -lc 'set -euo pipefail; \
+  log=/tmp/patchright-install-chrome.log; \
+  for attempt in 1 2; do \
+    : >"${log}"; \
+    set +e; patchright install chrome 2>&1 | tee "${log}"; rc=${PIPESTATUS[0]}; set -e; \
+    if [[ ${rc} -eq 0 ]]; then exit 0; fi; \
+    if grep -Eqi "connection reset|SSL_read|timed out|temporary failure|could not resolve|failed to connect|recv failure|network is unreachable|HTTP[^0-9]*5[0-9][0-9]" "${log}"; then \
+      if [[ ${attempt} -lt 2 ]]; then echo "Retrying Patchright Chrome transport failure once (attempt ${attempt}/2)." >&2; sleep 2; continue; fi; \
+      echo "PROMPTBRANCH_DOCKER_BROWSER_DEPENDENCY_DOWNLOAD_FAILED: patchright chrome transport retry exhausted" >&2; exit ${rc}; \
+    fi; \
+    exit ${rc}; \
+  done'
+RUN playwright install --with-deps chromium
+
 ARG PROMPTBRANCH_VERSION=unknown
 ARG PROMPTBRANCH_ARTIFACT_SHA256=unknown
 ARG PROMPTBRANCH_SOURCE_FINGERPRINT=unknown
 LABEL promptbranch.version="${PROMPTBRANCH_VERSION}"
 LABEL promptbranch.artifact_sha256="${PROMPTBRANCH_ARTIFACT_SHA256}"
 LABEL promptbranch.source_fingerprint="${PROMPTBRANCH_SOURCE_FINGERPRINT}"
-
-RUN apt-get update && \
-    apt-get install -y tesseract-ocr libtesseract-dev libglib2.0-0 libnss3 libgconf-2-4 libfontconfig1 libx11-xcb1 xvfb \
-    && rm -rf /var/lib/apt/lists/*
-
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# RUN rm -rf /ms-playwright /root/.cache/ms-playwright 
-# && playwright install --with-deps
-# RUN playwright install
-# RUN playwright install-deps
-# RUN playwright install chromium
-
-# RUN rm -rf /ms-playwright /root/.cache/ms-playwright && playwright install --with-deps
-RUN patchright install chrome
-# RUN playwright install-deps chromium
-RUN playwright install --with-deps chromium
 
 RUN rm -rf /app/.pb_profile /app/profile
 

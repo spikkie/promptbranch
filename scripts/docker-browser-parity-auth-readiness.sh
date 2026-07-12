@@ -8,6 +8,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
+source "${repo_root}/scripts/promptbranch-docker-build-metadata.sh"
+promptbranch_export_docker_build_metadata "${repo_root}"
 
 keep_open=0
 no_recreate="${PROMPTBRANCH_DOCKER_BROWSER_NO_RECREATE:-0}"
