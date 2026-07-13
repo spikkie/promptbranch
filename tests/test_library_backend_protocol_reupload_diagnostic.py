@@ -516,3 +516,130 @@ def test_exact_inventory_poll_fails_fast_on_unauthorized_replay(tmp_path: Path) 
     assert result["http_status"] == 401
     assert result["stable_observations"] == 1
     assert calls == 1
+
+
+def test_library_filename_reconstruction_accepts_wrapped_exact_name(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    expected = "pb-library-visible-cb4583bf48.txt"
+    assert client._reconstruct_exact_library_filename(
+        expected_filename=expected,
+        candidates=["pb-library-visibl e-cb4583bf48 .txt Today 71 B"],
+    ) == expected
+
+
+def test_library_filename_reconstruction_rejects_suffix_partial_and_prefix(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    expected = "release.zip"
+    assert client._reconstruct_exact_library_filename(
+        expected_filename=expected,
+        candidates=["release (1).zip Today 71 B", ".zip", "release.zip.bak Today"],
+    ) is None
+
+
+def test_library_snapshot_reconstructs_exact_name_from_rendered_fragments(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    expected = "pb-library-visible-cb4583bf48.txt"
+
+    class Page:
+        async def evaluate(self, _script):
+            return [{
+                "file_id": "",
+                "filename": ".txt",
+                "filename_candidates": ["pb-library-visibl e-cb4583bf48 .txt Today 71 B"],
+                "text": "pb-library-visibl e-cb4583bf48 .txt Today 71 B",
+                "project_ids": [],
+                "project_references_known": False,
+                "deleted": False,
+            }]
+
+    records = asyncio.run(client._snapshot_library_file_cards(Page(), canonical_name=expected))
+    assert records[0]["filename"] == expected
+    assert records[0]["filename_reconstruction"] == "exact_canonical_from_rendered_fragments"
+    assert "filename_candidates" not in records[0]
+
+
+def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    filename = "pb-library-visible-cb4583bf48.txt"
+    libfile = "libfile_d5a56b8829ac8191a9e1fba45dafc254"
+    surface = {
+        "records": [{
+            "file_id": "",
+            "filename": filename,
+            "project_ids": [],
+            "project_references_known": False,
+            "deleted": False,
+        }]
+    }
+    backend = {
+        "ok": True,
+        "observations": [{
+            "response": {
+                "records": [{
+                    "file_id": "file_00000000ecfc71f494d05513262f1f62",
+                    "processed_file_id": "file_00000000ecfc71f494d05513262f1f62",
+                    "library_metadata_object_id": libfile,
+                    "identity_candidates": [libfile, "file_00000000ecfc71f494d05513262f1f62"],
+                    "filename": filename,
+                }]
+            }
+        }]
+    }
+    result = client._validate_exact_library_ui_binding(
+        surface=surface,
+        backend_presence=backend,
+        filename=filename,
+        library_metadata_object_id=libfile,
+    )
+    assert result["ok"] is True
+    assert result["status"] == "exact_library_ui_record_selectable"
+    assert result["exact_ui_record_count"] == 1
+    assert result["suffix_ui_record_count"] == 0
+
+
+def test_exact_library_ui_binding_rejects_unreconstructed_and_suffix_ambiguity(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    filename = "release.zip"
+    libfile = "libfile_target12345678"
+    backend = {
+        "observations": [{
+            "response": {
+                "records": [{
+                    "file_id": "file_target12345678",
+                    "library_metadata_object_id": libfile,
+                    "identity_candidates": [libfile, "file_target12345678"],
+                    "filename": filename,
+                }]
+            }
+        }]
+    }
+    missing = client._validate_exact_library_ui_binding(
+        surface={"records": [{"file_id": "", "filename": ".zip"}]},
+        backend_presence=backend,
+        filename=filename,
+        library_metadata_object_id=libfile,
+    )
+    assert missing["status"] == "library_ui_filename_reconstruction_failed"
+
+    ambiguous = client._validate_exact_library_ui_binding(
+        surface={"records": [
+            {"file_id": "", "filename": filename},
+            {"file_id": "", "filename": "release (1).zip"},
+        ]},
+        backend_presence=backend,
+        filename=filename,
+        library_metadata_object_id=libfile,
+    )
+    assert ambiguous["status"] == "library_ui_binding_ambiguous"
+
+
+def test_disposable_delete_refuses_unproven_ui_binding(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    result = asyncio.run(client._delete_disposable_library_file_via_ui(
+        object(),
+        filename="release.zip",
+        delete_forever=False,
+        ui_binding={"ok": False, "status": "library_ui_binding_ambiguous"},
+    ))
+    assert result["ok"] is False
+    assert result["status"] == "exact_library_ui_binding_required"

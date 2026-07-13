@@ -823,3 +823,8 @@ A completed `process_upload_stream` event establishes the disposable file's `fil
 ## v0.1.103.10.92 private authenticated replay decision
 
 The successful browser request and the public diagnostic protocol are separate representations. Raw executable request headers, including any authorization/account context, exist only in the in-memory protocol watch and are never serialized. Replays use the private representation. Public reports use the sanitized representation. A captured exact-ID `200` is observation one; one further authenticated exact-ID observation is required. `401` and `403` stop immediately as `backend_inventory_replay_unauthorized`.
+
+
+## v0.1.103.10.93 exact Library UI binding decision
+
+The Library grid may insert layout whitespace inside a filename. The diagnostic may reconstruct only the already expected canonical basename from contiguous rendered tokens or stable DOM attributes. It may not infer an arbitrary filename, select by extension, select the first result, or accept a numeric-suffix sibling. A destructive UI action requires one exact reconstructed UI record, zero suffix-family records, a unique backend-proven `libfile_...`, and one uniquely marked card.

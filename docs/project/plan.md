@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
-active candidate version: v0.1.103.10.92
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
-next normal slice: v0.1.103.10.92 — replay Library protocols with private in-memory authentication
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
+active candidate version: v0.1.103.10.93
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
+next normal slice: v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2197,3 +2197,16 @@ Continue the `10.90` experiment without changing `pbsa`. Treat upload completion
 ## v0.1.103.10.92 repair note
 
 Implement private in-memory authenticated replay for `/backend-api/files/library/nodes`; count the captured exact-ID `200` as the first observation; require one more authenticated exact-ID observation; fail immediately on `401` or `403`; serialize no authentication values; and remain fail closed before any deletion, canonical reupload, Project Source release upload, or adoption.
+
+
+## v0.1.103.10.93 repair note
+
+Active slice: `v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card`.
+
+In scope:
+
+- reconstruct the exact expected Library filename from `title`, `aria-label`, filename data attributes, child filename elements, or contiguous rendered fragments;
+- reject partial names, numeric-suffix siblings, prefixes, and ambiguous UI families;
+- require one exact UI record, zero suffix-family records, one unique backend `libfile_...`, and one unique marked card before mutation;
+- preserve authenticated backend replay and complete sanitized trace behavior from `v0.1.103.10.92`;
+- remain diagnostic-only and fail closed before deletion, canonical reupload, release `pbsa`, or adoption.

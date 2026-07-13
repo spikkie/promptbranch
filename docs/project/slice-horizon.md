@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.92 — replay Library protocols with private in-memory authentication
+v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
 
 ## Recent repair context
 
@@ -54,3 +54,10 @@ Repair-only continuation of `v0.1.103.10.90`. Accept the observed `/backend-api/
 v0.1.103.10.92 — replay Library protocols with private in-memory authentication
 
 Narrow diagnostic repair: retain executable authentication headers only in memory, replay the exact `/backend-api/files/library/nodes` protocol with those private headers, count the captured exact-ID `200` as observation one, require one additional authenticated exact-`libfile_...` observation, fail immediately on `401`/`403`, and keep deletion/reupload/upload/adoption gates closed until inventory proof succeeds.
+
+
+## v0.1.103.10.93
+
+v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
+
+Narrow diagnostic repair: preserve authenticated exact-ID backend inventory proof, reconstruct the exact canonical filename from stable DOM attributes or contiguous rendered fragments, reject partial and numeric-suffix matches, require one exact UI record and one unique backend `libfile_...`, mark exactly one UI card for selection, and keep all delete/reupload/release-upload/adoption gates closed when binding is not authoritative.

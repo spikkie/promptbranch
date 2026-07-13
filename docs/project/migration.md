@@ -1048,3 +1048,8 @@ No CLI migration is required. `pbsa <file>` remains unchanged. The diagnostic in
 ## v0.1.103.10.92 migration note
 
 No user-facing command or state migration is introduced. The `10.91` diagnostic protocol representation is split internally into private executable headers and a sanitized public report. `pbsa` remains unchanged; accepted/current remains `v0.1.103.10.68`.
+
+
+## v0.1.103.10.93 migration note
+
+No workflow or command surface is migrated. `pbsa <file>` remains unchanged. The diagnostic Library UI parser now treats rendered line wrapping as presentation data and binds destructive selection only after exact filename reconstruction plus unique backend identity proof. Existing accepted/current state remains `v0.1.103.10.68`.

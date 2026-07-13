@@ -702,3 +702,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-263 | Private authenticated Library inventory replay with fail-fast authorization classification | in_progress | Private in-memory raw headers, sanitized public protocol, captured exact-ID `200` counted as observation one, one additional authenticated observation required, immediate `401`/`403` stop, and deletion/reupload gates remain closed | v0.1.103.10.92 |
+
+
+## v0.1.103.10.93
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-264 | Exact Library filename reconstruction and safe backend-to-UI card binding | in_progress | Wrapped filename regression, exact contiguous-token reconstruction, suffix/partial rejection, one exact UI record, zero suffix siblings, unique backend `libfile_...` proof, unique marked card locator, and fail-closed mutation gate | v0.1.103.10.93 |

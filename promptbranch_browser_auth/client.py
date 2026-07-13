@@ -6977,6 +6977,50 @@ class ChatGPTBrowserClient:
         pattern = rf"^{re.escape(stem)}\s*\(\d+\){re.escape(suffix)}$"
         return re.fullmatch(pattern, candidate_name, flags=re.IGNORECASE) is not None
 
+    def _compact_library_filename_fragment(self, value: Any) -> str:
+        return re.sub(r"\s+", "", str(value or "")).strip()
+
+    def _reconstruct_exact_library_filename(
+        self,
+        *,
+        expected_filename: str,
+        candidates: Any,
+    ) -> Optional[str]:
+        """Reconstruct an exact filename from rendered Library text fragments.
+
+        ChatGPT's Library grid can visually split one filename across line/word
+        boundaries (for example ``pb-library-visibl e-... .txt``).  We only
+        accept a reconstruction when contiguous rendered tokens compact to the
+        exact expected basename.  Prefixes, suffix siblings, partial extensions
+        and arbitrary substring matches are rejected.
+        """
+        expected = self._file_source_family_filename(expected_filename)
+        expected_compact = self._compact_library_filename_fragment(expected).casefold()
+        if not expected or not expected_compact:
+            return None
+        values: list[str] = []
+        if isinstance(candidates, (list, tuple, set)):
+            values.extend(str(item or "") for item in candidates)
+        elif candidates is not None:
+            values.append(str(candidates))
+        for raw in values:
+            normalized = re.sub(r"\s+", " ", raw or "").strip()
+            if not normalized:
+                continue
+            if normalized.casefold() == expected.casefold():
+                return expected
+            tokens = [token for token in re.split(r"\s+", normalized) if token]
+            for start in range(len(tokens)):
+                compact = ""
+                for token in tokens[start:]:
+                    compact += self._compact_library_filename_fragment(token)
+                    folded = compact.casefold()
+                    if folded == expected_compact:
+                        return expected
+                    if len(folded) >= len(expected_compact):
+                        break
+        return None
+
     def _library_file_record_id(self, value: Any) -> Optional[str]:
         if value is None:
             return None
@@ -7413,7 +7457,12 @@ class ChatGPTBrowserClient:
             except Exception:
                 pass
 
-    async def _snapshot_library_file_cards(self, page: Any) -> list[dict[str, Any]]:
+    async def _snapshot_library_file_cards(
+        self,
+        page: Any,
+        *,
+        canonical_name: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         try:
             cards = await page.evaluate(
                 r"""
@@ -7463,25 +7512,51 @@ class ChatGPTBrowserClient:
                         }
                         return {ids: Array.from(result), known};
                     };
+                    const filenameCandidates = el => {
+                        const values = [];
+                        const add = value => {
+                            const text = String(value || '').trim();
+                            if (text && !values.includes(text)) values.push(text);
+                        };
+                        let current = el;
+                        for (let depth = 0; current && depth < 4; depth++, current = current.parentElement) {
+                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
+                                add(current.getAttribute && current.getAttribute(attr));
+                            }
+                            add(current.innerText || current.textContent || '');
+                            for (const child of Array.from(current.querySelectorAll ? current.querySelectorAll(
+                                '[title], [aria-label], [data-name], [data-filename], [data-file-name]'
+                            ) : []).slice(0, 40)) {
+                                for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
+                                    add(child.getAttribute && child.getAttribute(attr));
+                                }
+                                add(child.innerText || child.textContent || '');
+                            }
+                        }
+                        return values;
+                    };
                     const candidates = Array.from(document.querySelectorAll(
                         '[data-file-id], [data-asset-id], [data-testid*="file" i], [data-testid*="library" i], main [role="row"], main [role="listitem"], main article, main li'
                     )).filter(visible);
                     const results = [];
                     const seen = new Set();
                     for (const el of candidates) {
-                        const text = normalize(el.innerText || el.textContent || '');
+                        const rawText = String(el.innerText || el.textContent || '');
+                        const text = normalize(rawText);
                         if (!text || text.length > 1200) continue;
-                        const lines = String(el.innerText || el.textContent || '').split('\n').map(normalize).filter(Boolean);
+                        const lines = rawText.split('\n').map(normalize).filter(Boolean);
+                        const attrs = filenameCandidates(el);
                         const filename = lines.find(line => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(line)) || normalize(el.getAttribute('title') || el.getAttribute('aria-label') || '');
-                        if (!filename || !/\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(filename)) continue;
+                        if (![filename, ...attrs, ...lines].some(value => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(normalize(value)))) continue;
                         const id = fileId(el);
-                        const key = `${id}|${filename.toLowerCase()}`;
+                        const key = `${id}|${text.toLowerCase()}`;
                         if (seen.has(key)) continue;
                         seen.add(key);
                         const refs = projectRefs(el);
                         results.push({
                             file_id: id,
                             filename,
+                            filename_candidates: [...attrs, ...lines, text],
                             text,
                             project_ids: refs.ids,
                             project_references_known: refs.known,
@@ -7494,7 +7569,31 @@ class ChatGPTBrowserClient:
             )
         except Exception:
             return []
-        return [item for item in cards if isinstance(item, dict)] if isinstance(cards, list) else []
+        if not isinstance(cards, list):
+            return []
+        result: list[dict[str, Any]] = []
+        for raw in cards:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            if canonical_name:
+                candidates = [
+                    item.get('filename'),
+                    *(item.get('filename_candidates') or []),
+                    item.get('text'),
+                ]
+                reconstructed = self._reconstruct_exact_library_filename(
+                    expected_filename=canonical_name,
+                    candidates=candidates,
+                )
+                if reconstructed:
+                    item['filename'] = reconstructed
+                    item['filename_reconstruction'] = 'exact_canonical_from_rendered_fragments'
+                else:
+                    item['filename_reconstruction'] = 'not_reconstructed'
+            item.pop('filename_candidates', None)
+            result.append(item)
+        return result
 
     async def _library_search_exact_family(self, page: Any, canonical_name: str) -> None:
         search = await self._find_visible_locator(
@@ -7822,7 +7921,7 @@ class ChatGPTBrowserClient:
 
         while True:
             route_state = await self._library_route_state(page, surface_kind=surface_kind)
-            records = await self._snapshot_library_file_cards(page)
+            records = await self._snapshot_library_file_cards(page, canonical_name=canonical_name)
             family_records = [
                 item for item in records
                 if self._file_source_family_member(item.get('filename'), canonical_name)
@@ -8393,6 +8492,7 @@ class ChatGPTBrowserClient:
             'record_count': len(event.get('extracted_records') or []),
             'exact_identity_observed': self._protocol_exact_record_present(event.get('extracted_records'), id_candidates),
             'endpoint_discovered_from_empty_inventory': not bool(event.get('extracted_records')),
+            '_records': list(event.get('extracted_records') or []),
             '_raw_url': event.get('_raw_url'),
             '_raw_post_data': event.get('_raw_post_data'),
             '_raw_headers': (
@@ -8776,6 +8876,77 @@ class ChatGPTBrowserClient:
     async def _find_disposable_library_file_card_by_filename(self, page: Any, filename: str) -> Any:
         normalized = self._file_source_family_filename(filename)
         try:
+            binding = await page.evaluate(
+                r"""
+                expected => {
+                    const selector = '[data-file-id], [data-asset-id], [data-testid*="file" i], [data-testid*="library" i], main [role="row"], main [role="listitem"], main article, main li';
+                    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+                    const compact = value => normalize(value).replace(/\s+/g, '').toLowerCase();
+                    const expectedCompact = compact(expected);
+                    const visible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    };
+                    const valuesFor = el => {
+                        const values = [];
+                        const add = value => {
+                            const text = String(value || '').trim();
+                            if (text && !values.includes(text)) values.push(text);
+                        };
+                        let current = el;
+                        for (let depth = 0; current && depth < 4; depth++, current = current.parentElement) {
+                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) add(current.getAttribute && current.getAttribute(attr));
+                            add(current.innerText || current.textContent || '');
+                            for (const child of Array.from(current.querySelectorAll ? current.querySelectorAll('[title], [aria-label], [data-name], [data-filename], [data-file-name]') : []).slice(0, 40)) {
+                                for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) add(child.getAttribute && child.getAttribute(attr));
+                                add(child.innerText || child.textContent || '');
+                            }
+                        }
+                        return values;
+                    };
+                    const exact = value => {
+                        const normalized = normalize(value);
+                        if (normalized.toLowerCase() === String(expected || '').toLowerCase()) return true;
+                        const tokens = normalized.split(/\s+/).filter(Boolean);
+                        for (let start = 0; start < tokens.length; start++) {
+                            let joined = '';
+                            for (let index = start; index < tokens.length; index++) {
+                                joined += compact(tokens[index]);
+                                if (joined === expectedCompact) return true;
+                                if (joined.length >= expectedCompact.length) break;
+                            }
+                        }
+                        return false;
+                    };
+                    for (const prior of document.querySelectorAll('[data-promptbranch-library-exact-binding]')) prior.removeAttribute('data-promptbranch-library-exact-binding');
+                    const containers = new Set();
+                    for (const el of Array.from(document.querySelectorAll(selector)).filter(visible)) {
+                        if (!valuesFor(el).some(exact)) continue;
+                        const container = el.closest('[role="row"], [role="listitem"], article, li') || el;
+                        if (visible(container)) containers.add(container);
+                    }
+                    if (containers.size !== 1) return {count: containers.size};
+                    const target = Array.from(containers)[0];
+                    target.setAttribute('data-promptbranch-library-exact-binding', 'true');
+                    return {count: 1};
+                }
+                """,
+                normalized,
+            )
+            if isinstance(binding, dict) and int(binding.get('count') or 0) == 1:
+                locator = page.locator('[data-promptbranch-library-exact-binding="true"]')
+                if await self._safe_count(locator, 'data-promptbranch-library-exact-binding') == 1:
+                    candidate = locator.first
+                    if await candidate.is_visible():
+                        return candidate
+            if isinstance(binding, dict) and int(binding.get('count') or 0) > 1:
+                return None
+        except Exception:
+            pass
+        # Test doubles and older surfaces may expose the exact unsplit name.
+        try:
             locator = page.get_by_text(normalized, exact=True)
             if await locator.count() == 1 and await locator.first.is_visible():
                 candidate = locator.first
@@ -8785,17 +8956,91 @@ class ChatGPTBrowserClient:
                 return candidate
         except Exception:
             pass
-        cards = await self._snapshot_library_file_cards(page)
-        matching = [item for item in cards if self._file_source_family_filename(item.get('filename')).casefold() == normalized.casefold()]
-        if len(matching) != 1:
-            return None
-        try:
-            locator = page.locator('main').get_by_text(normalized, exact=True)
-            if await locator.count() == 1:
-                return locator.first
-        except Exception:
-            pass
         return None
+
+    def _validate_exact_library_ui_binding(
+        self,
+        *,
+        surface: Any,
+        backend_presence: Any,
+        filename: str,
+        library_metadata_object_id: str,
+    ) -> dict[str, Any]:
+        canonical = self._file_source_family_filename(filename)
+        target_id = self._library_file_record_id(library_metadata_object_id)
+        ui_records = list((surface or {}).get('records') or []) if isinstance(surface, dict) else []
+        ui_family = [
+            item for item in ui_records
+            if isinstance(item, dict) and self._file_source_family_member(item.get('filename'), canonical)
+        ]
+        ui_exact = [
+            item for item in ui_family
+            if self._file_source_family_filename(item.get('filename')).casefold() == canonical.casefold()
+        ]
+        ui_suffix = [item for item in ui_family if item not in ui_exact]
+        backend_family_ids: set[str] = set()
+        backend_target_records: list[dict[str, Any]] = []
+        if isinstance(backend_presence, dict):
+            for observation in backend_presence.get('observations') or []:
+                response = observation.get('response') if isinstance(observation, dict) else None
+                for record in (response or {}).get('records') or [] if isinstance(response, dict) else []:
+                    if not isinstance(record, dict) or not self._file_source_family_member(record.get('filename'), canonical):
+                        continue
+                    identity_values = {
+                        self._library_file_record_id(record.get('library_metadata_object_id')),
+                        self._library_file_record_id(record.get('file_id')),
+                        *(self._library_file_record_id(value) for value in record.get('identity_candidates') or []),
+                    }
+                    identity_values.discard(None)
+                    backend_family_ids.update(identity_values)
+                    if target_id and target_id in identity_values:
+                        backend_target_records.append(record)
+        if len(ui_exact) == 0:
+            return {
+                'ok': False,
+                'status': 'library_ui_filename_reconstruction_failed',
+                'exact_ui_record_count': 0,
+                'suffix_ui_record_count': len(ui_suffix),
+                'backend_target_record_count': len(backend_target_records),
+            }
+        if len(ui_exact) != 1 or ui_suffix:
+            return {
+                'ok': False,
+                'status': 'library_ui_binding_ambiguous',
+                'exact_ui_record_count': len(ui_exact),
+                'suffix_ui_record_count': len(ui_suffix),
+                'backend_target_record_count': len(backend_target_records),
+            }
+        if not target_id or not backend_target_records:
+            return {
+                'ok': False,
+                'status': 'library_ui_backend_binding_not_proven',
+                'exact_ui_record_count': len(ui_exact),
+                'suffix_ui_record_count': len(ui_suffix),
+                'backend_target_record_count': len(backend_target_records),
+            }
+        competing_library_ids = {
+            value for value in backend_family_ids if str(value or '').startswith('libfile_') and value != target_id
+        }
+        if competing_library_ids:
+            return {
+                'ok': False,
+                'status': 'library_ui_binding_ambiguous',
+                'exact_ui_record_count': len(ui_exact),
+                'suffix_ui_record_count': len(ui_suffix),
+                'backend_target_record_count': len(backend_target_records),
+                'competing_library_identity_count': len(competing_library_ids),
+            }
+        return {
+            'ok': True,
+            'status': 'exact_library_ui_record_selectable',
+            'filename': canonical,
+            'library_metadata_object_id': target_id,
+            'exact_ui_record_count': 1,
+            'suffix_ui_record_count': 0,
+            'backend_target_record_count': len(backend_target_records),
+            'competing_library_identity_count': 0,
+        }
 
     async def _delete_disposable_library_file_via_ui(
         self,
@@ -8803,7 +9048,18 @@ class ChatGPTBrowserClient:
         *,
         filename: str,
         delete_forever: bool,
+        ui_binding: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
+        if not isinstance(ui_binding, dict) or not (
+            bool(ui_binding.get('ok'))
+            and ui_binding.get('status') == 'exact_library_ui_record_selectable'
+        ):
+            return {
+                'ok': False,
+                'status': 'exact_library_ui_binding_required',
+                'filename': filename,
+                'delete_forever': delete_forever,
+            }
         locator = await self._find_disposable_library_file_card_by_filename(page, filename)
         if locator is None:
             return {'ok': False, 'status': 'disposable_library_file_not_found', 'filename': filename, 'delete_forever': delete_forever}
@@ -9145,16 +9401,23 @@ class ChatGPTBrowserClient:
                 timeout_ms=12_000,
             )
             result_base['visible_library_surface_after_backend_presence'] = visible_surface
-            if not visible_surface.get('ok') or int(visible_surface.get('family_record_count') or 0) < 1:
+            visible_ui_binding = self._validate_exact_library_ui_binding(
+                surface=visible_surface,
+                backend_presence=visible_inventory_presence,
+                filename=visible_filename,
+                library_metadata_object_id=visible_libfile_id,
+            )
+            result_base['visible_library_ui_binding'] = visible_ui_binding
+            if not visible_ui_binding.get('ok'):
                 result_base.update({
                     'conclusion': 'diagnostic_inconclusive',
-                    'reason': 'disposable_library_ui_not_selectable_after_backend_visibility',
+                    'reason': str(visible_ui_binding.get('status') or 'disposable_library_ui_not_selectable_after_backend_visibility'),
                 })
                 return result_base
 
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_soft_delete')
             visible_soft_delete = await self._delete_disposable_library_file_via_ui(
-                page, filename=visible_filename, delete_forever=False,
+                page, filename=visible_filename, delete_forever=False, ui_binding=visible_ui_binding,
             )
             result_base['visible_library_soft_delete'] = visible_soft_delete
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
@@ -9169,12 +9432,14 @@ class ChatGPTBrowserClient:
             await page.wait_for_timeout(800)
             opened_deleted = await self._open_library_recently_deleted(page)
             result_base['recently_deleted_opened_for_discovery'] = opened_deleted
+            deleted_visible_surface: dict[str, Any] = {}
             if opened_deleted:
                 await self._library_search_exact_family(page, visible_filename)
-                await self._wait_for_authoritative_library_family_surface(
+                deleted_visible_surface = await self._wait_for_authoritative_library_family_surface(
                     page, canonical_name=visible_filename, label='library-backend-protocol-visible-deleted-ready',
                     timeout_ms=12_000, surface_kind='recently_deleted',
                 )
+            result_base['visible_library_deleted_surface'] = deleted_visible_surface
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
             deleted_inventory_protocol = self._discover_backend_inventory_protocol(
                 protocol_watch, id_candidates=visible_ids, filename=visible_filename,
@@ -9184,10 +9449,30 @@ class ChatGPTBrowserClient:
             if deleted_inventory_protocol is None:
                 result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'recently_deleted_inventory_endpoint_not_discovered'})
                 return result_base
+            deleted_binding_presence = {
+                'observations': [{
+                    'response': {
+                        'records': list(deleted_inventory_protocol.get('_records') or []),
+                    }
+                }]
+            }
+            deleted_ui_binding = self._validate_exact_library_ui_binding(
+                surface=deleted_visible_surface,
+                backend_presence=deleted_binding_presence,
+                filename=visible_filename,
+                library_metadata_object_id=visible_libfile_id,
+            )
+            result_base['visible_library_deleted_ui_binding'] = deleted_ui_binding
+            if not deleted_ui_binding.get('ok'):
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': str(deleted_ui_binding.get('status') or 'recently_deleted_library_ui_not_selectable'),
+                })
+                return result_base
 
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_hard_delete')
             visible_hard_delete = await self._delete_disposable_library_file_via_ui(
-                page, filename=visible_filename, delete_forever=True,
+                page, filename=visible_filename, delete_forever=True, ui_binding=deleted_ui_binding,
             )
             result_base['visible_library_hard_delete'] = visible_hard_delete
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)

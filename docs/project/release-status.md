@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
-active candidate version: v0.1.103.10.92
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
-next normal slice: v0.1.103.10.92 — replay Library protocols with private in-memory authentication
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
+active candidate version: v0.1.103.10.93
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
+next normal slice: v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -778,9 +778,14 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 
 ## v0.1.103.10.91 diagnostic candidate
 
-`chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip` is diagnostic-only. It fixes the false `disposable_visible_library_file_identity_not_captured` classification, makes active inventory discovery ID-driven, and removes the 600-event public trace cap. It must not be adopted from the diagnostic run and must not touch the earlier suffix-evidence project/source.
+`chatgpt_claudecode_workflow-2_v0.1.103.10.91.zip` is diagnostic-only. It fixes the false `disposable_visible_library_file_identity_not_captured` classification, makes active inventory discovery ID-driven, and removes the 600-event public trace cap. It must not be adopted from the diagnostic run and must not touch the earlier suffix-evidence project/source.
 
 
 ## v0.1.103.10.92 diagnostic candidate
 
 `chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip` is diagnostic-only. It repairs authenticated Library inventory replay while preserving sanitized reporting and all fail-closed mutation gates. It must not be adopted or uploaded as a release Project Source from this diagnostic run.
+
+
+## v0.1.103.10.93 diagnostic candidate
+
+`chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip` is diagnostic-only. It reconstructs exact canonical Library filenames across rendered whitespace, requires unique UI-family and backend-identity binding, and refuses deletion or reupload when the selected card is missing or ambiguous. It must not be adopted or uploaded as a release Project Source from this diagnostic run.
