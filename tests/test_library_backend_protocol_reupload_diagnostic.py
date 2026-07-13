@@ -582,7 +582,7 @@ def test_library_snapshot_reconstructs_exact_name_from_rendered_fragments(tmp_pa
     records = asyncio.run(client._snapshot_library_file_cards(Page(), canonical_name=expected))
     assert len(records) == 1
     assert records[0]["filename"] == expected
-    assert records[0]["filename_reconstruction"] == "exact_canonical_from_actionable_row"
+    assert records[0]["filename_reconstruction"] == "exact_canonical_from_filename_leaf"
     assert records[0]["row_binding_key"] == "pb-library-row-1"
     assert "filename_candidates" not in records[0]
 
@@ -592,6 +592,8 @@ def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_p
     filename = "pb-library-visible-cb4583bf48.txt"
     libfile = "libfile_d5a56b8829ac8191a9e1fba45dafc254"
     surface = {
+        "ok": True,
+        "authoritative": True,
         "records": [{
             "file_id": "",
             "filename": filename,
@@ -606,17 +608,22 @@ def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_p
     }
     backend = {
         "ok": True,
-        "observations": [{
-            "response": {
-                "records": [{
-                    "file_id": "file_00000000ecfc71f494d05513262f1f62",
-                    "processed_file_id": "file_00000000ecfc71f494d05513262f1f62",
-                    "library_metadata_object_id": libfile,
-                    "identity_candidates": [libfile, "file_00000000ecfc71f494d05513262f1f62"],
-                    "filename": filename,
-                }]
-            }
-        }]
+        "observations": [
+            {"response": {"records": [{
+                "file_id": "file_00000000ecfc71f494d05513262f1f62",
+                "processed_file_id": "file_00000000ecfc71f494d05513262f1f62",
+                "library_metadata_object_id": libfile,
+                "identity_candidates": [libfile, "file_00000000ecfc71f494d05513262f1f62"],
+                "filename": filename,
+            }]}},
+            {"response": {"records": [{
+                "file_id": "file_00000000ecfc71f494d05513262f1f62",
+                "processed_file_id": "file_00000000ecfc71f494d05513262f1f62",
+                "library_metadata_object_id": libfile,
+                "identity_candidates": [libfile, "file_00000000ecfc71f494d05513262f1f62"],
+                "filename": filename,
+            }]}},
+        ]
     }
     result = client._validate_exact_library_ui_binding(
         surface=surface,
@@ -625,10 +632,11 @@ def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_p
         library_metadata_object_id=libfile,
     )
     assert result["ok"] is True
-    assert result["status"] == "exact_library_actionable_row_bound"
+    assert result["status"] == "exact_library_file_row_bound"
     assert result["row_binding_key"] == "pb-library-row-1"
     assert result["exact_ui_record_count"] == 1
     assert result["suffix_ui_record_count"] == 0
+    assert result["backend_target_record_count"] == 1
 
 
 def test_exact_library_ui_binding_rejects_unreconstructed_and_suffix_ambiguity(tmp_path: Path) -> None:
@@ -648,15 +656,15 @@ def test_exact_library_ui_binding_rejects_unreconstructed_and_suffix_ambiguity(t
         }]
     }
     missing = client._validate_exact_library_ui_binding(
-        surface={"records": [{"file_id": "", "filename": ".zip", "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-missing"}]},
+        surface={"ok": True, "authoritative": True, "records": [{"file_id": "", "filename": ".zip", "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-missing"}]},
         backend_presence=backend,
         filename=filename,
         library_metadata_object_id=libfile,
     )
-    assert missing["status"] == "library_actionable_row_not_found"
+    assert missing["status"] == "library_filename_leaf_not_found"
 
     ambiguous = client._validate_exact_library_ui_binding(
-        surface={"records": [
+        surface={"ok": True, "authoritative": True, "records": [
             {"file_id": "", "filename": filename, "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-exact"},
             {"file_id": "", "filename": "release (1).zip", "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-suffix"},
         ]},
@@ -664,7 +672,7 @@ def test_exact_library_ui_binding_rejects_unreconstructed_and_suffix_ambiguity(t
         filename=filename,
         library_metadata_object_id=libfile,
     )
-    assert ambiguous["status"] == "library_actionable_row_ambiguous"
+    assert ambiguous["status"] == "library_file_row_ambiguous"
 
 
 def test_disposable_delete_refuses_unproven_ui_binding(tmp_path: Path) -> None:
@@ -696,7 +704,7 @@ def test_exact_library_ui_binding_requires_unique_row_menu(tmp_path: Path) -> No
         }]
     }
     result = client._validate_exact_library_ui_binding(
-        surface={"records": [{
+        surface={"ok": True, "authoritative": True, "records": [{
             "file_id": "",
             "filename": filename,
             "file_row_candidate": True,
@@ -708,9 +716,9 @@ def test_exact_library_ui_binding_requires_unique_row_menu(tmp_path: Path) -> No
         filename=filename,
         library_metadata_object_id=libfile,
     )
-    assert result["ok"] is False
-    assert result["status"] == "library_action_menu_not_unique"
-    assert result["action_menu_count"] == 2
+    assert result["ok"] is True
+    assert result["status"] == "exact_library_file_row_bound"
+    assert result["pre_hover_menu_count"] == 0
 
 
 def test_disposable_delete_uses_only_row_scoped_menu(tmp_path: Path) -> None:
@@ -770,7 +778,7 @@ def test_disposable_delete_uses_only_row_scoped_menu(tmp_path: Path) -> None:
         delete_forever=False,
         ui_binding={
             "ok": True,
-            "status": "exact_library_actionable_row_bound",
+            "status": "exact_library_file_row_bound",
             "row_binding_key": "pb-library-row-1",
         },
     ))
@@ -780,3 +788,107 @@ def test_disposable_delete_uses_only_row_scoped_menu(tmp_path: Path) -> None:
         "row-menu:library-disposable-row-options",
         "delete-action:library-disposable-delete-action",
     ]
+
+
+def test_exact_library_ui_binding_preserves_non_authoritative_surface_reason(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    result = client._validate_exact_library_ui_binding(
+        surface={
+            "ok": False,
+            "authoritative": False,
+            "reason": "library_surface_not_authoritative",
+            "records": [],
+        },
+        backend_presence={"ok": True, "observations": []},
+        filename="release.zip",
+        library_metadata_object_id="libfile_target12345678",
+    )
+    assert result["ok"] is False
+    assert result["status"] == "library_surface_not_authoritative_after_backend_presence"
+    assert result["surface_reason"] == "library_surface_not_authoritative"
+
+
+def test_disposable_delete_fails_when_hover_does_not_reveal_row_menu(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class EmptyLocatorList:
+        async def count(self):
+            return 0
+
+        def nth(self, index):  # pragma: no cover - defensive
+            raise IndexError(index)
+
+    class Row:
+        async def hover(self):
+            return None
+
+        async def scroll_into_view_if_needed(self):
+            return None
+
+        def locator(self, _selector):
+            return EmptyLocatorList()
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_find(*_args, **_kwargs):
+        return Row()
+
+    client._find_disposable_library_file_card_by_filename = fake_find  # type: ignore[method-assign]
+    result = asyncio.run(client._delete_disposable_library_file_via_ui(
+        Page(),
+        filename="release.zip",
+        delete_forever=False,
+        ui_binding={
+            "ok": True,
+            "status": "exact_library_file_row_bound",
+            "row_binding_key": "pb-library-row-1",
+        },
+    ))
+    assert result["ok"] is False
+    assert result["status"] == "library_row_menu_not_available_after_hover"
+    assert result["pre_hover_menu_count"] == 0
+    assert result["post_hover_menu_count"] == 0
+
+
+def test_library_surface_stops_after_bounded_identical_non_authoritative_observations(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Page:
+        async def wait_for_timeout(self, milliseconds: int):
+            await asyncio.sleep(milliseconds / 1000)
+
+    async def fake_route(*_args, **_kwargs):
+        return {
+            "current_url": "https://chatgpt.com/library?search=release.zip",
+            "route_ok": True,
+            "app_loaded": True,
+            "loading_visible": False,
+            "surface_kind": "active",
+            "surface_active": True,
+            "ready": True,
+        }
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_empty(*_args, **_kwargs):
+        return False
+
+    client._library_route_state = fake_route  # type: ignore[method-assign]
+    client._snapshot_library_file_cards = fake_snapshot  # type: ignore[method-assign]
+    client._library_empty_state_visible = fake_empty  # type: ignore[method-assign]
+    result = asyncio.run(client._wait_for_authoritative_library_family_surface(
+        Page(),
+        canonical_name="release.zip",
+        label="bounded-non-authoritative",
+        timeout_ms=30_000,
+        poll_ms=1,
+        max_identical_non_authoritative_observations=5,
+    ))
+    assert result["ok"] is False
+    assert result["reason"] == "library_surface_not_authoritative"
+    assert result["bounded_identical_state_stop"] is True
+    assert result["identical_non_authoritative_observations"] == 5
+    assert len(result["observations"]) == 5

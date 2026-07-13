@@ -833,3 +833,8 @@ The Library grid may insert layout whitespace inside a filename. The diagnostic 
 ## v0.1.103.10.94: Library mutation requires a unique actionable row
 
 A filename match in an ancestor, navigation item, or column header is not mutation authority. A disposable Library mutation requires one leaf-like row with local exact-filename evidence, file metadata, one row-owned action menu, and a unique backend `libfile_...` binding.
+
+
+## v0.1.103.10.95: Library row proof and menu proof are separate gates
+
+A Library file row may be authoritative before its action menu is visible. Promptbranch first binds one exact filename leaf to the nearest local metadata-bearing row, then scrolls and hovers that exact row to discover one row-owned menu. Repeated backend observations of the same `libfile_...` are one object, not competing records. A non-authoritative Library surface stops before row binding and cannot be classified as row absence.

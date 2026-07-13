@@ -33,7 +33,7 @@ def load_config(path: str | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the v0.1.103.10.94 backend protocol discovery diagnostic with actionable-row filtering and row-scoped menu binding."
+        description="Run the v0.1.103.10.95 backend protocol discovery diagnostic with filename-leaf row discovery and hover-activated row-menu binding."
     )
     parser.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH))
     parser.add_argument("--service-base-url")

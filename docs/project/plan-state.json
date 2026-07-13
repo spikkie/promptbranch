@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
-  "active_candidate_version": "v0.1.103.10.94",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
+  "active_candidate_version": "v0.1.103.10.95",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
+  "active_slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -172,6 +172,13 @@
       "slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
       "status": "candidate",
       "version": "v0.1.103.10.94"
+    },
+    {
+      "version": "v0.1.103.10.95",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
+      "slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
+      "status": "candidate",
+      "created_at": "2026-07-13T19:55:00Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -179,9 +186,9 @@
   "last_completed_repair": "v0.1.103.10.68 \u2014 completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
   "last_updated": "2026-07-13T18:55:00Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
-  "next_normal_slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
-  "next_normal_version": "v0.1.103.10.94",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
+  "next_normal_slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
+  "next_normal_version": "v0.1.103.10.95",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -466,6 +473,14 @@
       "status": "candidate",
       "summary": "Filters Library DOM candidates to leaf-like file rows with local filename and metadata evidence, requires one unique row-owned action menu, binds deletion to that row only, and keeps all backend deletion, canonical reupload, release-source upload, and adoption gates fail closed on ambiguity.",
       "version": "v0.1.103.10.94"
+    },
+    {
+      "version": "v0.1.103.10.95",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
+      "status": "candidate",
+      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed."
     }
   ],
   "release_mode": "repair",
@@ -534,6 +549,12 @@
       "status": "candidate",
       "summary": "Filters Library DOM candidates to leaf-like file rows with local filename and metadata evidence, requires one unique row-owned action menu, binds deletion to that row only, and keeps all backend deletion, canonical reupload, release-source upload, and adoption gates fail closed on ambiguity.",
       "version": "v0.1.103.10.94"
+    },
+    {
+      "version": "v0.1.103.10.95",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -560,11 +581,11 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
       "release_mode": "repair",
-      "scope": "Diagnostic-only: ignore navigation/header/ancestor containers; reconstruct filenames only inside leaf-like file rows with local metadata; require one exact actionable row and one row-owned menu; scope all menu interaction to that row; keep deletion/reupload/upload/adoption fail closed.",
-      "slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
+      "scope": "discover one exact filename leaf, bind its nearest local file row, deduplicate backend libfile observations, hover that row to discover one row-owned menu, and stop on non-authoritative UI state without deletion or reupload",
+      "slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
       "status": "active",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
-      "version": "v0.1.103.10.94"
+      "version": "v0.1.103.10.95"
     },
     {
       "release_mode": "normal",
@@ -608,5 +629,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.94"
+  "updated_for": "v0.1.103.10.95"
 }

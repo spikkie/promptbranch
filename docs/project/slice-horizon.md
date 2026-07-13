@@ -66,3 +66,8 @@ Narrow diagnostic repair: preserve authenticated exact-ID backend inventory proo
 ### v0.1.103.10.94 repair-only diagnostic
 
 Bind the exact Library filename only inside one actionable file row and scope the mutation menu to that row. This repair does not advance the normal horizon.
+
+
+### v0.1.103.10.95 repair-only diagnostic
+
+Separate exact filename-leaf row discovery from hover-activated row-menu binding, deduplicate backend observations by `libfile_...`, and stop on a bounded non-authoritative Library surface before any delete or reupload mutation. Accepted/current remains `v0.1.103.10.68`.

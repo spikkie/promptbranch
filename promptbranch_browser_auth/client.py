@@ -7463,12 +7463,13 @@ class ChatGPTBrowserClient:
         *,
         canonical_name: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Return only structurally plausible Library file rows/cards.
+        """Return exact filename-leaf rows without requiring a visible menu.
 
-        Filename reconstruction is intentionally local to one leaf-like row.  A
-        page section, navigation item, column header, or ancestor container is
-        never promoted merely because one of its descendants contains the
-        expected filename.
+        Row discovery and destructive-menu discovery are intentionally separate.
+        The filename is first located in the smallest visible DOM element that
+        reconstructs to the expected canonical name.  From that leaf we ascend
+        only to the nearest local row/card carrying file metadata.  Hover-only
+        controls are discovered later, immediately before mutation.
         """
         try:
             cards = await page.evaluate(
@@ -7483,30 +7484,19 @@ class ChatGPTBrowserClient:
                         const rect = el.getBoundingClientRect();
                         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
                     };
+                    const root = document.querySelector('main,[role="main"]') || document.body;
                     const rowSelector = [
-                        'main [role="row"]:not([role="columnheader"])',
-                        'main [role="listitem"]',
-                        'main article',
-                        'main tr',
-                        'main li',
-                        'main [data-file-id]',
-                        'main [data-asset-id]',
-                        'main [data-testid*="file-row" i]',
-                        'main [data-testid*="file-card" i]',
-                        'main [data-testid*="library-file" i]'
+                        '[role="row"]:not([role="columnheader"])', '[role="listitem"]',
+                        'article', 'tr', 'li', '[data-file-id]', '[data-asset-id]',
+                        '[data-testid*="file-row" i]', '[data-testid*="file-card" i]',
+                        '[data-testid*="library-file" i]'
                     ].join(', ');
                     const menuSelector = [
-                        'button[aria-haspopup="menu"]',
-                        '[role="button"][aria-haspopup="menu"]',
-                        'button[aria-label*="More" i]',
-                        '[role="button"][aria-label*="More" i]',
-                        '[data-testid*="menu" i]',
-                        '[data-testid*="action" i] button'
+                        'button[aria-haspopup="menu"]', '[role="button"][aria-haspopup="menu"]',
+                        'button[aria-label*="More" i]', '[role="button"][aria-label*="More" i]',
+                        '[data-testid*="menu" i]', '[data-testid*="action" i] button'
                     ].join(', ');
-                    const filenameSelector = [
-                        '[title]', '[aria-label]', '[data-name]', '[data-filename]', '[data-file-name]',
-                        '[data-testid*="filename" i]', '[data-testid*="file-name" i]'
-                    ].join(', ');
+                    const attrs = ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name'];
                     const exact = value => {
                         const normalized = normalize(value);
                         if (!normalized || !expectedCompact) return false;
@@ -7522,24 +7512,17 @@ class ChatGPTBrowserClient:
                         }
                         return false;
                     };
-                    const localValues = el => {
+                    const elementValues = el => {
                         const values = [];
                         const add = value => {
                             const candidate = String(value || '').trim();
                             if (candidate && !values.includes(candidate)) values.push(candidate);
                         };
-                        for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
-                            add(el.getAttribute && el.getAttribute(attr));
-                        }
+                        for (const attr of attrs) add(el.getAttribute && el.getAttribute(attr));
                         add(el.innerText || el.textContent || '');
-                        for (const child of Array.from(el.querySelectorAll ? el.querySelectorAll(filenameSelector) : []).slice(0, 60)) {
-                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
-                                add(child.getAttribute && child.getAttribute(attr));
-                            }
-                            add(child.innerText || child.textContent || '');
-                        }
                         return values;
                     };
+                    const elementMatches = el => elementValues(el).some(exact);
                     const fileId = el => {
                         for (const key of ['data-file-id', 'data-id', 'data-asset-id']) {
                             const value = el.getAttribute && el.getAttribute(key);
@@ -7567,58 +7550,90 @@ class ChatGPTBrowserClient:
                             const match = String(link.getAttribute('href') || '').match(/\/g\/(g-p-[^/?#]+)/);
                             if (match) result.add(match[1]);
                         }
-                        const text = normalize(el.innerText || el.textContent || '');
-                        if (/not used in any projects|not linked to a project|unreferenced/i.test(text)) known = true;
                         return {ids: Array.from(result), known};
                     };
-                    const isNestedAncestor = el => Array.from(el.querySelectorAll ? el.querySelectorAll(rowSelector) : [])
-                        .some(child => child !== el && visible(child));
+                    const hasSize = text => /(?:^|\s)\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB)(?:\s|$)/i.test(text);
+                    const hasDate = text => /\b(?:Today|Yesterday|Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(text);
                     const knownNonRows = new Set(['library new', 'all images files', 'name modified size']);
                     for (const prior of document.querySelectorAll('[data-promptbranch-library-row-candidate]')) {
                         prior.removeAttribute('data-promptbranch-library-row-candidate');
                     }
+                    const matching = Array.from(root.querySelectorAll('*')).filter(visible).filter(elementMatches);
+                    const leaves = matching.filter(el => !matching.some(other => other !== el && el.contains(other)));
+                    const rows = [];
+                    const seenRows = new Set();
+                    for (const leaf of leaves) {
+                        let row = null;
+                        for (let node = leaf; node && node !== root && node !== document.body; node = node.parentElement) {
+                            if (!visible(node)) continue;
+                            const text = normalize(node.innerText || node.textContent || '');
+                            if (!text || text.length > 1200 || knownNonRows.has(text.toLowerCase()) || !elementMatches(node)) continue;
+                            const id = fileId(node);
+                            const metadata = Number(hasSize(text)) + Number(hasDate(text)) + Number(Boolean(id));
+                            if (node.matches(rowSelector) || metadata > 0) {
+                                row = node;
+                                break;
+                            }
+                        }
+                        if (!row || seenRows.has(row)) continue;
+                        seenRows.add(row);
+                        rows.push({row, leaf});
+                    }
                     const results = [];
-                    const seen = new Set();
                     let marker = 0;
-                    for (const el of Array.from(document.querySelectorAll(rowSelector)).filter(visible)) {
+                    for (const entry of rows) {
+                        const el = entry.row;
                         const rawText = String(el.innerText || el.textContent || '');
                         const text = normalize(rawText);
-                        if (!text || text.length > 1200 || knownNonRows.has(text.toLowerCase())) continue;
-                        if (isNestedAncestor(el)) continue;
-                        const values = localValues(el);
-                        const hasExactFilename = expectedCompact ? values.some(exact) : values.some(value => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(normalize(value)));
-                        if (!hasExactFilename) continue;
                         const id = fileId(el);
-                        const hasSize = /(?:^|\s)\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB)(?:\s|$)/i.test(text);
-                        const hasDate = /\b(?:Today|Yesterday|Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(text);
-                        const menus = Array.from(el.querySelectorAll ? el.querySelectorAll(menuSelector) : []).filter(visible);
-                        const structural = Boolean(id || hasSize || hasDate);
-                        if (!structural) continue;
-                        const key = `${id}|${text.toLowerCase()}`;
-                        if (seen.has(key)) continue;
-                        seen.add(key);
+                        const sizePresent = hasSize(text);
+                        const datePresent = hasDate(text);
+                        const metadataCount = Number(sizePresent) + Number(datePresent) + Number(Boolean(id));
+                        if (metadataCount < 1) continue;
+                        const rowLeaves = leaves.filter(leaf => el.contains(leaf));
+                        const values = [];
+                        const add = value => {
+                            const candidate = String(value || '').trim();
+                            if (candidate && !values.includes(candidate)) values.push(candidate);
+                        };
+                        for (const leaf of rowLeaves) for (const value of elementValues(leaf)) add(value);
+                        for (const attr of attrs) add(el.getAttribute && el.getAttribute(attr));
+                        add(rawText);
                         const bindingKey = `pb-library-row-${++marker}`;
                         el.setAttribute('data-promptbranch-library-row-candidate', bindingKey);
+                        const preHoverMenus = Array.from(el.querySelectorAll ? el.querySelectorAll(menuSelector) : []).filter(visible);
                         const refs = projectRefs(el);
-                        const lines = rawText.split('\n').map(normalize).filter(Boolean);
-                        const filename = lines.find(line => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(line)) || normalize(el.getAttribute('title') || el.getAttribute('aria-label') || '');
+                        const selectedAttributes = {};
+                        for (const attr of ['role', 'title', 'aria-label', 'data-testid', 'data-file-id', 'data-asset-id']) {
+                            const value = el.getAttribute && el.getAttribute(attr);
+                            if (value) selectedAttributes[attr] = String(value).slice(0, 240);
+                        }
                         results.push({
                             file_id: id,
-                            filename,
-                            filename_candidates: [...values, ...lines, text],
+                            filename: expected,
+                            filename_candidates: values,
                             text,
+                            local_text: text.slice(0, 500),
                             project_ids: refs.ids,
                             project_references_known: refs.known,
                             deleted: /recently deleted|delete forever|restore/i.test(text),
                             file_row_candidate: true,
-                            actionable_library_row: menus.length === 1,
-                            action_menu_count: menus.length,
+                            actionable_library_row: false,
+                            action_menu_count: preHoverMenus.length,
+                            pre_hover_menu_count: preHoverMenus.length,
                             row_binding_key: bindingKey,
+                            filename_leaf_count: rowLeaves.length,
+                            metadata_count: metadataCount,
+                            dom_tag: String(el.tagName || '').toLowerCase(),
+                            dom_role: String(el.getAttribute && el.getAttribute('role') || ''),
+                            selected_attributes: selectedAttributes,
                             structural_evidence: {
                                 file_id_present: Boolean(id),
-                                size_metadata_present: hasSize,
-                                date_metadata_present: hasDate,
-                                unique_row_menu_present: menus.length === 1,
+                                size_metadata_present: sizePresent,
+                                date_metadata_present: datePresent,
+                                filename_leaf_count: rowLeaves.length,
+                                metadata_count: metadataCount,
+                                pre_hover_menu_count: preHoverMenus.length,
                             },
                         });
                     }
@@ -7654,7 +7669,7 @@ class ChatGPTBrowserClient:
                 )
                 if reconstructed:
                     item['filename'] = reconstructed
-                    item['filename_reconstruction'] = 'exact_canonical_from_actionable_row'
+                    item['filename_reconstruction'] = 'exact_canonical_from_filename_leaf'
                 else:
                     item['filename_reconstruction'] = 'not_reconstructed'
             item.pop('filename_candidates', None)
@@ -7973,6 +7988,7 @@ class ChatGPTBrowserClient:
         poll_ms: int = 350,
         required_stable_observations: int = 2,
         surface_kind: str = 'active',
+        max_identical_non_authoritative_observations: int = 0,
     ) -> dict[str, Any]:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(timeout_ms, 1) / 1000
@@ -7984,6 +8000,8 @@ class ChatGPTBrowserClient:
         last_family_records: list[dict[str, Any]] = []
         last_empty_state = False
         last_route_state: dict[str, Any] = {}
+        last_non_authoritative_signature: Optional[tuple[Any, ...]] = None
+        identical_non_authoritative_observations = 0
 
         while True:
             route_state = await self._library_route_state(page, surface_kind=surface_kind)
@@ -8017,9 +8035,23 @@ class ChatGPTBrowserClient:
                 else:
                     stable_observations = 1
                     last_signature = surface_signature
+                last_non_authoritative_signature = None
+                identical_non_authoritative_observations = 0
             else:
                 stable_observations = 0
                 last_signature = None
+                non_authoritative_signature = (
+                    bool(route_state.get('ready')),
+                    bool(route_state.get('loading_visible')),
+                    len(records),
+                    bool(empty_state_visible),
+                    surface_kind,
+                )
+                if non_authoritative_signature == last_non_authoritative_signature:
+                    identical_non_authoritative_observations += 1
+                else:
+                    last_non_authoritative_signature = non_authoritative_signature
+                    identical_non_authoritative_observations = 1
 
             observation = {
                 'observation': len(observations) + 1,
@@ -8032,6 +8064,7 @@ class ChatGPTBrowserClient:
                 'authoritative_candidate': authoritative_candidate,
                 'stable_observations': stable_observations,
                 'required_stable_observations': required,
+                'identical_non_authoritative_observations': identical_non_authoritative_observations,
             }
             observations.append(observation)
             self._log('project-source-add', 'Library surface authority probe', label=label, canonical_name=canonical_name, **observation)
@@ -8057,11 +8090,18 @@ class ChatGPTBrowserClient:
                     'observations': observations,
                 }
 
-            if loop.time() >= deadline:
+            bounded_identical_stop = (
+                not authoritative_candidate
+                and max_identical_non_authoritative_observations > 0
+                and identical_non_authoritative_observations >= max_identical_non_authoritative_observations
+            )
+            if bounded_identical_stop or loop.time() >= deadline:
                 return {
                     'ok': False,
                     'authoritative': False,
                     'reason': 'library_surface_not_authoritative',
+                    'bounded_identical_state_stop': bounded_identical_stop,
+                    'identical_non_authoritative_observations': identical_non_authoritative_observations,
                     'records': last_records,
                     'family_records': last_family_records,
                     'record_count': len(last_records),
@@ -8946,7 +8986,7 @@ class ChatGPTBrowserClient:
         *,
         row_binding_key: Optional[str] = None,
     ) -> Any:
-        normalized = self._file_source_family_filename(filename)
+        """Resolve only the exact filename-leaf row marked during discovery."""
         if row_binding_key:
             try:
                 locator = page.locator(
@@ -8958,77 +8998,25 @@ class ChatGPTBrowserClient:
                         return candidate
             except Exception:
                 pass
+        records = await self._snapshot_library_file_cards(page, canonical_name=filename)
+        canonical = self._file_source_family_filename(filename)
+        exact = [
+            item for item in records
+            if self._file_source_family_filename(item.get('filename')).casefold() == canonical.casefold()
+        ]
+        if len(exact) != 1:
+            return None
+        rebound_key = str(exact[0].get('row_binding_key') or '').strip()
+        if not rebound_key:
+            return None
         try:
-            binding = await page.evaluate(
-                r"""
-                expected => {
-                    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-                    const compact = value => normalize(value).replace(/\s+/g, '').toLowerCase();
-                    const expectedCompact = compact(expected);
-                    const visible = el => {
-                        if (!el) return false;
-                        const style = window.getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-                    };
-                    const rowSelector = [
-                        'main [role="row"]:not([role="columnheader"])', 'main [role="listitem"]',
-                        'main article', 'main tr', 'main li', 'main [data-file-id]', 'main [data-asset-id]',
-                        'main [data-testid*="file-row" i]', 'main [data-testid*="file-card" i]',
-                        'main [data-testid*="library-file" i]'
-                    ].join(', ');
-                    const menuSelector = [
-                        'button[aria-haspopup="menu"]', '[role="button"][aria-haspopup="menu"]',
-                        'button[aria-label*="More" i]', '[role="button"][aria-label*="More" i]',
-                        '[data-testid*="menu" i]', '[data-testid*="action" i] button'
-                    ].join(', ');
-                    const exact = value => {
-                        const normalized = normalize(value);
-                        if (normalized.toLowerCase() === String(expected || '').toLowerCase()) return true;
-                        const tokens = normalized.split(/\s+/).filter(Boolean);
-                        for (let start = 0; start < tokens.length; start++) {
-                            let joined = '';
-                            for (let index = start; index < tokens.length; index++) {
-                                joined += compact(tokens[index]);
-                                if (joined === expectedCompact) return true;
-                                if (joined.length >= expectedCompact.length) break;
-                            }
-                        }
-                        return false;
-                    };
-                    const hasNestedRow = el => Array.from(el.querySelectorAll ? el.querySelectorAll(rowSelector) : [])
-                        .some(child => child !== el && visible(child));
-                    for (const prior of document.querySelectorAll('[data-promptbranch-library-exact-binding]')) {
-                        prior.removeAttribute('data-promptbranch-library-exact-binding');
-                    }
-                    const rows = [];
-                    for (const el of Array.from(document.querySelectorAll(rowSelector)).filter(visible)) {
-                        const text = normalize(el.innerText || el.textContent || '');
-                        if (!text || hasNestedRow(el)) continue;
-                        if (!exact(text) && !Array.from(el.querySelectorAll('[title], [aria-label], [data-name], [data-filename], [data-file-name]')).some(child =>
-                            ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name'].some(attr => exact(child.getAttribute && child.getAttribute(attr)))
-                        )) continue;
-                        const hasMetadata = /(?:^|\s)\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB)(?:\s|$)/i.test(text)
-                            || /\b(?:Today|Yesterday|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(text)
-                            || Boolean(el.getAttribute('data-file-id') || el.getAttribute('data-asset-id'));
-                        if (!hasMetadata) continue;
-                        const menus = Array.from(el.querySelectorAll(menuSelector)).filter(visible);
-                        if (menus.length !== 1) continue;
-                        rows.push(el);
-                    }
-                    if (rows.length !== 1) return {count: rows.length};
-                    rows[0].setAttribute('data-promptbranch-library-exact-binding', 'true');
-                    return {count: 1};
-                }
-                """,
-                normalized,
+            locator = page.locator(
+                f'[data-promptbranch-library-row-candidate="{rebound_key}"]'
             )
-            if isinstance(binding, dict) and int(binding.get('count') or 0) == 1:
-                locator = page.locator('[data-promptbranch-library-exact-binding="true"]')
-                if await self._safe_count(locator, 'data-promptbranch-library-exact-binding') == 1:
-                    candidate = locator.first
-                    if await candidate.is_visible():
-                        return candidate
+            if await self._safe_count(locator, 'data-promptbranch-library-row-candidate') == 1:
+                candidate = locator.first
+                if await candidate.is_visible():
+                    return candidate
         except Exception:
             pass
         return None
@@ -9043,7 +9031,16 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         canonical = self._file_source_family_filename(filename)
         target_id = self._library_file_record_id(library_metadata_object_id)
-        ui_records = list((surface or {}).get('records') or []) if isinstance(surface, dict) else []
+        if not isinstance(surface, dict) or not surface.get('ok') or not surface.get('authoritative'):
+            return {
+                'ok': False,
+                'status': 'library_surface_not_authoritative_after_backend_presence',
+                'surface_reason': str((surface or {}).get('reason') or '') if isinstance(surface, dict) else '',
+                'exact_ui_record_count': 0,
+                'suffix_ui_record_count': 0,
+                'backend_target_record_count': 0,
+            }
+        ui_records = list(surface.get('records') or [])
         ui_family = [
             item for item in ui_records
             if isinstance(item, dict)
@@ -9055,91 +9052,97 @@ class ChatGPTBrowserClient:
             if self._file_source_family_filename(item.get('filename')).casefold() == canonical.casefold()
         ]
         ui_suffix = [item for item in ui_family if item not in ui_exact]
-        backend_family_ids: set[str] = set()
-        backend_target_records: list[dict[str, Any]] = []
+        backend_library_ids: set[str] = set()
+        backend_target_records: dict[str, dict[str, Any]] = {}
         if isinstance(backend_presence, dict):
             for observation in backend_presence.get('observations') or []:
                 response = observation.get('response') if isinstance(observation, dict) else None
                 for record in (response or {}).get('records') or [] if isinstance(response, dict) else []:
                     if not isinstance(record, dict) or not self._file_source_family_member(record.get('filename'), canonical):
                         continue
+                    library_id = self._library_file_record_id(record.get('library_metadata_object_id'))
+                    if not library_id:
+                        library_id = next((
+                            self._library_file_record_id(value)
+                            for value in record.get('identity_candidates') or []
+                            if str(value or '').startswith('libfile_')
+                        ), None)
+                    if library_id:
+                        backend_library_ids.add(library_id)
                     identity_values = {
-                        self._library_file_record_id(record.get('library_metadata_object_id')),
+                        library_id,
+                        self._library_file_record_id(record.get('processed_file_id')),
                         self._library_file_record_id(record.get('file_id')),
                         *(self._library_file_record_id(value) for value in record.get('identity_candidates') or []),
                     }
                     identity_values.discard(None)
-                    backend_family_ids.update(identity_values)
                     if target_id and target_id in identity_values:
-                        backend_target_records.append(record)
+                        backend_target_records[library_id or target_id] = record
+        backend_target_count = len(backend_target_records)
         if len(ui_exact) == 0:
+            filename_leaf_count = sum(int(item.get('filename_leaf_count') or 0) for item in ui_records if isinstance(item, dict))
             return {
                 'ok': False,
-                'status': 'library_actionable_row_not_found',
+                'status': 'library_filename_leaf_not_found' if filename_leaf_count == 0 else 'library_file_row_not_found',
                 'exact_ui_record_count': 0,
                 'suffix_ui_record_count': len(ui_suffix),
-                'backend_target_record_count': len(backend_target_records),
+                'backend_target_record_count': backend_target_count,
+                'filename_leaf_count': filename_leaf_count,
             }
         if len(ui_exact) != 1 or ui_suffix:
             return {
                 'ok': False,
-                'status': 'library_actionable_row_ambiguous',
+                'status': 'library_file_row_ambiguous',
                 'exact_ui_record_count': len(ui_exact),
                 'suffix_ui_record_count': len(ui_suffix),
-                'backend_target_record_count': len(backend_target_records),
+                'backend_target_record_count': backend_target_count,
             }
         exact_row = ui_exact[0]
-        menu_count = int(exact_row.get('action_menu_count') or 0)
         row_binding_key = str(exact_row.get('row_binding_key') or '').strip()
-        if not exact_row.get('actionable_library_row') or menu_count != 1:
-            return {
-                'ok': False,
-                'status': 'library_action_menu_not_unique',
-                'exact_ui_record_count': 1,
-                'suffix_ui_record_count': 0,
-                'backend_target_record_count': len(backend_target_records),
-                'action_menu_count': menu_count,
-            }
         if not row_binding_key:
             return {
                 'ok': False,
-                'status': 'library_actionable_row_not_found',
+                'status': 'library_file_row_not_found',
                 'exact_ui_record_count': 1,
                 'suffix_ui_record_count': 0,
-                'backend_target_record_count': len(backend_target_records),
+                'backend_target_record_count': backend_target_count,
                 'reason': 'row_binding_key_missing',
             }
-        if not target_id or not backend_target_records:
+        if not target_id or backend_target_count != 1:
             return {
                 'ok': False,
                 'status': 'library_ui_backend_binding_not_proven',
                 'exact_ui_record_count': 1,
                 'suffix_ui_record_count': 0,
-                'backend_target_record_count': len(backend_target_records),
+                'backend_target_record_count': backend_target_count,
             }
-        competing_library_ids = {
-            value for value in backend_family_ids if str(value or '').startswith('libfile_') and value != target_id
-        }
+        competing_library_ids = {value for value in backend_library_ids if value != target_id}
         if competing_library_ids:
             return {
                 'ok': False,
-                'status': 'library_actionable_row_ambiguous',
+                'status': 'library_file_row_ambiguous',
                 'exact_ui_record_count': 1,
                 'suffix_ui_record_count': 0,
-                'backend_target_record_count': len(backend_target_records),
+                'backend_target_record_count': backend_target_count,
                 'competing_library_identity_count': len(competing_library_ids),
             }
         return {
             'ok': True,
-            'status': 'exact_library_actionable_row_bound',
+            'status': 'exact_library_file_row_bound',
             'filename': canonical,
             'library_metadata_object_id': target_id,
             'row_binding_key': row_binding_key,
             'exact_ui_record_count': 1,
             'suffix_ui_record_count': 0,
-            'backend_target_record_count': len(backend_target_records),
+            'backend_target_record_count': backend_target_count,
             'competing_library_identity_count': 0,
-            'action_menu_count': 1,
+            'filename_leaf_count': int(exact_row.get('filename_leaf_count') or 0),
+            'metadata_count': int(exact_row.get('metadata_count') or 0),
+            'pre_hover_menu_count': int(exact_row.get('pre_hover_menu_count') or 0),
+            'dom_tag': str(exact_row.get('dom_tag') or ''),
+            'dom_role': str(exact_row.get('dom_role') or ''),
+            'selected_attributes': dict(exact_row.get('selected_attributes') or {}),
+            'local_text': str(exact_row.get('local_text') or exact_row.get('text') or '')[:500],
         }
 
     async def _delete_disposable_library_file_via_ui(
@@ -9152,7 +9155,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         if not isinstance(ui_binding, dict) or not (
             bool(ui_binding.get('ok'))
-            and ui_binding.get('status') == 'exact_library_actionable_row_bound'
+            and ui_binding.get('status') == 'exact_library_file_row_bound'
         ):
             return {
                 'ok': False,
@@ -9168,38 +9171,61 @@ class ChatGPTBrowserClient:
         if locator is None:
             return {
                 'ok': False,
-                'status': 'library_actionable_row_not_found',
+                'status': 'library_file_row_not_found',
                 'filename': filename,
                 'delete_forever': delete_forever,
             }
         try:
-            if hasattr(locator, 'hover'):
-                await locator.hover()
+            if hasattr(locator, 'scroll_into_view_if_needed'):
+                await locator.scroll_into_view_if_needed()
         except Exception:
             pass
-        row_menu = locator.locator(
+        menu_selector = (
             'button[aria-haspopup="menu"], [role="button"][aria-haspopup="menu"], '
             'button[aria-label*="More" i], [role="button"][aria-label*="More" i], '
             '[data-testid*="menu" i], [data-testid*="action" i] button'
         )
-        visible_menus = []
-        for index in range(await self._safe_count(row_menu, 'library-row-menu')):
-            candidate = row_menu.nth(index)
-            try:
-                if await candidate.is_visible():
-                    visible_menus.append(candidate)
-            except Exception:
-                continue
-        if len(visible_menus) != 1:
+
+        async def visible_row_menus() -> list[Any]:
+            row_menu = locator.locator(menu_selector)
+            found: list[Any] = []
+            for index in range(await self._safe_count(row_menu, 'library-row-menu')):
+                candidate = row_menu.nth(index)
+                try:
+                    if await candidate.is_visible():
+                        found.append(candidate)
+                except Exception:
+                    continue
+            return found
+
+        pre_hover_menus = await visible_row_menus()
+        try:
+            if hasattr(locator, 'hover'):
+                await locator.hover()
+            await page.wait_for_timeout(350)
+        except Exception:
+            pass
+        post_hover_menus = await visible_row_menus()
+        if len(post_hover_menus) == 0:
             return {
                 'ok': False,
-                'status': 'library_action_menu_not_unique',
+                'status': 'library_row_menu_not_available_after_hover',
                 'filename': filename,
                 'delete_forever': delete_forever,
-                'action_menu_count': len(visible_menus),
+                'pre_hover_menu_count': len(pre_hover_menus),
+                'post_hover_menu_count': 0,
+            }
+        if len(post_hover_menus) != 1:
+            return {
+                'ok': False,
+                'status': 'library_row_menu_ambiguous',
+                'filename': filename,
+                'delete_forever': delete_forever,
+                'pre_hover_menu_count': len(pre_hover_menus),
+                'post_hover_menu_count': len(post_hover_menus),
             }
         await self._click_locator_with_fallback(
-            visible_menus[0],
+            post_hover_menus[0],
             label='library-disposable-row-options',
             timeout_ms=5_000,
         )
@@ -9214,7 +9240,7 @@ class ChatGPTBrowserClient:
         )
         action_locator = page.locator(action_selector)
         visible_actions = []
-        for index in range(await self._safe_count(action_locator, 'library-delete-action')):
+        for index in range(await self._safe_count(action_locator, 'library-disposable-delete-action')):
             candidate = action_locator.nth(index)
             try:
                 if await candidate.is_visible():
@@ -9228,10 +9254,12 @@ class ChatGPTBrowserClient:
                 'filename': filename,
                 'delete_forever': delete_forever,
                 'delete_action_count': len(visible_actions),
+                'pre_hover_menu_count': len(pre_hover_menus),
+                'post_hover_menu_count': len(post_hover_menus),
             }
         await self._click_locator_with_fallback(
             visible_actions[0],
-            label='library-disposable-delete-action',
+            label='library-disposable-delete-forever-action' if delete_forever else 'library-disposable-delete-action',
             timeout_ms=5_000,
         )
         confirm_selector = (
@@ -9241,7 +9269,7 @@ class ChatGPTBrowserClient:
         )
         confirm_locator = page.locator(confirm_selector)
         visible_confirms = []
-        for index in range(await self._safe_count(confirm_locator, 'library-delete-confirm')):
+        for index in range(await self._safe_count(confirm_locator, 'library-disposable-delete-confirm')):
             candidate = confirm_locator.nth(index)
             try:
                 if await candidate.is_visible():
@@ -9251,10 +9279,10 @@ class ChatGPTBrowserClient:
         if len(visible_confirms) > 1:
             return {
                 'ok': False,
-                'status': 'disposable_library_delete_confirmation_ambiguous',
+                'status': 'disposable_library_delete_confirm_ambiguous',
                 'filename': filename,
                 'delete_forever': delete_forever,
-                'confirmation_count': len(visible_confirms),
+                'confirm_count': len(visible_confirms),
             }
         if visible_confirms:
             await self._click_locator_with_fallback(
@@ -9262,12 +9290,15 @@ class ChatGPTBrowserClient:
                 label='library-disposable-delete-confirm',
                 timeout_ms=5_000,
             )
-        await page.wait_for_timeout(900)
+        await page.wait_for_timeout(700)
         return {
             'ok': True,
             'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered',
             'filename': filename,
+            'delete_forever': delete_forever,
             'row_scoped_menu_binding': True,
+            'pre_hover_menu_count': len(pre_hover_menus),
+            'post_hover_menu_count': len(post_hover_menus),
         }
 
     def _browser_diagnostic_upload_identity(self, result: Any, requested_filename: str) -> dict[str, Any]:
@@ -9557,8 +9588,23 @@ class ChatGPTBrowserClient:
                 canonical_name=visible_filename,
                 label='library-backend-protocol-visible-active-ui-ready',
                 timeout_ms=12_000,
+                max_identical_non_authoritative_observations=5,
             )
             result_base['visible_library_surface_after_backend_presence'] = visible_surface
+            if not visible_surface.get('ok') or not visible_surface.get('authoritative'):
+                visible_ui_binding = {
+                    'ok': False,
+                    'status': 'library_surface_not_authoritative_after_backend_presence',
+                    'surface_reason': str(visible_surface.get('reason') or ''),
+                    'bounded_identical_state_stop': bool(visible_surface.get('bounded_identical_state_stop')),
+                    'observation_count': len(visible_surface.get('observations') or []),
+                }
+                result_base['visible_library_ui_binding'] = visible_ui_binding
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'library_surface_not_authoritative_after_backend_presence',
+                })
+                return result_base
             visible_ui_binding = self._validate_exact_library_ui_binding(
                 surface=visible_surface,
                 backend_presence=visible_inventory_presence,
@@ -9596,6 +9642,7 @@ class ChatGPTBrowserClient:
                 deleted_visible_surface = await self._wait_for_authoritative_library_family_surface(
                     page, canonical_name=visible_filename, label='library-backend-protocol-visible-deleted-ready',
                     timeout_ms=12_000, surface_kind='recently_deleted',
+                    max_identical_non_authoritative_observations=5,
                 )
             result_base['visible_library_deleted_surface'] = deleted_visible_surface
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
