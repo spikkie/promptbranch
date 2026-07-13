@@ -15,7 +15,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
 
 from .config import ChatGPTBrowserConfig
 from promptbranch_project_delete_safety import (
@@ -7036,7 +7036,27 @@ class ChatGPTBrowserClient:
                         return normalized
             return None
 
+        def processed_file_id(node: dict[str, Any]) -> Optional[str]:
+            for key in ('file_id', 'fileId', 'upload_id', 'uploadId', 'asset_id', 'assetId', 'content_id', 'contentId'):
+                candidate = self._library_file_record_id(node.get(key))
+                if candidate:
+                    return candidate
+            return None
+
+        def library_metadata_object_id(node: dict[str, Any]) -> Optional[str]:
+            for key in ('metadata_object_id', 'metadataObjectId'):
+                candidate = self._library_file_record_id(node.get(key))
+                if candidate:
+                    return candidate
+            generic_id = self._library_file_record_id(node.get('id'))
+            if generic_id and generic_id.lower().startswith('libfile_'):
+                return generic_id
+            return None
+
         def first_file_id(node: dict[str, Any]) -> Optional[str]:
+            candidate = processed_file_id(node) or library_metadata_object_id(node)
+            if candidate:
+                return candidate
             for key in id_keys:
                 candidate = self._library_file_record_id(node.get(key))
                 if candidate:
@@ -7044,7 +7064,7 @@ class ChatGPTBrowserClient:
             generic_id = self._library_file_record_id(node.get('id'))
             object_type = str(node.get('object') or node.get('type') or node.get('kind') or '').lower()
             if generic_id and (
-                generic_id.lower().startswith(('file_', 'file-', 'asset_', 'asset-'))
+                generic_id.lower().startswith(('file_', 'file-', 'asset_', 'asset-', 'libfile_'))
                 or object_type in {'file', 'upload', 'asset', 'library_file', 'file_upload'}
             ):
                 return generic_id
@@ -7075,14 +7095,32 @@ class ChatGPTBrowserClient:
                 key = (file_id.casefold(), filename.casefold())
                 if key not in seen:
                     seen.add(key)
-                    records.append({
+                    processed_id = processed_file_id(node)
+                    metadata_id = library_metadata_object_id(node)
+                    identity_candidates = [
+                        candidate for candidate in (metadata_id, processed_id, file_id) if candidate
+                    ]
+                    record = {
                         'file_id': file_id,
                         'filename': filename,
                         'project_ids': project_ids,
                         'project_references_known': project_references_known,
-                        'deleted': bool(node.get('deleted') or node.get('is_deleted') or node.get('trashed')),
+                        'deleted': bool(
+                            node.get('deleted') or node.get('is_deleted') or node.get('trashed')
+                            or node.get('trashed_at')
+                        ),
                         'source_url': source_url,
-                    })
+                    }
+                    # Preserve the long-standing record shape for ordinary upload responses.
+                    # Library-node payloads expose both identities on one object; retain both
+                    # only when the libfile metadata identity is present.
+                    if metadata_id:
+                        record.update({
+                            'processed_file_id': processed_id,
+                            'library_metadata_object_id': metadata_id,
+                            'identity_candidates': list(dict.fromkeys(identity_candidates)),
+                        })
+                    records.append(record)
             child_filename = filename or inherited_filename
             for value in node.values():
                 if isinstance(value, (dict, list)):
@@ -7924,6 +7962,8 @@ class ChatGPTBrowserClient:
         blocked = {
             'authorization', 'cookie', 'set-cookie', 'proxy-authorization',
             'x-api-key', 'x-auth-token', 'content-length', 'host', 'user-agent',
+            'chatgpt-account-id', 'oai-device-id', 'oai-session-id',
+            'x-oai-is-client-observation', 'referer',
         }
         result: dict[str, str] = {}
         for raw_key, raw_value in headers.items():
@@ -7931,26 +7971,90 @@ class ChatGPTBrowserClient:
             if not key or key in blocked or key.startswith('sec-'):
                 continue
             value = str(raw_value or '').strip()
-            if key in {'origin', 'referer'}:
+            if key == 'origin':
                 value = str(self._redact_backend_api_url(value).get('redacted_url') or '')
             if len(value) > 1024:
                 value = value[:1024] + '…'
             result[key] = value
         return result
 
+    def _protocol_sensitive_body_key(self, key: Any) -> bool:
+        normalized = re.sub(r'[^a-z0-9]+', '_', str(key or '').strip().lower()).strip('_')
+        exact = {
+            'authorization', 'token', 'access_token', 'refresh_token', 'session_token', 'csrf_token',
+            'prepare_token', 'proofofwork', 'proof_of_work', 'cookie', 'set_cookie',
+            'session_id', 'oai_session_id', 'device_id', 'oai_device_id',
+            'account_id', 'chatgpt_account_id', 'user_id', 'user_email', 'email',
+            'anonymous_id', 'anonymousid', 'message_id', 'messageid', 'write_key', 'writekey',
+            'signature', 'sig', 'api_key', 'password', 'secret',
+        }
+        if normalized in exact:
+            return True
+        return normalized.endswith(('_token', '_secret', '_password', '_cookie'))
+
+    def _protocol_sanitize_payload(self, value: Any, *, key: Any = None) -> Any:
+        if self._protocol_sensitive_body_key(key):
+            return '<redacted>'
+        if isinstance(value, dict):
+            return {
+                str(item_key): self._protocol_sanitize_payload(item_value, key=item_key)
+                for item_key, item_value in value.items()
+            }
+        if isinstance(value, list):
+            return [self._protocol_sanitize_payload(item) for item in value]
+        if isinstance(value, str):
+            text = value
+            if re.search(r'(?i)^[^@\s]+@[^@\s]+\.[^@\s]+$', text):
+                return '<redacted-email>'
+            if text.startswith(('http://', 'https://')) and '?' in text:
+                return str(self._redact_backend_api_url(text).get('redacted_url') or '<redacted-url>')
+            text = re.sub(r'(?i)\buser-[A-Za-z0-9_-]+\b', '<redacted-user-id>', text)
+            return text
+        return value
+
     def _protocol_redacted_body_sample(self, body: Any, *, limit: int = 4096) -> str:
-        text = str(body or '')[:max(limit, 0)]
-        text = re.sub(
-            r'(?i)(authorization|access_token|refresh_token|session_token|csrf_token)(["\\s:=]+)[^,"\\s}]+',
-            r'\1\2<redacted>',
-            text,
-        )
-        text = re.sub(
-            r'(?i)(https?://[^\\s"\']+\\?[^\\s"\']*)',
-            lambda match: str(self._redact_backend_api_url(match.group(1)).get('redacted_url') or '<redacted-url>'),
-            text,
-        )
-        return text
+        text = str(body or '')
+        if not text:
+            return ''
+        sanitized_lines: list[str] = []
+        parsed_any = False
+        for raw_line in text.splitlines() or [text]:
+            prefix = ''
+            line = raw_line.strip()
+            if line.lower().startswith('data:'):
+                prefix = 'data: '
+                line = line[5:].strip()
+            if not line or line == '[DONE]':
+                sanitized_lines.append(prefix + line)
+                continue
+            try:
+                payload = json.loads(line)
+            except Exception:
+                continue
+            parsed_any = True
+            sanitized_lines.append(
+                prefix + json.dumps(
+                    self._protocol_sanitize_payload(payload),
+                    separators=(',', ':'),
+                    ensure_ascii=False,
+                )
+            )
+        if parsed_any:
+            sanitized = '\n'.join(sanitized_lines)
+        else:
+            sanitized = re.sub(
+                r'(?i)(authorization|access_token|refresh_token|session_token|csrf_token|prepare_token|proofofwork)(["\s:=]+)[^,"\s}]+',
+                r'\1\2<redacted>',
+                text,
+            )
+            sanitized = re.sub(
+                r"(?i)(https?://[^\s\"']+\?[^\s\"']*)",
+                lambda match: str(self._redact_backend_api_url(match.group(1)).get('redacted_url') or '<redacted-url>'),
+                sanitized,
+            )
+            sanitized = re.sub(r'(?i)\b[^@\s]+@[^@\s]+\.[^@\s]+\b', '<redacted-email>', sanitized)
+            sanitized = re.sub(r'(?i)\buser-[A-Za-z0-9_-]+\b', '<redacted-user-id>', sanitized)
+        return sanitized[:max(limit, 0)]
 
     def _install_fetch_xhr_protocol_watch(self, context: Any) -> dict[str, Any]:
         watch: dict[str, Any] = {
@@ -7960,6 +8064,9 @@ class ChatGPTBrowserClient:
             'tasks': [],
             'handlers': {},
             'requests': {},
+            # Private executable request headers are retained only in memory.
+            # They are never copied into the public diagnostic trace.
+            'private_request_headers': {},
             'next_sequence': 1,
         }
         if context is None or not hasattr(context, 'on'):
@@ -7971,9 +8078,33 @@ class ChatGPTBrowserClient:
                 value = getattr(request, 'headers', {})
                 if callable(value):
                     value = value()
-                return self._protocol_redacted_headers(value)
+                return {
+                    str(key).lower(): str(item)
+                    for key, item in (value.items() if isinstance(value, dict) else [])
+                }
             except Exception:
                 return {}
+
+        async def capture_private_request_headers(request: Any, event: dict[str, Any]) -> None:
+            raw_headers = request_headers(request)
+            try:
+                all_headers = getattr(request, 'all_headers', None)
+                if callable(all_headers):
+                    value = all_headers()
+                    if inspect.isawaitable(value):
+                        value = await value
+                    if isinstance(value, dict):
+                        raw_headers = {
+                            str(key).lower(): str(item)
+                            for key, item in value.items()
+                        }
+            except Exception:
+                pass
+            sequence = int(event.get('sequence') or 0)
+            event['_raw_headers'] = raw_headers
+            event['headers'] = self._protocol_redacted_headers(raw_headers)
+            if sequence:
+                watch.setdefault('private_request_headers', {})[sequence] = raw_headers
 
         def on_request(request: Any) -> None:
             try:
@@ -7984,6 +8115,7 @@ class ChatGPTBrowserClient:
                 watch['next_sequence'] = sequence + 1
                 raw_url = str(getattr(request, 'url', '') or '')
                 raw_body = getattr(request, 'post_data', None)
+                initial_raw_headers = request_headers(request)
                 event = {
                     'kind': 'request',
                     'sequence': sequence,
@@ -7991,14 +8123,18 @@ class ChatGPTBrowserClient:
                     'resource_type': resource_type,
                     'method': str(getattr(request, 'method', '') or 'GET').upper(),
                     'url': self._redact_backend_api_url(raw_url).get('redacted_url'),
-                    'headers': request_headers(request),
+                    'headers': self._protocol_redacted_headers(initial_raw_headers),
                     'post_data_sample': self._protocol_redacted_body_sample(raw_body),
                     'post_data_present': bool(raw_body),
                     '_raw_url': raw_url,
                     '_raw_post_data': str(raw_body) if raw_body is not None else None,
+                    '_raw_headers': initial_raw_headers,
                 }
                 watch.setdefault('requests', {})[id(request)] = event
                 watch.setdefault('events', []).append(event)
+                watch.setdefault('tasks', []).append(
+                    loop.create_task(capture_private_request_headers(request, event))
+                )
             except Exception:
                 return
 
@@ -8035,7 +8171,11 @@ class ChatGPTBrowserClient:
                     'request_post_data_sample': request_event.get('post_data_sample') or '',
                     '_raw_url': request_event.get('_raw_url') or raw_url,
                     '_raw_post_data': request_event.get('_raw_post_data'),
-                    '_raw_headers': request_event.get('headers') or {},
+                    '_raw_headers': (
+                        watch.get('private_request_headers', {}).get(request_event.get('sequence'))
+                        or request_event.get('_raw_headers')
+                        or {}
+                    ),
                     '_raw_body': body_text,
                 }
                 watch.setdefault('events', []).append(event)
@@ -8065,9 +8205,23 @@ class ChatGPTBrowserClient:
     async def _settle_fetch_xhr_protocol_watch(self, watch: Optional[dict[str, Any]]) -> None:
         if not isinstance(watch, dict):
             return
-        tasks = [task for task in watch.get('tasks') or [] if isinstance(task, asyncio.Task)]
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        observed_count = -1
+        for _round in range(8):
+            tasks = [
+                task for task in watch.get('tasks') or []
+                if isinstance(task, asyncio.Task) and not task.done()
+            ]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.sleep(0.05)
+            current_count = len(watch.get('tasks') or [])
+            pending = [
+                task for task in watch.get('tasks') or []
+                if isinstance(task, asyncio.Task) and not task.done()
+            ]
+            if not pending and current_count == observed_count:
+                break
+            observed_count = current_count
 
     def _dispose_fetch_xhr_protocol_watch(self, context: Any, watch: Optional[dict[str, Any]]) -> None:
         if context is None or not isinstance(watch, dict) or not watch.get('installed'):
@@ -8081,6 +8235,24 @@ class ChatGPTBrowserClient:
             except Exception:
                 pass
 
+    def _public_protocol_record(self, record: Any) -> dict[str, Any]:
+        payload = record if isinstance(record, dict) else {}
+        identities = [
+            str(value) for value in payload.get('identity_candidates') or []
+            if str(value or '').strip()
+        ]
+        return {
+            'file_id': payload.get('file_id'),
+            'processed_file_id': payload.get('processed_file_id'),
+            'library_metadata_object_id': payload.get('library_metadata_object_id'),
+            'identity_candidates': identities,
+            'filename': payload.get('filename'),
+            'project_reference_count': len(payload.get('project_ids') or []),
+            'project_references_known': bool(payload.get('project_references_known')),
+            'deleted': bool(payload.get('deleted')),
+            'source_url': self._redact_backend_api_url(str(payload.get('source_url') or '')).get('redacted_url'),
+        }
+
     def _public_fetch_xhr_protocol_trace(self, watch: Optional[dict[str, Any]]) -> dict[str, Any]:
         payload = watch if isinstance(watch, dict) else {}
         public_events: list[dict[str, Any]] = []
@@ -8088,6 +8260,25 @@ class ChatGPTBrowserClient:
             if not isinstance(raw_event, dict):
                 continue
             event = {key: value for key, value in raw_event.items() if not str(key).startswith('_')}
+            if 'headers' in event:
+                event['headers'] = self._protocol_redacted_headers(event.get('headers'))
+            if 'request_headers' in event:
+                event['request_headers'] = self._protocol_redacted_headers(event.get('request_headers'))
+            url = str(event.get('url') or '')
+            protocol_relevant = '/backend-api/files' in url.lower()
+            for key in ('body_sample', 'request_post_data_sample', 'post_data_sample'):
+                if key not in event:
+                    continue
+                event[key] = (
+                    self._protocol_redacted_body_sample(event.get(key), limit=4096)
+                    if protocol_relevant else ''
+                )
+            if 'extracted_records' in event:
+                event['extracted_records'] = [
+                    self._public_protocol_record(record)
+                    for record in event.get('extracted_records') or []
+                    if isinstance(record, dict)
+                ]
             public_events.append(event)
         phase_counts: dict[str, int] = {}
         for event in public_events:
@@ -8097,10 +8288,13 @@ class ChatGPTBrowserClient:
             'installed': bool(payload.get('installed')),
             'event_count': len(public_events),
             'phase_event_counts': phase_counts,
-            'events': public_events[-600:],
-            'trace_truncated': len(public_events) > 600,
+            'events': public_events,
+            'trace_truncated': False,
             'capture_scope': 'all_fetch_xhr',
+            'body_export_scope': 'sanitized_backend_files_protocol_only',
             'sensitive_headers_redacted': True,
+            'sensitive_body_fields_redacted': True,
+            'unrelated_body_samples_omitted': True,
             'url_query_values_redacted': True,
         }
 
@@ -8118,7 +8312,17 @@ class ChatGPTBrowserClient:
         for record in records if isinstance(records, list) else []:
             if not isinstance(record, dict):
                 continue
-            if str(record.get('file_id') or '').casefold() in ids:
+            record_ids = {
+                str(record.get(key) or '').casefold()
+                for key in ('file_id', 'processed_file_id', 'library_metadata_object_id')
+                if str(record.get(key) or '').strip()
+            }
+            record_ids.update(
+                str(value or '').casefold()
+                for value in record.get('identity_candidates') or []
+                if str(value or '').strip()
+            )
+            if ids.intersection(record_ids):
                 return True
         return False
 
@@ -8132,21 +8336,49 @@ class ChatGPTBrowserClient:
     ) -> Optional[dict[str, Any]]:
         payload = watch if isinstance(watch, dict) else {}
         candidates: list[tuple[int, dict[str, Any]]] = []
+        normalized_filename = self._file_source_family_filename(filename).casefold()
         for event in payload.get('events') or []:
             if not isinstance(event, dict) or event.get('kind') != 'response':
                 continue
             if str(event.get('phase') or '') not in phases:
                 continue
             method = str(event.get('method') or 'GET').upper()
-            raw_url = str(event.get('_raw_url') or '').lower()
-            if 'process_upload_stream' in raw_url or 'oaiusercontent.com/files/' in raw_url:
+            raw_url = str(event.get('_raw_url') or '')
+            lowered_url = raw_url.lower()
+            if 'process_upload_stream' in lowered_url or 'oaiusercontent.com/files/' in lowered_url:
                 continue
+            try:
+                parsed = urlparse(raw_url)
+                path = parsed.path.rstrip('/')
+                raw_query = parsed.query
+                query = raw_query.casefold()
+            except Exception:
+                path = ''
+                raw_query = ''
+                query = ''
+            is_library_nodes = path == '/backend-api/files/library/nodes'
             records = event.get('extracted_records') if isinstance(event.get('extracted_records'), list) else []
             exact = self._protocol_exact_record_present(records, id_candidates)
-            family = any(self._file_source_family_member(record.get('filename'), filename) for record in records if isinstance(record, dict))
-            if not exact and not family:
+            family = any(
+                self._file_source_family_member(record.get('filename'), filename)
+                for record in records if isinstance(record, dict)
+            )
+            query_mentions_filename = bool(normalized_filename and normalized_filename in unquote(query))
+            status = int(event.get('status') or 0)
+            if not exact and not family and not is_library_nodes:
                 continue
-            score = (100 if exact else 0) + (20 if method == 'GET' else 0) + len(records)
+            score = (
+                (200 if exact else 0)
+                + (100 if family else 0)
+                + (80 if query_mentions_filename else 0)
+                + (50 if is_library_nodes else 0)
+                + (30 if is_library_nodes and not raw_query else 0)
+                + (20 if method == 'GET' else 0)
+                + (10 if 200 <= status < 300 else 0)
+                + min(len(records), 25)
+            )
+            if 'parent_directory_id=' in query and not exact:
+                score -= 25
             candidates.append((score, event))
         if not candidates:
             return None
@@ -8159,9 +8391,15 @@ class ChatGPTBrowserClient:
             'phase': event.get('phase'),
             'status': event.get('status'),
             'record_count': len(event.get('extracted_records') or []),
+            'exact_identity_observed': self._protocol_exact_record_present(event.get('extracted_records'), id_candidates),
+            'endpoint_discovered_from_empty_inventory': not bool(event.get('extracted_records')),
             '_raw_url': event.get('_raw_url'),
             '_raw_post_data': event.get('_raw_post_data'),
-            '_raw_headers': event.get('_raw_headers') or {},
+            '_raw_headers': (
+                payload.get('private_request_headers', {}).get(event.get('sequence'))
+                or event.get('_raw_headers')
+                or {}
+            ),
         }
 
     def _discover_backend_delete_protocol(
@@ -8202,13 +8440,22 @@ class ChatGPTBrowserClient:
             'status': event.get('status'),
             '_raw_url': event.get('_raw_url'),
             '_raw_post_data': event.get('_raw_post_data'),
-            '_raw_headers': event.get('_raw_headers') or {},
+            '_raw_headers': (
+                payload.get('private_request_headers', {}).get(event.get('sequence'))
+                or event.get('_raw_headers')
+                or {}
+            ),
         }
 
     def _public_backend_protocol(self, protocol: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if not isinstance(protocol, dict):
             return None
-        return {key: value for key, value in protocol.items() if not str(key).startswith('_')}
+        public = {key: value for key, value in protocol.items() if not str(key).startswith('_')}
+        if 'headers' in public:
+            public['headers'] = self._protocol_redacted_headers(public.get('headers'))
+        if 'post_data_sample' in public:
+            public['post_data_sample'] = self._protocol_redacted_body_sample(public.get('post_data_sample'))
+        return public
 
     def _protocol_replacement_mapping(
         self,
@@ -8245,6 +8492,20 @@ class ChatGPTBrowserClient:
             result = result.replace(source, mapping[source])
         return result
 
+    def _protocol_executable_headers(self, headers: Any) -> dict[str, str]:
+        payload = headers if isinstance(headers, dict) else {}
+        blocked = {
+            'accept-encoding', 'connection', 'content-length', 'cookie', 'host',
+            'origin', 'referer', 'user-agent',
+        }
+        executable: dict[str, str] = {}
+        for raw_key, raw_value in payload.items():
+            key = str(raw_key or '').strip().lower()
+            if not key or key in blocked or key.startswith('sec-'):
+                continue
+            executable[key] = str(raw_value)
+        return executable
+
     async def _replay_backend_protocol(
         self,
         page: Any,
@@ -8256,11 +8517,9 @@ class ChatGPTBrowserClient:
         raw_url = self._apply_protocol_replacements(protocol.get('_raw_url'), mapping)
         raw_body = self._apply_protocol_replacements(protocol.get('_raw_post_data'), mapping)
         method = str(protocol.get('method') or 'GET').upper()
-        headers = {
-            key: value
-            for key, value in self._protocol_redacted_headers(protocol.get('_raw_headers') or protocol.get('headers') or {}).items()
-            if key not in {'origin', 'referer'}
-        }
+        # Use the private in-memory request headers captured from the successful
+        # browser request. The public protocol remains independently sanitized.
+        headers = self._protocol_executable_headers(protocol.get('_raw_headers') or {})
         if not raw_url:
             return {'ok': False, 'status': 'protocol_url_missing', 'phase': phase}
         try:
@@ -8300,6 +8559,87 @@ class ChatGPTBrowserClient:
             'records': records,
         }
 
+    async def _poll_exact_backend_inventory_presence(
+        self,
+        page: Any,
+        *,
+        protocol: dict[str, Any],
+        id_candidates: list[str],
+        required_stable_observations: int = 2,
+        max_attempts: int = 20,
+        poll_ms: int = 750,
+    ) -> dict[str, Any]:
+        observations: list[dict[str, Any]] = []
+        captured_exact = bool(protocol.get('exact_identity_observed')) and 200 <= int(protocol.get('status') or 0) < 300
+        stable = 1 if captured_exact else 0
+        if captured_exact:
+            observations.append({
+                'attempt': 0,
+                'source': 'captured_authenticated_inventory_response',
+                'matched': True,
+                'stable_observations': stable,
+                'exact_identity_present': True,
+                'response': self._public_backend_protocol(protocol),
+            })
+        if stable >= required_stable_observations:
+            return {
+                'ok': True,
+                'status': 'exact_library_identity_stably_present',
+                'stable_observations': stable,
+                'required_stable_observations': required_stable_observations,
+                'observations': observations,
+            }
+        for attempt in range(1, max_attempts + 1):
+            replay = await self._replay_backend_protocol(
+                page,
+                protocol=protocol,
+                mapping={},
+                phase=f'visible_library_inventory_poll_{attempt}',
+            )
+            status_code = int(replay.get('status') or 0)
+            if status_code in {401, 403}:
+                observations.append({
+                    'attempt': attempt,
+                    'matched': False,
+                    'stable_observations': stable,
+                    'exact_identity_present': False,
+                    'response': replay,
+                })
+                return {
+                    'ok': False,
+                    'status': 'backend_inventory_replay_unauthorized',
+                    'http_status': status_code,
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
+            present = self._protocol_exact_record_present(replay.get('records'), id_candidates)
+            matched = bool(replay.get('ok')) and present
+            stable = stable + 1 if matched else 0
+            observations.append({
+                'attempt': attempt,
+                'matched': matched,
+                'stable_observations': stable,
+                'exact_identity_present': present,
+                'response': replay,
+            })
+            if stable >= required_stable_observations:
+                return {
+                    'ok': True,
+                    'status': 'exact_library_identity_stably_present',
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
+            await page.wait_for_timeout(max(poll_ms, 1))
+        return {
+            'ok': False,
+            'status': 'exact_library_identity_visibility_timeout',
+            'stable_observations': stable,
+            'required_stable_observations': required_stable_observations,
+            'observations': observations,
+        }
+
     async def _verify_exact_backend_inventory_state(
         self,
         page: Any,
@@ -8322,6 +8662,24 @@ class ChatGPTBrowserClient:
             deleted = await self._replay_backend_protocol(
                 page, protocol=deleted_protocol, mapping=mapping, phase=f'inventory_deleted_verify_{attempt}'
             )
+            active_status = int(active.get('status') or 0)
+            deleted_status = int(deleted.get('status') or 0)
+            if active_status in {401, 403} or deleted_status in {401, 403}:
+                observations.append({
+                    'attempt': attempt,
+                    'matched': False,
+                    'stable_observations': stable,
+                    'active': active,
+                    'deleted': deleted,
+                })
+                return {
+                    'ok': False,
+                    'status': 'backend_inventory_replay_unauthorized',
+                    'http_status': active_status if active_status in {401, 403} else deleted_status,
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
             active_present = self._protocol_exact_record_present(active.get('records'), target_id_candidates)
             deleted_present = self._protocol_exact_record_present(deleted.get('records'), target_id_candidates)
             matched = (
@@ -8696,8 +9054,22 @@ class ChatGPTBrowserClient:
                 for record in event.get('extracted_records') or []:
                     if isinstance(record, dict) and self._file_source_family_member(record.get('filename'), visible_filename):
                         visible_records.append(record)
-            visible_libfile_id = next((str(item.get('file_id')) for item in visible_records if str(item.get('file_id') or '').startswith('libfile_')), '')
-            visible_processed_id = next((str(item.get('file_id')) for item in visible_records if str(item.get('file_id') or '').startswith('file_')), '')
+
+            visible_libfile_id = ''
+            visible_processed_id = ''
+            for record in visible_records:
+                record_ids = [
+                    record.get('library_metadata_object_id'),
+                    record.get('processed_file_id'),
+                    record.get('file_id'),
+                    *(record.get('identity_candidates') or []),
+                ]
+                for raw_id in record_ids:
+                    candidate = str(raw_id or '')
+                    if candidate.startswith('libfile_') and not visible_libfile_id:
+                        visible_libfile_id = candidate
+                    elif candidate.startswith('file_') and not visible_processed_id:
+                        visible_processed_id = candidate
             if not visible_processed_id:
                 for event in protocol_watch.get('events') or []:
                     if not isinstance(event, dict) or event.get('kind') != 'response':
@@ -8711,10 +9083,14 @@ class ChatGPTBrowserClient:
                 'filename': visible_filename,
                 'processed_file_id': visible_processed_id or None,
                 'library_metadata_object_id': visible_libfile_id or None,
-                'records': visible_records,
+                'records': [self._public_protocol_record(record) for record in visible_records],
+                'upload_ui_verified': bool(visible_upload.get('ok')),
             }
-            if not visible_upload.get('ok') or not visible_libfile_id:
-                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'disposable_visible_library_file_identity_not_captured'})
+            if not visible_processed_id or not visible_libfile_id:
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'disposable_library_upload_identity_not_captured',
+                })
                 return result_base
             visible_ids = self._library_exact_id_candidates(
                 processed_file_id=visible_processed_id,
@@ -8725,9 +9101,6 @@ class ChatGPTBrowserClient:
             await self._goto(page, self._library_url(), label='library-backend-protocol-visible-active')
             await page.wait_for_timeout(900)
             await self._library_search_exact_family(page, visible_filename)
-            await self._wait_for_authoritative_library_family_surface(
-                page, canonical_name=visible_filename, label='library-backend-protocol-visible-active-ready', timeout_ms=12_000,
-            )
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
             active_inventory_protocol = self._discover_backend_inventory_protocol(
                 protocol_watch, id_candidates=visible_ids, filename=visible_filename,
@@ -8735,7 +9108,48 @@ class ChatGPTBrowserClient:
             )
             result_base['active_inventory_protocol'] = self._public_backend_protocol(active_inventory_protocol)
             if active_inventory_protocol is None:
-                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'active_inventory_endpoint_not_discovered'})
+                result_base.update({
+                    'conclusion': 'backend_inventory_not_discovered',
+                    'reason': 'active_inventory_endpoint_not_discovered',
+                })
+                return result_base
+
+            visible_inventory_presence = await self._poll_exact_backend_inventory_presence(
+                page,
+                protocol=active_inventory_protocol,
+                id_candidates=[visible_libfile_id],
+                required_stable_observations=2,
+                max_attempts=20,
+                poll_ms=750,
+            )
+            result_base['visible_library_backend_presence'] = visible_inventory_presence
+            if not visible_inventory_presence.get('ok'):
+                reason = (
+                    'backend_inventory_replay_unauthorized'
+                    if visible_inventory_presence.get('status') == 'backend_inventory_replay_unauthorized'
+                    else 'disposable_library_visibility_timeout_after_identity_capture'
+                )
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': reason,
+                })
+                return result_base
+
+            await self._goto(page, self._library_url(), label='library-backend-protocol-visible-active-ui')
+            await page.wait_for_timeout(900)
+            await self._library_search_exact_family(page, visible_filename)
+            visible_surface = await self._wait_for_authoritative_library_family_surface(
+                page,
+                canonical_name=visible_filename,
+                label='library-backend-protocol-visible-active-ui-ready',
+                timeout_ms=12_000,
+            )
+            result_base['visible_library_surface_after_backend_presence'] = visible_surface
+            if not visible_surface.get('ok') or int(visible_surface.get('family_record_count') or 0) < 1:
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'disposable_library_ui_not_selectable_after_backend_visibility',
+                })
                 return result_base
 
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_soft_delete')

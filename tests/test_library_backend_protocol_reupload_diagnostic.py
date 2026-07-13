@@ -176,3 +176,343 @@ def test_public_browser_method_forces_history_shield_and_restores_mode(tmp_path:
     assert observed["mode"] == "fulfill_empty"
     assert observed["operation_name"] == "library_backend_protocol_reupload_diagnostic"
     assert client.config.conversation_history_request_shield_mode == "disabled"
+
+
+def test_library_nodes_record_preserves_processed_and_libfile_identities(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    records = client._extract_library_file_records_from_payload(
+        {
+            "items": [
+                {
+                    "kind": "file",
+                    "id": "libfile_1234567890abcdef1234567890abcdef",
+                    "file_id": "file_00000000111122223333444455556666",
+                    "name": "visible.txt",
+                    "gizmo_id": "g-p-test-project",
+                    "trashed_at": None,
+                }
+            ]
+        },
+        source_url="https://chatgpt.com/backend-api/files/library/nodes",
+    )
+    assert len(records) == 1
+    record = records[0]
+    assert record["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert record["library_metadata_object_id"] == "libfile_1234567890abcdef1234567890abcdef"
+    assert record["identity_candidates"] == [
+        "libfile_1234567890abcdef1234567890abcdef",
+        "file_00000000111122223333444455556666",
+    ]
+    assert client._protocol_exact_record_present(
+        records,
+        ["libfile_1234567890abcdef1234567890abcdef"],
+    )
+
+
+def test_inventory_discovery_accepts_empty_library_nodes_search_response(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "events": [
+            {
+                "kind": "response",
+                "phase": "visible_library_file_upload",
+                "method": "GET",
+                "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt",
+                "_raw_post_data": None,
+                "_raw_headers": {"accept": "application/json"},
+                "status": 200,
+                "extracted_records": [],
+            }
+        ]
+    }
+    protocol = client._discover_backend_inventory_protocol(
+        watch,
+        id_candidates=["libfile_1234567890abcdef1234567890abcdef"],
+        filename="visible.txt",
+        phases={"visible_library_file_upload"},
+    )
+    assert protocol is not None
+    assert protocol["method"] == "GET"
+    assert protocol["endpoint_discovered_from_empty_inventory"] is True
+    assert "/backend-api/files/library/nodes" in protocol["_raw_url"]
+
+
+def test_exact_backend_inventory_poll_uses_libfile_identity(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    libfile_id = "libfile_1234567890abcdef1234567890abcdef"
+    responses = iter(
+        [
+            {"ok": True, "records": []},
+            {
+                "ok": True,
+                "records": [
+                    {
+                        "file_id": "file_00000000111122223333444455556666",
+                        "library_metadata_object_id": libfile_id,
+                        "identity_candidates": [libfile_id, "file_00000000111122223333444455556666"],
+                    }
+                ],
+            },
+            {
+                "ok": True,
+                "records": [
+                    {
+                        "file_id": "file_00000000111122223333444455556666",
+                        "library_metadata_object_id": libfile_id,
+                        "identity_candidates": [libfile_id, "file_00000000111122223333444455556666"],
+                    }
+                ],
+            },
+        ]
+    )
+
+    async def fake_replay(*_args, **_kwargs):
+        return next(responses)
+
+    class FakePage:
+        async def wait_for_timeout(self, _milliseconds: int) -> None:
+            return None
+
+    client._replay_backend_protocol = fake_replay  # type: ignore[method-assign]
+    result = asyncio.run(
+        client._poll_exact_backend_inventory_presence(
+            FakePage(),
+            protocol={"method": "GET", "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt"},
+            id_candidates=[libfile_id],
+            required_stable_observations=2,
+            max_attempts=3,
+            poll_ms=1,
+        )
+    )
+    assert result["ok"] is True
+    assert result["status"] == "exact_library_identity_stably_present"
+    assert len(result["observations"]) == 3
+
+
+def test_protocol_trace_is_complete_and_body_samples_are_safely_scoped(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    events = [
+        {
+            "kind": "response",
+            "phase": "noise",
+            "url": "https://chatgpt.com/backend-api/sentinel/chat-requirements/finalize",
+            "body_sample": '{"token":"secret","email":"person@example.com"}',
+            "request_headers": {
+                "chatgpt-account-id": "account-secret",
+                "oai-device-id": "device-secret",
+                "oai-session-id": "session-secret",
+            },
+        }
+        for _ in range(604)
+    ]
+    events.append(
+        {
+            "kind": "response",
+            "phase": "visible_library_file_upload",
+            "url": "https://chatgpt.com/backend-api/files/process_upload_stream",
+            "body_sample": (
+                '{"file_id":"file_00000000111122223333444455556666",'
+                '"token":"secret","email":"person@example.com",'
+                '"upload_url":"https://example.test/raw?sig=secret&se=later"}'
+            ),
+            "request_headers": client._protocol_redacted_headers(
+                {
+                    "accept": "application/json",
+                    "chatgpt-account-id": "account-secret",
+                    "oai-device-id": "device-secret",
+                    "oai-session-id": "session-secret",
+                }
+            ),
+            "extracted_records": [],
+        }
+    )
+    trace = client._public_fetch_xhr_protocol_trace({"installed": True, "events": events})
+    assert trace["event_count"] == 605
+    assert len(trace["events"]) == 605
+    assert trace["trace_truncated"] is False
+    assert trace["events"][0]["body_sample"] == ""
+    protocol_event = trace["events"][-1]
+    assert "file_00000000111122223333444455556666" in protocol_event["body_sample"]
+    assert "secret" not in protocol_event["body_sample"]
+    assert "person@example.com" not in protocol_event["body_sample"]
+    assert "sig=<redacted>" in protocol_event["body_sample"]
+    assert "chatgpt-account-id" not in protocol_event["request_headers"]
+    assert trace["sensitive_body_fields_redacted"] is True
+    assert trace["unrelated_body_samples_omitted"] is True
+
+
+def test_inventory_discovery_keeps_private_headers_out_of_public_protocol(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "private_request_headers": {
+            7: {
+                "authorization": "Bearer private-token",
+                "chatgpt-account-id": "private-account",
+                "accept": "application/json",
+            }
+        },
+        "events": [
+            {
+                "kind": "response",
+                "sequence": 7,
+                "phase": "visible_library_active_inventory",
+                "method": "GET",
+                "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt",
+                "status": 200,
+                "request_headers": {"accept": "application/json"},
+                "extracted_records": [
+                    {
+                        "library_metadata_object_id": "libfile_visible",
+                        "processed_file_id": "file_visible",
+                        "identity_candidates": ["libfile_visible", "file_visible"],
+                        "filename": "visible.txt",
+                    }
+                ],
+            }
+        ],
+    }
+    protocol = client._discover_backend_inventory_protocol(
+        watch,
+        id_candidates=["libfile_visible"],
+        filename="visible.txt",
+        phases={"visible_library_active_inventory"},
+    )
+    assert protocol is not None
+    assert protocol["_raw_headers"]["authorization"] == "Bearer private-token"
+    public = client._public_backend_protocol(protocol)
+    assert public is not None
+    assert "_raw_headers" not in public
+    assert "private-token" not in str(public)
+    assert "private-account" not in str(public)
+
+
+def test_protocol_replay_uses_private_auth_headers_only_in_memory(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    observed = {}
+
+    class FakePage:
+        async def evaluate(self, _script, payload):
+            observed.update(payload)
+            return {
+                "ok": True,
+                "status": 200,
+                "statusText": "OK",
+                "url": payload["url"],
+                "contentType": "application/json",
+                "text": '{"items":[]}',
+            }
+
+    result = asyncio.run(
+        client._replay_backend_protocol(
+            FakePage(),
+            protocol={
+                "method": "GET",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt",
+                "_raw_post_data": None,
+                "_raw_headers": {
+                    "authorization": "Bearer private-token",
+                    "chatgpt-account-id": "private-account",
+                    "cookie": "private-cookie",
+                    "origin": "https://chatgpt.com",
+                    "sec-fetch-site": "same-origin",
+                    "accept": "application/json",
+                },
+            },
+            mapping={},
+            phase="inventory-replay",
+        )
+    )
+    assert result["ok"] is True
+    assert observed["headers"]["authorization"] == "Bearer private-token"
+    assert observed["headers"]["chatgpt-account-id"] == "private-account"
+    assert "cookie" not in observed["headers"]
+    assert "origin" not in observed["headers"]
+    assert "sec-fetch-site" not in observed["headers"]
+    assert "private-token" not in str(result)
+    assert "private-account" not in str(result)
+
+
+def test_exact_inventory_poll_counts_captured_200_as_first_observation(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    libfile_id = "libfile_1234567890abcdef1234567890abcdef"
+    calls = 0
+
+    async def fake_replay(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "ok": True,
+            "status": 200,
+            "records": [
+                {
+                    "library_metadata_object_id": libfile_id,
+                    "identity_candidates": [libfile_id],
+                }
+            ],
+        }
+
+    class FakePage:
+        async def wait_for_timeout(self, _milliseconds: int) -> None:
+            return None
+
+    client._replay_backend_protocol = fake_replay  # type: ignore[method-assign]
+    result = asyncio.run(
+        client._poll_exact_backend_inventory_presence(
+            FakePage(),
+            protocol={
+                "method": "GET",
+                "status": 200,
+                "exact_identity_observed": True,
+                "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt",
+            },
+            id_candidates=[libfile_id],
+            required_stable_observations=2,
+            max_attempts=20,
+            poll_ms=1,
+        )
+    )
+    assert result["ok"] is True
+    assert result["stable_observations"] == 2
+    assert calls == 1
+    assert result["observations"][0]["attempt"] == 0
+    assert result["observations"][0]["source"] == "captured_authenticated_inventory_response"
+
+
+def test_exact_inventory_poll_fails_fast_on_unauthorized_replay(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    calls = 0
+
+    async def fake_replay(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {"ok": False, "status": 401, "records": [], "body_sample": "Unauthorized"}
+
+    class FakePage:
+        async def wait_for_timeout(self, _milliseconds: int) -> None:
+            raise AssertionError("must not wait after 401")
+
+    client._replay_backend_protocol = fake_replay  # type: ignore[method-assign]
+    result = asyncio.run(
+        client._poll_exact_backend_inventory_presence(
+            FakePage(),
+            protocol={
+                "method": "GET",
+                "status": 200,
+                "exact_identity_observed": True,
+                "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes?q=visible.txt",
+            },
+            id_candidates=["libfile_visible"],
+            required_stable_observations=2,
+            max_attempts=20,
+            poll_ms=1,
+        )
+    )
+    assert result["ok"] is False
+    assert result["status"] == "backend_inventory_replay_unauthorized"
+    assert result["http_status"] == 401
+    assert result["stable_observations"] == 1
+    assert calls == 1

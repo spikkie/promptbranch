@@ -813,3 +813,13 @@ Decision: the diagnostic may delete a Library object only when both the processe
 ## v0.1.103.10.90 exact backend protocol decision
 
 Decision: the visible Library UI is not an authoritative exact-ID control surface for Project Source backing files. The diagnostic therefore captures all redacted fetch/XHR traffic without URL-token filtering, derives inventory and deletion contracts from a newly created disposable Library file, requires exact `libfile_...` or `file_...` identity binding, replays only the discovered authenticated mutations, verifies exact absence through the discovered backend inventory, shields automatic conversation-history requests on Library routes, and fails closed before reupload when any contract or exact-ID proof is missing. `pbsa` remains unchanged.
+
+
+## v0.1.103.10.91 ID-driven Library inventory decision
+
+A completed `process_upload_stream` event establishes the disposable file's `file_...` and `libfile_...` identity but does not establish immediate rendered Library visibility. Backend inventory discovery and visibility verification therefore use `/backend-api/files/library/nodes` plus exact identity polling. UI visibility is a later, separate prerequisite only for observing the disposable delete mutation. Diagnostic failure before that point is classified as inconclusive and cannot trigger target deletion or canonical reupload.
+
+
+## v0.1.103.10.92 private authenticated replay decision
+
+The successful browser request and the public diagnostic protocol are separate representations. Raw executable request headers, including any authorization/account context, exist only in the in-memory protocol watch and are never serialized. Replays use the private representation. Public reports use the sanitized representation. A captured exact-ID `200` is observation one; one further authenticated exact-ID observation is required. `401` and `403` stop immediately as `backend_inventory_replay_unauthorized`.

@@ -688,3 +688,17 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Release |
 |---|---|---|---|---|
 | DOD-261 | Exact backing-file backend inventory and deletion protocol discovery | in_progress | Full redacted fetch/XHR phase trace, disposable visible Library-file inventory and soft/hard-delete capture, exact-ID protocol replay, backend inventory presence/absence verification, canonical reupload classification, history-request shielding, and live diagnostic JSON | v0.1.103.10.90 |
+
+
+## v0.1.103.10.91
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-262 | ID-driven active Library inventory discovery and safely auditable complete protocol trace | in_progress | Dual `file_...`/`libfile_...` node extraction, empty-search `/backend-api/files/library/nodes` discovery, stable exact-`libfile_...` polling, corrected inconclusive classifications, protocol-only sanitized body export, all fetch/XHR events retained, and fail-closed deletion/reupload gates | v0.1.103.10.91 |
+
+
+## v0.1.103.10.92
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-263 | Private authenticated Library inventory replay with fail-fast authorization classification | in_progress | Private in-memory raw headers, sanitized public protocol, captured exact-ID `200` counted as observation one, one additional authenticated observation required, immediate `401`/`403` stop, and deletion/reupload gates remain closed | v0.1.103.10.92 |

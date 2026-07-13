@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
+v0.1.103.10.92 — replay Library protocols with private in-memory authentication
 
 ## Recent repair context
 
@@ -42,3 +42,15 @@ Diagnostic-only repair: delete the exact captured backing Library object after v
 ## v0.1.103.10.90
 
 Diagnostic-only repair: capture the complete redacted fetch/XHR contract for a disposable Project Source and a separately uploaded disposable Library file; discover the exact backend inventory, soft-delete, and permanent-delete operations; bind replay strictly to captured `libfile_...` / `file_...` identities; verify exact absence through the same backend inventory; only then attempt unchanged canonical reupload. Existing `(1)` evidence remains untouched.
+
+
+## v0.1.103.10.91
+
+Repair-only continuation of `v0.1.103.10.90`. Accept the observed `/backend-api/files/library/nodes` GET surface as active inventory discovery, preserve both `file_...` and `libfile_...` identities from node responses, poll exact `libfile_...` visibility with stable observations, and treat delayed UI visibility as a separate fail-closed gate. Export every fetch/XHR event while retaining body samples only for sanitized `/backend-api/files...` protocol traffic. No release upload or adoption.
+
+
+## v0.1.103.10.92
+
+v0.1.103.10.92 — replay Library protocols with private in-memory authentication
+
+Narrow diagnostic repair: retain executable authentication headers only in memory, replay the exact `/backend-api/files/library/nodes` protocol with those private headers, count the captured exact-ID `200` as observation one, require one additional authenticated exact-`libfile_...` observation, fail immediately on `401`/`403`, and keep deletion/reupload/upload/adoption gates closed until inventory proof succeeds.

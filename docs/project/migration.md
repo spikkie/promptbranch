@@ -1038,3 +1038,13 @@ No normal `pbsa` or release command migration is required. The exact backing-obj
 ## v0.1.103.10.90 migration note
 
 Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip`. No CLI migration is required and `pbsa <file>` remains `promptbranch src add <file>`. The new diagnostic-only install mode is `--diagnostic-library-backend-protocol-reupload`. It installs the candidate without commit, Project Source release upload, tests, or adoption, then runs a new disposable project/file transaction. The existing `(1)` evidence project and source are not touched.
+
+
+## v0.1.103.10.91 migration note
+
+No CLI migration is required. `pbsa <file>` remains unchanged. The diagnostic install mode remains `--diagnostic-library-backend-protocol-reupload`; its result now includes `visible_library_backend_presence`, a complete non-truncated sanitized fetch/XHR trace, and corrected identity/visibility failure reasons.
+
+
+## v0.1.103.10.92 migration note
+
+No user-facing command or state migration is introduced. The `10.91` diagnostic protocol representation is split internally into private executable headers and a sanitized public report. `pbsa` remains unchanged; accepted/current remains `v0.1.103.10.68`.

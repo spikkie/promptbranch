@@ -3,14 +3,14 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.102.zip
-accepted/current version: v0.1.102
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
+accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
-active candidate version: v0.1.103.10.90
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
-next normal slice: v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
+last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
+active candidate version: v0.1.103.10.92
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip
+next normal slice: v0.1.103.10.92 — replay Library protocols with private in-memory authentication
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2187,3 +2187,13 @@ Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image duri
 ## v0.1.103.10.90 repair note
 
 Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip`. Active diagnostic repair: discover the exact backend inventory and delete contract below the rendered Library UI, prove exact-ID deletion through backend inventory, and attempt canonical reupload only after two stable absence observations. This does not advance the normal horizon and does not change `pbsa`.
+
+
+## v0.1.103.10.91 repair note
+
+Continue the `10.90` experiment without changing `pbsa`. Treat upload completion identities as authoritative inputs, discover the `/backend-api/files/library/nodes` contract even when the first filename query is empty, poll exact `libfile_...` presence, require later UI selectability only for observing disposable delete mutations, and keep all target deletion/reupload operations behind exact-ID verification.
+
+
+## v0.1.103.10.92 repair note
+
+Implement private in-memory authenticated replay for `/backend-api/files/library/nodes`; count the captured exact-ID `200` as the first observation; require one more authenticated exact-ID observation; fail immediately on `401` or `403`; serialize no authentication values; and remain fail closed before any deletion, canonical reupload, Project Source release upload, or adoption.

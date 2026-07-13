@@ -33,7 +33,7 @@ def load_config(path: str | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the v0.1.103.10.90 exact backing-file backend protocol discovery and canonical reupload diagnostic."
+        description="Run the v0.1.103.10.92 authenticated backing-file backend protocol discovery and canonical reupload diagnostic."
     )
     parser.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH))
     parser.add_argument("--service-base-url")
