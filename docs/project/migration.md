@@ -1022,6 +1022,14 @@ No command migration is required. `pbsa <file>` remains `promptbranch src add <f
 Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip`. The repair retains the existing `pbsa <file> -> promptbranch src add <file>` command contract while changing only the internal file-source transaction classifier: fresh add, exact-source replacement, or proven suffix collision.
 
 
-## v0.1.103.10.85 migration note
+## v0.1.103.10.86 migration note
 
 No command migration is required. Run `./scripts/pb-project-source-ab-diagnostic.sh`; normal `pbsa <file>` remains unchanged. The next planned release after acceptance remains v0.1.104.
+
+## v0.1.103.10.87 migration note
+
+No command migration is required. `./scripts/pb-project-source-ab-diagnostic.sh` now reads the normal Promptbranch service configuration automatically. Explicit `--service-token` and `--service-base-url` overrides remain supported.
+
+## v0.1.103.10.89 migration note
+
+No normal `pbsa` or release command migration is required. The exact backing-object diagnostic is invoked with `./install.sh <version> <zip> --diagnostic-library-backing-reupload` or, after installation, `./scripts/pb-library-backing-reupload-diagnostic.sh`. Its result classification is limited to `canonical_reupload_after_backing_delete`, `backing_library_delete_not_supported`, `backing_library_delete_failed`, `backend_suffix_after_verified_backing_delete`, or `diagnostic_inconclusive`.

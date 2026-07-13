@@ -284,6 +284,34 @@ class ChatGPTServiceClient:
             params["project_url"] = project_url
         return self._json(self._client.get("/v1/debug/rate-limit", params=params))
 
+    def run_library_backing_reupload_diagnostic(
+        self,
+        *,
+        project_name_prefix: str = "itest-pb-library-backing",
+        keep_open: bool = False,
+        allow_project_source_mutation: bool = True,
+        profile_lock_wait_seconds: Optional[float] = None,
+        request_timeout_seconds: Optional[float] = None,
+        initial_target_processed_file_id: Optional[str] = None,
+        initial_target_library_metadata_object_id: Optional[str] = None,
+        initial_target_filename: Optional[str] = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "project_name_prefix": project_name_prefix,
+            "keep_open": bool(keep_open),
+            "allow_project_source_mutation": bool(allow_project_source_mutation),
+        }
+        if profile_lock_wait_seconds is not None:
+            payload["profile_lock_wait_seconds"] = float(profile_lock_wait_seconds)
+        if initial_target_processed_file_id:
+            payload["initial_target_processed_file_id"] = initial_target_processed_file_id
+        if initial_target_library_metadata_object_id:
+            payload["initial_target_library_metadata_object_id"] = initial_target_library_metadata_object_id
+        if initial_target_filename:
+            payload["initial_target_filename"] = initial_target_filename
+        timeout = self._timeout if request_timeout_seconds is None else max(1.0, float(request_timeout_seconds))
+        return self._json(self._client.post("/v1/diagnostics/library-backing-reupload", json=payload, timeout=timeout))
+
     def run_project_source_ab_diagnostic(
         self,
         *,

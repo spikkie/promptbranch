@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.85.zip
-active candidate version: v0.1.103.10.85
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.85.zip
-next normal slice: v0.1.103.10.85 — compare legacy 10.75 and current Project Source transactions side by side
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
+active candidate version: v0.1.103.10.89
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
+next normal slice: v0.1.103.10.89 — delete the exact backing Library object before canonical reupload
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 

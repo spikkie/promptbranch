@@ -3,4 +3,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
-exec python3 "${SCRIPT_DIR}/pb-project-source-ab-diagnostic.py" "$@"
+exec python3 "${SCRIPT_DIR}/pb-library-backing-reupload-diagnostic.py" "$@"

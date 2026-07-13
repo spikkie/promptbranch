@@ -2615,6 +2615,24 @@ class ChatGPTBrowserClient:
             respect_history_rate_limit_cooldown=False,
         )
 
+    async def delete_library_backing_object_diagnostic(
+        self,
+        *,
+        processed_file_id: str,
+        library_metadata_object_id: str,
+        filename: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self._run_with_context(
+            operation_name="library_backing_delete_diagnostic",
+            operation=self._delete_library_backing_object_diagnostic_operation,
+            processed_file_id=processed_file_id,
+            library_metadata_object_id=library_metadata_object_id,
+            filename=filename,
+            keep_open=keep_open,
+            respect_history_rate_limit_cooldown=False,
+        )
+
     async def list_project_sources(
         self,
         *,
@@ -6961,10 +6979,11 @@ class ChatGPTBrowserClient:
         filename_keys = (
             'filename', 'file_name', 'fileName', 'name', 'display_name', 'displayName',
             'original_name', 'originalName', 'original_filename', 'originalFilename', 'title',
+            'library_file_name', 'libraryFileName',
         )
         id_keys = (
             'file_id', 'fileId', 'upload_id', 'uploadId', 'asset_id', 'assetId',
-            'content_id', 'contentId',
+            'content_id', 'contentId', 'metadata_object_id', 'metadataObjectId',
         )
         project_keys = (
             'project_id', 'projectId', 'gizmo_id', 'gizmoId', 'project_ids', 'projectIds',
@@ -7501,6 +7520,7 @@ class ChatGPTBrowserClient:
         escaped_id = normalized_file_id.replace('"', '\"')
         for selector in (
             f'[data-file-id="{escaped_id}"]',
+            f'[data-id="{escaped_id}"]',
             f'[data-asset-id="{escaped_id}"]',
             f'a[href*="{escaped_id}"]',
         ):
@@ -7831,6 +7851,142 @@ class ChatGPTBrowserClient:
                     'observations': observations,
                 }
             await page.wait_for_timeout(max(poll_ms, 1))
+
+    def _library_exact_id_candidates(
+        self,
+        *,
+        processed_file_id: str,
+        library_metadata_object_id: str,
+    ) -> list[str]:
+        result: list[str] = []
+        for value in (library_metadata_object_id, processed_file_id):
+            candidate = self._library_file_record_id(value)
+            if candidate and candidate not in result:
+                result.append(candidate)
+        normalized = str(processed_file_id or '').strip()
+        match = re.fullmatch(r'file_([0-9a-fA-F]{32})', normalized)
+        if match:
+            raw = match.group(1).lower()
+            value = f'{raw[:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:]}'
+            if value not in result:
+                result.append(value)
+        return result
+
+    async def _find_exact_library_backing_locator(
+        self, page: Any, *, id_candidates: list[str], filename: str
+    ) -> tuple[Any, Optional[str]]:
+        for candidate in id_candidates:
+            locator = await self._find_exact_library_file_locator(page, file_id=candidate, filename=filename)
+            if locator is not None:
+                return locator, candidate
+        return None, None
+
+    async def _exact_library_backing_presence(
+        self, page: Any, *, id_candidates: list[str], filename: str
+    ) -> dict[str, Any]:
+        locator, locator_id = await self._find_exact_library_backing_locator(
+            page, id_candidates=id_candidates, filename=filename
+        )
+        cards = await self._snapshot_library_file_cards(page)
+        ids = {item.casefold() for item in id_candidates}
+        matching_cards = [item for item in cards if str(item.get('file_id') or '').casefold() in ids]
+        return {
+            'present': locator is not None or bool(matching_cards),
+            'locator_id': locator_id,
+            'matching_cards': matching_cards,
+            'card_count': len(cards),
+        }
+
+    async def _delete_library_backing_object_diagnostic_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        processed_file_id: str,
+        library_metadata_object_id: str,
+        filename: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        canonical_name = self._file_source_family_filename(filename)
+        id_candidates = self._library_exact_id_candidates(
+            processed_file_id=processed_file_id,
+            library_metadata_object_id=library_metadata_object_id,
+        )
+        base = {
+            'action': 'delete_library_backing_object_diagnostic',
+            'processed_file_id': processed_file_id,
+            'library_metadata_object_id': library_metadata_object_id,
+            'filename': canonical_name,
+            'exact_id_candidates': id_candidates,
+            'filename_fallback_allowed': False,
+        }
+        if not canonical_name or len(id_candidates) < 2:
+            return {**base, 'ok': False, 'status': 'exact_library_backing_identity_invalid', 'delete_supported': False, 'exact_object_absent_verified': False}
+        try:
+            await self._goto(page, self._library_url(), label='library-backing-delete-open-active')
+            await page.wait_for_timeout(900)
+            await self._library_search_exact_family(page, canonical_name)
+            active_surface = await self._wait_for_authoritative_library_family_surface(
+                page, canonical_name=canonical_name, label='library-backing-delete-active-ready', timeout_ms=10000
+            )
+            before = await self._exact_library_backing_presence(page, id_candidates=id_candidates, filename=canonical_name)
+            exact_id = str(before.get('locator_id') or '')
+            if not exact_id:
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_not_supported', 'delete_supported': False, 'exact_object_absent_verified': False, 'active_surface': active_surface, 'exact_presence_before': before}
+            soft_delete = await self._delete_library_file_record_via_ui(
+                page, file_id=exact_id, filename=canonical_name, delete_forever=False
+            )
+            if not soft_delete.get('ok'):
+                unsupported = soft_delete.get('status') in {'exact_library_file_locator_not_found', 'library_delete_action_not_found'}
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_not_supported' if unsupported else 'exact_library_backing_delete_failed', 'delete_supported': not unsupported, 'exact_object_absent_verified': False, 'active_surface': active_surface, 'exact_presence_before': before, 'soft_delete': soft_delete}
+            await self._goto(page, self._library_url(), label='library-backing-delete-open-deleted')
+            await page.wait_for_timeout(900)
+            if not await self._open_library_recently_deleted(page):
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_not_supported', 'delete_supported': False, 'exact_object_absent_verified': False, 'soft_delete': soft_delete, 'reason': 'recently_deleted_not_exposed'}
+            await self._library_search_exact_family(page, canonical_name)
+            deleted_surface = await self._wait_for_authoritative_library_family_surface(
+                page, canonical_name=canonical_name, label='library-backing-delete-deleted-ready', timeout_ms=10000, surface_kind='recently_deleted'
+            )
+            deleted_presence = await self._exact_library_backing_presence(page, id_candidates=id_candidates, filename=canonical_name)
+            hard_id = str(deleted_presence.get('locator_id') or '')
+            if not hard_id:
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_not_supported', 'delete_supported': False, 'exact_object_absent_verified': False, 'soft_delete': soft_delete, 'deleted_surface': deleted_surface, 'exact_presence_in_recently_deleted': deleted_presence}
+            hard_delete = await self._delete_library_file_record_via_ui(
+                page, file_id=hard_id, filename=canonical_name, delete_forever=True
+            )
+            if not hard_delete.get('ok'):
+                unsupported = hard_delete.get('status') in {'exact_library_file_locator_not_found', 'library_delete_action_not_found'}
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_not_supported' if unsupported else 'exact_library_backing_delete_failed', 'delete_supported': not unsupported, 'exact_object_absent_verified': False, 'soft_delete': soft_delete, 'hard_delete': hard_delete}
+            verification = []
+            stable_absent = 0
+            for attempt in range(1, 5):
+                await self._goto(page, self._library_url(), label=f'library-backing-delete-verify-{attempt}')
+                await page.wait_for_timeout(700)
+                await self._library_search_exact_family(page, canonical_name)
+                active_authority = await self._wait_for_authoritative_library_family_surface(
+                    page, canonical_name=canonical_name, label=f'library-backing-delete-verify-active-{attempt}', timeout_ms=6000
+                )
+                active = await self._exact_library_backing_presence(page, id_candidates=id_candidates, filename=canonical_name)
+                opened = await self._open_library_recently_deleted(page)
+                deleted = {'present': True}
+                deleted_authority = {'ok': False, 'reason': 'recently_deleted_not_opened'}
+                if opened:
+                    await self._library_search_exact_family(page, canonical_name)
+                    deleted_authority = await self._wait_for_authoritative_library_family_surface(
+                        page, canonical_name=canonical_name, label=f'library-backing-delete-verify-deleted-{attempt}', timeout_ms=6000, surface_kind='recently_deleted'
+                    )
+                    deleted = await self._exact_library_backing_presence(page, id_candidates=id_candidates, filename=canonical_name)
+                absent = bool(active_authority.get('ok')) and not active.get('present') and opened and bool(deleted_authority.get('ok')) and not deleted.get('present')
+                stable_absent = stable_absent + 1 if absent else 0
+                verification.append({'attempt': attempt, 'active_authority': active_authority, 'active': active, 'recently_deleted_opened': opened, 'deleted_authority': deleted_authority, 'deleted': deleted, 'absent': absent, 'stable_absent': stable_absent})
+                if stable_absent >= 2:
+                    break
+            if stable_absent < 2:
+                return {**base, 'ok': False, 'status': 'exact_library_backing_delete_failed', 'delete_supported': True, 'exact_object_absent_verified': False, 'soft_delete': soft_delete, 'hard_delete': hard_delete, 'verification': verification}
+            return {**base, 'ok': True, 'status': 'exact_library_backing_object_deleted', 'delete_supported': True, 'exact_object_absent_verified': True, 'soft_delete': soft_delete, 'hard_delete': hard_delete, 'verification': verification}
+        except Exception as exc:
+            return {**base, 'ok': False, 'status': 'exact_library_backing_delete_failed', 'delete_supported': True, 'exact_object_absent_verified': False, 'error': str(exc), 'error_type': type(exc).__name__}
 
     async def _reconcile_library_file_family(
         self,

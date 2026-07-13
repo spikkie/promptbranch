@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.85.zip
-active candidate version: v0.1.103.10.85
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.85.zip
-next normal slice: v0.1.103.10.85 — compare legacy 10.75 and current Project Source transactions side by side
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
+active candidate version: v0.1.103.10.89
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
+next normal slice: v0.1.103.10.89 — delete the exact backing Library object before canonical reupload
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -766,4 +766,6 @@ Active repair slice: `v0.1.103.10.84 — restore normal file add and replace exi
 This repair removes unconditional Library/Recently deleted preflight from ordinary file adds. Existing exact file sources are routed to a non-destructive replace/update capability probe; if the live menu does not expose replacement, Promptbranch returns `project_source_replace_not_supported` without removing the source. Library reconciliation remains available only for visible or backend-proven numeric-suffix collisions.
 
 
-| v0.1.103.10.85 | repair | Diagnostic-only legacy 10.75 vs current Project Source A/B | candidate | focused tests; live A/B not run here | DOD-258 in progress | pending |
+| v0.1.103.10.86 | repair | Diagnostic-only legacy 10.75 vs current Project Source A/B | candidate | focused tests; live A/B not run here | DOD-258 in progress | pending |
+
+| v0.1.103.10.87 | repair | Diagnostic runner standard bearer-token resolution | candidate | external-CWD protected-endpoint subprocess regression | DOD-259 in progress | pending |

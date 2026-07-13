@@ -664,8 +664,20 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-257 | Library cleanup is invoked only after concrete suffix collision evidence | in_progress | Visible/backend suffix regression tests | v0.1.103.10.84 |
 
 
-## v0.1.103.10.85
+## v0.1.103.10.86
 
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
-| DOD-258 | Deterministic legacy-vs-current Project Source A/B diagnostic | in_progress | Two disposable projects, unique filenames, exact upload/remove/source/Library identities, and explicit conclusion without release upload or adoption. | v0.1.103.10.85 |
+| DOD-258 | Deterministic legacy-vs-current Project Source A/B diagnostic | in_progress | Two disposable projects, unique filenames, exact upload/remove/source/Library identities, and explicit conclusion without release upload or adoption. | v0.1.103.10.86 |
+
+## v0.1.103.10.87
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-259 | Diagnostic runner uses standard service bearer-token configuration | in_progress | External-CWD subprocess test with standard Promptbranch config and protected diagnostic endpoint | v0.1.103.10.87 |
+
+## v0.1.103.10.89
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-260 | Exact backing Library object is deleted and proven absent before canonical reupload | in_progress | Captured `file_...` and `libfile_...` identities, exact-ID-only active/Recently deleted removal, two stable authoritative absence observations, distinct replacement identities, canonical backend filename classification, and live diagnostic JSON | v0.1.103.10.89 |

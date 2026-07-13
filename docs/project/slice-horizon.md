@@ -30,6 +30,10 @@ v0.1.103.10.84 — restore normal file add and replace existing Project Sources 
 
 Repair releases must not advance the normal horizon.
 
-## v0.1.103.10.85
+## v0.1.103.10.87
 
 Active diagnostic repair: compare the legacy 10.75 and current Project Source transactions side by side. Repair horizon rule remains unchanged; v0.1.104 follows only after acceptance.
+
+## v0.1.103.10.89
+
+Diagnostic-only repair: delete the exact captured backing Library object after verified Project Source removal, prove exact-ID absence from active Library and Recently deleted, then attempt unchanged 10.75 canonical reupload. The prior `(1)` Project Source remains untouched; no release artifact upload, adoption, production Project Source, or `platform-gitops` artifact is involved.

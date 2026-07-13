@@ -1139,6 +1139,26 @@ class ChatGPTAutomationService:
         )
 
 
+    async def delete_library_backing_object_diagnostic(
+        self,
+        *,
+        processed_file_id: str,
+        library_metadata_object_id: str,
+        filename: str,
+        keep_open: bool = False,
+        profile_lock_wait_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        async with self._lock.operation(
+            "delete_library_backing_object_diagnostic",
+            wait_timeout_seconds=profile_lock_wait_seconds,
+        ):
+            return await self._build_bot().delete_library_backing_object_diagnostic(
+                processed_file_id=processed_file_id,
+                library_metadata_object_id=library_metadata_object_id,
+                filename=filename,
+                keep_open=keep_open,
+            )
+
     async def add_project_source_diagnostic(
         self,
         *,

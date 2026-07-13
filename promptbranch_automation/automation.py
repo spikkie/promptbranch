@@ -575,6 +575,21 @@ class ChatGPTAutomation:
             transaction_mode=transaction_mode,
         )
 
+    async def delete_library_backing_object_diagnostic(
+        self,
+        *,
+        processed_file_id: str,
+        library_metadata_object_id: str,
+        filename: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.delete_library_backing_object_diagnostic(
+            processed_file_id=processed_file_id,
+            library_metadata_object_id=library_metadata_object_id,
+            filename=filename,
+            keep_open=keep_open,
+        )
+
     async def discover_project_source_capabilities(
         self,
         *,

@@ -797,6 +797,14 @@ Decision: Library and Recently deleted are separate release-blocking evidence su
 Decision: normal fresh file adds must not inspect Library or Recently deleted. Same-name overwrite must first use an explicit replace/update action bound to the exact existing Project Source identity. Remove-and-reupload is not a live fallback. Library cleanup is evidence-driven and may run only after a visible suffix family or a backend-assigned suffix proves a collision.
 
 
-## v0.1.103.10.85 diagnostic decision
+## v0.1.103.10.86 diagnostic decision
 
 Decision: preserve normal `pbsa` behavior and add a diagnostic-only A/B runner that executes the verbatim 10.75 transaction beside the current transaction against two disposable projects. No release artifact upload, adoption, existing source mutation, or platform-gitops file is allowed. Planned after acceptance remains v0.1.104.
+
+## v0.1.103.10.87 diagnostic authentication decision
+
+Decision: the diagnostic endpoint remains bearer-token protected. The standalone runner must resolve the same standard Promptbranch CLI configuration and environment sources rather than weakening endpoint authentication or requiring operators to duplicate secrets on the command line.
+
+## v0.1.103.10.89 exact backing-object deletion decision
+
+Decision: the diagnostic may delete a Library object only when both the processed `file_...` ID and `libfile_...` metadata-object ID are captured from the authoritative upload transaction. Filename-only deletion and guessed backend endpoints are forbidden. It must remove the Project Source, prove stable source absence, delete the exact backing object from active Library and Recently deleted, prove the exact IDs absent on both authoritative surfaces, and only then call the unchanged 10.75 fresh-upload transaction with changed bytes. The prior `(1)` Project Source remains untouched as evidence.
