@@ -7618,7 +7618,8 @@ class ChatGPTBrowserClient:
                             project_references_known: refs.known,
                             deleted: /recently deleted|delete forever|restore/i.test(text),
                             file_row_candidate: true,
-                            actionable_library_row: false,
+                            actionable_library_row: preHoverMenus.length === 1,
+                            row_discovery_authoritative: true,
                             action_menu_count: preHoverMenus.length,
                             pre_hover_menu_count: preHoverMenus.length,
                             row_binding_key: bindingKey,
@@ -7867,22 +7868,148 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(700)
         return {'ok': True, 'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered', 'file_id': file_id, 'filename': filename}
 
-    async def _open_library_recently_deleted(self, page: Any) -> bool:
+    async def _open_library_recently_deleted(self, page: Any) -> dict[str, Any]:
+        """Open Recently deleted and prove that the deleted surface is active.
+
+        The control can be a sidebar link, tab, menu item, or an item revealed by
+        a Library-local overflow menu.  Candidate diagnostics are public and do
+        not include arbitrary page text or sensitive attributes.
+        """
+        direct_selectors = [
+            'a:has-text("Recently deleted")',
+            'button:has-text("Recently deleted")',
+            '[role="tab"]:has-text("Recently deleted")',
+            '[role="menuitem"]:has-text("Recently deleted")',
+            '[aria-label*="Recently deleted" i]',
+            '[data-testid*="recently-deleted" i]',
+            '[data-testid*="recently_deleted" i]',
+            'a:has-text("Deleted files")',
+            'button:has-text("Deleted files")',
+            '[role="menuitem"]:has-text("Deleted files")',
+            'a:has-text("Recycle bin")',
+            'button:has-text("Recycle bin")',
+            '[role="menuitem"]:has-text("Recycle bin")',
+            'a:has-text("Trash")',
+            'button:has-text("Trash")',
+            '[role="menuitem"]:has-text("Trash")',
+        ]
+
+        async def public_candidates() -> list[dict[str, Any]]:
+            try:
+                value = await page.evaluate(
+                    r"""
+                    () => {
+                        const visible = el => {
+                            if (!el) return false;
+                            const style = window.getComputedStyle(el);
+                            const rect = el.getBoundingClientRect();
+                            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                        };
+                        const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+                        const allowed = /^(recently deleted|deleted files|trash|recycle bin)$/i;
+                        return Array.from(document.querySelectorAll('a,button,[role="tab"],[role="menuitem"]'))
+                            .filter(visible)
+                            .map(el => ({
+                                tag: String(el.tagName || '').toLowerCase(),
+                                role: String(el.getAttribute('role') || ''),
+                                text: normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '').slice(0, 160),
+                                aria_label: String(el.getAttribute('aria-label') || '').slice(0, 160),
+                                data_testid: String(el.getAttribute('data-testid') || '').slice(0, 160),
+                                href_path: (() => {
+                                    try { return new URL(String(el.getAttribute('href') || ''), location.href).pathname; }
+                                    catch (_) { return ''; }
+                                })(),
+                            }))
+                            .filter(item => allowed.test(item.text) || /recently[-_ ]deleted|trash|recycle/i.test(item.aria_label + ' ' + item.data_testid + ' ' + item.href_path))
+                            .slice(0, 20);
+                    }
+                    """
+                )
+                return value if isinstance(value, list) else []
+            except Exception:
+                return []
+
+        async def prove_active() -> dict[str, Any]:
+            last: dict[str, Any] = {}
+            for _ in range(8):
+                last = await self._library_route_state(page, surface_kind='recently_deleted')
+                if last.get('ready'):
+                    return last
+                await page.wait_for_timeout(250)
+            return last
+
+        candidates_before = await public_candidates()
         locator = await self._find_visible_locator(
             page,
-            [
-                'a:has-text("Recently deleted")',
-                'button:has-text("Recently deleted")',
-                '[role="tab"]:has-text("Recently deleted")',
-            ],
+            direct_selectors,
             label='library-recently-deleted',
-            timeout_ms=3_000,
+            timeout_ms=2_000,
         )
+        menu_expansion_attempts = 0
         if locator is None:
-            return False
-        await self._click_locator_with_fallback(locator, label='library-recently-deleted', timeout_ms=5_000)
-        await page.wait_for_timeout(800)
-        return True
+            overflow = page.locator(
+                'main button[aria-haspopup="menu"], main button[aria-label*="More" i], '
+                'nav button[aria-haspopup="menu"], nav button[aria-label*="More" i], '
+                'aside button[aria-haspopup="menu"], aside button[aria-label*="More" i]'
+            )
+            for index in range(min(await self._safe_count(overflow, 'library-recently-deleted-overflow'), 6)):
+                candidate = overflow.nth(index)
+                try:
+                    if not await candidate.is_visible():
+                        continue
+                except Exception:
+                    continue
+                menu_expansion_attempts += 1
+                try:
+                    await self._click_locator_with_fallback(
+                        candidate,
+                        label='library-recently-deleted-overflow',
+                        timeout_ms=3_000,
+                    )
+                    await page.wait_for_timeout(250)
+                except Exception:
+                    continue
+                locator = await self._find_visible_locator(
+                    page,
+                    direct_selectors,
+                    label='library-recently-deleted-after-overflow',
+                    timeout_ms=800,
+                )
+                if locator is not None:
+                    break
+        candidates_after = await public_candidates()
+        if locator is None:
+            return {
+                'ok': False,
+                'status': 'recently_deleted_navigation_not_available',
+                'candidate_controls_before': candidates_before,
+                'candidate_controls_after': candidates_after,
+                'menu_expansion_attempts': menu_expansion_attempts,
+            }
+        await self._click_locator_with_fallback(
+            locator,
+            label='library-recently-deleted',
+            timeout_ms=5_000,
+        )
+        await page.wait_for_timeout(500)
+        route_state = await prove_active()
+        if not route_state.get('ready'):
+            return {
+                'ok': False,
+                'status': 'recently_deleted_surface_not_active',
+                'route_state': route_state,
+                'candidate_controls_before': candidates_before,
+                'candidate_controls_after': candidates_after,
+                'menu_expansion_attempts': menu_expansion_attempts,
+            }
+        return {
+            'ok': True,
+            'status': 'recently_deleted_surface_active',
+            'route_state': route_state,
+            'candidate_controls_before': candidates_before,
+            'candidate_controls_after': candidates_after,
+            'menu_expansion_attempts': menu_expansion_attempts,
+        }
 
     async def _library_route_state(self, page: Any, *, surface_kind: str = 'active') -> dict[str, Any]:
         current_url = await self._safe_page_url(page)
@@ -7907,8 +8034,9 @@ class ChatGPTBrowserClient:
                     const loadingVisible = Array.from(document.querySelectorAll(
                         '[aria-busy="true"], [role="progressbar"], [data-testid*="loading" i], [data-testid*="skeleton" i]'
                     )).some(visible);
-                    const recentControls = Array.from(document.querySelectorAll('a,button,[role="tab"]')).filter(visible).filter(el =>
-                        normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '').includes('recently deleted')
+                    const deletedLabels = new Set(['recently deleted', 'deleted files', 'trash', 'recycle bin']);
+                    const recentControls = Array.from(document.querySelectorAll('a,button,[role="tab"],[role="menuitem"]')).filter(visible).filter(el =>
+                        deletedLabels.has(normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || ''))
                     );
                     const recentActive = recentControls.some(el =>
                         el.getAttribute('aria-selected') === 'true' ||
@@ -7930,7 +8058,7 @@ class ChatGPTBrowserClient:
         query_text = (parsed.query or '').lower()
         path_text = normalized_path
         if surface_kind == 'recently_deleted':
-            route_surface_ok = recently_deleted_active or any(token in query_text or token in path_text for token in ('recently_deleted', 'recently-deleted', 'deleted'))
+            route_surface_ok = recently_deleted_active or any(token in query_text or token in path_text for token in ('recently_deleted', 'recently-deleted', 'deleted', 'trash', 'recycle'))
         else:
             route_surface_ok = route_ok
         return {
@@ -8616,39 +8744,74 @@ class ChatGPTBrowserClient:
         filename: str,
         phase: str,
     ) -> Optional[dict[str, Any]]:
+        """Discover one successful exact-ID file mutation from paired fetch/XHR events."""
         payload = watch if isinstance(watch, dict) else {}
-        candidates: list[tuple[int, dict[str, Any]]] = []
-        exact_values = [*id_candidates]
-        for event in payload.get('events') or []:
-            if not isinstance(event, dict) or event.get('kind') != 'response':
+        events = [event for event in payload.get('events') or [] if isinstance(event, dict)]
+        responses_by_sequence = {
+            int(event.get('sequence') or 0): event
+            for event in events
+            if event.get('kind') == 'response' and int(event.get('sequence') or 0)
+        }
+        candidate_pairs: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+        exact_values = [value for value in id_candidates if str(value or '').strip()]
+
+        for request in events:
+            if request.get('kind') != 'request' or str(request.get('phase') or '') != phase:
                 continue
-            if str(event.get('phase') or '') != phase:
-                continue
-            method = str(event.get('method') or 'GET').upper()
+            method = str(request.get('method') or 'GET').upper()
             if method in {'GET', 'HEAD', 'OPTIONS'}:
                 continue
-            exact = self._protocol_event_contains_any(event, exact_values)
-            filename_match = self._protocol_event_contains_any(event, [filename])
-            status = int(event.get('status') or 0)
+            raw_url = str(request.get('_raw_url') or '')
+            if '/backend-api/' not in raw_url.lower():
+                continue
+            response = responses_by_sequence.get(int(request.get('sequence') or 0))
+            if not isinstance(response, dict):
+                continue
+            status = int(response.get('status') or 0)
+            if not 200 <= status < 300:
+                continue
+            exact = self._protocol_event_contains_any(request, exact_values) or self._protocol_event_contains_any(response, exact_values)
             if not exact:
                 continue
-            score = 100 + (20 if 200 <= status < 300 else 0) + (5 if filename_match else 0)
-            candidates.append((score, event))
-        if not candidates:
+            filename_match = self._protocol_event_contains_any(request, [filename]) or self._protocol_event_contains_any(response, [filename])
+            files_path = '/backend-api/files' in raw_url.lower() or '/backend-api/library' in raw_url.lower()
+            score = 140 + (30 if files_path else 0) + (10 if method in {'DELETE', 'PATCH', 'PUT'} else 0) + (5 if filename_match else 0)
+            candidate_pairs.append((score, request, response))
+
+        # Preserve compatibility with captures/tests containing only response events.
+        for response in events:
+            if response.get('kind') != 'response' or str(response.get('phase') or '') != phase:
+                continue
+            method = str(response.get('method') or 'GET').upper()
+            status = int(response.get('status') or 0)
+            if method in {'GET', 'HEAD', 'OPTIONS'} or not 200 <= status < 300:
+                continue
+            if not self._protocol_event_contains_any(response, exact_values):
+                continue
+            raw_url = str(response.get('_raw_url') or '')
+            files_path = '/backend-api/files' in raw_url.lower() or '/backend-api/library' in raw_url.lower()
+            score = 100 + (30 if files_path else 0) + (5 if self._protocol_event_contains_any(response, [filename]) else 0)
+            candidate_pairs.append((score, response, response))
+
+        if not candidate_pairs:
             return None
-        event = sorted(candidates, key=lambda item: item[0], reverse=True)[0][1]
+        _, request, response = sorted(candidate_pairs, key=lambda item: item[0], reverse=True)[0]
+        sequence = int(request.get('sequence') or response.get('sequence') or 0)
         return {
-            'method': str(event.get('method') or 'POST').upper(),
-            'url': event.get('url'),
-            'headers': event.get('request_headers') or {},
-            'post_data_sample': event.get('request_post_data_sample') or '',
-            'phase': event.get('phase'),
-            'status': event.get('status'),
-            '_raw_url': event.get('_raw_url'),
-            '_raw_post_data': event.get('_raw_post_data'),
+            'method': str(request.get('method') or response.get('method') or 'POST').upper(),
+            'url': response.get('url') or request.get('url'),
+            'headers': request.get('headers') or response.get('request_headers') or {},
+            'post_data_sample': request.get('post_data_sample') or response.get('request_post_data_sample') or '',
+            'phase': response.get('phase') or request.get('phase'),
+            'status': response.get('status'),
+            'exact_identity_observed': True,
+            'response_proven_successful': True,
+            '_raw_url': request.get('_raw_url') or response.get('_raw_url'),
+            '_raw_post_data': request.get('_raw_post_data') if request.get('_raw_post_data') is not None else response.get('_raw_post_data'),
             '_raw_headers': (
-                payload.get('private_request_headers', {}).get(event.get('sequence'))
-                or event.get('_raw_headers')
+                payload.get('private_request_headers', {}).get(sequence)
+                or request.get('_raw_headers')
+                or response.get('_raw_headers')
                 or {}
             ),
         }
@@ -8841,6 +9004,84 @@ class ChatGPTBrowserClient:
         return {
             'ok': False,
             'status': 'exact_library_identity_visibility_timeout',
+            'stable_observations': stable,
+            'required_stable_observations': required_stable_observations,
+            'observations': observations,
+        }
+
+    async def _poll_exact_backend_inventory_soft_deleted(
+        self,
+        page: Any,
+        *,
+        protocol: dict[str, Any],
+        id_candidates: list[str],
+        required_stable_observations: int = 2,
+        max_attempts: int = 8,
+        poll_ms: int = 500,
+    ) -> dict[str, Any]:
+        """Prove the exact object is absent from active inventory or marked trashed."""
+        observations: list[dict[str, Any]] = []
+        stable = 0
+        normalized_ids = {str(value or '').casefold() for value in id_candidates if str(value or '').strip()}
+        for attempt in range(1, max_attempts + 1):
+            replay = await self._replay_backend_protocol(
+                page,
+                protocol=protocol,
+                mapping={},
+                phase=f'visible_library_soft_delete_active_verify_{attempt}',
+            )
+            status_code = int(replay.get('status') or 0)
+            if status_code in {401, 403}:
+                observations.append({'attempt': attempt, 'matched': False, 'response': replay})
+                return {
+                    'ok': False,
+                    'status': 'backend_inventory_replay_unauthorized',
+                    'http_status': status_code,
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
+            exact_records: list[dict[str, Any]] = []
+            for record in replay.get('records') or []:
+                if not isinstance(record, dict):
+                    continue
+                identities = {
+                    str(record.get(key) or '').casefold()
+                    for key in ('file_id', 'processed_file_id', 'library_metadata_object_id')
+                    if str(record.get(key) or '').strip()
+                }
+                identities.update(
+                    str(value or '').casefold()
+                    for value in record.get('identity_candidates') or []
+                    if str(value or '').strip()
+                )
+                if normalized_ids.intersection(identities):
+                    exact_records.append(record)
+            exact_present = bool(exact_records)
+            exact_marked_trashed = bool(exact_records) and all(bool(record.get('deleted')) for record in exact_records)
+            matched = bool(replay.get('ok')) and (not exact_present or exact_marked_trashed)
+            stable = stable + 1 if matched else 0
+            observations.append({
+                'attempt': attempt,
+                'matched': matched,
+                'stable_observations': stable,
+                'exact_identity_present_in_active_inventory': exact_present,
+                'exact_identity_marked_trashed': exact_marked_trashed,
+                'response': replay,
+            })
+            if stable >= required_stable_observations:
+                return {
+                    'ok': True,
+                    'status': 'exact_library_identity_soft_deleted',
+                    'proof': 'explicitly_trashed' if exact_marked_trashed else 'absent_from_active_inventory',
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
+            await page.wait_for_timeout(max(poll_ms, 1))
+        return {
+            'ok': False,
+            'status': 'soft_delete_backend_state_not_verified',
             'stable_observations': stable,
             'required_stable_observations': required_stable_observations,
             'observations': observations,
@@ -9624,46 +9865,116 @@ class ChatGPTBrowserClient:
                 page, filename=visible_filename, delete_forever=False, ui_binding=visible_ui_binding,
             )
             result_base['visible_library_soft_delete'] = visible_soft_delete
+            if not visible_soft_delete.get('ok'):
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': str(visible_soft_delete.get('status') or 'visible_library_soft_delete_not_triggered'),
+                })
+                return result_base
+            await page.wait_for_timeout(1_000)
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
             soft_delete_protocol = self._discover_backend_delete_protocol(
                 protocol_watch, id_candidates=visible_ids, filename=visible_filename,
                 phase='visible_library_soft_delete',
             )
             result_base['soft_delete_protocol'] = self._public_backend_protocol(soft_delete_protocol)
+            if soft_delete_protocol is None:
+                result_base.update({
+                    'conclusion': 'backend_delete_protocol_not_discovered',
+                    'reason': 'soft_delete_protocol_not_discovered',
+                })
+                return result_base
+            soft_delete_backend_state = await self._poll_exact_backend_inventory_soft_deleted(
+                page,
+                protocol=active_inventory_protocol,
+                id_candidates=visible_ids,
+                required_stable_observations=2,
+                max_attempts=8,
+                poll_ms=500,
+            )
+            result_base['visible_library_soft_delete_backend_state'] = soft_delete_backend_state
+            if not soft_delete_backend_state.get('ok'):
+                reason = (
+                    'backend_inventory_replay_unauthorized'
+                    if soft_delete_backend_state.get('status') == 'backend_inventory_replay_unauthorized'
+                    else 'soft_delete_backend_state_not_verified'
+                )
+                result_base.update({'conclusion': 'diagnostic_inconclusive', 'reason': reason})
+                return result_base
 
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_recently_deleted_inventory')
             await self._goto(page, self._library_url(), label='library-backend-protocol-visible-deleted')
-            await page.wait_for_timeout(800)
+            await page.wait_for_timeout(500)
             opened_deleted = await self._open_library_recently_deleted(page)
-            result_base['recently_deleted_opened_for_discovery'] = opened_deleted
-            deleted_visible_surface: dict[str, Any] = {}
-            if opened_deleted:
-                await self._library_search_exact_family(page, visible_filename)
-                deleted_visible_surface = await self._wait_for_authoritative_library_family_surface(
-                    page, canonical_name=visible_filename, label='library-backend-protocol-visible-deleted-ready',
-                    timeout_ms=12_000, surface_kind='recently_deleted',
-                    max_identical_non_authoritative_observations=5,
-                )
+            result_base['recently_deleted_navigation'] = opened_deleted
+            result_base['recently_deleted_opened_for_discovery'] = bool(opened_deleted.get('ok'))
+            if not opened_deleted.get('ok'):
+                result_base['visible_library_deleted_surface'] = {}
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': str(opened_deleted.get('status') or 'recently_deleted_navigation_not_available'),
+                })
+                return result_base
+
+            await self._library_search_exact_family(page, visible_filename)
+            deleted_visible_surface = await self._wait_for_authoritative_library_family_surface(
+                page, canonical_name=visible_filename, label='library-backend-protocol-visible-deleted-ready',
+                timeout_ms=12_000, surface_kind='recently_deleted',
+                max_identical_non_authoritative_observations=5,
+            )
             result_base['visible_library_deleted_surface'] = deleted_visible_surface
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
             deleted_inventory_protocol = self._discover_backend_inventory_protocol(
                 protocol_watch, id_candidates=visible_ids, filename=visible_filename,
                 phases={'visible_library_recently_deleted_inventory'},
             )
+            # A cached transition can render the surface without issuing a new request.
+            # Reload the proven deleted route once to force an authenticated inventory fetch.
+            if deleted_inventory_protocol is None and hasattr(page, 'reload'):
+                try:
+                    await page.reload(wait_until='domcontentloaded')
+                    await page.wait_for_timeout(700)
+                    await self._library_search_exact_family(page, visible_filename)
+                    await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+                    deleted_inventory_protocol = self._discover_backend_inventory_protocol(
+                        protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+                        phases={'visible_library_recently_deleted_inventory'},
+                    )
+                except Exception:
+                    pass
             result_base['deleted_inventory_protocol'] = self._public_backend_protocol(deleted_inventory_protocol)
             if deleted_inventory_protocol is None:
-                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'recently_deleted_inventory_endpoint_not_discovered'})
+                result_base.update({
+                    'conclusion': 'backend_inventory_not_discovered',
+                    'reason': 'recently_deleted_inventory_endpoint_not_discovered',
+                })
                 return result_base
-            deleted_binding_presence = {
-                'observations': [{
-                    'response': {
-                        'records': list(deleted_inventory_protocol.get('_records') or []),
-                    }
-                }]
-            }
+            deleted_inventory_presence = await self._poll_exact_backend_inventory_presence(
+                page,
+                protocol=deleted_inventory_protocol,
+                id_candidates=[visible_libfile_id],
+                required_stable_observations=2,
+                max_attempts=8,
+                poll_ms=500,
+            )
+            result_base['visible_library_deleted_backend_presence'] = deleted_inventory_presence
+            if not deleted_inventory_presence.get('ok'):
+                reason = (
+                    'backend_inventory_replay_unauthorized'
+                    if deleted_inventory_presence.get('status') == 'backend_inventory_replay_unauthorized'
+                    else 'recently_deleted_exact_identity_not_present'
+                )
+                result_base.update({'conclusion': 'diagnostic_inconclusive', 'reason': reason})
+                return result_base
+            if not deleted_visible_surface.get('ok') or not deleted_visible_surface.get('authoritative'):
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'recently_deleted_surface_not_authoritative_after_backend_presence',
+                })
+                return result_base
             deleted_ui_binding = self._validate_exact_library_ui_binding(
                 surface=deleted_visible_surface,
-                backend_presence=deleted_binding_presence,
+                backend_presence=deleted_inventory_presence,
                 filename=visible_filename,
                 library_metadata_object_id=visible_libfile_id,
             )

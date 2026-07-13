@@ -71,3 +71,11 @@ Bind the exact Library filename only inside one actionable file row and scope th
 ### v0.1.103.10.95 repair-only diagnostic
 
 Separate exact filename-leaf row discovery from hover-activated row-menu binding, deduplicate backend observations by `libfile_...`, and stop on a bounded non-authoritative Library surface before any delete or reupload mutation. Accepted/current remains `v0.1.103.10.68`.
+
+### v0.1.103.10.96 repair-only diagnostic
+
+- Prove one successful exact-ID soft-delete mutation immediately after the bound-row Delete action.
+- Require two authenticated observations showing the disposable object absent from active inventory or explicitly trashed.
+- Prove Recently deleted navigation, inventory endpoint discovery, and exact deleted-object presence before permanent deletion.
+- Keep target deletion, canonical reupload, release `pbsa`, and adoption blocked.
+

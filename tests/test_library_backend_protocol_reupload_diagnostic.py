@@ -892,3 +892,207 @@ def test_library_surface_stops_after_bounded_identical_non_authoritative_observa
     assert result["bounded_identical_state_stop"] is True
     assert result["identical_non_authoritative_observations"] == 5
     assert len(result["observations"]) == 5
+
+
+def test_delete_protocol_pairs_exact_request_with_successful_response(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "private_request_headers": {7: {"authorization": "Bearer private", "chatgpt-account-id": "acct"}},
+        "events": [
+            {
+                "kind": "request",
+                "sequence": 7,
+                "phase": "visible_library_soft_delete",
+                "method": "PATCH",
+                "url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "headers": {"content-type": "application/json"},
+                "post_data_sample": '{"trashed":true}',
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_post_data": '{"trashed":true}',
+                "_raw_headers": {"content-type": "application/json"},
+            },
+            {
+                "kind": "response",
+                "sequence": 7,
+                "phase": "visible_library_soft_delete",
+                "method": "PATCH",
+                "url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "status": 204,
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_body": "",
+            },
+        ],
+    }
+    protocol = client._discover_backend_delete_protocol(
+        watch,
+        id_candidates=["libfile_target"],
+        filename="visible.txt",
+        phase="visible_library_soft_delete",
+    )
+    assert protocol is not None
+    assert protocol["method"] == "PATCH"
+    assert protocol["status"] == 204
+    assert protocol["response_proven_successful"] is True
+    assert protocol["_raw_headers"]["authorization"] == "Bearer private"
+    assert "authorization" not in client._public_backend_protocol(protocol)["headers"]
+
+
+def test_delete_protocol_rejects_exact_request_without_success_response(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "events": [
+            {
+                "kind": "request",
+                "sequence": 9,
+                "phase": "visible_library_soft_delete",
+                "method": "DELETE",
+                "_raw_url": "https://chatgpt.com/backend-api/files/libfile_target",
+                "_raw_post_data": None,
+            },
+            {
+                "kind": "response",
+                "sequence": 9,
+                "phase": "visible_library_soft_delete",
+                "method": "DELETE",
+                "status": 500,
+                "_raw_url": "https://chatgpt.com/backend-api/files/libfile_target",
+                "_raw_body": '{"error":"failed"}',
+            },
+        ],
+    }
+    assert client._discover_backend_delete_protocol(
+        watch,
+        id_candidates=["libfile_target"],
+        filename="visible.txt",
+        phase="visible_library_soft_delete",
+    ) is None
+
+
+def test_soft_delete_backend_state_accepts_stable_active_absence(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    responses = [
+        {"ok": True, "status": 200, "records": []},
+        {"ok": True, "status": 200, "records": []},
+    ]
+
+    async def replay(*_args, **_kwargs):
+        return responses.pop(0)
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    client._replay_backend_protocol = replay  # type: ignore[method-assign]
+    result = asyncio.run(client._poll_exact_backend_inventory_soft_deleted(
+        Page(),
+        protocol={"method": "GET"},
+        id_candidates=["libfile_target"],
+        poll_ms=1,
+    ))
+    assert result["ok"] is True
+    assert result["status"] == "exact_library_identity_soft_deleted"
+    assert result["proof"] == "absent_from_active_inventory"
+    assert result["stable_observations"] == 2
+
+
+def test_soft_delete_backend_state_accepts_explicit_trashed_record(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    trashed = {
+        "library_metadata_object_id": "libfile_target",
+        "identity_candidates": ["libfile_target"],
+        "deleted": True,
+    }
+
+    async def replay(*_args, **_kwargs):
+        return {"ok": True, "status": 200, "records": [trashed]}
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    client._replay_backend_protocol = replay  # type: ignore[method-assign]
+    result = asyncio.run(client._poll_exact_backend_inventory_soft_deleted(
+        Page(),
+        protocol={"method": "GET"},
+        id_candidates=["libfile_target"],
+        poll_ms=1,
+    ))
+    assert result["ok"] is True
+    assert result["proof"] == "explicitly_trashed"
+
+
+def test_soft_delete_backend_state_fails_when_exact_record_remains_active(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    active = {
+        "library_metadata_object_id": "libfile_target",
+        "identity_candidates": ["libfile_target"],
+        "deleted": False,
+    }
+
+    async def replay(*_args, **_kwargs):
+        return {"ok": True, "status": 200, "records": [active]}
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    client._replay_backend_protocol = replay  # type: ignore[method-assign]
+    result = asyncio.run(client._poll_exact_backend_inventory_soft_deleted(
+        Page(),
+        protocol={"method": "GET"},
+        id_candidates=["libfile_target"],
+        max_attempts=2,
+        poll_ms=1,
+    ))
+    assert result["ok"] is False
+    assert result["status"] == "soft_delete_backend_state_not_verified"
+
+
+def test_recently_deleted_navigation_proves_active_surface(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    clicked: list[str] = []
+
+    class Control:
+        pass
+
+    class EmptyList:
+        async def count(self):
+            return 0
+
+        def nth(self, index):  # pragma: no cover
+            raise IndexError(index)
+
+    class Page:
+        async def evaluate(self, _script):
+            return []
+
+        def locator(self, _selector):
+            return EmptyList()
+
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def find(*_args, **_kwargs):
+        return Control()
+
+    async def click(_locator, *, label: str, **_kwargs):
+        clicked.append(label)
+
+    async def route(*_args, **_kwargs):
+        return {
+            "current_url": "https://chatgpt.com/library?view=trash",
+            "route_ok": True,
+            "app_loaded": True,
+            "loading_visible": False,
+            "surface_kind": "recently_deleted",
+            "surface_active": True,
+            "ready": True,
+        }
+
+    client._find_visible_locator = find  # type: ignore[method-assign]
+    client._click_locator_with_fallback = click  # type: ignore[method-assign]
+    client._library_route_state = route  # type: ignore[method-assign]
+    result = asyncio.run(client._open_library_recently_deleted(Page()))
+    assert result["ok"] is True
+    assert result["status"] == "recently_deleted_surface_active"
+    assert clicked == ["library-recently-deleted"]

@@ -713,3 +713,5 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-263 | Exact Library UI binding rejects ancestor/header containers and requires one row-scoped action menu | in_progress | `v0.1.103.10.94` focused tests; live diagnostic pending | v0.1.103.10.94 |
 
 | DOD-264 | Exact Library filename leaf binds to one local file row before a hover-revealed row-owned menu; repeated backend observations deduplicate by `libfile_...`; non-authoritative surfaces fail before row absence | in_progress | `v0.1.103.10.95` focused deterministic tests; live diagnostic pending | v0.1.103.10.95 |
+| DOD-265 | Disposable Library soft deletion is proven by a successful exact-ID mutation plus stable active absence/trashed state; Recently deleted navigation and exact deleted-inventory presence are independently proven before permanent deletion | in_progress | `v0.1.103.10.96` focused deterministic tests; live diagnostic pending | v0.1.103.10.96 |
+

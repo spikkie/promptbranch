@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip
-active candidate version: v0.1.103.10.95
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip
-next normal slice: v0.1.103.10.95 — separate Library filename-leaf row discovery from hover-activated menu binding
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
+active candidate version: v0.1.103.10.96
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
+next normal slice: v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip
-release status: v0.1.103.10.95 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
+release status: v0.1.103.10.96 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Run the disposable v0.1.103.10.95 diagnostic and require one exact filename-leaf row, one unique backend-proven libfile identity, and one row-owned menu revealed only after hovering the bound row before observing any delete mutation.
+Run the disposable v0.1.103.10.96 diagnostic and require a successful exact-ID soft-delete mutation, stable active-inventory absence or trashed state, an active Recently deleted surface, and stable exact deleted-inventory presence before permanent deletion.
 ```
 
 Operator promotion command after candidate ZIP creation:

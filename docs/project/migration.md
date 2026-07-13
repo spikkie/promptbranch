@@ -1059,3 +1059,5 @@ No workflow or command surface is migrated. `pbsa <file>` remains unchanged. The
 
 
 - `v0.1.103.10.95` adds filename-leaf row discovery, hover-triggered row-menu evidence, backend `libfile_...` deduplication, and bounded non-authoritative-surface evidence to the diagnostic repair ledger. Accepted/current remains `v0.1.103.10.68`; no release source or adoption mutation is performed.
+- `v0.1.103.10.96` adds exact soft-delete mutation proof, stable active-inventory absence/trashed verification, explicit Recently deleted navigation states, and exact deleted-inventory presence gating. Accepted/current remains `v0.1.103.10.68`; no release source or adoption mutation is performed.
+
