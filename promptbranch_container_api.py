@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -195,6 +196,14 @@ class ProjectSourceRemoveRequest(BaseModel):
     exact: bool = False
     keep_open: bool = False
     project_url: Optional[str] = None
+    profile_lock_wait_seconds: Optional[float] = None
+
+
+
+class ProjectSourceABDiagnosticRequest(BaseModel):
+    project_name_prefix: str = "itest-pb-source-ab"
+    keep_open: bool = False
+    allow_project_source_mutation: bool = False
     profile_lock_wait_seconds: Optional[float] = None
 
 
@@ -906,6 +915,101 @@ async def ask(
         _cleanup_temp_uploads(temp_paths, temp_dir)
 
 
+
+
+def _diagnostic_upload_identity(result: object, requested_filename: str) -> dict:
+    payload = result if isinstance(result, dict) else {}
+    summary = payload.get("save_request_summary") if isinstance(payload.get("save_request_summary"), dict) else {}
+    diagnostics = summary.get("response_diagnostics") if isinstance(summary.get("response_diagnostics"), list) else []
+    requested = Path(requested_filename).name
+    library_name = None
+    processed_file_id = None
+    metadata_object_id = None
+    completed_event = None
+    for diagnostic in diagnostics:
+        if not isinstance(diagnostic, dict):
+            continue
+        sample = str(diagnostic.get("body_sample") or "")
+        for raw_line in sample.splitlines():
+            line = raw_line.strip()
+            if line.startswith("data:"):
+                line = line[5:].strip()
+            if not line or line == "[DONE]":
+                continue
+            try:
+                event = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(event, dict):
+                continue
+            file_id = event.get("file_id")
+            if isinstance(file_id, str) and file_id:
+                processed_file_id = file_id
+            extra = event.get("extra") if isinstance(event.get("extra"), dict) else {}
+            if isinstance(extra.get("library_file_name"), str) and extra.get("library_file_name"):
+                library_name = Path(str(extra["library_file_name"])).name
+            if isinstance(extra.get("metadata_object_id"), str) and extra.get("metadata_object_id"):
+                metadata_object_id = str(extra["metadata_object_id"])
+            if event.get("event") == "file.processing.completed":
+                completed_event = event
+    if processed_file_id is None:
+        file_ids = summary.get("backing_file_ids") if isinstance(summary.get("backing_file_ids"), list) else []
+        processed_file_id = next((str(item) for item in file_ids if str(item).startswith("file_")), None)
+    return {
+        "requested_filename": requested,
+        "library_assigned_filename": library_name,
+        "processed_file_id": processed_file_id,
+        "library_metadata_object_id": metadata_object_id,
+        "completed_upload_event": completed_event,
+        "upload_response": payload,
+    }
+
+
+def _diagnostic_remove_response(second_result: object) -> object:
+    payload = second_result if isinstance(second_result, dict) else {}
+    for key in ("overwrite_remove_result", "remembered_overwrite_remove_result"):
+        if isinstance(payload.get(key), dict):
+            return payload.get(key)
+    rollback = payload.get("backend_renamed_source_rollback")
+    if isinstance(rollback, dict) and isinstance(rollback.get("remove_result"), dict):
+        return rollback.get("remove_result")
+    replace = payload.get("source_replace_attempt")
+    if isinstance(replace, dict):
+        return {"status": "replace_path_no_remove", "source_replace_attempt": replace}
+    return {"status": "no_remove_response_observed"}
+
+
+def _diagnostic_source_identity(list_result: object, requested_filename: str) -> dict:
+    payload = list_result if isinstance(list_result, dict) else {}
+    requested = Path(requested_filename).name
+    stem = Path(requested).stem
+    suffix = Path(requested).suffix
+    identities = payload.get("source_identities") if isinstance(payload.get("source_identities"), list) else []
+    if not identities:
+        identities = payload.get("current_source_identities") if isinstance(payload.get("current_source_identities"), list) else []
+    matching = []
+    for identity in identities:
+        text = str(identity)
+        if requested in text or (stem in text and suffix in text):
+            matching.append(text)
+    return {
+        "requested_filename": requested,
+        "matching_identities": matching,
+        "all_source_identities": identities,
+        "source_count": payload.get("count", payload.get("current_source_count")),
+    }
+
+
+def _diagnostic_canonical_success(second_result: object, source_identity: dict, requested_filename: str) -> bool:
+    payload = second_result if isinstance(second_result, dict) else {}
+    requested = Path(requested_filename).name
+    identities = source_identity.get("matching_identities") if isinstance(source_identity, dict) else []
+    stem = Path(requested).stem
+    exact_visible = any(str(item).startswith(requested) and f"{stem}(" not in str(item) and f"{stem} (" not in str(item) for item in identities or [])
+    suffix_visible = any(f"{stem}(" in str(item) or f"{stem} (" in str(item) for item in identities or [])
+    return bool(payload.get("ok") and payload.get("persistence_verified") and exact_visible and not suffix_visible)
+
+
 @protected.get("/projects", dependencies=[Depends(require_service_token)])
 async def list_projects(keep_open: bool = False, project_url: Optional[str] = None) -> dict:
     try:
@@ -1108,6 +1212,114 @@ async def remove_project(payload: ProjectRemoveRequest) -> dict:
         blocked_at_layer="container_api",
         validation=validation,
     )
+
+
+
+
+@protected.post("/diagnostics/project-source-ab", dependencies=[Depends(require_service_token)])
+async def project_source_ab_diagnostic(payload: ProjectSourceABDiagnosticRequest) -> dict:
+    preflight = await _require_project_source_mutation_preflight(
+        None,
+        allow_project_source_mutation=payload.allow_project_source_mutation,
+    )
+    token = secrets.token_hex(5)
+    prefix = "-".join(part for part in str(payload.project_name_prefix or "itest-pb-source-ab").strip().split() if part)
+    prefix = prefix[:48] or "itest-pb-source-ab"
+    specs = [
+        ("legacy_10_75_transaction", "legacy_10_75", f"{prefix}-legacy-{token}", f"pb-ab-legacy-{token}.txt"),
+        ("current_transaction", "current", f"{prefix}-current-{token}", f"pb-ab-current-{token}.txt"),
+    ]
+    root_service = _service_for(None)
+    temp_dir = Path(tempfile.mkdtemp(prefix="promptbranch-project-source-ab-"))
+    transactions: dict[str, dict] = {}
+    try:
+        for label, mode, project_name, filename in specs:
+            create_result = await root_service.create_project(
+                name=project_name,
+                memory_mode="project-only",
+                keep_open=False,
+            )
+            project_url = create_result.get("project_url") if isinstance(create_result, dict) else None
+            if not project_url:
+                transactions[label] = {
+                    "transaction_mode": mode,
+                    "project_name": project_name,
+                    "project_create_result": create_result,
+                    "status": "project_create_failed",
+                }
+                continue
+            file_path = temp_dir / filename
+            file_path.write_text(f"Promptbranch A/B diagnostic first payload\nmode={mode}\ntoken={token}\n", encoding="utf-8")
+            service = _service_for(project_url)
+            first_result = await service.add_project_source_diagnostic(
+                source_kind="file",
+                file_path=str(file_path),
+                display_name=filename,
+                keep_open=False,
+                overwrite_existing=True,
+                transaction_mode=mode,
+                profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
+            )
+            file_path.write_text(f"Promptbranch A/B diagnostic second payload\nmode={mode}\ntoken={token}\n", encoding="utf-8")
+            second_result = await service.add_project_source_diagnostic(
+                source_kind="file",
+                file_path=str(file_path),
+                display_name=filename,
+                keep_open=payload.keep_open,
+                overwrite_existing=True,
+                transaction_mode=mode,
+                profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
+            )
+            list_result = await service.list_project_sources(keep_open=False)
+            source_identity = _diagnostic_source_identity(list_result, filename)
+            transactions[label] = {
+                "transaction_mode": mode,
+                "project_name": project_name,
+                "project_url": project_url,
+                "project_create_result": create_result,
+                "requested_filename": filename,
+                "first_upload": _diagnostic_upload_identity(first_result, filename),
+                "remove_response": _diagnostic_remove_response(second_result),
+                "second_upload": _diagnostic_upload_identity(second_result, filename),
+                "second_upload_result": second_result,
+                "project_source_identity": source_identity,
+                "project_source_list_result": list_result,
+                "canonical_second_upload_success": _diagnostic_canonical_success(second_result, source_identity, filename),
+            }
+        legacy_ok = bool(transactions.get("legacy_10_75_transaction", {}).get("canonical_second_upload_success"))
+        current_ok = bool(transactions.get("current_transaction", {}).get("canonical_second_upload_success"))
+        if legacy_ok and current_ok:
+            conclusion = "both_transactions_work"
+        elif legacy_ok and not current_ok:
+            conclusion = "legacy_10_75_works_current_fails"
+        elif current_ok and not legacy_ok:
+            conclusion = "current_works_legacy_10_75_fails"
+        else:
+            conclusion = "both_transactions_fail"
+        return {
+            "ok": len(transactions) == 2 and all(item.get("project_url") for item in transactions.values()),
+            "action": "project_source_ab_diagnostic",
+            "status": "diagnostic_completed",
+            "conclusion": conclusion,
+            "token": token,
+            "transactions": transactions,
+            "safety": {
+                "diagnostic_only": True,
+                "release_artifact_uploaded": False,
+                "adoption_attempted": False,
+                "existing_project_source_touched": False,
+                "platform_gitops_file_used": False,
+                "project_cleanup": "not_attempted_project_delete_safety_freeze",
+                "disposable_projects_retained": True,
+            },
+            "project_source_mutation_gate": "docker_browser_parity_preflight_passed" if preflight else None,
+            "auth_readiness_preflight": preflight.get("auth_readiness") if isinstance(preflight, dict) else None,
+            "docker_browser_runtime": preflight.get("runtime") if isinstance(preflight, dict) else None,
+        }
+    finally:
+        for child in temp_dir.glob("*"):
+            child.unlink(missing_ok=True)
+        temp_dir.rmdir()
 
 
 @protected.post("/project-sources", dependencies=[Depends(require_service_token)])

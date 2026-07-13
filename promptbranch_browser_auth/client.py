@@ -2801,7 +2801,16 @@ class ChatGPTBrowserClient:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        transaction_mode: str = "current",
     ) -> dict[str, Any]:
+        normalized_transaction_mode = str(transaction_mode or "current").strip().lower()
+        if normalized_transaction_mode not in {"current", "legacy_10_75"}:
+            raise ValueError(f"Unsupported Project Source transaction mode: {transaction_mode!r}")
+        operation = (
+            self._add_project_source_operation_legacy_10_75
+            if normalized_transaction_mode == "legacy_10_75"
+            else self._add_project_source_operation
+        )
         self._log(
             "project-source-add",
             "starting add_project_source",
@@ -2811,6 +2820,7 @@ class ChatGPTBrowserClient:
             file_path=file_path,
             display_name=display_name,
             keep_open=keep_open,
+            transaction_mode=normalized_transaction_mode,
         )
         held_result = await self._try_add_project_source_with_held_auth_ready_session(
             source_kind=source_kind,
@@ -2819,12 +2829,13 @@ class ChatGPTBrowserClient:
             display_name=display_name,
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
+            transaction_mode=normalized_transaction_mode,
         )
         if held_result is not None:
             return held_result
         return await self._run_with_context(
             operation_name="project_source_add",
-            operation=self._add_project_source_operation,
+            operation=operation,
             source_kind=source_kind,
             value=value,
             file_path=file_path,
@@ -2843,6 +2854,7 @@ class ChatGPTBrowserClient:
         display_name: Optional[str],
         keep_open: bool,
         overwrite_existing: bool,
+        transaction_mode: str,
     ) -> dict[str, Any] | None:
         session_key, session, match_mode = await self._compatible_held_auth_readiness_session()
         if session is None or session_key is None:
@@ -2927,7 +2939,12 @@ class ChatGPTBrowserClient:
         )
 
         try:
-            result = await self._add_project_source_operation(
+            operation = (
+                self._add_project_source_operation_legacy_10_75
+                if transaction_mode == "legacy_10_75"
+                else self._add_project_source_operation
+            )
+            result = await operation(
                 context=context,
                 page=page,
                 source_kind=source_kind,
@@ -8273,6 +8290,862 @@ class ChatGPTBrowserClient:
                 await self._open_project_sources_tab(page, project_url=project_url)
             except Exception as exc:
                 self._log('project-source-add', 'failed to return from Library reconciliation to Project Sources', error=repr(exc), project_url=project_url)
+
+    # Diagnostic-only verbatim transaction body from v0.1.103.10.75.
+    # It is intentionally isolated and never selected by normal pbsa calls.
+    async def _add_project_source_operation_legacy_10_75(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        source_kind: str,
+        value: Optional[str],
+        file_path: Optional[str],
+        display_name: Optional[str],
+        keep_open: bool = False,
+        overwrite_existing: bool = True,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        project_home_url = self._project_home_url()
+        project_sources_url = self._project_sources_url(project_home_url)
+        await self._goto(page, project_sources_url, label="project-source-add-sources-home")
+        await self._open_project_sources_tab(page, project_url=project_home_url)
+
+        normalized_kind = (source_kind or "").strip().lower()
+        if normalized_kind not in {"link", "text", "file"}:
+            raise ValueError(f"Unsupported source kind: {source_kind!r}")
+
+        canonical_display_name = display_name
+        if normalized_kind == "file":
+            canonical_display_name = self._normalize_file_source_display_name(display_name, file_path)
+
+        before_sources = await self._snapshot_project_source_cards(page)
+
+        source_match_candidates: list[str] = []
+        requested_match: Optional[str] = None
+        matched_source: Optional[dict[str, Any]] = None
+        duplicate_notice: Optional[str] = None
+        duplicate_detected = False
+        overwritten_existing = False
+        overwrite_remove_result: Optional[dict[str, Any]] = None
+        capacity_prune_result: Optional[dict[str, Any]] = None
+
+        if normalized_kind == "file":
+            source_match_candidates = self._build_source_match_candidates(
+                normalized_kind,
+                value=None,
+                display_name=canonical_display_name,
+                file_path=file_path,
+            )
+            existing_source = await self._find_existing_file_source_for_overwrite(
+                page,
+                source_match_candidates=source_match_candidates,
+                initial_sources=before_sources,
+                project_url=project_home_url,
+            )
+            if existing_source is not None:
+                matched_source = existing_source
+                duplicate_detected = True
+                duplicate_notice = f"Project source already exists: {canonical_display_name or source_match_candidates[0]}"
+                if overwrite_existing:
+                    # Prefer the clean source title over the full card identity. File source
+                    # identities often include metadata such as "File contents may not be
+                    # accessible"; using that full text can select a brittle row/menu path
+                    # and fail to find the remove/delete action during overwrite.
+                    overwrite_source_name = (
+                        self._normalize_source_match_text(existing_source.get("title"))
+                        or canonical_display_name
+                        or self._preferred_source_card_identity(existing_source)
+                        or source_match_candidates[0]
+                    )
+                    self._log(
+                        "project-source-add",
+                        "existing file source found; overwriting by removing it before upload",
+                        project_url=project_home_url,
+                        source_name=overwrite_source_name,
+                        requested_name=canonical_display_name,
+                    )
+                    try:
+                        overwrite_remove_result = await self._remove_project_source_operation(
+                            context=context,
+                            page=page,
+                            source_name=overwrite_source_name,
+                            exact=True,
+                            keep_open=False,
+                        )
+                    except ResponseTimeoutError as exc:
+                        self._log(
+                            "project-source-add",
+                            "exact overwrite remove failed; retrying with title-anchored source lookup",
+                            project_url=project_home_url,
+                            source_name=overwrite_source_name,
+                            requested_name=canonical_display_name,
+                            error=str(exc),
+                        )
+                        await self._open_project_sources_tab(page)
+                        try:
+                            overwrite_remove_result = await self._remove_project_source_operation(
+                                context=context,
+                                page=page,
+                                source_name=overwrite_source_name,
+                                exact=False,
+                                keep_open=False,
+                            )
+                        except ResponseTimeoutError as retry_exc:
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "overwrite_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match": self._preferred_source_card_identity(existing_source) or overwrite_source_name,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else overwrite_source_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": True,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "overwrite_source_name": overwrite_source_name,
+                                "overwrite_remove_error": str(retry_exc),
+                                "overwrite_remove_initial_error": str(exc),
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "current_url": await self._safe_page_url(page),
+                            }
+                    await self._open_project_sources_tab(page)
+                    before_sources = await self._snapshot_project_source_cards(page)
+                    matched_source = None
+                    duplicate_detected = False
+                    duplicate_notice = None
+                    overwritten_existing = True
+
+            if not duplicate_detected:
+                release_source_limit = 25
+                release_source_retention_limit = 5
+                requested_release_source = self._parse_release_source_filename(canonical_display_name or file_path)
+                prune_candidates = self._select_project_source_capacity_prune_candidates(
+                    requested_filename=canonical_display_name or file_path,
+                    source_cards=before_sources,
+                    source_limit=release_source_limit,
+                    retention_limit=release_source_retention_limit,
+                )
+                capacity_prune_results: list[dict[str, Any]] = []
+                for prune_candidate in prune_candidates:
+                    prune_source_name = prune_candidate.get("source_name") or prune_candidate.get("filename")
+                    self._log(
+                        "project-source-add",
+                        "project source generated release retention reached; pruning oldest same-family release source before upload",
+                        project_url=project_home_url,
+                        current_source_count=len(before_sources),
+                        source_limit=release_source_limit,
+                        release_source_retention_limit=release_source_retention_limit,
+                        same_family_source_count=prune_candidate.get("same_family_source_count"),
+                        requested_source=canonical_display_name,
+                        prune_reason=prune_candidate.get("reason"),
+                        prune_source_name=prune_source_name,
+                        prune_source_version=prune_candidate.get("normalized_version"),
+                        prune_source_filename=prune_candidate.get("filename"),
+                    )
+                    try:
+                        capacity_prune_result = await self._remove_project_source_operation(
+                            context=context,
+                            page=page,
+                            source_name=str(prune_source_name),
+                            exact=True,
+                            keep_open=False,
+                        )
+                    except ResponseTimeoutError as exc:
+                        if self._project_source_remove_identity_drift_detected(exc):
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "source_limit_prune_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": False,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "capacity_prune_source_name": prune_source_name,
+                                "capacity_prune_source_filename": prune_candidate.get("filename"),
+                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                                "capacity_prune_remove_error": str(exc),
+                                "capacity_prune_remove_initial_error": str(exc),
+                                "capacity_prune_identity_verified": False,
+                                "capacity_prune_retry_suppressed": True,
+                                "capacity_prune_remove_drift_detected": True,
+                                "capacity_prune_reason": prune_candidate.get("reason"),
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "source_limit": release_source_limit,
+                                "release_source_retention_limit": release_source_retention_limit,
+                                "current_url": await self._safe_page_url(page),
+                            }
+                        self._log(
+                            "project-source-add",
+                            "exact capacity prune remove failed; retrying with title-anchored source lookup",
+                            project_url=project_home_url,
+                            source_name=prune_source_name,
+                            error=str(exc),
+                        )
+                        await self._open_project_sources_tab(page)
+                        try:
+                            capacity_prune_result = await self._remove_project_source_operation(
+                                context=context,
+                                page=page,
+                                source_name=str(prune_source_name),
+                                exact=False,
+                                keep_open=False,
+                            )
+                        except ResponseTimeoutError as retry_exc:
+                            current_sources = await self._snapshot_project_source_cards(page)
+                            return {
+                                "ok": False,
+                                "action": "add",
+                                "status": "source_limit_prune_remove_failed",
+                                "project_url": project_home_url,
+                                "source_kind": normalized_kind,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                                "source_match_candidates": source_match_candidates,
+                                "persistence_verified": False,
+                                "already_exists": False,
+                                "added": False,
+                                "overwritten": False,
+                                "removed_existing": False,
+                                "capacity_prune_source_name": prune_source_name,
+                                "capacity_prune_source_filename": prune_candidate.get("filename"),
+                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                                "capacity_prune_remove_error": str(retry_exc),
+                                "capacity_prune_remove_initial_error": str(exc),
+                                "capacity_prune_reason": prune_candidate.get("reason"),
+                                "operator_review_required": True,
+                                "current_source_count": len(current_sources),
+                                "source_limit": release_source_limit,
+                                "release_source_retention_limit": release_source_retention_limit,
+                                "current_url": await self._safe_page_url(page),
+                            }
+                    if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
+                        current_sources = await self._snapshot_project_source_cards(page)
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_limit_prune_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "already_exists": False,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "capacity_prune_source_name": prune_source_name,
+                            "capacity_prune_source_filename": prune_candidate.get("filename"),
+                            "capacity_prune_source_version": prune_candidate.get("normalized_version"),
+                            "capacity_prune_remove_result": capacity_prune_result,
+                            "capacity_prune_reason": prune_candidate.get("reason"),
+                            "operator_review_required": True,
+                            "current_source_count": len(current_sources),
+                            "source_limit": release_source_limit,
+                            "release_source_retention_limit": release_source_retention_limit,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    capacity_prune_results.append(dict(capacity_prune_result))
+                    await self._open_project_sources_tab(page)
+                    before_sources = await self._snapshot_project_source_cards(page)
+                if capacity_prune_results:
+                    if len(before_sources) >= release_source_limit:
+                        current_sources = await self._snapshot_project_source_cards(page)
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_limit_prune_insufficient_capacity",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "already_exists": False,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "capacity_pruned": True,
+                            "capacity_prune_results": capacity_prune_results,
+                            "capacity_prune_count": len(capacity_prune_results),
+                            "operator_review_required": True,
+                            "current_source_count": len(current_sources),
+                            "source_limit": release_source_limit,
+                            "release_source_retention_limit": release_source_retention_limit,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    capacity_prune_result = capacity_prune_results[-1]
+                    capacity_prune_result = dict(capacity_prune_result)
+                    capacity_prune_result["prune_results"] = capacity_prune_results
+                    capacity_prune_result["prune_count"] = len(capacity_prune_results)
+                    capacity_prune_result["release_source_retention_limit"] = release_source_retention_limit
+                elif requested_release_source is not None and len(before_sources) >= release_source_limit:
+                    self._log(
+                        "project-source-add",
+                        "project source limit reached but no same-family release source was available for pruning",
+                        project_url=project_home_url,
+                        current_source_count=len(before_sources),
+                        source_limit=release_source_limit,
+                        release_source_retention_limit=release_source_retention_limit,
+                        requested_source=canonical_display_name,
+                    )
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_limit_no_matching_release_prune_candidate",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                        "source_match_candidates": source_match_candidates,
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "operator_review_required": True,
+                        "current_source_count": len(before_sources),
+                        "source_limit": release_source_limit,
+                        "release_source_retention_limit": release_source_retention_limit,
+                        "current_url": await self._safe_page_url(page),
+                    }
+
+        if normalized_kind == "text" and not duplicate_detected:
+            text_capacity_prune_candidate = self._select_project_source_text_test_capacity_prune_candidate(
+                value=value,
+                display_name=display_name,
+                source_cards=before_sources,
+                source_limit=5,
+            )
+            if text_capacity_prune_candidate is not None:
+                prune_source_name = str(text_capacity_prune_candidate.get("source_name") or text_capacity_prune_candidate.get("identity"))
+                self._log(
+                    "project-source-add",
+                    "text test source limit reached; pruning stale retained-test source before text add",
+                    project_url=project_home_url,
+                    current_source_count=len(before_sources),
+                    source_limit=text_capacity_prune_candidate.get("source_limit"),
+                    requested_source=display_name,
+                    prune_source_name=prune_source_name,
+                    prune_source_identity=text_capacity_prune_candidate.get("identity"),
+                )
+                try:
+                    capacity_prune_result = await self._remove_project_source_operation(
+                        context=context,
+                        page=page,
+                        source_name=prune_source_name,
+                        exact=False,
+                        keep_open=False,
+                    )
+                except ResponseTimeoutError as exc:
+                    current_sources = await self._snapshot_project_source_cards(page)
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "text_source_limit_prune_remove_failed",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": display_name,
+                        "source_match_candidates": self._build_source_match_candidates(
+                            normalized_kind,
+                            value=value,
+                            display_name=display_name,
+                            file_path=None,
+                        ),
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "capacity_pruned": False,
+                        "capacity_prune_source_name": prune_source_name,
+                        "capacity_prune_source_identity": text_capacity_prune_candidate.get("identity"),
+                        "capacity_prune_remove_error": str(exc),
+                        "operator_review_required": True,
+                        "current_source_count": len(current_sources),
+                        "source_limit": text_capacity_prune_candidate.get("source_limit"),
+                        "current_url": await self._safe_page_url(page),
+                    }
+                if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
+                    current_sources = await self._snapshot_project_source_cards(page)
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "text_source_limit_prune_not_verified",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match_requested": display_name,
+                        "source_match_candidates": self._build_source_match_candidates(
+                            normalized_kind,
+                            value=value,
+                            display_name=display_name,
+                            file_path=None,
+                        ),
+                        "persistence_verified": False,
+                        "already_exists": False,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "capacity_pruned": False,
+                        "capacity_prune_source_name": prune_source_name,
+                        "capacity_prune_source_identity": text_capacity_prune_candidate.get("identity"),
+                        "capacity_prune_result": capacity_prune_result,
+                        "operator_review_required": True,
+                        "current_source_count": len(current_sources),
+                        "source_limit": text_capacity_prune_candidate.get("source_limit"),
+                        "current_url": await self._safe_page_url(page),
+                    }
+                await self._open_project_sources_tab(page)
+                before_sources = await self._snapshot_project_source_cards(page)
+
+        save_request_watch = None
+        save_request_quiet_result: Optional[dict[str, Any]] = None
+        if normalized_kind in {"text", "file"} and not duplicate_detected:
+            save_request_watch = self._install_project_source_save_request_watch(
+                context,
+                source_kind=normalized_kind,
+            )
+
+        try:
+            if normalized_kind == "file":
+                if not file_path:
+                    raise ValueError("file_path is required when source_kind='file'")
+                if not os.path.exists(file_path):
+                    raise FileNotFoundError(file_path)
+                if not duplicate_detected:
+                    await self._add_project_file_source(page, file_path=file_path)
+            else:
+                if not value:
+                    raise ValueError(f"value is required when source_kind={normalized_kind!r}")
+                await self._add_project_textual_source(
+                    page,
+                    source_kind=normalized_kind,
+                    value=value,
+                    display_name=display_name,
+                    save_request_watch=save_request_watch,
+                )
+                source_match_candidates = self._build_source_match_candidates(
+                    normalized_kind,
+                    value=value,
+                    display_name=display_name,
+                    file_path=None,
+                )
+
+            initial_presence_error = None
+            if not duplicate_detected:
+                try:
+                    matched_source = await self._wait_for_source_presence(
+                        page,
+                        source_match_candidates=source_match_candidates,
+                        before_sources=before_sources,
+                        accept_single_new_card=normalized_kind == "text",
+                        timeout_ms=5_000 if normalized_kind in {"text", "file"} else 20_000,
+                    )
+                except ResponseTimeoutError as exc:
+                    if normalized_kind not in {"text", "file"}:
+                        raise
+                    initial_presence_error = str(exc)
+                    self._log(
+                        "project-source-add",
+                        "initial source presence probe timed out; deferring to post-save persistence verification",
+                        source_kind=normalized_kind,
+                        source_match_candidates=source_match_candidates,
+                        before_source_count=len(before_sources or []),
+                        error=initial_presence_error,
+                    )
+            if normalized_kind in {"text", "file"} and not duplicate_detected:
+                await self._wait_for_project_source_post_save_settle(
+                    page,
+                    source_kind=normalized_kind,
+                    expected_source_name=canonical_display_name if normalized_kind == "file" else display_name,
+                )
+                # File uploads often involve multiple backend requests.  In the
+                # v0.1.90 live overwrite regression, a commit was observed while a
+                # second file-source request remained inflight; treating that state
+                # as quiet advanced verification too early and produced a
+                # release-blocking stale-surface false negative.  Keep the
+                # stale-inflight soft boundary for text sources, where the
+                # refreshed persistence proof is sufficient, but require file
+                # uploads/overwrites to reach normal request quiet before
+                # post-save persistence verification.
+                save_request_quiet_result = await self._wait_for_project_source_save_request_quiet(
+                    page,
+                    save_request_watch,
+                    source_kind=normalized_kind,
+                    timeout_ms=60_000 if normalized_kind == "file" else 15_000,
+                    allow_stale_inflight_after_commit=normalized_kind == "text",
+                )
+        except _ProjectSourceAlreadyExists as exc:
+            duplicate_notice = exc.notice
+            duplicate_detected = True
+        except ResponseTimeoutError as exc:
+            duplicate_notice = await self._find_project_source_duplicate_notice(
+                page,
+                source_name=canonical_display_name if normalized_kind == "file" else display_name,
+            )
+            if duplicate_notice:
+                duplicate_detected = True
+            elif overwritten_existing and bool(overwrite_remove_result and overwrite_remove_result.get("removed_via_ui")):
+                current_sources = await self._snapshot_project_source_cards(page)
+                result = {
+                    "ok": False,
+                    "action": "add",
+                    "status": "overwrite_upload_not_verified",
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                    "source_match_candidates": source_match_candidates,
+                    "persistence_verified": False,
+                    "persistence_error": str(exc),
+                    "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+                    "already_exists": True,
+                    "added": False,
+                    "overwritten": True,
+                    "removed_existing": True,
+                    "operator_review_required": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` to inspect whether the replacement source eventually appeared.",
+                        "If the replacement source is absent, the old source was removed before upload verification; re-add the file once the Project Sources surface is stable.",
+                        "If the replacement source is visible, avoid a second overwrite and treat this as a late UI/verification failure.",
+                    ],
+                    "current_source_count": len(post_recovery_sources),
+                    "current_source_identities": [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in post_recovery_sources[:10]
+                    ],
+                    "current_url": await self._safe_page_url(page),
+                }
+                if overwrite_remove_result is not None:
+                    result["overwrite_remove_result"] = overwrite_remove_result
+                self._log("project-source-add", "project source overwrite upload not verified after removing existing source", **result)
+                return result
+            else:
+                raise
+        finally:
+            if save_request_watch is not None:
+                self._dispose_project_source_save_request_watch(context, save_request_watch)
+
+        requested_match = source_match_candidates[0] if source_match_candidates else None
+        actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
+        persistence_candidates = self._build_persistence_source_candidates(
+            requested_match=requested_match,
+            source_match_candidates=source_match_candidates,
+            matched_card=matched_source,
+            source_kind=normalized_kind,
+            before_sources=before_sources,
+        )
+        removed_existing_via_ui = bool(
+            (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+            or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+        )
+        post_commit_recovery: Optional[dict[str, Any]] = None
+        try:
+            persisted_source = await self._verify_project_source_persistence(
+                page,
+                project_url=project_home_url,
+                source_match_candidates=persistence_candidates,
+                before_sources=before_sources,
+                save_watch=save_request_watch,
+            )
+        except ResponseTimeoutError as exc:
+            current_sources = await self._snapshot_project_source_cards(page)
+            save_summary = self._project_source_save_watch_summary(save_request_watch)
+            transaction = self._project_source_mutation_transaction_status(
+                save_summary=save_summary,
+                persistence_verified=False,
+            )
+            recovered_source: Optional[dict[str, str]] = None
+            if self._project_source_post_commit_recovery_allowed(
+                source_kind=normalized_kind,
+                transaction=transaction,
+            ):
+                recovered_source = await self._recover_project_source_after_post_commit_timeout(
+                    page,
+                    project_url=project_home_url,
+                    source_match_candidates=persistence_candidates,
+                    source_kind=normalized_kind,
+                    value=value,
+                    display_name=display_name,
+                    before_sources=before_sources,
+                    save_watch=save_request_watch,
+                    original_error=str(exc),
+                )
+            recovery_attempted = self._project_source_post_commit_recovery_allowed(
+                source_kind=normalized_kind,
+                transaction=transaction,
+            )
+            if recovered_source is not None:
+                persisted_source = recovered_source
+                post_commit_recovery = (
+                    recovered_source.get("_promptbranch_post_commit_recovery")
+                    if isinstance(recovered_source, dict)
+                    else None
+                )
+            else:
+                snapshot_recovered_source: Optional[dict[str, str]] = None
+                post_recovery_sources = current_sources
+                if recovery_attempted:
+                    try:
+                        post_recovery_sources = await self._snapshot_project_source_cards(page)
+                        if normalized_kind == "text":
+                            snapshot_recovered_source = self._find_text_source_post_commit_reconciliation_match(
+                                post_recovery_sources,
+                                value=value,
+                                display_name=display_name,
+                                source_match_candidates=persistence_candidates,
+                                verification_mode="post_commit_text_source_snapshot_reconciled",
+                                post_refresh_attempt=None,
+                            )
+                        else:
+                            snapshot_recovered_source = self._match_source_card(
+                                post_recovery_sources,
+                                persistence_candidates,
+                            )
+                    except Exception as snapshot_exc:
+                        self._log(
+                            "project-source-add",
+                            "post-commit recovery snapshot probe failed",
+                            source_kind=normalized_kind,
+                            source_match_candidates=persistence_candidates,
+                            error=repr(snapshot_exc),
+                        )
+                if snapshot_recovered_source is not None and bool(transaction.get("save_saw_commit")) and not int(transaction.get("save_failed") or 0):
+                    persisted_source = dict(snapshot_recovered_source)
+                    persisted_source["_promptbranch_verification_mode"] = "post_commit_surface_snapshot_recovered"
+                    persisted_source["_promptbranch_ui_card_seen_before_refresh"] = True
+                    persisted_source["_promptbranch_post_refresh_attempt"] = None
+                    post_commit_recovery = {
+                        "status": "recovered_from_visible_surface_snapshot",
+                        "method": "post_commit_text_source_snapshot_reconciliation" if normalized_kind == "text" else "post_commit_snapshot_match",
+                        "transaction_status": transaction.get("transaction_status"),
+                        "source_match_candidates": persistence_candidates,
+                        "save_watch_summary": save_summary,
+                        "text_source_reconciliation_proof": (
+                            snapshot_recovered_source.get("_promptbranch_text_source_reconciliation_proof")
+                            if normalized_kind == "text" and isinstance(snapshot_recovered_source, dict)
+                            else None
+                        ),
+                    }
+                    self._log(
+                        "project-source-add",
+                        "post-commit project source persistence recovered from visible surface snapshot",
+                        source_kind=normalized_kind,
+                        source_match_candidates=persistence_candidates,
+                        recovered_source=self._preferred_source_card_identity(persisted_source) or persisted_source.get("text"),
+                        transaction_status=transaction.get("transaction_status"),
+                    )
+                else:
+                    persistence_false_negative_possible = bool(transaction.get("ambiguous"))
+                    post_commit_visible_match_found = snapshot_recovered_source is not None
+                    post_commit_source_absent_after_recovery = bool(
+                        recovery_attempted
+                        and post_recovery_sources
+                        and snapshot_recovered_source is None
+                    )
+                    status = (
+                        "overwrite_persistence_not_verified"
+                        if overwritten_existing and removed_existing_via_ui
+                        else "post_commit_source_absent_after_stale_inflight"
+                        if post_commit_source_absent_after_recovery
+                        else "post_commit_source_surface_not_refreshed"
+                        if recovery_attempted
+                        else "persistence_not_verified"
+                    )
+                    recovery_diagnostics = getattr(
+                        self,
+                        "_last_project_source_post_commit_recovery_diagnostics",
+                        None,
+                    )
+                    source_surface_empty_after_recovery = bool(
+                        recovery_attempted
+                        and isinstance(recovery_diagnostics, dict)
+                        and recovery_diagnostics.get("surface_empty_or_unreadable")
+                    )
+                    result = {
+                    "ok": False,
+                    "action": "add",
+                    "status": status,
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match": actual_match,
+                    "source_match_requested": requested_match,
+                    "source_match_candidates": persistence_candidates,
+                    "post_commit_visible_match_found": post_commit_visible_match_found,
+                    "post_commit_source_absent_after_recovery": post_commit_source_absent_after_recovery,
+                    "source_surface_empty_after_recovery": source_surface_empty_after_recovery,
+                    "post_commit_recovery_diagnostics": recovery_diagnostics,
+                    "persistence_verified": False,
+                    "persistence_error": str(exc),
+                    "persistence_false_negative_possible": persistence_false_negative_possible,
+                    "transaction_status": transaction.get("transaction_status"),
+                    "source_mutation_transaction": transaction,
+                    "release_blocking": transaction.get("release_blocking"),
+                    "save_request_summary": save_summary,
+                    "save_request_quiet": save_request_quiet_result,
+                    "already_exists": duplicate_detected or overwritten_existing,
+                    "added": False,
+                    "overwritten": overwritten_existing,
+                    "removed_existing": removed_existing_via_ui,
+                    "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+                    "post_commit_recovery": {
+                        "attempted": recovery_attempted,
+                        "status": "not_recovered",
+                    },
+                    "operator_review_required": True,
+                    "recovery_guidance": [
+                        "Run `pb src list --json` to inspect the current Project Sources surface before retrying.",
+                        "If the requested source is visible, treat the failure as a persistence verification false negative and avoid removing it again.",
+                        "If the requested source is absent, re-run `pb src add` for the same file after the Project Sources surface is stable.",
+                    ],
+                    "current_source_count": len(post_recovery_sources),
+                    "current_source_identities": [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in post_recovery_sources[:10]
+                    ],
+                    "current_url": await self._safe_page_url(page),
+                }
+                    if normalized_kind == "text":
+                        result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
+                        result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
+                        result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
+                        current_text_document_proofs = [
+                            self._text_source_card_content_proof(source, value=value, display_name=display_name)
+                            for source in post_recovery_sources
+                        ]
+                        result["current_text_document_content_proofs"] = current_text_document_proofs
+                        result["source_content_match_verified"] = any(
+                            bool(proof.get("content_match_verified"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
+                        )
+                        result["dedicated_document_name_detected"] = any(
+                            bool(proof.get("dedicated_document_name_detected"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
+                        )
+                        result["legacy_pasted_document_seen"] = any(
+                            bool(proof.get("legacy_pasted_document_seen"))
+                            for proof in current_text_document_proofs
+                            if isinstance(proof, dict)
+                        )
+                        if result.get("text_source_document_conversion_expected"):
+                            result["document_conversion_characterization_status"] = (
+                                "dedicated_document_name_detected"
+                                if result.get("dedicated_document_name_detected")
+                                else "generic_document_identity_seen"
+                                if result.get("legacy_pasted_document_seen")
+                                else "document_identity_not_characterized"
+                            )
+                            result["content_verification_release_blocking"] = False
+                    if overwrite_remove_result is not None:
+                        result["overwrite_remove_result"] = overwrite_remove_result
+                    if capacity_prune_result is not None:
+                        result["capacity_prune_result"] = capacity_prune_result
+                    self._log("project-source-add", "project source persistence not verified after add", **result)
+                    return result
+        persisted_match = self._preferred_source_card_identity(persisted_source) or (persisted_source or {}).get("text") or actual_match
+        text_document_conversion_proof = None
+        if normalized_kind == "text":
+            text_document_conversion_proof = self._text_source_card_content_proof(
+                persisted_source,
+                value=value,
+                display_name=display_name,
+            )
+        success_save_summary = self._project_source_save_watch_summary(save_request_watch)
+        success_transaction = self._project_source_mutation_transaction_status(
+            save_summary=success_save_summary,
+            persistence_verified=True,
+        )
+        verification_mode = (persisted_source or {}).get("_promptbranch_verification_mode") if isinstance(persisted_source, dict) else None
+        ui_card_seen_before_refresh = bool(
+            (persisted_source or {}).get("_promptbranch_ui_card_seen_before_refresh")
+        ) if isinstance(persisted_source, dict) else False
+        post_refresh_attempt = (persisted_source or {}).get("_promptbranch_post_refresh_attempt") if isinstance(persisted_source, dict) else None
+        result = {
+            "ok": True,
+            "action": "add",
+            "project_url": project_home_url,
+            "source_kind": normalized_kind,
+            "source_match": persisted_match,
+            "source_match_requested": requested_match,
+            "source_match_candidates": persistence_candidates,
+            "persistence_verified": True,
+            "verification_mode": verification_mode or "post_refresh",
+            "ui_card_seen": ui_card_seen_before_refresh,
+            "post_refresh_verified": True,
+            "post_refresh_attempt": post_refresh_attempt,
+            "transaction_status": success_transaction.get("transaction_status"),
+            "source_mutation_transaction": success_transaction,
+            "release_blocking": success_transaction.get("release_blocking"),
+            "save_request_summary": success_save_summary,
+            "save_request_quiet": save_request_quiet_result,
+            "post_commit_recovery": post_commit_recovery,
+            "persistence_recovered_after_commit": bool(post_commit_recovery),
+            "already_exists": duplicate_detected or overwritten_existing,
+            "added": not duplicate_detected,
+            "overwritten": overwritten_existing,
+            "removed_existing": removed_existing_via_ui,
+            "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
+            "current_url": await self._safe_page_url(page),
+        }
+        if normalized_kind == "text":
+            result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
+            result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
+            result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
+            result["source_saved_as_document"] = bool(
+                isinstance(persisted_source, dict)
+                and any(
+                    "document" in str(candidate).lower() or str(candidate).lower().endswith(".txt")
+                    for candidate in self._source_card_identity_candidates(persisted_source)
+                )
+            )
+            result["source_content_match_verified"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("content_match_verified")
+            )
+            result["text_source_content_proof"] = text_document_conversion_proof
+            result["document_conversion_content_verification_required"] = bool(
+                result.get("text_source_document_conversion_expected")
+                and result.get("source_saved_as_document")
+            )
+            result["dedicated_document_name_detected"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("dedicated_document_name_detected")
+            )
+            result["legacy_pasted_document_seen"] = bool(
+                isinstance(text_document_conversion_proof, dict)
+                and text_document_conversion_proof.get("legacy_pasted_document_seen")
+            )
+            if result.get("text_source_document_conversion_expected"):
+                result["document_conversion_characterization_status"] = (
+                    "dedicated_document_name_detected"
+                    if result.get("dedicated_document_name_detected")
+                    else "generic_document_identity_seen"
+                    if result.get("legacy_pasted_document_seen")
+                    else "document_identity_not_characterized"
+                )
+                result["content_verification_release_blocking"] = False
+        if overwrite_remove_result is not None:
+            result["overwrite_remove_result"] = overwrite_remove_result
+        if capacity_prune_result is not None:
+            result["capacity_prune_result"] = capacity_prune_result
+        if duplicate_notice:
+            result["duplicate_notice"] = duplicate_notice
+        log_message = "project source already exists" if duplicate_detected else ("project source overwritten" if overwritten_existing else "project source added")
+        self._log("project-source-add", log_message, **result)
+        if keep_open and self.config.is_headed:
+            pause_message = "Source already exists. Press Enter to close the browser... " if duplicate_detected else "Source added. Press Enter to close the browser... "
+            await self._pause_for_keep_open(pause_message)
+        return result
 
     async def _add_project_source_operation(
         self,

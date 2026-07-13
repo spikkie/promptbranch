@@ -1138,6 +1138,47 @@ class ChatGPTAutomationService:
             validation=validation,
         )
 
+
+    async def add_project_source_diagnostic(
+        self,
+        *,
+        source_kind: str,
+        value: Optional[str] = None,
+        file_path: Optional[str] = None,
+        display_name: Optional[str] = None,
+        keep_open: bool = False,
+        overwrite_existing: bool = True,
+        transaction_mode: str = "current",
+        profile_lock_wait_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Run one explicitly selected Project Source transaction for A/B diagnostics.
+
+        This bypasses the service's remembered-source optimization so the selected
+        browser transaction is the only overwrite algorithm under test.
+        """
+        normalized_mode = str(transaction_mode or "current").strip().lower()
+        if normalized_mode not in {"current", "legacy_10_75"}:
+            raise ValueError(f"Unsupported Project Source diagnostic transaction mode: {transaction_mode!r}")
+        async with self._lock.operation(
+            f"add_project_source_diagnostic_{normalized_mode}",
+            wait_timeout_seconds=profile_lock_wait_seconds,
+        ):
+            bot = self._build_bot()
+            result = await bot.add_project_source(
+                source_kind=source_kind,
+                value=value,
+                file_path=file_path,
+                display_name=display_name,
+                keep_open=keep_open,
+                overwrite_existing=overwrite_existing,
+                transaction_mode=normalized_mode,
+            )
+            if isinstance(result, dict):
+                result = dict(result)
+                result.setdefault("diagnostic_transaction_mode", normalized_mode)
+                result.setdefault("remembered_source_optimization_bypassed", True)
+            return result
+
     async def add_project_source(
         self,
         *,

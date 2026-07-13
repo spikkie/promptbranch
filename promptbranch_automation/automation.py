@@ -563,6 +563,7 @@ class ChatGPTAutomation:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        transaction_mode: str = "current",
     ) -> dict[str, Any]:
         return await self.client.add_project_source(
             source_kind=source_kind,
@@ -571,6 +572,7 @@ class ChatGPTAutomation:
             display_name=display_name,
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
+            transaction_mode=transaction_mode,
         )
 
     async def discover_project_source_capabilities(

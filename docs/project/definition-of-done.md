@@ -663,3 +663,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-256 | Same-name overwrite uses exact-source replace/update when exposed and never falls back to live remove-and-reupload | in_progress | Replace capability diagnostics and live integration overwrite test | v0.1.103.10.84 |
 | DOD-257 | Library cleanup is invoked only after concrete suffix collision evidence | in_progress | Visible/backend suffix regression tests | v0.1.103.10.84 |
 
+
+## v0.1.103.10.85
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-258 | Deterministic legacy-vs-current Project Source A/B diagnostic | in_progress | Two disposable projects, unique filenames, exact upload/remove/source/Library identities, and explicit conclusion without release upload or adoption. | v0.1.103.10.85 |

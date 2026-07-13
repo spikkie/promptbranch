@@ -796,3 +796,7 @@ Decision: Library and Recently deleted are separate release-blocking evidence su
 
 Decision: normal fresh file adds must not inspect Library or Recently deleted. Same-name overwrite must first use an explicit replace/update action bound to the exact existing Project Source identity. Remove-and-reupload is not a live fallback. Library cleanup is evidence-driven and may run only after a visible suffix family or a backend-assigned suffix proves a collision.
 
+
+## v0.1.103.10.85 diagnostic decision
+
+Decision: preserve normal `pbsa` behavior and add a diagnostic-only A/B runner that executes the verbatim 10.75 transaction beside the current transaction against two disposable projects. No release artifact upload, adoption, existing source mutation, or platform-gitops file is allowed. Planned after acceptance remains v0.1.104.

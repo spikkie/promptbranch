@@ -1021,3 +1021,7 @@ No command migration is required. `pbsa <file>` remains `promptbranch src add <f
 
 Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip`. The repair retains the existing `pbsa <file> -> promptbranch src add <file>` command contract while changing only the internal file-source transaction classifier: fresh add, exact-source replacement, or proven suffix collision.
 
+
+## v0.1.103.10.85 migration note
+
+No command migration is required. Run `./scripts/pb-project-source-ab-diagnostic.sh`; normal `pbsa <file>` remains unchanged. The next planned release after acceptance remains v0.1.104.

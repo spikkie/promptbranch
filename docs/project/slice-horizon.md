@@ -29,3 +29,7 @@ v0.1.103.10.84 — restore normal file add and replace existing Project Sources 
 ## Repair horizon rule
 
 Repair releases must not advance the normal horizon.
+
+## v0.1.103.10.85
+
+Active diagnostic repair: compare the legacy 10.75 and current Project Source transactions side by side. Repair horizon rule remains unchanged; v0.1.104 follows only after acceptance.

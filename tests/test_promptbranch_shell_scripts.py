@@ -3746,7 +3746,8 @@ def test_install_sh_strict_all_all_release_gate_static() -> None:
 
     assert "set -euo pipefail" in script
     assert 'ver="$1"' in script
-    assert 'zip="${2:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"' in script
+    assert 'zip="${zip:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"' in script
+    assert "--diagnostic-project-source-ab" in script
     assert '--install-from-zip "${zip}"' in script
     assert '--version "${ver}"' in script
     assert "--run-all-tests" in script
