@@ -541,20 +541,49 @@ def test_library_snapshot_reconstructs_exact_name_from_rendered_fragments(tmp_pa
     expected = "pb-library-visible-cb4583bf48.txt"
 
     class Page:
-        async def evaluate(self, _script):
-            return [{
-                "file_id": "",
-                "filename": ".txt",
-                "filename_candidates": ["pb-library-visibl e-cb4583bf48 .txt Today 71 B"],
-                "text": "pb-library-visibl e-cb4583bf48 .txt Today 71 B",
-                "project_ids": [],
-                "project_references_known": False,
-                "deleted": False,
-            }]
+        async def evaluate(self, _script, _expected):
+            return [
+                {
+                    "file_id": "",
+                    "filename": "",
+                    "filename_candidates": ["Library New"],
+                    "text": "Library New",
+                    "file_row_candidate": False,
+                },
+                {
+                    "file_id": "",
+                    "filename": "",
+                    "filename_candidates": ["All Images Files"],
+                    "text": "All Images Files",
+                    "file_row_candidate": False,
+                },
+                {
+                    "file_id": "",
+                    "filename": "",
+                    "filename_candidates": ["Name Modified Size"],
+                    "text": "Name Modified Size",
+                    "file_row_candidate": False,
+                },
+                {
+                    "file_id": "",
+                    "filename": ".txt",
+                    "filename_candidates": ["pb-library-visibl e-cb4583bf48 .txt Today 71 B"],
+                    "text": "pb-library-visibl e-cb4583bf48 .txt Today 71 B",
+                    "project_ids": [],
+                    "project_references_known": False,
+                    "deleted": False,
+                    "file_row_candidate": True,
+                    "actionable_library_row": True,
+                    "action_menu_count": 1,
+                    "row_binding_key": "pb-library-row-1",
+                },
+            ]
 
     records = asyncio.run(client._snapshot_library_file_cards(Page(), canonical_name=expected))
+    assert len(records) == 1
     assert records[0]["filename"] == expected
-    assert records[0]["filename_reconstruction"] == "exact_canonical_from_rendered_fragments"
+    assert records[0]["filename_reconstruction"] == "exact_canonical_from_actionable_row"
+    assert records[0]["row_binding_key"] == "pb-library-row-1"
     assert "filename_candidates" not in records[0]
 
 
@@ -569,6 +598,10 @@ def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_p
             "project_ids": [],
             "project_references_known": False,
             "deleted": False,
+            "file_row_candidate": True,
+            "actionable_library_row": True,
+            "action_menu_count": 1,
+            "row_binding_key": "pb-library-row-1",
         }]
     }
     backend = {
@@ -592,7 +625,8 @@ def test_exact_library_ui_binding_requires_one_exact_ui_and_backend_target(tmp_p
         library_metadata_object_id=libfile,
     )
     assert result["ok"] is True
-    assert result["status"] == "exact_library_ui_record_selectable"
+    assert result["status"] == "exact_library_actionable_row_bound"
+    assert result["row_binding_key"] == "pb-library-row-1"
     assert result["exact_ui_record_count"] == 1
     assert result["suffix_ui_record_count"] == 0
 
@@ -614,23 +648,23 @@ def test_exact_library_ui_binding_rejects_unreconstructed_and_suffix_ambiguity(t
         }]
     }
     missing = client._validate_exact_library_ui_binding(
-        surface={"records": [{"file_id": "", "filename": ".zip"}]},
+        surface={"records": [{"file_id": "", "filename": ".zip", "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-missing"}]},
         backend_presence=backend,
         filename=filename,
         library_metadata_object_id=libfile,
     )
-    assert missing["status"] == "library_ui_filename_reconstruction_failed"
+    assert missing["status"] == "library_actionable_row_not_found"
 
     ambiguous = client._validate_exact_library_ui_binding(
         surface={"records": [
-            {"file_id": "", "filename": filename},
-            {"file_id": "", "filename": "release (1).zip"},
+            {"file_id": "", "filename": filename, "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-exact"},
+            {"file_id": "", "filename": "release (1).zip", "file_row_candidate": True, "actionable_library_row": True, "action_menu_count": 1, "row_binding_key": "row-suffix"},
         ]},
         backend_presence=backend,
         filename=filename,
         library_metadata_object_id=libfile,
     )
-    assert ambiguous["status"] == "library_ui_binding_ambiguous"
+    assert ambiguous["status"] == "library_actionable_row_ambiguous"
 
 
 def test_disposable_delete_refuses_unproven_ui_binding(tmp_path: Path) -> None:
@@ -639,7 +673,110 @@ def test_disposable_delete_refuses_unproven_ui_binding(tmp_path: Path) -> None:
         object(),
         filename="release.zip",
         delete_forever=False,
-        ui_binding={"ok": False, "status": "library_ui_binding_ambiguous"},
+        ui_binding={"ok": False, "status": "library_actionable_row_ambiguous"},
     ))
     assert result["ok"] is False
     assert result["status"] == "exact_library_ui_binding_required"
+
+
+def test_exact_library_ui_binding_requires_unique_row_menu(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    filename = "release.zip"
+    libfile = "libfile_target12345678"
+    backend = {
+        "observations": [{
+            "response": {
+                "records": [{
+                    "file_id": "file_target12345678",
+                    "library_metadata_object_id": libfile,
+                    "identity_candidates": [libfile, "file_target12345678"],
+                    "filename": filename,
+                }]
+            }
+        }]
+    }
+    result = client._validate_exact_library_ui_binding(
+        surface={"records": [{
+            "file_id": "",
+            "filename": filename,
+            "file_row_candidate": True,
+            "actionable_library_row": False,
+            "action_menu_count": 2,
+            "row_binding_key": "row-1",
+        }]},
+        backend_presence=backend,
+        filename=filename,
+        library_metadata_object_id=libfile,
+    )
+    assert result["ok"] is False
+    assert result["status"] == "library_action_menu_not_unique"
+    assert result["action_menu_count"] == 2
+
+
+def test_disposable_delete_uses_only_row_scoped_menu(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    clicked: list[str] = []
+
+    class Item:
+        def __init__(self, name: str):
+            self.name = name
+
+        async def is_visible(self):
+            return True
+
+    class LocatorList:
+        def __init__(self, items):
+            self.items = list(items)
+
+        async def count(self):
+            return len(self.items)
+
+        def nth(self, index):
+            return self.items[index]
+
+    menu = Item("row-menu")
+    action = Item("delete-action")
+
+    class Row:
+        async def hover(self):
+            return None
+
+        def locator(self, selector):
+            assert 'aria-haspopup="menu"' in selector
+            return LocatorList([menu])
+
+    class Page:
+        def locator(self, selector):
+            if '[role="menu"]' in selector:
+                return LocatorList([action])
+            if '[role="dialog"]' in selector or 'dialog[open]' in selector:
+                return LocatorList([])
+            raise AssertionError(f"unexpected page-level selector: {selector}")
+
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_find(*_args, **_kwargs):
+        return Row()
+
+    async def fake_click(locator, *, label: str, **_kwargs):
+        clicked.append(f"{getattr(locator, 'name', 'unknown')}:{label}")
+
+    client._find_disposable_library_file_card_by_filename = fake_find  # type: ignore[method-assign]
+    client._click_locator_with_fallback = fake_click  # type: ignore[method-assign]
+    result = asyncio.run(client._delete_disposable_library_file_via_ui(
+        Page(),
+        filename="release.zip",
+        delete_forever=False,
+        ui_binding={
+            "ok": True,
+            "status": "exact_library_actionable_row_bound",
+            "row_binding_key": "pb-library-row-1",
+        },
+    ))
+    assert result["ok"] is True
+    assert result["row_scoped_menu_binding"] is True
+    assert clicked == [
+        "row-menu:library-disposable-row-options",
+        "delete-action:library-disposable-delete-action",
+    ]

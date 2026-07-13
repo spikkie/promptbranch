@@ -828,3 +828,8 @@ The successful browser request and the public diagnostic protocol are separate r
 ## v0.1.103.10.93 exact Library UI binding decision
 
 The Library grid may insert layout whitespace inside a filename. The diagnostic may reconstruct only the already expected canonical basename from contiguous rendered tokens or stable DOM attributes. It may not infer an arbitrary filename, select by extension, select the first result, or accept a numeric-suffix sibling. A destructive UI action requires one exact reconstructed UI record, zero suffix-family records, a unique backend-proven `libfile_...`, and one uniquely marked card.
+
+
+## v0.1.103.10.94: Library mutation requires a unique actionable row
+
+A filename match in an ancestor, navigation item, or column header is not mutation authority. A disposable Library mutation requires one leaf-like row with local exact-filename evidence, file metadata, one row-owned action menu, and a unique backend `libfile_...` binding.

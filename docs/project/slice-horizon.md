@@ -61,3 +61,8 @@ Narrow diagnostic repair: retain executable authentication headers only in memor
 v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
 
 Narrow diagnostic repair: preserve authenticated exact-ID backend inventory proof, reconstruct the exact canonical filename from stable DOM attributes or contiguous rendered fragments, reject partial and numeric-suffix matches, require one exact UI record and one unique backend `libfile_...`, mark exactly one UI card for selection, and keep all delete/reupload/release-upload/adoption gates closed when binding is not authoritative.
+
+
+### v0.1.103.10.94 repair-only diagnostic
+
+Bind the exact Library filename only inside one actionable file row and scope the mutation menu to that row. This repair does not advance the normal horizon.

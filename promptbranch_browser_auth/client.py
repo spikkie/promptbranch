@@ -7463,119 +7463,185 @@ class ChatGPTBrowserClient:
         *,
         canonical_name: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        """Return only structurally plausible Library file rows/cards.
+
+        Filename reconstruction is intentionally local to one leaf-like row.  A
+        page section, navigation item, column header, or ancestor container is
+        never promoted merely because one of its descendants contains the
+        expected filename.
+        """
         try:
             cards = await page.evaluate(
                 r"""
-                () => {
+                expected => {
                     const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+                    const compact = value => normalize(value).replace(/\s+/g, '').toLowerCase();
+                    const expectedCompact = compact(expected);
                     const visible = el => {
                         if (!el) return false;
                         const style = window.getComputedStyle(el);
                         const rect = el.getBoundingClientRect();
                         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
                     };
+                    const rowSelector = [
+                        'main [role="row"]:not([role="columnheader"])',
+                        'main [role="listitem"]',
+                        'main article',
+                        'main tr',
+                        'main li',
+                        'main [data-file-id]',
+                        'main [data-asset-id]',
+                        'main [data-testid*="file-row" i]',
+                        'main [data-testid*="file-card" i]',
+                        'main [data-testid*="library-file" i]'
+                    ].join(', ');
+                    const menuSelector = [
+                        'button[aria-haspopup="menu"]',
+                        '[role="button"][aria-haspopup="menu"]',
+                        'button[aria-label*="More" i]',
+                        '[role="button"][aria-label*="More" i]',
+                        '[data-testid*="menu" i]',
+                        '[data-testid*="action" i] button'
+                    ].join(', ');
+                    const filenameSelector = [
+                        '[title]', '[aria-label]', '[data-name]', '[data-filename]', '[data-file-name]',
+                        '[data-testid*="filename" i]', '[data-testid*="file-name" i]'
+                    ].join(', ');
+                    const exact = value => {
+                        const normalized = normalize(value);
+                        if (!normalized || !expectedCompact) return false;
+                        if (normalized.toLowerCase() === String(expected || '').toLowerCase()) return true;
+                        const tokens = normalized.split(/\s+/).filter(Boolean);
+                        for (let start = 0; start < tokens.length; start++) {
+                            let joined = '';
+                            for (let index = start; index < tokens.length; index++) {
+                                joined += compact(tokens[index]);
+                                if (joined === expectedCompact) return true;
+                                if (joined.length >= expectedCompact.length) break;
+                            }
+                        }
+                        return false;
+                    };
+                    const localValues = el => {
+                        const values = [];
+                        const add = value => {
+                            const candidate = String(value || '').trim();
+                            if (candidate && !values.includes(candidate)) values.push(candidate);
+                        };
+                        for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
+                            add(el.getAttribute && el.getAttribute(attr));
+                        }
+                        add(el.innerText || el.textContent || '');
+                        for (const child of Array.from(el.querySelectorAll ? el.querySelectorAll(filenameSelector) : []).slice(0, 60)) {
+                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
+                                add(child.getAttribute && child.getAttribute(attr));
+                            }
+                            add(child.innerText || child.textContent || '');
+                        }
+                        return values;
+                    };
                     const fileId = el => {
-                        let current = el;
-                        while (current && current !== document.body) {
-                            for (const key of ['data-file-id', 'data-id', 'data-asset-id']) {
-                                const value = current.getAttribute && current.getAttribute(key);
-                                if (value) return value;
-                            }
-                            const href = current.getAttribute && current.getAttribute('href');
-                            if (href) {
-                                const match = href.match(/(?:files?|library)\/([A-Za-z0-9_-]{8,})/i) || href.match(/[?&](?:file_id|id)=([A-Za-z0-9_-]{8,})/i);
-                                if (match) return match[1];
-                            }
-                            current = current.parentElement;
+                        for (const key of ['data-file-id', 'data-id', 'data-asset-id']) {
+                            const value = el.getAttribute && el.getAttribute(key);
+                            if (value) return value;
+                        }
+                        for (const link of Array.from(el.querySelectorAll ? el.querySelectorAll('a[href]') : [])) {
+                            const href = String(link.getAttribute('href') || '');
+                            const match = href.match(/(?:files?|library)\/([A-Za-z0-9_-]{8,})/i) || href.match(/[?&](?:file_id|id)=([A-Za-z0-9_-]{8,})/i);
+                            if (match) return match[1];
                         }
                         return '';
                     };
                     const projectRefs = el => {
                         const result = new Set();
                         let known = false;
-                        let root = el;
-                        for (let i = 0; root && i < 5; i++, root = root.parentElement) {
-                            for (const attr of ['data-project-id', 'data-project-ids', 'data-gizmo-id', 'data-gizmo-ids']) {
-                                if (root.hasAttribute && root.hasAttribute(attr)) {
-                                    known = true;
-                                    const raw = String(root.getAttribute(attr) || '');
-                                    for (const token of raw.split(/[\s,]+/)) if (token) result.add(token);
-                                }
-                            }
-                            for (const link of Array.from(root.querySelectorAll ? root.querySelectorAll('a[href*="/g/g-p-"]') : [])) {
+                        for (const attr of ['data-project-id', 'data-project-ids', 'data-gizmo-id', 'data-gizmo-ids']) {
+                            if (el.hasAttribute && el.hasAttribute(attr)) {
                                 known = true;
-                                const match = String(link.getAttribute('href') || '').match(/\/g\/(g-p-[^/?#]+)/);
-                                if (match) result.add(match[1]);
+                                const raw = String(el.getAttribute(attr) || '');
+                                for (const token of raw.split(/[\s,]+/)) if (token) result.add(token);
                             }
-                            const text = normalize(root.innerText || root.textContent || '');
-                            if (/not used in any projects|not linked to a project|unreferenced/i.test(text)) known = true;
                         }
+                        for (const link of Array.from(el.querySelectorAll ? el.querySelectorAll('a[href*="/g/g-p-"]') : [])) {
+                            known = true;
+                            const match = String(link.getAttribute('href') || '').match(/\/g\/(g-p-[^/?#]+)/);
+                            if (match) result.add(match[1]);
+                        }
+                        const text = normalize(el.innerText || el.textContent || '');
+                        if (/not used in any projects|not linked to a project|unreferenced/i.test(text)) known = true;
                         return {ids: Array.from(result), known};
                     };
-                    const filenameCandidates = el => {
-                        const values = [];
-                        const add = value => {
-                            const text = String(value || '').trim();
-                            if (text && !values.includes(text)) values.push(text);
-                        };
-                        let current = el;
-                        for (let depth = 0; current && depth < 4; depth++, current = current.parentElement) {
-                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
-                                add(current.getAttribute && current.getAttribute(attr));
-                            }
-                            add(current.innerText || current.textContent || '');
-                            for (const child of Array.from(current.querySelectorAll ? current.querySelectorAll(
-                                '[title], [aria-label], [data-name], [data-filename], [data-file-name]'
-                            ) : []).slice(0, 40)) {
-                                for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) {
-                                    add(child.getAttribute && child.getAttribute(attr));
-                                }
-                                add(child.innerText || child.textContent || '');
-                            }
-                        }
-                        return values;
-                    };
-                    const candidates = Array.from(document.querySelectorAll(
-                        '[data-file-id], [data-asset-id], [data-testid*="file" i], [data-testid*="library" i], main [role="row"], main [role="listitem"], main article, main li'
-                    )).filter(visible);
+                    const isNestedAncestor = el => Array.from(el.querySelectorAll ? el.querySelectorAll(rowSelector) : [])
+                        .some(child => child !== el && visible(child));
+                    const knownNonRows = new Set(['library new', 'all images files', 'name modified size']);
+                    for (const prior of document.querySelectorAll('[data-promptbranch-library-row-candidate]')) {
+                        prior.removeAttribute('data-promptbranch-library-row-candidate');
+                    }
                     const results = [];
                     const seen = new Set();
-                    for (const el of candidates) {
+                    let marker = 0;
+                    for (const el of Array.from(document.querySelectorAll(rowSelector)).filter(visible)) {
                         const rawText = String(el.innerText || el.textContent || '');
                         const text = normalize(rawText);
-                        if (!text || text.length > 1200) continue;
-                        const lines = rawText.split('\n').map(normalize).filter(Boolean);
-                        const attrs = filenameCandidates(el);
-                        const filename = lines.find(line => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(line)) || normalize(el.getAttribute('title') || el.getAttribute('aria-label') || '');
-                        if (![filename, ...attrs, ...lines].some(value => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(normalize(value)))) continue;
+                        if (!text || text.length > 1200 || knownNonRows.has(text.toLowerCase())) continue;
+                        if (isNestedAncestor(el)) continue;
+                        const values = localValues(el);
+                        const hasExactFilename = expectedCompact ? values.some(exact) : values.some(value => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(normalize(value)));
+                        if (!hasExactFilename) continue;
                         const id = fileId(el);
+                        const hasSize = /(?:^|\s)\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB)(?:\s|$)/i.test(text);
+                        const hasDate = /\b(?:Today|Yesterday|Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(text);
+                        const menus = Array.from(el.querySelectorAll ? el.querySelectorAll(menuSelector) : []).filter(visible);
+                        const structural = Boolean(id || hasSize || hasDate);
+                        if (!structural) continue;
                         const key = `${id}|${text.toLowerCase()}`;
                         if (seen.has(key)) continue;
                         seen.add(key);
+                        const bindingKey = `pb-library-row-${++marker}`;
+                        el.setAttribute('data-promptbranch-library-row-candidate', bindingKey);
                         const refs = projectRefs(el);
+                        const lines = rawText.split('\n').map(normalize).filter(Boolean);
+                        const filename = lines.find(line => /\.[A-Za-z0-9]{1,12}(?:\s|$)/.test(line)) || normalize(el.getAttribute('title') || el.getAttribute('aria-label') || '');
                         results.push({
                             file_id: id,
                             filename,
-                            filename_candidates: [...attrs, ...lines, text],
+                            filename_candidates: [...values, ...lines, text],
                             text,
                             project_ids: refs.ids,
                             project_references_known: refs.known,
                             deleted: /recently deleted|delete forever|restore/i.test(text),
+                            file_row_candidate: true,
+                            actionable_library_row: menus.length === 1,
+                            action_menu_count: menus.length,
+                            row_binding_key: bindingKey,
+                            structural_evidence: {
+                                file_id_present: Boolean(id),
+                                size_metadata_present: hasSize,
+                                date_metadata_present: hasDate,
+                                unique_row_menu_present: menus.length === 1,
+                            },
                         });
                     }
                     return results;
                 }
-                """
+                """,
+                canonical_name or "",
             )
         except Exception:
             return []
         if not isinstance(cards, list):
             return []
         result: list[dict[str, Any]] = []
+        seen_rows: set[str] = set()
         for raw in cards:
-            if not isinstance(raw, dict):
+            if not isinstance(raw, dict) or not raw.get('file_row_candidate'):
                 continue
             item = dict(raw)
+            row_key = str(item.get('row_binding_key') or '').strip()
+            if row_key and row_key in seen_rows:
+                continue
+            if row_key:
+                seen_rows.add(row_key)
             if canonical_name:
                 candidates = [
                     item.get('filename'),
@@ -7588,7 +7654,7 @@ class ChatGPTBrowserClient:
                 )
                 if reconstructed:
                     item['filename'] = reconstructed
-                    item['filename_reconstruction'] = 'exact_canonical_from_rendered_fragments'
+                    item['filename_reconstruction'] = 'exact_canonical_from_actionable_row'
                 else:
                     item['filename_reconstruction'] = 'not_reconstructed'
             item.pop('filename_candidates', None)
@@ -8873,13 +8939,29 @@ class ChatGPTBrowserClient:
             'surface': surface,
         }
 
-    async def _find_disposable_library_file_card_by_filename(self, page: Any, filename: str) -> Any:
+    async def _find_disposable_library_file_card_by_filename(
+        self,
+        page: Any,
+        filename: str,
+        *,
+        row_binding_key: Optional[str] = None,
+    ) -> Any:
         normalized = self._file_source_family_filename(filename)
+        if row_binding_key:
+            try:
+                locator = page.locator(
+                    f'[data-promptbranch-library-row-candidate="{row_binding_key}"]'
+                )
+                if await self._safe_count(locator, 'data-promptbranch-library-row-candidate') == 1:
+                    candidate = locator.first
+                    if await candidate.is_visible():
+                        return candidate
+            except Exception:
+                pass
         try:
             binding = await page.evaluate(
                 r"""
                 expected => {
-                    const selector = '[data-file-id], [data-asset-id], [data-testid*="file" i], [data-testid*="library" i], main [role="row"], main [role="listitem"], main article, main li';
                     const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
                     const compact = value => normalize(value).replace(/\s+/g, '').toLowerCase();
                     const expectedCompact = compact(expected);
@@ -8889,23 +8971,17 @@ class ChatGPTBrowserClient:
                         const rect = el.getBoundingClientRect();
                         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
                     };
-                    const valuesFor = el => {
-                        const values = [];
-                        const add = value => {
-                            const text = String(value || '').trim();
-                            if (text && !values.includes(text)) values.push(text);
-                        };
-                        let current = el;
-                        for (let depth = 0; current && depth < 4; depth++, current = current.parentElement) {
-                            for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) add(current.getAttribute && current.getAttribute(attr));
-                            add(current.innerText || current.textContent || '');
-                            for (const child of Array.from(current.querySelectorAll ? current.querySelectorAll('[title], [aria-label], [data-name], [data-filename], [data-file-name]') : []).slice(0, 40)) {
-                                for (const attr of ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name']) add(child.getAttribute && child.getAttribute(attr));
-                                add(child.innerText || child.textContent || '');
-                            }
-                        }
-                        return values;
-                    };
+                    const rowSelector = [
+                        'main [role="row"]:not([role="columnheader"])', 'main [role="listitem"]',
+                        'main article', 'main tr', 'main li', 'main [data-file-id]', 'main [data-asset-id]',
+                        'main [data-testid*="file-row" i]', 'main [data-testid*="file-card" i]',
+                        'main [data-testid*="library-file" i]'
+                    ].join(', ');
+                    const menuSelector = [
+                        'button[aria-haspopup="menu"]', '[role="button"][aria-haspopup="menu"]',
+                        'button[aria-label*="More" i]', '[role="button"][aria-label*="More" i]',
+                        '[data-testid*="menu" i]', '[data-testid*="action" i] button'
+                    ].join(', ');
                     const exact = value => {
                         const normalized = normalize(value);
                         if (normalized.toLowerCase() === String(expected || '').toLowerCase()) return true;
@@ -8920,16 +8996,28 @@ class ChatGPTBrowserClient:
                         }
                         return false;
                     };
-                    for (const prior of document.querySelectorAll('[data-promptbranch-library-exact-binding]')) prior.removeAttribute('data-promptbranch-library-exact-binding');
-                    const containers = new Set();
-                    for (const el of Array.from(document.querySelectorAll(selector)).filter(visible)) {
-                        if (!valuesFor(el).some(exact)) continue;
-                        const container = el.closest('[role="row"], [role="listitem"], article, li') || el;
-                        if (visible(container)) containers.add(container);
+                    const hasNestedRow = el => Array.from(el.querySelectorAll ? el.querySelectorAll(rowSelector) : [])
+                        .some(child => child !== el && visible(child));
+                    for (const prior of document.querySelectorAll('[data-promptbranch-library-exact-binding]')) {
+                        prior.removeAttribute('data-promptbranch-library-exact-binding');
                     }
-                    if (containers.size !== 1) return {count: containers.size};
-                    const target = Array.from(containers)[0];
-                    target.setAttribute('data-promptbranch-library-exact-binding', 'true');
+                    const rows = [];
+                    for (const el of Array.from(document.querySelectorAll(rowSelector)).filter(visible)) {
+                        const text = normalize(el.innerText || el.textContent || '');
+                        if (!text || hasNestedRow(el)) continue;
+                        if (!exact(text) && !Array.from(el.querySelectorAll('[title], [aria-label], [data-name], [data-filename], [data-file-name]')).some(child =>
+                            ['title', 'aria-label', 'data-name', 'data-filename', 'data-file-name'].some(attr => exact(child.getAttribute && child.getAttribute(attr)))
+                        )) continue;
+                        const hasMetadata = /(?:^|\s)\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB)(?:\s|$)/i.test(text)
+                            || /\b(?:Today|Yesterday|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(text)
+                            || Boolean(el.getAttribute('data-file-id') || el.getAttribute('data-asset-id'));
+                        if (!hasMetadata) continue;
+                        const menus = Array.from(el.querySelectorAll(menuSelector)).filter(visible);
+                        if (menus.length !== 1) continue;
+                        rows.push(el);
+                    }
+                    if (rows.length !== 1) return {count: rows.length};
+                    rows[0].setAttribute('data-promptbranch-library-exact-binding', 'true');
                     return {count: 1};
                 }
                 """,
@@ -8941,19 +9029,6 @@ class ChatGPTBrowserClient:
                     candidate = locator.first
                     if await candidate.is_visible():
                         return candidate
-            if isinstance(binding, dict) and int(binding.get('count') or 0) > 1:
-                return None
-        except Exception:
-            pass
-        # Test doubles and older surfaces may expose the exact unsplit name.
-        try:
-            locator = page.get_by_text(normalized, exact=True)
-            if await locator.count() == 1 and await locator.first.is_visible():
-                candidate = locator.first
-                container = candidate.locator('xpath=ancestor-or-self::*[@role="row" or @role="listitem" or self::article or self::li][1]')
-                if await container.count() == 1 and await container.first.is_visible():
-                    return container.first
-                return candidate
         except Exception:
             pass
         return None
@@ -8971,7 +9046,9 @@ class ChatGPTBrowserClient:
         ui_records = list((surface or {}).get('records') or []) if isinstance(surface, dict) else []
         ui_family = [
             item for item in ui_records
-            if isinstance(item, dict) and self._file_source_family_member(item.get('filename'), canonical)
+            if isinstance(item, dict)
+            and item.get('file_row_candidate')
+            and self._file_source_family_member(item.get('filename'), canonical)
         ]
         ui_exact = [
             item for item in ui_family
@@ -8998,7 +9075,7 @@ class ChatGPTBrowserClient:
         if len(ui_exact) == 0:
             return {
                 'ok': False,
-                'status': 'library_ui_filename_reconstruction_failed',
+                'status': 'library_actionable_row_not_found',
                 'exact_ui_record_count': 0,
                 'suffix_ui_record_count': len(ui_suffix),
                 'backend_target_record_count': len(backend_target_records),
@@ -9006,17 +9083,38 @@ class ChatGPTBrowserClient:
         if len(ui_exact) != 1 or ui_suffix:
             return {
                 'ok': False,
-                'status': 'library_ui_binding_ambiguous',
+                'status': 'library_actionable_row_ambiguous',
                 'exact_ui_record_count': len(ui_exact),
                 'suffix_ui_record_count': len(ui_suffix),
                 'backend_target_record_count': len(backend_target_records),
+            }
+        exact_row = ui_exact[0]
+        menu_count = int(exact_row.get('action_menu_count') or 0)
+        row_binding_key = str(exact_row.get('row_binding_key') or '').strip()
+        if not exact_row.get('actionable_library_row') or menu_count != 1:
+            return {
+                'ok': False,
+                'status': 'library_action_menu_not_unique',
+                'exact_ui_record_count': 1,
+                'suffix_ui_record_count': 0,
+                'backend_target_record_count': len(backend_target_records),
+                'action_menu_count': menu_count,
+            }
+        if not row_binding_key:
+            return {
+                'ok': False,
+                'status': 'library_actionable_row_not_found',
+                'exact_ui_record_count': 1,
+                'suffix_ui_record_count': 0,
+                'backend_target_record_count': len(backend_target_records),
+                'reason': 'row_binding_key_missing',
             }
         if not target_id or not backend_target_records:
             return {
                 'ok': False,
                 'status': 'library_ui_backend_binding_not_proven',
-                'exact_ui_record_count': len(ui_exact),
-                'suffix_ui_record_count': len(ui_suffix),
+                'exact_ui_record_count': 1,
+                'suffix_ui_record_count': 0,
                 'backend_target_record_count': len(backend_target_records),
             }
         competing_library_ids = {
@@ -9025,21 +9123,23 @@ class ChatGPTBrowserClient:
         if competing_library_ids:
             return {
                 'ok': False,
-                'status': 'library_ui_binding_ambiguous',
-                'exact_ui_record_count': len(ui_exact),
-                'suffix_ui_record_count': len(ui_suffix),
+                'status': 'library_actionable_row_ambiguous',
+                'exact_ui_record_count': 1,
+                'suffix_ui_record_count': 0,
                 'backend_target_record_count': len(backend_target_records),
                 'competing_library_identity_count': len(competing_library_ids),
             }
         return {
             'ok': True,
-            'status': 'exact_library_ui_record_selectable',
+            'status': 'exact_library_actionable_row_bound',
             'filename': canonical,
             'library_metadata_object_id': target_id,
+            'row_binding_key': row_binding_key,
             'exact_ui_record_count': 1,
             'suffix_ui_record_count': 0,
             'backend_target_record_count': len(backend_target_records),
             'competing_library_identity_count': 0,
+            'action_menu_count': 1,
         }
 
     async def _delete_disposable_library_file_via_ui(
@@ -9052,7 +9152,7 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         if not isinstance(ui_binding, dict) or not (
             bool(ui_binding.get('ok'))
-            and ui_binding.get('status') == 'exact_library_ui_record_selectable'
+            and ui_binding.get('status') == 'exact_library_actionable_row_bound'
         ):
             return {
                 'ok': False,
@@ -9060,57 +9160,115 @@ class ChatGPTBrowserClient:
                 'filename': filename,
                 'delete_forever': delete_forever,
             }
-        locator = await self._find_disposable_library_file_card_by_filename(page, filename)
-        if locator is None:
-            return {'ok': False, 'status': 'disposable_library_file_not_found', 'filename': filename, 'delete_forever': delete_forever}
-        await self._click_locator_with_fallback(locator, label='library-disposable-file-select', timeout_ms=5_000)
-        action_selectors = (
-            [
-                'button:has-text("Delete forever")',
-                '[role="button"]:has-text("Delete forever")',
-                'button[aria-label*="Delete forever" i]',
-            ]
-            if delete_forever
-            else [
-                'button[aria-label*="Delete" i]',
-                'button:has-text("Delete")',
-                '[data-testid*="delete" i]',
-            ]
-        )
-        action = await self._find_visible_locator(
+        locator = await self._find_disposable_library_file_card_by_filename(
             page,
-            action_selectors,
-            label='library-disposable-delete-action',
-            timeout_ms=3_000,
+            filename,
+            row_binding_key=str(ui_binding.get('row_binding_key') or '') or None,
         )
-        if action is None:
-            options = await self._find_visible_locator(
-                page,
-                ['button[aria-label*="More" i]', 'button[aria-haspopup="menu"]', '[data-testid*="menu" i]'],
-                label='library-disposable-file-options',
-                timeout_ms=2_000,
-            )
-            if options is not None:
-                await self._click_locator_with_fallback(options, label='library-disposable-file-options', timeout_ms=5_000)
-                action = await self._find_visible_locator(
-                    page,
-                    action_selectors,
-                    label='library-disposable-delete-action-after-options',
-                    timeout_ms=3_000,
-                )
-        if action is None:
-            return {'ok': False, 'status': 'disposable_library_delete_action_not_found', 'filename': filename, 'delete_forever': delete_forever}
-        await self._click_locator_with_fallback(action, label='library-disposable-delete-action', timeout_ms=5_000)
-        confirm_selectors = (
-            ['[role="dialog"] button:has-text("Delete forever")', 'dialog[open] button:has-text("Delete forever")']
+        if locator is None:
+            return {
+                'ok': False,
+                'status': 'library_actionable_row_not_found',
+                'filename': filename,
+                'delete_forever': delete_forever,
+            }
+        try:
+            if hasattr(locator, 'hover'):
+                await locator.hover()
+        except Exception:
+            pass
+        row_menu = locator.locator(
+            'button[aria-haspopup="menu"], [role="button"][aria-haspopup="menu"], '
+            'button[aria-label*="More" i], [role="button"][aria-label*="More" i], '
+            '[data-testid*="menu" i], [data-testid*="action" i] button'
+        )
+        visible_menus = []
+        for index in range(await self._safe_count(row_menu, 'library-row-menu')):
+            candidate = row_menu.nth(index)
+            try:
+                if await candidate.is_visible():
+                    visible_menus.append(candidate)
+            except Exception:
+                continue
+        if len(visible_menus) != 1:
+            return {
+                'ok': False,
+                'status': 'library_action_menu_not_unique',
+                'filename': filename,
+                'delete_forever': delete_forever,
+                'action_menu_count': len(visible_menus),
+            }
+        await self._click_locator_with_fallback(
+            visible_menus[0],
+            label='library-disposable-row-options',
+            timeout_ms=5_000,
+        )
+        action_selector = (
+            '[role="menu"] button:has-text("Delete forever"), '
+            '[role="menuitem"]:has-text("Delete forever"), '
+            '[role="dialog"] button:has-text("Delete forever")'
             if delete_forever
-            else ['[role="dialog"] button:has-text("Delete")', 'dialog[open] button:has-text("Delete")']
+            else '[role="menu"] button:has-text("Delete"), '
+                 '[role="menuitem"]:has-text("Delete"), '
+                 '[role="dialog"] button:has-text("Delete")'
         )
-        confirm = await self._find_visible_locator(page, confirm_selectors, label='library-disposable-delete-confirm', timeout_ms=2_000)
-        if confirm is not None:
-            await self._click_locator_with_fallback(confirm, label='library-disposable-delete-confirm', timeout_ms=5_000)
+        action_locator = page.locator(action_selector)
+        visible_actions = []
+        for index in range(await self._safe_count(action_locator, 'library-delete-action')):
+            candidate = action_locator.nth(index)
+            try:
+                if await candidate.is_visible():
+                    visible_actions.append(candidate)
+            except Exception:
+                continue
+        if len(visible_actions) != 1:
+            return {
+                'ok': False,
+                'status': 'disposable_library_delete_action_not_unique',
+                'filename': filename,
+                'delete_forever': delete_forever,
+                'delete_action_count': len(visible_actions),
+            }
+        await self._click_locator_with_fallback(
+            visible_actions[0],
+            label='library-disposable-delete-action',
+            timeout_ms=5_000,
+        )
+        confirm_selector = (
+            '[role="dialog"] button:has-text("Delete forever"), dialog[open] button:has-text("Delete forever")'
+            if delete_forever
+            else '[role="dialog"] button:has-text("Delete"), dialog[open] button:has-text("Delete")'
+        )
+        confirm_locator = page.locator(confirm_selector)
+        visible_confirms = []
+        for index in range(await self._safe_count(confirm_locator, 'library-delete-confirm')):
+            candidate = confirm_locator.nth(index)
+            try:
+                if await candidate.is_visible():
+                    visible_confirms.append(candidate)
+            except Exception:
+                continue
+        if len(visible_confirms) > 1:
+            return {
+                'ok': False,
+                'status': 'disposable_library_delete_confirmation_ambiguous',
+                'filename': filename,
+                'delete_forever': delete_forever,
+                'confirmation_count': len(visible_confirms),
+            }
+        if visible_confirms:
+            await self._click_locator_with_fallback(
+                visible_confirms[0],
+                label='library-disposable-delete-confirm',
+                timeout_ms=5_000,
+            )
         await page.wait_for_timeout(900)
-        return {'ok': True, 'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered', 'filename': filename}
+        return {
+            'ok': True,
+            'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered',
+            'filename': filename,
+            'row_scoped_menu_binding': True,
+        }
 
     def _browser_diagnostic_upload_identity(self, result: Any, requested_filename: str) -> dict[str, Any]:
         payload = result if isinstance(result, dict) else {}

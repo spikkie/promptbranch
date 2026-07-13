@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
-active candidate version: v0.1.103.10.93
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
-next normal slice: v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip
+active candidate version: v0.1.103.10.94
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip
+next normal slice: v0.1.103.10.94 — bind Library filenames only to actionable file rows
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
-release status: v0.1.103.10.93 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip
+release status: v0.1.103.10.94 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Run the disposable v0.1.103.10.93 diagnostic and require one exact reconstructed UI filename, zero suffix-family siblings, one unique backend-proven libfile identity, and one uniquely marked UI card before observing any delete mutation.
+Run the disposable v0.1.103.10.94 diagnostic and require one exact actionable Library row, one row-owned action menu, zero suffix-family rows, and one unique backend-proven libfile identity before observing any delete mutation.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -1216,3 +1216,14 @@ The visible Library exact-ID deletion route was unavailable in v0.1.103.10.89. T
 ## v0.1.103.10.93 current diagnostic status
 
 `v0.1.103.10.93` preserves authenticated exact-ID inventory proof from `v0.1.103.10.92` and repairs the remaining Library UI parsing boundary. It reconstructs the exact expected basename from stable attributes or contiguous rendered filename fragments, rejects suffix siblings and partial matches, binds one exact UI card to the unique backend-proven `libfile_...`, and returns fail closed before any delete or reupload when the binding is absent or ambiguous.
+
+
+## v0.1.103.10.94 diagnostic candidate
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip`.
+
+Active candidate version: `v0.1.103.10.94`.
+
+Active slice: `v0.1.103.10.94 — bind Library filenames only to actionable file rows`.
+
+Accepted/current remains `v0.1.103.10.68`. `v0.1.103.10.94` repairs the `10.93` DOM-scope ambiguity by admitting only structurally actionable file rows and binding menu interaction to the unique exact row. No Project Source release upload or adoption is performed.

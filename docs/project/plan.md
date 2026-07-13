@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
-active candidate version: v0.1.103.10.93
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip
-next normal slice: v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip
+active candidate version: v0.1.103.10.94
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip
+next normal slice: v0.1.103.10.94 — bind Library filenames only to actionable file rows
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2210,3 +2210,14 @@ In scope:
 - require one exact UI record, zero suffix-family records, one unique backend `libfile_...`, and one unique marked card before mutation;
 - preserve authenticated backend replay and complete sanitized trace behavior from `v0.1.103.10.92`;
 - remain diagnostic-only and fail closed before deletion, canonical reupload, release `pbsa`, or adoption.
+
+
+## v0.1.103.10.94 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip`.
+
+Active candidate version: `v0.1.103.10.94`.
+
+Active slice: `v0.1.103.10.94 — bind Library filenames only to actionable file rows`.
+
+Filter Library candidates to leaf-like actionable file rows; reject navigation, column headers, and ancestor containers; require local filename plus file metadata and exactly one row-owned action menu; bind deletion through that row-scoped menu only; preserve authenticated backend replay and fail closed before deletion, canonical reupload, release `pbsa`, or adoption.

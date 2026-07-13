@@ -709,3 +709,5 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---|---|---|
 | DOD-264 | Exact Library filename reconstruction and safe backend-to-UI card binding | in_progress | Wrapped filename regression, exact contiguous-token reconstruction, suffix/partial rejection, one exact UI record, zero suffix siblings, unique backend `libfile_...` proof, unique marked card locator, and fail-closed mutation gate | v0.1.103.10.93 |
+
+| DOD-263 | Exact Library UI binding rejects ancestor/header containers and requires one row-scoped action menu | in_progress | `v0.1.103.10.94` focused tests; live diagnostic pending | v0.1.103.10.94 |
