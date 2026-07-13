@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-active candidate version: v0.1.103.10.89
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-next normal slice: v0.1.103.10.89 — delete the exact backing Library object before canonical reupload
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+active candidate version: v0.1.103.10.90
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+next normal slice: v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2182,3 +2182,8 @@ Active repair slice: `v0.1.103.10.80 — reuse the verified candidate image duri
 
 `v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
 
+
+
+## v0.1.103.10.90 repair note
+
+Candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip`. Active diagnostic repair: discover the exact backend inventory and delete contract below the rendered Library UI, prove exact-ID deletion through backend inventory, and attempt canonical reupload only after two stable absence observations. This does not advance the normal horizon and does not change `pbsa`.

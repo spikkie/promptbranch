@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./install.sh <version> [zip-path] [--diagnostic-project-source-ab|--diagnostic-library-backing-reupload]
+Usage: ./install.sh <version> [zip-path] [--diagnostic-project-source-ab|--diagnostic-library-backing-reupload|--diagnostic-library-backend-protocol-reupload]
 
 Strict all-all Promptbranch release gate for a new ZIP release.
 
@@ -38,11 +38,13 @@ ver="$1"
 shift
 diagnostic_project_source_ab=0
 diagnostic_library_backing_reupload=0
+diagnostic_library_backend_protocol_reupload=0
 zip=""
 for arg in "$@"; do
   case "$arg" in
     --diagnostic-project-source-ab) diagnostic_project_source_ab=1 ;;
     --diagnostic-library-backing-reupload) diagnostic_library_backing_reupload=1 ;;
+    --diagnostic-library-backend-protocol-reupload) diagnostic_library_backend_protocol_reupload=1 ;;
     --*) echo "ERROR: unsupported install option: $arg" >&2; exit 64 ;;
     *)
       if [[ -n "$zip" ]]; then
@@ -102,6 +104,24 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${script_dir}"
 
 mkdir -p "${HOME}/tmp"
+
+if [[ ${diagnostic_library_backend_protocol_reupload} -eq 1 ]]; then
+  timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
+    --install-from-zip "${zip}" \
+    --version "${ver}" \
+    --skip-commit \
+    --skip-source-add \
+    --skip-tests \
+    --skip-docker-logs \
+    --prune-release-logs \
+    --release-log-keep 12 \
+    2>&1 | tee "${HOME}/tmp/release_control.${ver}.diagnostic-install.log"
+
+  ./scripts/pb-library-backend-protocol-reupload-diagnostic.sh \
+    --service-base-url "${CHATGPT_SERVICE_BASE_URL:-http://localhost:8000}" \
+    | tee "${HOME}/tmp/library_backend_protocol_reupload.${ver}.json"
+  exit ${PIPESTATUS[0]}
+fi
 
 if [[ ${diagnostic_library_backing_reupload} -eq 1 ]]; then
   timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \

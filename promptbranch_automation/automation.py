@@ -575,6 +575,17 @@ class ChatGPTAutomation:
             transaction_mode=transaction_mode,
         )
 
+    async def run_library_backend_protocol_reupload_diagnostic(
+        self,
+        *,
+        project_name_prefix: str = "itest-pb-library-backend",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        return await self.client.run_library_backend_protocol_reupload_diagnostic(
+            project_name_prefix=project_name_prefix,
+            keep_open=keep_open,
+        )
+
     async def delete_library_backing_object_diagnostic(
         self,
         *,

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-active candidate version: v0.1.103.10.89
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-next normal slice: v0.1.103.10.89 — delete the exact backing Library object before canonical reupload
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+active candidate version: v0.1.103.10.90
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+next normal slice: v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.102.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip
-release status: v0.1.103.10.84 is a repair candidate until full all-all release-control/adoption evidence proves accepted/current alignment
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+release status: v0.1.103.10.90 is a diagnostic repair candidate; no release adoption is permitted from this diagnostic run
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Validate and package v0.1.103.10.84 as the active repair candidate from the last accepted/current operational baseline.
+Run the disposable v0.1.103.10.90 backend-protocol diagnostic and inspect its exact inventory/delete evidence before designing any normal pbsa repair.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -1196,3 +1196,8 @@ Active repair slice: `v0.1.103.10.84 — restore normal file add and replace exi
 
 `v0.1.103.10.80` keeps the strict all-all gate, sentinel normalization, and authoritative Project Sources preflight. Pre-source-add auth bootstrap reuses the exact verified candidate service with `--no-recreate`; stable Docker dependency layers precede release metadata, browser automation versions are pinned, and exhausted Chrome transport downloads are classified as `docker_browser_dependency_download_failed`.
 
+
+
+## v0.1.103.10.90 current diagnostic status
+
+The visible Library exact-ID deletion route was unavailable in v0.1.103.10.89. This repair instruments the complete fetch/XHR surface, discovers backend inventory and exact soft/hard delete mutations from controlled disposable data, verifies exact-ID absence, and only then tests canonical reupload.

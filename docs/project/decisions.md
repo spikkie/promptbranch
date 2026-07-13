@@ -808,3 +808,8 @@ Decision: the diagnostic endpoint remains bearer-token protected. The standalone
 ## v0.1.103.10.89 exact backing-object deletion decision
 
 Decision: the diagnostic may delete a Library object only when both the processed `file_...` ID and `libfile_...` metadata-object ID are captured from the authoritative upload transaction. Filename-only deletion and guessed backend endpoints are forbidden. It must remove the Project Source, prove stable source absence, delete the exact backing object from active Library and Recently deleted, prove the exact IDs absent on both authoritative surfaces, and only then call the unchanged 10.75 fresh-upload transaction with changed bytes. The prior `(1)` Project Source remains untouched as evidence.
+
+
+## v0.1.103.10.90 exact backend protocol decision
+
+Decision: the visible Library UI is not an authoritative exact-ID control surface for Project Source backing files. The diagnostic therefore captures all redacted fetch/XHR traffic without URL-token filtering, derives inventory and deletion contracts from a newly created disposable Library file, requires exact `libfile_...` or `file_...` identity binding, replays only the discovered authenticated mutations, verifies exact absence through the discovered backend inventory, shields automatic conversation-history requests on Library routes, and fails closed before reupload when any contract or exact-ID proof is missing. `pbsa` remains unchanged.

@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 import traceback
 from datetime import datetime, timezone
@@ -2614,6 +2615,25 @@ class ChatGPTBrowserClient:
             wait_ms=wait_ms,
             respect_history_rate_limit_cooldown=False,
         )
+
+    async def run_library_backend_protocol_reupload_diagnostic(
+        self,
+        *,
+        project_name_prefix: str = "itest-pb-library-backend",
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        original_mode = str(getattr(self.config, "conversation_history_request_shield_mode", "fulfill_empty"))
+        self.config.conversation_history_request_shield_mode = "fulfill_empty"
+        try:
+            return await self._run_with_context(
+                operation_name="library_backend_protocol_reupload_diagnostic",
+                operation=self._library_backend_protocol_reupload_diagnostic_operation,
+                project_name_prefix=project_name_prefix,
+                keep_open=keep_open,
+                respect_history_rate_limit_cooldown=False,
+            )
+        finally:
+            self.config.conversation_history_request_shield_mode = original_mode
 
     async def delete_library_backing_object_diagnostic(
         self,
@@ -7896,6 +7916,986 @@ class ChatGPTBrowserClient:
             'matching_cards': matching_cards,
             'card_count': len(cards),
         }
+
+
+    def _protocol_redacted_headers(self, headers: Any) -> dict[str, str]:
+        if not isinstance(headers, dict):
+            return {}
+        blocked = {
+            'authorization', 'cookie', 'set-cookie', 'proxy-authorization',
+            'x-api-key', 'x-auth-token', 'content-length', 'host', 'user-agent',
+        }
+        result: dict[str, str] = {}
+        for raw_key, raw_value in headers.items():
+            key = str(raw_key or '').strip().lower()
+            if not key or key in blocked or key.startswith('sec-'):
+                continue
+            value = str(raw_value or '').strip()
+            if key in {'origin', 'referer'}:
+                value = str(self._redact_backend_api_url(value).get('redacted_url') or '')
+            if len(value) > 1024:
+                value = value[:1024] + '…'
+            result[key] = value
+        return result
+
+    def _protocol_redacted_body_sample(self, body: Any, *, limit: int = 4096) -> str:
+        text = str(body or '')[:max(limit, 0)]
+        text = re.sub(
+            r'(?i)(authorization|access_token|refresh_token|session_token|csrf_token)(["\\s:=]+)[^,"\\s}]+',
+            r'\1\2<redacted>',
+            text,
+        )
+        text = re.sub(
+            r'(?i)(https?://[^\\s"\']+\\?[^\\s"\']*)',
+            lambda match: str(self._redact_backend_api_url(match.group(1)).get('redacted_url') or '<redacted-url>'),
+            text,
+        )
+        return text
+
+    def _install_fetch_xhr_protocol_watch(self, context: Any) -> dict[str, Any]:
+        watch: dict[str, Any] = {
+            'installed': False,
+            'phase': 'initial',
+            'events': [],
+            'tasks': [],
+            'handlers': {},
+            'requests': {},
+            'next_sequence': 1,
+        }
+        if context is None or not hasattr(context, 'on'):
+            return watch
+        loop = asyncio.get_running_loop()
+
+        def request_headers(request: Any) -> dict[str, str]:
+            try:
+                value = getattr(request, 'headers', {})
+                if callable(value):
+                    value = value()
+                return self._protocol_redacted_headers(value)
+            except Exception:
+                return {}
+
+        def on_request(request: Any) -> None:
+            try:
+                resource_type = str(getattr(request, 'resource_type', '') or '').lower()
+                if resource_type not in {'fetch', 'xhr'}:
+                    return
+                sequence = int(watch.get('next_sequence') or 1)
+                watch['next_sequence'] = sequence + 1
+                raw_url = str(getattr(request, 'url', '') or '')
+                raw_body = getattr(request, 'post_data', None)
+                event = {
+                    'kind': 'request',
+                    'sequence': sequence,
+                    'phase': str(watch.get('phase') or 'unknown'),
+                    'resource_type': resource_type,
+                    'method': str(getattr(request, 'method', '') or 'GET').upper(),
+                    'url': self._redact_backend_api_url(raw_url).get('redacted_url'),
+                    'headers': request_headers(request),
+                    'post_data_sample': self._protocol_redacted_body_sample(raw_body),
+                    'post_data_present': bool(raw_body),
+                    '_raw_url': raw_url,
+                    '_raw_post_data': str(raw_body) if raw_body is not None else None,
+                }
+                watch.setdefault('requests', {})[id(request)] = event
+                watch.setdefault('events', []).append(event)
+            except Exception:
+                return
+
+        async def capture_response(response: Any) -> None:
+            try:
+                request = getattr(response, 'request', None)
+                request_event = watch.get('requests', {}).get(id(request), {}) if request is not None else {}
+                resource_type = str(request_event.get('resource_type') or getattr(request, 'resource_type', '') or '').lower()
+                if resource_type not in {'fetch', 'xhr'}:
+                    return
+                raw_url = str(getattr(response, 'url', '') or request_event.get('_raw_url') or '')
+                body_text = ''
+                body_error = None
+                try:
+                    body_text = await response.text()
+                except Exception as exc:
+                    body_error = repr(exc)
+                headers = await self._read_response_headers(response)
+                records = self._extract_library_file_records_from_text(body_text, source_url=raw_url)
+                event = {
+                    'kind': 'response',
+                    'sequence': request_event.get('sequence'),
+                    'phase': request_event.get('phase') or str(watch.get('phase') or 'unknown'),
+                    'resource_type': resource_type,
+                    'method': request_event.get('method') or str(getattr(request, 'method', '') or 'GET').upper(),
+                    'url': self._redact_backend_api_url(raw_url).get('redacted_url'),
+                    'status': getattr(response, 'status', None),
+                    'content_type': headers.get('content-type') or None,
+                    'body_schema': self._upload_response_body_schema(body_text, content_type=headers.get('content-type', '')),
+                    'body_sample': self._protocol_redacted_body_sample(body_text),
+                    'body_error': body_error,
+                    'extracted_records': records,
+                    'request_headers': request_event.get('headers') or {},
+                    'request_post_data_sample': request_event.get('post_data_sample') or '',
+                    '_raw_url': request_event.get('_raw_url') or raw_url,
+                    '_raw_post_data': request_event.get('_raw_post_data'),
+                    '_raw_headers': request_event.get('headers') or {},
+                    '_raw_body': body_text,
+                }
+                watch.setdefault('events', []).append(event)
+            except Exception:
+                return
+
+        def on_response(response: Any) -> None:
+            try:
+                request = getattr(response, 'request', None)
+                resource_type = str(getattr(request, 'resource_type', '') or '').lower() if request is not None else ''
+                if resource_type not in {'fetch', 'xhr'}:
+                    return
+                watch.setdefault('tasks', []).append(loop.create_task(capture_response(response)))
+            except Exception:
+                return
+
+        context.on('request', on_request)
+        context.on('response', on_response)
+        watch['installed'] = True
+        watch['handlers'] = {'request': on_request, 'response': on_response}
+        return watch
+
+    def _set_fetch_xhr_protocol_phase(self, watch: Optional[dict[str, Any]], phase: str) -> None:
+        if isinstance(watch, dict):
+            watch['phase'] = str(phase or 'unknown')
+
+    async def _settle_fetch_xhr_protocol_watch(self, watch: Optional[dict[str, Any]]) -> None:
+        if not isinstance(watch, dict):
+            return
+        tasks = [task for task in watch.get('tasks') or [] if isinstance(task, asyncio.Task)]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _dispose_fetch_xhr_protocol_watch(self, context: Any, watch: Optional[dict[str, Any]]) -> None:
+        if context is None or not isinstance(watch, dict) or not watch.get('installed'):
+            return
+        for event_name, handler in (watch.get('handlers') or {}).items():
+            try:
+                if hasattr(context, 'remove_listener'):
+                    context.remove_listener(event_name, handler)
+                elif hasattr(context, 'off'):
+                    context.off(event_name, handler)
+            except Exception:
+                pass
+
+    def _public_fetch_xhr_protocol_trace(self, watch: Optional[dict[str, Any]]) -> dict[str, Any]:
+        payload = watch if isinstance(watch, dict) else {}
+        public_events: list[dict[str, Any]] = []
+        for raw_event in payload.get('events') or []:
+            if not isinstance(raw_event, dict):
+                continue
+            event = {key: value for key, value in raw_event.items() if not str(key).startswith('_')}
+            public_events.append(event)
+        phase_counts: dict[str, int] = {}
+        for event in public_events:
+            phase = str(event.get('phase') or 'unknown')
+            phase_counts[phase] = phase_counts.get(phase, 0) + 1
+        return {
+            'installed': bool(payload.get('installed')),
+            'event_count': len(public_events),
+            'phase_event_counts': phase_counts,
+            'events': public_events[-600:],
+            'trace_truncated': len(public_events) > 600,
+            'capture_scope': 'all_fetch_xhr',
+            'sensitive_headers_redacted': True,
+            'url_query_values_redacted': True,
+        }
+
+    def _protocol_event_contains_any(self, event: dict[str, Any], values: list[str]) -> bool:
+        haystack = '\n'.join(
+            str(event.get(key) or '')
+            for key in ('_raw_url', '_raw_post_data', '_raw_body', 'body_sample', 'request_post_data_sample')
+        ).casefold()
+        return any(str(value or '').casefold() in haystack for value in values if str(value or '').strip())
+
+    def _protocol_exact_record_present(self, records: Any, id_candidates: list[str]) -> bool:
+        ids = {str(value).casefold() for value in id_candidates if str(value).strip()}
+        if not ids:
+            return False
+        for record in records if isinstance(records, list) else []:
+            if not isinstance(record, dict):
+                continue
+            if str(record.get('file_id') or '').casefold() in ids:
+                return True
+        return False
+
+    def _discover_backend_inventory_protocol(
+        self,
+        watch: Optional[dict[str, Any]],
+        *,
+        id_candidates: list[str],
+        filename: str,
+        phases: set[str],
+    ) -> Optional[dict[str, Any]]:
+        payload = watch if isinstance(watch, dict) else {}
+        candidates: list[tuple[int, dict[str, Any]]] = []
+        for event in payload.get('events') or []:
+            if not isinstance(event, dict) or event.get('kind') != 'response':
+                continue
+            if str(event.get('phase') or '') not in phases:
+                continue
+            method = str(event.get('method') or 'GET').upper()
+            raw_url = str(event.get('_raw_url') or '').lower()
+            if 'process_upload_stream' in raw_url or 'oaiusercontent.com/files/' in raw_url:
+                continue
+            records = event.get('extracted_records') if isinstance(event.get('extracted_records'), list) else []
+            exact = self._protocol_exact_record_present(records, id_candidates)
+            family = any(self._file_source_family_member(record.get('filename'), filename) for record in records if isinstance(record, dict))
+            if not exact and not family:
+                continue
+            score = (100 if exact else 0) + (20 if method == 'GET' else 0) + len(records)
+            candidates.append((score, event))
+        if not candidates:
+            return None
+        event = sorted(candidates, key=lambda item: item[0], reverse=True)[0][1]
+        return {
+            'method': str(event.get('method') or 'GET').upper(),
+            'url': event.get('url'),
+            'headers': event.get('request_headers') or {},
+            'post_data_sample': event.get('request_post_data_sample') or '',
+            'phase': event.get('phase'),
+            'status': event.get('status'),
+            'record_count': len(event.get('extracted_records') or []),
+            '_raw_url': event.get('_raw_url'),
+            '_raw_post_data': event.get('_raw_post_data'),
+            '_raw_headers': event.get('_raw_headers') or {},
+        }
+
+    def _discover_backend_delete_protocol(
+        self,
+        watch: Optional[dict[str, Any]],
+        *,
+        id_candidates: list[str],
+        filename: str,
+        phase: str,
+    ) -> Optional[dict[str, Any]]:
+        payload = watch if isinstance(watch, dict) else {}
+        candidates: list[tuple[int, dict[str, Any]]] = []
+        exact_values = [*id_candidates]
+        for event in payload.get('events') or []:
+            if not isinstance(event, dict) or event.get('kind') != 'response':
+                continue
+            if str(event.get('phase') or '') != phase:
+                continue
+            method = str(event.get('method') or 'GET').upper()
+            if method in {'GET', 'HEAD', 'OPTIONS'}:
+                continue
+            exact = self._protocol_event_contains_any(event, exact_values)
+            filename_match = self._protocol_event_contains_any(event, [filename])
+            status = int(event.get('status') or 0)
+            if not exact:
+                continue
+            score = 100 + (20 if 200 <= status < 300 else 0) + (5 if filename_match else 0)
+            candidates.append((score, event))
+        if not candidates:
+            return None
+        event = sorted(candidates, key=lambda item: item[0], reverse=True)[0][1]
+        return {
+            'method': str(event.get('method') or 'POST').upper(),
+            'url': event.get('url'),
+            'headers': event.get('request_headers') or {},
+            'post_data_sample': event.get('request_post_data_sample') or '',
+            'phase': event.get('phase'),
+            'status': event.get('status'),
+            '_raw_url': event.get('_raw_url'),
+            '_raw_post_data': event.get('_raw_post_data'),
+            '_raw_headers': event.get('_raw_headers') or {},
+        }
+
+    def _public_backend_protocol(self, protocol: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if not isinstance(protocol, dict):
+            return None
+        return {key: value for key, value in protocol.items() if not str(key).startswith('_')}
+
+    def _protocol_replacement_mapping(
+        self,
+        *,
+        source_processed_file_id: str,
+        source_library_metadata_object_id: str,
+        source_filename: str,
+        target_processed_file_id: str,
+        target_library_metadata_object_id: str,
+        target_filename: str,
+    ) -> dict[str, str]:
+        mapping: dict[str, str] = {}
+        if source_processed_file_id and target_processed_file_id:
+            mapping[source_processed_file_id] = target_processed_file_id
+        if source_library_metadata_object_id and target_library_metadata_object_id:
+            mapping[source_library_metadata_object_id] = target_library_metadata_object_id
+        if source_filename and target_filename:
+            mapping[source_filename] = target_filename
+        source_match = re.fullmatch(r'file_([0-9a-fA-F]{32})', str(source_processed_file_id or '').strip())
+        target_match = re.fullmatch(r'file_([0-9a-fA-F]{32})', str(target_processed_file_id or '').strip())
+        if source_match and target_match:
+            source_raw = source_match.group(1).lower()
+            target_raw = target_match.group(1).lower()
+            source_uuid = f'{source_raw[:8]}-{source_raw[8:12]}-{source_raw[12:16]}-{source_raw[16:20]}-{source_raw[20:]}'
+            target_uuid = f'{target_raw[:8]}-{target_raw[8:12]}-{target_raw[12:16]}-{target_raw[16:20]}-{target_raw[20:]}'
+            mapping[source_uuid] = target_uuid
+        return mapping
+
+    def _apply_protocol_replacements(self, value: Optional[str], mapping: dict[str, str]) -> Optional[str]:
+        if value is None:
+            return None
+        result = str(value)
+        for source in sorted(mapping, key=len, reverse=True):
+            result = result.replace(source, mapping[source])
+        return result
+
+    async def _replay_backend_protocol(
+        self,
+        page: Any,
+        *,
+        protocol: dict[str, Any],
+        mapping: dict[str, str],
+        phase: str,
+    ) -> dict[str, Any]:
+        raw_url = self._apply_protocol_replacements(protocol.get('_raw_url'), mapping)
+        raw_body = self._apply_protocol_replacements(protocol.get('_raw_post_data'), mapping)
+        method = str(protocol.get('method') or 'GET').upper()
+        headers = {
+            key: value
+            for key, value in self._protocol_redacted_headers(protocol.get('_raw_headers') or protocol.get('headers') or {}).items()
+            if key not in {'origin', 'referer'}
+        }
+        if not raw_url:
+            return {'ok': False, 'status': 'protocol_url_missing', 'phase': phase}
+        try:
+            result = await page.evaluate(
+                r"""
+                async ({url, method, headers, body}) => {
+                    const options = {method, headers: headers || {}, credentials: 'include'};
+                    if (body !== null && body !== undefined && method !== 'GET' && method !== 'HEAD') options.body = body;
+                    const response = await fetch(url, options);
+                    const text = await response.text();
+                    return {
+                        ok: response.ok,
+                        status: response.status,
+                        statusText: response.statusText,
+                        url: response.url,
+                        contentType: response.headers.get('content-type'),
+                        text,
+                    };
+                }
+                """,
+                {'url': raw_url, 'method': method, 'headers': headers, 'body': raw_body},
+            )
+        except Exception as exc:
+            return {'ok': False, 'status': 'protocol_replay_exception', 'phase': phase, 'error': str(exc), 'error_type': type(exc).__name__}
+        payload = result if isinstance(result, dict) else {}
+        body_text = str(payload.get('text') or '')
+        records = self._extract_library_file_records_from_text(body_text, source_url=raw_url)
+        return {
+            'ok': bool(payload.get('ok')),
+            'status': int(payload.get('status') or 0),
+            'phase': phase,
+            'method': method,
+            'url': self._redact_backend_api_url(str(payload.get('url') or raw_url)).get('redacted_url'),
+            'content_type': payload.get('contentType'),
+            'body_schema': self._upload_response_body_schema(body_text, content_type=str(payload.get('contentType') or '')),
+            'body_sample': self._protocol_redacted_body_sample(body_text),
+            'records': records,
+        }
+
+    async def _verify_exact_backend_inventory_state(
+        self,
+        page: Any,
+        *,
+        active_protocol: dict[str, Any],
+        deleted_protocol: dict[str, Any],
+        mapping: dict[str, str],
+        target_id_candidates: list[str],
+        expect_active_present: bool,
+        expect_deleted_present: bool,
+        required_stable_observations: int = 2,
+        max_attempts: int = 6,
+    ) -> dict[str, Any]:
+        observations: list[dict[str, Any]] = []
+        stable = 0
+        for attempt in range(1, max_attempts + 1):
+            active = await self._replay_backend_protocol(
+                page, protocol=active_protocol, mapping=mapping, phase=f'inventory_active_verify_{attempt}'
+            )
+            deleted = await self._replay_backend_protocol(
+                page, protocol=deleted_protocol, mapping=mapping, phase=f'inventory_deleted_verify_{attempt}'
+            )
+            active_present = self._protocol_exact_record_present(active.get('records'), target_id_candidates)
+            deleted_present = self._protocol_exact_record_present(deleted.get('records'), target_id_candidates)
+            matched = (
+                bool(active.get('ok')) and bool(deleted.get('ok'))
+                and active_present is expect_active_present
+                and deleted_present is expect_deleted_present
+            )
+            stable = stable + 1 if matched else 0
+            observations.append({
+                'attempt': attempt,
+                'matched': matched,
+                'stable_observations': stable,
+                'active_present': active_present,
+                'deleted_present': deleted_present,
+                'active': active,
+                'deleted': deleted,
+            })
+            if stable >= required_stable_observations:
+                return {
+                    'ok': True,
+                    'status': 'exact_backend_inventory_state_verified',
+                    'stable_observations': stable,
+                    'required_stable_observations': required_stable_observations,
+                    'observations': observations,
+                }
+            await page.wait_for_timeout(500)
+        return {
+            'ok': False,
+            'status': 'exact_backend_inventory_state_not_verified',
+            'stable_observations': stable,
+            'required_stable_observations': required_stable_observations,
+            'observations': observations,
+        }
+
+    async def _upload_disposable_library_file_via_ui(
+        self,
+        page: Any,
+        *,
+        file_path: str,
+        filename: str,
+    ) -> dict[str, Any]:
+        await self._goto(page, self._library_url(), label='library-protocol-discovery-home')
+        await page.wait_for_timeout(900)
+        target = None
+        for selector in (
+            'input[type="file"]',
+            'input[accept*="text" i]',
+            'input[accept*="pdf" i]',
+        ):
+            locator = page.locator(selector)
+            count = await self._safe_count(locator, selector)
+            if count:
+                target = locator.nth(count - 1)
+                break
+        if target is None:
+            upload_button = await self._find_visible_locator(
+                page,
+                [
+                    'button:has-text("Add files")',
+                    'button:has-text("Upload")',
+                    '[role="button"]:has-text("Add files")',
+                    '[role="button"]:has-text("Upload")',
+                    'button[aria-label*="Upload" i]',
+                    'button[aria-label*="Add files" i]',
+                ],
+                label='library-discovery-upload-button',
+                timeout_ms=4_000,
+            )
+            if upload_button is not None:
+                await self._click_locator_with_fallback(upload_button, label='library-discovery-upload-button', timeout_ms=5_000)
+                await page.wait_for_timeout(400)
+                locator = page.locator('input[type="file"]')
+                count = await self._safe_count(locator, 'input[type="file"]')
+                if count:
+                    target = locator.nth(count - 1)
+        if target is None:
+            return {'ok': False, 'status': 'library_disposable_upload_not_supported', 'filename': filename}
+        await target.set_input_files(file_path)
+        await page.wait_for_timeout(2_000)
+        await self._library_search_exact_family(page, filename)
+        surface = await self._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name=filename,
+            label='library-discovery-upload-visible',
+            timeout_ms=12_000,
+        )
+        return {
+            'ok': bool(surface.get('ok')) and int(surface.get('family_record_count') or 0) >= 1,
+            'status': 'library_disposable_upload_visible' if surface.get('ok') and int(surface.get('family_record_count') or 0) >= 1 else 'library_disposable_upload_not_verified',
+            'filename': filename,
+            'surface': surface,
+        }
+
+    async def _find_disposable_library_file_card_by_filename(self, page: Any, filename: str) -> Any:
+        normalized = self._file_source_family_filename(filename)
+        try:
+            locator = page.get_by_text(normalized, exact=True)
+            if await locator.count() == 1 and await locator.first.is_visible():
+                candidate = locator.first
+                container = candidate.locator('xpath=ancestor-or-self::*[@role="row" or @role="listitem" or self::article or self::li][1]')
+                if await container.count() == 1 and await container.first.is_visible():
+                    return container.first
+                return candidate
+        except Exception:
+            pass
+        cards = await self._snapshot_library_file_cards(page)
+        matching = [item for item in cards if self._file_source_family_filename(item.get('filename')).casefold() == normalized.casefold()]
+        if len(matching) != 1:
+            return None
+        try:
+            locator = page.locator('main').get_by_text(normalized, exact=True)
+            if await locator.count() == 1:
+                return locator.first
+        except Exception:
+            pass
+        return None
+
+    async def _delete_disposable_library_file_via_ui(
+        self,
+        page: Any,
+        *,
+        filename: str,
+        delete_forever: bool,
+    ) -> dict[str, Any]:
+        locator = await self._find_disposable_library_file_card_by_filename(page, filename)
+        if locator is None:
+            return {'ok': False, 'status': 'disposable_library_file_not_found', 'filename': filename, 'delete_forever': delete_forever}
+        await self._click_locator_with_fallback(locator, label='library-disposable-file-select', timeout_ms=5_000)
+        action_selectors = (
+            [
+                'button:has-text("Delete forever")',
+                '[role="button"]:has-text("Delete forever")',
+                'button[aria-label*="Delete forever" i]',
+            ]
+            if delete_forever
+            else [
+                'button[aria-label*="Delete" i]',
+                'button:has-text("Delete")',
+                '[data-testid*="delete" i]',
+            ]
+        )
+        action = await self._find_visible_locator(
+            page,
+            action_selectors,
+            label='library-disposable-delete-action',
+            timeout_ms=3_000,
+        )
+        if action is None:
+            options = await self._find_visible_locator(
+                page,
+                ['button[aria-label*="More" i]', 'button[aria-haspopup="menu"]', '[data-testid*="menu" i]'],
+                label='library-disposable-file-options',
+                timeout_ms=2_000,
+            )
+            if options is not None:
+                await self._click_locator_with_fallback(options, label='library-disposable-file-options', timeout_ms=5_000)
+                action = await self._find_visible_locator(
+                    page,
+                    action_selectors,
+                    label='library-disposable-delete-action-after-options',
+                    timeout_ms=3_000,
+                )
+        if action is None:
+            return {'ok': False, 'status': 'disposable_library_delete_action_not_found', 'filename': filename, 'delete_forever': delete_forever}
+        await self._click_locator_with_fallback(action, label='library-disposable-delete-action', timeout_ms=5_000)
+        confirm_selectors = (
+            ['[role="dialog"] button:has-text("Delete forever")', 'dialog[open] button:has-text("Delete forever")']
+            if delete_forever
+            else ['[role="dialog"] button:has-text("Delete")', 'dialog[open] button:has-text("Delete")']
+        )
+        confirm = await self._find_visible_locator(page, confirm_selectors, label='library-disposable-delete-confirm', timeout_ms=2_000)
+        if confirm is not None:
+            await self._click_locator_with_fallback(confirm, label='library-disposable-delete-confirm', timeout_ms=5_000)
+        await page.wait_for_timeout(900)
+        return {'ok': True, 'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered', 'filename': filename}
+
+    def _browser_diagnostic_upload_identity(self, result: Any, requested_filename: str) -> dict[str, Any]:
+        payload = result if isinstance(result, dict) else {}
+        summary = payload.get('save_request_summary') if isinstance(payload.get('save_request_summary'), dict) else {}
+        diagnostics = summary.get('response_diagnostics') if isinstance(summary.get('response_diagnostics'), list) else []
+        requested = Path(requested_filename).name
+        library_name = None
+        processed_file_id = None
+        metadata_object_id = None
+        completed_event = None
+        for diagnostic in diagnostics:
+            if not isinstance(diagnostic, dict):
+                continue
+            sample = str(diagnostic.get('body_sample') or '')
+            for raw_line in sample.splitlines():
+                line = raw_line.strip()
+                if line.startswith('data:'):
+                    line = line[5:].strip()
+                if not line or line == '[DONE]':
+                    continue
+                try:
+                    event = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                if isinstance(event.get('file_id'), str) and event.get('file_id'):
+                    processed_file_id = str(event['file_id'])
+                extra = event.get('extra') if isinstance(event.get('extra'), dict) else {}
+                if isinstance(extra.get('library_file_name'), str) and extra.get('library_file_name'):
+                    library_name = Path(str(extra['library_file_name'])).name
+                if isinstance(extra.get('metadata_object_id'), str) and extra.get('metadata_object_id'):
+                    metadata_object_id = str(extra['metadata_object_id'])
+                if event.get('event') == 'file.processing.completed':
+                    completed_event = event
+        return {
+            'requested_filename': requested,
+            'library_assigned_filename': library_name,
+            'processed_file_id': processed_file_id,
+            'library_metadata_object_id': metadata_object_id,
+            'completed_upload_event': completed_event,
+            'upload_response': payload,
+        }
+
+    async def _browser_poll_project_source_family_state(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        requested_filename: str,
+        expect_present: bool,
+        max_attempts: int = 12,
+        required_stable_observations: int = 2,
+    ) -> dict[str, Any]:
+        requested = Path(requested_filename).name
+        stem = Path(requested).stem
+        suffix = Path(requested).suffix
+        stable = 0
+        observations: list[dict[str, Any]] = []
+        last_cards: list[dict[str, Any]] = []
+        for attempt in range(1, max_attempts + 1):
+            await self._goto(page, self._project_sources_url(project_url), label=f'backend-protocol-project-source-state-{attempt}')
+            await self._open_project_sources_tab(page, project_url=project_url)
+            cards = await self._snapshot_project_source_cards(page)
+            exact_cards: list[dict[str, Any]] = []
+            suffix_cards: list[dict[str, Any]] = []
+            for card in cards:
+                title = Path(str(card.get('title') or card.get('name') or '').strip()).name
+                identity = str(card.get('identity') or card.get('text') or title).strip()
+                if title == requested or identity.startswith(requested):
+                    exact_cards.append(card)
+                elif suffix and title.endswith(suffix) and (title.startswith(f'{stem}(') or title.startswith(f'{stem} (')):
+                    suffix_cards.append(card)
+            family_count = len(exact_cards) + len(suffix_cards)
+            matched = len(exact_cards) == 1 and not suffix_cards if expect_present else family_count == 0
+            stable = stable + 1 if matched else 0
+            observations.append({
+                'attempt': attempt,
+                'matched': matched,
+                'stable_observations': stable,
+                'exact_source_count': len(exact_cards),
+                'suffix_source_count': len(suffix_cards),
+                'family_source_count': family_count,
+            })
+            last_cards = cards
+            if stable >= required_stable_observations:
+                exact = exact_cards[0] if len(exact_cards) == 1 else None
+                return {
+                    'ok': True,
+                    'status': 'canonical_source_stably_present' if expect_present else 'source_family_stably_absent',
+                    'exact_source_name': str((exact or {}).get('title') or (exact or {}).get('name') or '').strip() or None,
+                    'exact_source_identity': str((exact or {}).get('identity') or (exact or {}).get('text') or '').strip() or None,
+                    'cards': cards,
+                    'observations': observations,
+                }
+            await page.wait_for_timeout(600)
+        return {
+            'ok': False,
+            'status': 'canonical_source_not_authoritative' if expect_present else 'source_family_absence_not_authoritative',
+            'cards': last_cards,
+            'observations': observations,
+        }
+
+    async def _library_backend_protocol_reupload_diagnostic_operation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_name_prefix: str,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        await self.ensure_logged_in(page, context)
+        token = hashlib.sha256(f'{time.time_ns()}:{os.getpid()}'.encode()).hexdigest()[:10]
+        prefix = '-'.join(part for part in str(project_name_prefix or 'itest-pb-library-backend').strip().split() if part)
+        prefix = prefix[:48] or 'itest-pb-library-backend'
+        project_name = f'{prefix}-{token}'
+        filename = f'pb-library-backend-{token}.txt'
+        visible_filename = f'pb-library-visible-{token}.txt'
+        temp_dir = Path(tempfile.mkdtemp(prefix='promptbranch-library-backend-'))
+        source_path = temp_dir / filename
+        visible_path = temp_dir / visible_filename
+        protocol_watch = self._install_fetch_xhr_protocol_watch(context)
+        original_project_url = self.config.project_url
+        result_base: dict[str, Any] = {
+            'ok': True,
+            'action': 'library_backend_protocol_reupload_diagnostic',
+            'status': 'diagnostic_completed',
+            'token': token,
+            'project_name': project_name,
+            'requested_filename': filename,
+            'discovery_library_filename': visible_filename,
+        }
+        try:
+            source_path.write_text(f'Promptbranch backend protocol diagnostic first payload\ntoken={token}\n', encoding='utf-8')
+            visible_path.write_text(f'Promptbranch disposable visible Library protocol file\ntoken={token}\n', encoding='utf-8')
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'project_create')
+            create_result = await self._create_project_operation(
+                context=context, page=page, name=project_name, icon=None, color=None,
+                memory_mode='project-only', keep_open=False,
+            )
+            project_url = str(create_result.get('project_url') or '') if isinstance(create_result, dict) else ''
+            result_base['project_create_result'] = create_result
+            result_base['project_url'] = project_url or None
+            if not project_url:
+                result_base.update({'conclusion': 'diagnostic_inconclusive', 'reason': 'project_create_failed'})
+                return result_base
+            self.config.project_url = project_url
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'project_source_upload')
+            first_result = await self._add_project_source_operation_legacy_10_75(
+                context=context, page=page, source_kind='file', value=None,
+                file_path=str(source_path), display_name=filename, keep_open=False,
+                overwrite_existing=False,
+            )
+            first_identity = self._browser_diagnostic_upload_identity(first_result, filename)
+            first_presence = await self._browser_poll_project_source_family_state(
+                page, project_url=project_url, requested_filename=filename, expect_present=True,
+            )
+            result_base['first_upload'] = first_identity
+            result_base['first_source_presence'] = first_presence
+            target_processed_id = str(first_identity.get('processed_file_id') or '')
+            target_libfile_id = str(first_identity.get('library_metadata_object_id') or '')
+            if not first_presence.get('ok') or not target_processed_id or not target_libfile_id:
+                result_base.update({'conclusion': 'diagnostic_inconclusive', 'reason': 'first_upload_identity_or_presence_not_authoritative'})
+                return result_base
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'project_source_remove')
+            remove_result = await self._remove_project_source_operation(
+                context=context, page=page,
+                source_name=str(first_presence.get('exact_source_name') or filename),
+                exact=True, keep_open=False,
+            )
+            absence = await self._browser_poll_project_source_family_state(
+                page, project_url=project_url, requested_filename=filename, expect_present=False,
+            )
+            result_base['remove_response'] = remove_result
+            result_base['source_absence_after_remove'] = absence
+            if not remove_result.get('ok') or not absence.get('ok'):
+                result_base.update({'conclusion': 'diagnostic_inconclusive', 'reason': 'project_source_remove_not_authoritative'})
+                return result_base
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'library_navigation_active')
+            await self._goto(page, self._library_url(), label='library-backend-protocol-active')
+            await page.wait_for_timeout(1_000)
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_file_upload')
+            visible_upload = await self._upload_disposable_library_file_via_ui(
+                page, file_path=str(visible_path), filename=visible_filename,
+            )
+            result_base['visible_library_file_upload'] = visible_upload
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            visible_records: list[dict[str, Any]] = []
+            for event in protocol_watch.get('events') or []:
+                if not isinstance(event, dict) or event.get('kind') != 'response':
+                    continue
+                for record in event.get('extracted_records') or []:
+                    if isinstance(record, dict) and self._file_source_family_member(record.get('filename'), visible_filename):
+                        visible_records.append(record)
+            visible_libfile_id = next((str(item.get('file_id')) for item in visible_records if str(item.get('file_id') or '').startswith('libfile_')), '')
+            visible_processed_id = next((str(item.get('file_id')) for item in visible_records if str(item.get('file_id') or '').startswith('file_')), '')
+            if not visible_processed_id:
+                for event in protocol_watch.get('events') or []:
+                    if not isinstance(event, dict) or event.get('kind') != 'response':
+                        continue
+                    if self._protocol_event_contains_any(event, [visible_filename]):
+                        match = re.search(r'file_[0-9a-fA-F]{32}', str(event.get('_raw_body') or ''))
+                        if match:
+                            visible_processed_id = match.group(0)
+                            break
+            result_base['visible_library_identity'] = {
+                'filename': visible_filename,
+                'processed_file_id': visible_processed_id or None,
+                'library_metadata_object_id': visible_libfile_id or None,
+                'records': visible_records,
+            }
+            if not visible_upload.get('ok') or not visible_libfile_id:
+                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'disposable_visible_library_file_identity_not_captured'})
+                return result_base
+            visible_ids = self._library_exact_id_candidates(
+                processed_file_id=visible_processed_id,
+                library_metadata_object_id=visible_libfile_id,
+            )
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_active_inventory')
+            await self._goto(page, self._library_url(), label='library-backend-protocol-visible-active')
+            await page.wait_for_timeout(900)
+            await self._library_search_exact_family(page, visible_filename)
+            await self._wait_for_authoritative_library_family_surface(
+                page, canonical_name=visible_filename, label='library-backend-protocol-visible-active-ready', timeout_ms=12_000,
+            )
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            active_inventory_protocol = self._discover_backend_inventory_protocol(
+                protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+                phases={'visible_library_file_upload', 'visible_library_active_inventory', 'library_navigation_active'},
+            )
+            result_base['active_inventory_protocol'] = self._public_backend_protocol(active_inventory_protocol)
+            if active_inventory_protocol is None:
+                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'active_inventory_endpoint_not_discovered'})
+                return result_base
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_soft_delete')
+            visible_soft_delete = await self._delete_disposable_library_file_via_ui(
+                page, filename=visible_filename, delete_forever=False,
+            )
+            result_base['visible_library_soft_delete'] = visible_soft_delete
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            soft_delete_protocol = self._discover_backend_delete_protocol(
+                protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+                phase='visible_library_soft_delete',
+            )
+            result_base['soft_delete_protocol'] = self._public_backend_protocol(soft_delete_protocol)
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_recently_deleted_inventory')
+            await self._goto(page, self._library_url(), label='library-backend-protocol-visible-deleted')
+            await page.wait_for_timeout(800)
+            opened_deleted = await self._open_library_recently_deleted(page)
+            result_base['recently_deleted_opened_for_discovery'] = opened_deleted
+            if opened_deleted:
+                await self._library_search_exact_family(page, visible_filename)
+                await self._wait_for_authoritative_library_family_surface(
+                    page, canonical_name=visible_filename, label='library-backend-protocol-visible-deleted-ready',
+                    timeout_ms=12_000, surface_kind='recently_deleted',
+                )
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            deleted_inventory_protocol = self._discover_backend_inventory_protocol(
+                protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+                phases={'visible_library_recently_deleted_inventory'},
+            )
+            result_base['deleted_inventory_protocol'] = self._public_backend_protocol(deleted_inventory_protocol)
+            if deleted_inventory_protocol is None:
+                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'recently_deleted_inventory_endpoint_not_discovered'})
+                return result_base
+
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_hard_delete')
+            visible_hard_delete = await self._delete_disposable_library_file_via_ui(
+                page, filename=visible_filename, delete_forever=True,
+            )
+            result_base['visible_library_hard_delete'] = visible_hard_delete
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            hard_delete_protocol = self._discover_backend_delete_protocol(
+                protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+                phase='visible_library_hard_delete',
+            )
+            result_base['hard_delete_protocol'] = self._public_backend_protocol(hard_delete_protocol)
+            if soft_delete_protocol is None or hard_delete_protocol is None:
+                result_base.update({'conclusion': 'backend_delete_protocol_not_discovered', 'reason': 'exact_id_delete_mutation_not_discovered'})
+                return result_base
+
+            target_ids = self._library_exact_id_candidates(
+                processed_file_id=target_processed_id,
+                library_metadata_object_id=target_libfile_id,
+            )
+            mapping = self._protocol_replacement_mapping(
+                source_processed_file_id=visible_processed_id,
+                source_library_metadata_object_id=visible_libfile_id,
+                source_filename=visible_filename,
+                target_processed_file_id=target_processed_id,
+                target_library_metadata_object_id=target_libfile_id,
+                target_filename=filename,
+            )
+            inventory_before = await self._verify_exact_backend_inventory_state(
+                page,
+                active_protocol=active_inventory_protocol,
+                deleted_protocol=deleted_inventory_protocol,
+                mapping=mapping,
+                target_id_candidates=target_ids,
+                expect_active_present=True,
+                expect_deleted_present=False,
+            )
+            result_base['target_inventory_before_delete'] = inventory_before
+            if not inventory_before.get('ok'):
+                result_base.update({'conclusion': 'backend_inventory_not_discovered', 'reason': 'target_exact_id_not_present_in_discovered_inventory'})
+                return result_base
+
+            target_soft_delete = await self._replay_backend_protocol(
+                page, protocol=soft_delete_protocol, mapping=mapping, phase='target_backend_soft_delete'
+            )
+            result_base['target_backend_soft_delete'] = target_soft_delete
+            if not target_soft_delete.get('ok'):
+                result_base.update({'conclusion': 'exact_backend_delete_failed', 'reason': 'target_soft_delete_failed'})
+                return result_base
+            inventory_soft_deleted = await self._verify_exact_backend_inventory_state(
+                page,
+                active_protocol=active_inventory_protocol,
+                deleted_protocol=deleted_inventory_protocol,
+                mapping=mapping,
+                target_id_candidates=target_ids,
+                expect_active_present=False,
+                expect_deleted_present=True,
+            )
+            result_base['target_inventory_after_soft_delete'] = inventory_soft_deleted
+            if not inventory_soft_deleted.get('ok'):
+                result_base.update({'conclusion': 'exact_backend_delete_failed', 'reason': 'target_soft_delete_not_verified'})
+                return result_base
+
+            target_hard_delete = await self._replay_backend_protocol(
+                page, protocol=hard_delete_protocol, mapping=mapping, phase='target_backend_hard_delete'
+            )
+            result_base['target_backend_hard_delete'] = target_hard_delete
+            if not target_hard_delete.get('ok'):
+                result_base.update({'conclusion': 'exact_backend_delete_failed', 'reason': 'target_hard_delete_failed'})
+                return result_base
+            inventory_absence = await self._verify_exact_backend_inventory_state(
+                page,
+                active_protocol=active_inventory_protocol,
+                deleted_protocol=deleted_inventory_protocol,
+                mapping=mapping,
+                target_id_candidates=target_ids,
+                expect_active_present=False,
+                expect_deleted_present=False,
+            )
+            result_base['target_inventory_after_hard_delete'] = inventory_absence
+            if not inventory_absence.get('ok'):
+                result_base.update({'conclusion': 'exact_backend_delete_failed', 'reason': 'target_hard_delete_absence_not_verified'})
+                return result_base
+
+            source_path.write_text(f'Promptbranch backend protocol diagnostic second payload\ntoken={token}\n', encoding='utf-8')
+            self._set_fetch_xhr_protocol_phase(protocol_watch, 'project_source_canonical_reupload')
+            second_result = await self._add_project_source_operation_legacy_10_75(
+                context=context, page=page, source_kind='file', value=None,
+                file_path=str(source_path), display_name=filename, keep_open=keep_open,
+                overwrite_existing=False,
+            )
+            second_identity = self._browser_diagnostic_upload_identity(second_result, filename)
+            final_presence = await self._browser_poll_project_source_family_state(
+                page, project_url=project_url, requested_filename=filename, expect_present=True,
+            )
+            result_base['second_upload'] = second_identity
+            result_base['final_source_presence'] = final_presence
+            summary = second_result.get('save_request_summary') if isinstance(second_result, dict) and isinstance(second_result.get('save_request_summary'), dict) else {}
+            committed = bool(summary.get('saw_commit') and second_identity.get('processed_file_id') and second_identity.get('library_metadata_object_id'))
+            assigned = Path(str(second_identity.get('library_assigned_filename') or '')).name
+            if committed and assigned == filename and final_presence.get('ok'):
+                conclusion = 'canonical_reupload_after_backend_delete'
+            elif committed and self._file_source_family_member(assigned, filename) and assigned != filename:
+                conclusion = 'backend_suffix_after_verified_backend_delete'
+            else:
+                conclusion = 'diagnostic_inconclusive'
+            result_base['conclusion'] = conclusion
+            return result_base
+        except Exception as exc:
+            result_base.update({
+                'conclusion': 'diagnostic_inconclusive',
+                'error': str(exc),
+                'error_type': type(exc).__name__,
+            })
+            return result_base
+        finally:
+            self.config.project_url = original_project_url
+            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            self._dispose_fetch_xhr_protocol_watch(context, protocol_watch)
+            result_base['fetch_xhr_trace'] = self._public_fetch_xhr_protocol_trace(protocol_watch)
+            source_path.unlink(missing_ok=True)
+            visible_path.unlink(missing_ok=True)
+            try:
+                temp_dir.rmdir()
+            except Exception:
+                pass
 
     async def _delete_library_backing_object_diagnostic_operation(
         self,

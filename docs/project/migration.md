@@ -1033,3 +1033,8 @@ No command migration is required. `./scripts/pb-project-source-ab-diagnostic.sh`
 ## v0.1.103.10.89 migration note
 
 No normal `pbsa` or release command migration is required. The exact backing-object diagnostic is invoked with `./install.sh <version> <zip> --diagnostic-library-backing-reupload` or, after installation, `./scripts/pb-library-backing-reupload-diagnostic.sh`. Its result classification is limited to `canonical_reupload_after_backing_delete`, `backing_library_delete_not_supported`, `backing_library_delete_failed`, `backend_suffix_after_verified_backing_delete`, or `diagnostic_inconclusive`.
+
+
+## v0.1.103.10.90 migration note
+
+Canonical artifact: `chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip`. No CLI migration is required and `pbsa <file>` remains `promptbranch src add <file>`. The new diagnostic-only install mode is `--diagnostic-library-backend-protocol-reupload`. It installs the candidate without commit, Project Source release upload, tests, or adoption, then runs a new disposable project/file transaction. The existing `(1)` evidence project and source are not touched.

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.102
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.100.3 — ZIP hygiene repair for packaged debug artifacts
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-active candidate version: v0.1.103.10.89
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip
-next normal slice: v0.1.103.10.89 — delete the exact backing Library object before canonical reupload
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+active candidate version: v0.1.103.10.90
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip
+next normal slice: v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -769,3 +769,8 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 | v0.1.103.10.86 | repair | Diagnostic-only legacy 10.75 vs current Project Source A/B | candidate | focused tests; live A/B not run here | DOD-258 in progress | pending |
 
 | v0.1.103.10.87 | repair | Diagnostic runner standard bearer-token resolution | candidate | external-CWD protected-endpoint subprocess regression | DOD-259 in progress | pending |
+
+
+## v0.1.103.10.90 diagnostic candidate
+
+`chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip` is diagnostic-only. It may create one disposable project, one disposable Project Source backing object, and one disposable visible Library file. It must not upload the release artifact, adopt a candidate, touch the earlier `(1)` evidence project/source, or use filename-only deletion.

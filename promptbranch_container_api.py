@@ -207,6 +207,13 @@ class ProjectSourceABDiagnosticRequest(BaseModel):
     profile_lock_wait_seconds: Optional[float] = None
 
 
+class LibraryBackendProtocolReuploadDiagnosticRequest(BaseModel):
+    project_name_prefix: str = "itest-pb-library-backend"
+    keep_open: bool = False
+    allow_project_source_mutation: bool = False
+    profile_lock_wait_seconds: Optional[float] = None
+
+
 class LibraryBackingReuploadDiagnosticRequest(BaseModel):
     project_name_prefix: str = "itest-pb-library-backing"
     keep_open: bool = False
@@ -1487,6 +1494,45 @@ async def remove_project(payload: ProjectRemoveRequest) -> dict:
     )
 
 
+
+
+@protected.post("/diagnostics/library-backend-protocol-reupload", dependencies=[Depends(require_service_token)])
+async def library_backend_protocol_reupload_diagnostic(payload: LibraryBackendProtocolReuploadDiagnosticRequest) -> dict:
+    preflight = await _require_project_source_mutation_preflight(
+        None, allow_project_source_mutation=payload.allow_project_source_mutation
+    )
+    try:
+        result = await _service_for(None).run_library_backend_protocol_reupload_diagnostic(
+            project_name_prefix=payload.project_name_prefix,
+            keep_open=payload.keep_open,
+            profile_lock_wait_seconds=payload.profile_lock_wait_seconds,
+        )
+    except Exception as exc:  # pragma: no cover - exercised by live runs
+        _raise_http_error(exc)
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "action": "library_backend_protocol_reupload_diagnostic",
+            "status": "diagnostic_completed",
+            "conclusion": "diagnostic_inconclusive",
+            "error": "browser diagnostic returned a non-object result",
+        }
+    result.setdefault("ok", True)
+    result.setdefault("action", "library_backend_protocol_reupload_diagnostic")
+    result.setdefault("status", "diagnostic_completed")
+    result["project_source_mutation_gate"] = "docker_browser_parity_preflight_passed" if preflight else None
+    result["auth_readiness_preflight"] = preflight.get("auth_readiness") if isinstance(preflight, dict) else None
+    result["docker_browser_runtime"] = preflight.get("runtime") if isinstance(preflight, dict) else None
+    result.setdefault("safety", {
+        "diagnostic_only": True,
+        "release_artifact_uploaded": False,
+        "adoption_attempted": False,
+        "existing_suffix_evidence_project_touched": False,
+        "existing_suffix_evidence_source_touched": False,
+        "project_cleanup": "not_attempted_project_delete_safety_freeze",
+        "disposable_project_retained": True,
+    })
+    return result
 
 
 @protected.post("/diagnostics/library-backing-reupload", dependencies=[Depends(require_service_token)])

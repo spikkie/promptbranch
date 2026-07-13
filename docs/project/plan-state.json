@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.102.zip",
   "accepted_current_version": "v0.1.102",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
-  "active_candidate_version": "v0.1.103.10.89",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
+  "active_candidate_version": "v0.1.103.10.90",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.89 — delete the exact backing Library object before canonical reupload",
+  "active_slice": "v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -137,6 +137,13 @@
       "slice": "v0.1.103.10.89 — delete the exact backing Library object before canonical reupload",
       "status": "candidate",
       "version": "v0.1.103.10.89"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
+      "created_at": "2026-07-13T15:30:00Z",
+      "slice": "v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol",
+      "status": "candidate",
+      "version": "v0.1.103.10.90"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -144,9 +151,9 @@
   "last_completed_repair": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
   "last_completed_repair_version": "v0.1.103.10.71",
   "last_updated": "2026-07-13",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
-  "next_normal_slice": "v0.1.103.10.89 — delete the exact backing Library object before canonical reupload",
-  "next_normal_version": "v0.1.103.10.89",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
+  "next_normal_slice": "v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol",
+  "next_normal_version": "v0.1.103.10.90",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -467,13 +474,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
       "release_mode": "repair",
-      "scope": "Diagnostic-only: explicitly remove the authoritative canonical source with the 10.75 exact remove operation, verify stable absence, reupload changed bytes through the unchanged 10.75 fresh-upload implementation, and require new file/libfile identities plus a committed upload before classification.",
-      "slice": "v0.1.103.10.89 — delete the exact backing Library object before canonical reupload",
+      "scope": "Diagnostic-only: capture all redacted fetch/XHR traffic across Project Source upload/removal and Library operations, discover exact libfile inventory plus soft/hard delete mutations from a disposable visible Library file, replay those contracts only against the captured disposable Project Source backing identity, verify exact-ID absence through backend inventory, then attempt canonical reupload.",
+      "slice": "v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
-      "version": "v0.1.103.10.89"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
+      "version": "v0.1.103.10.90"
     },
     {
       "release_mode": "normal",
@@ -517,5 +524,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.89"
+  "updated_for": "v0.1.103.10.90"
 }

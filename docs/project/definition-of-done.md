@@ -681,3 +681,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Release |
 |---|---|---|---|---|
 | DOD-260 | Exact backing Library object is deleted and proven absent before canonical reupload | in_progress | Captured `file_...` and `libfile_...` identities, exact-ID-only active/Recently deleted removal, two stable authoritative absence observations, distinct replacement identities, canonical backend filename classification, and live diagnostic JSON | v0.1.103.10.89 |
+
+
+## v0.1.103.10.90
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-261 | Exact backing-file backend inventory and deletion protocol discovery | in_progress | Full redacted fetch/XHR phase trace, disposable visible Library-file inventory and soft/hard-delete capture, exact-ID protocol replay, backend inventory presence/absence verification, canonical reupload classification, history-request shielding, and live diagnostic JSON | v0.1.103.10.90 |

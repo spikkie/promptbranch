@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity
+v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol
 
 ## Recent repair context
 
@@ -37,3 +37,8 @@ Active diagnostic repair: compare the legacy 10.75 and current Project Source tr
 ## v0.1.103.10.89
 
 Diagnostic-only repair: delete the exact captured backing Library object after verified Project Source removal, prove exact-ID absence from active Library and Recently deleted, then attempt unchanged 10.75 canonical reupload. The prior `(1)` Project Source remains untouched; no release artifact upload, adoption, production Project Source, or `platform-gitops` artifact is involved.
+
+
+## v0.1.103.10.90
+
+Diagnostic-only repair: capture the complete redacted fetch/XHR contract for a disposable Project Source and a separately uploaded disposable Library file; discover the exact backend inventory, soft-delete, and permanent-delete operations; bind replay strictly to captured `libfile_...` / `file_...` identities; verify exact absence through the same backend inventory; only then attempt unchanged canonical reupload. Existing `(1)` evidence remains untouched.
