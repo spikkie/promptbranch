@@ -127,3 +127,8 @@ Accepts a backend-assigned numeric-suffix Project Source filename only when it i
 ### v0.1.103.10.107 repair-only exact assigned-name verification
 
 Uses one escaped canonical/indexed filename-family matcher across preflight and verification. The pre-upload family snapshot records the highest existing numeric suffix as evidence only; a normal add uploads exactly once, accepts the processing-stream `assigned_filename`, verifies that exact assigned Project Source card immediately, and never enters canonical-name persistence retries after assigned identity is known. Malformed assigned names and duplicate exact assigned cards remain fail closed.
+
+
+### v0.1.103.10.108 repair-only singleton Project Source family replacement
+
+Upload and verify the new assigned Project Source first, remove all older exact family members, and return success only when the authoritative final surface contains exactly one family member.

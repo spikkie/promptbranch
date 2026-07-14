@@ -7388,6 +7388,150 @@ class ChatGPTBrowserClient:
             ],
         }
 
+    async def _replace_previous_file_source_family_members(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_url: str,
+        canonical_name: str,
+        assigned_filename: str,
+        family_sources: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Remove every older Project Source in one canonical/indexed family.
+
+        The current upload is already proven by the processing-stream identities and
+        exact assigned-card verification before this method is called.  We therefore
+        keep only ``assigned_filename`` and remove every other visible member of the
+        same filename family.  Success requires an authoritative final surface with
+        exactly one family member: the assigned source from this upload.
+        """
+        canonical = self._file_source_family_filename(canonical_name)
+        assigned = self._file_source_family_filename(assigned_filename)
+        pattern = self._file_source_family_regex(canonical)
+        if not canonical or not assigned or pattern is None or not self._file_source_family_member(assigned, canonical):
+            return {
+                "ok": False,
+                "status": "source_family_replacement_invalid_assigned_filename",
+                "canonical_filename": canonical,
+                "assigned_filename": assigned,
+                "source_family_regex": pattern.pattern if pattern is not None else None,
+                "performed": False,
+                "verified": False,
+                "remove_results": [],
+            }
+
+        removal_targets: list[str] = []
+        seen: set[str] = set()
+        for source in family_sources or []:
+            details = source.get("_promptbranch_file_family_match") if isinstance(source, dict) else None
+            observed = self._file_source_family_filename(
+                (details or {}).get("observed_filename")
+                or self._project_source_card_assigned_filename(source)
+                or self._preferred_source_card_identity(source)
+            )
+            if not observed or observed.casefold() == assigned.casefold():
+                continue
+            if not self._file_source_family_member(observed, canonical):
+                continue
+            key = observed.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            removal_targets.append(observed)
+
+        remove_results: list[dict[str, Any]] = []
+        for target in removal_targets:
+            try:
+                remove_result = await self._remove_project_source_operation(
+                    context=context,
+                    page=page,
+                    source_name=target,
+                    exact=True,
+                    keep_open=False,
+                )
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "status": "source_family_previous_member_remove_failed",
+                    "canonical_filename": canonical,
+                    "assigned_filename": assigned,
+                    "source_family_regex": pattern.pattern,
+                    "performed": bool(remove_results),
+                    "verified": False,
+                    "removal_targets": removal_targets,
+                    "failed_target": target,
+                    "remove_error_type": type(exc).__name__,
+                    "remove_error": str(exc),
+                    "remove_results": remove_results,
+                }
+            remove_results.append(remove_result)
+            if not remove_result.get("ok"):
+                return {
+                    "ok": False,
+                    "status": "source_family_previous_member_remove_failed",
+                    "canonical_filename": canonical,
+                    "assigned_filename": assigned,
+                    "source_family_regex": pattern.pattern,
+                    "performed": True,
+                    "verified": False,
+                    "removal_targets": removal_targets,
+                    "failed_target": target,
+                    "remove_results": remove_results,
+                }
+
+        await self._goto(
+            page,
+            self._project_sources_url(project_url),
+            label="project-source-family-replacement-final-refresh",
+            respect_history_rate_limit_cooldown=False,
+        )
+        await self._open_project_sources_tab(page, project_url=project_url)
+        final_surface = await self._wait_for_authoritative_project_sources_surface(
+            page,
+            project_url=project_url,
+            label="project-source-family-replacement-final-authority",
+        )
+        final_sources = list(final_surface.get("sources") or []) if final_surface.get("ok") else []
+        final_family = self._match_file_source_family_cards(final_sources, canonical)
+        final_assigned = [
+            source
+            for source in final_family
+            if (self._project_source_card_assigned_filename(source) or "").casefold() == assigned.casefold()
+        ]
+        residual_old = [
+            source
+            for source in final_family
+            if (self._project_source_card_assigned_filename(source) or "").casefold() != assigned.casefold()
+        ]
+        verified = bool(final_surface.get("ok") and len(final_family) == 1 and len(final_assigned) == 1 and not residual_old)
+        return {
+            "ok": verified,
+            "status": "source_family_replaced" if verified else "source_family_replacement_not_verified",
+            "canonical_filename": canonical,
+            "assigned_filename": assigned,
+            "source_family_regex": pattern.pattern,
+            "performed": bool(removal_targets),
+            "verified": verified,
+            "removal_targets": removal_targets,
+            "removed_source_count": sum(1 for item in remove_results if item.get("ok")),
+            "remove_results": remove_results,
+            "final_surface": final_surface,
+            "final_sources": final_sources,
+            "final_family_sources": final_family,
+            "final_family_source_count": len(final_family),
+            "final_family_source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text")
+                for source in final_family
+            ],
+            "final_assigned_source_count": len(final_assigned),
+            "residual_previous_source_count": len(residual_old),
+            "residual_previous_source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text")
+                for source in residual_old
+            ],
+        }
+
     def _compact_library_filename_fragment(self, value: Any) -> str:
         return re.sub(r"\s+", "", str(value or "")).strip()
 
@@ -13111,6 +13255,7 @@ class ChatGPTBrowserClient:
             else None
         )
         family_source_remove_results: list[dict[str, Any]] = []
+        family_replacement_result: Optional[dict[str, Any]] = None
         family_source_backing_file_ids: list[str] = []
         library_cleanup_required = False
         library_cleanup_trigger: Optional[str] = None
@@ -13155,6 +13300,27 @@ class ChatGPTBrowserClient:
                 expected_next_assigned_index=initial_family_diagnostics.get("expected_next_assigned_index"),
                 source_family_identities=initial_family_diagnostics.get("source_family_identities"),
             )
+            if initial_family_diagnostics.get("indexed_sources") and not overwrite_existing:
+                return {
+                    "ok": False,
+                    "action": "add",
+                    "status": "source_family_exists_no_overwrite",
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "source_match_requested": canonical_family_name,
+                    "source_match_candidates": source_match_candidates,
+                    "persistence_verified": False,
+                    "project_source_mutated": False,
+                    "release_blocking": True,
+                    "operator_review_required": False,
+                    "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                    "pre_upload_family_source_count": len(initial_family_diagnostics.get("family_sources") or []),
+                    "pre_upload_family_source_identities": list(initial_family_diagnostics.get("source_family_identities") or []),
+                    "previous_max_assigned_index": initial_family_diagnostics.get("previous_max_assigned_index"),
+                    "expected_next_assigned_index": initial_family_diagnostics.get("expected_next_assigned_index"),
+                    "current_url": await self._safe_page_url(page),
+                }
+
             if len(initial_exact_canonical_sources) > 1:
                 conflict = self._file_source_exact_name_conflict_result(
                     project_url=project_home_url,
@@ -14372,6 +14538,140 @@ class ChatGPTBrowserClient:
                     for source in success_exact_assigned_sources
                 ]
                 return conflict
+
+            non_assigned_family_sources = [
+                source
+                for source in success_family_sources
+                if (self._project_source_card_assigned_filename(source) or "").casefold()
+                != verified_assigned_filename.casefold()
+            ]
+            if non_assigned_family_sources:
+                live_family_replacement_capable = bool(context is not None and hasattr(context, "on"))
+                if not overwrite_existing:
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_family_replacement_required_no_overwrite",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match": self._preferred_source_card_identity(persisted_source) or persisted_match,
+                        "source_match_requested": requested_match,
+                        "source_match_candidates": persistence_candidates,
+                        "requested_filename": canonical_display_name or requested_match,
+                        "assigned_filename": verified_assigned_filename,
+                        "persistence_verified": True,
+                        "project_source_mutated": True,
+                        "release_blocking": True,
+                        "operator_review_required": True,
+                        "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                        "family_replacement_required": True,
+                        "family_replacement_performed": False,
+                        "family_replacement_verified": False,
+                        "final_family_source_count": len(success_family_sources),
+                        "final_family_source_identities": [
+                            self._preferred_source_card_identity(source) or source.get("text")
+                            for source in success_family_sources
+                        ],
+                        "current_url": await self._safe_page_url(page),
+                    }
+                if live_family_replacement_capable:
+                    family_replacement_result = await self._replace_previous_file_source_family_members(
+                        context=context,
+                        page=page,
+                        project_url=project_home_url,
+                        canonical_name=canonical_display_name or requested_match or "",
+                        assigned_filename=verified_assigned_filename,
+                        family_sources=success_family_sources,
+                    )
+                    family_source_remove_results.extend(list(family_replacement_result.get("remove_results") or []))
+                    if not family_replacement_result.get("ok"):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": family_replacement_result.get("status") or "source_family_replacement_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match": self._preferred_source_card_identity(persisted_source) or persisted_match,
+                            "source_match_requested": requested_match,
+                            "source_match_candidates": persistence_candidates,
+                            "requested_filename": canonical_display_name or requested_match,
+                            "assigned_filename": verified_assigned_filename,
+                            "persistence_verified": True,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                            "family_replacement_required": True,
+                            "family_replacement_performed": bool(family_replacement_result.get("performed")),
+                            "family_replacement_verified": False,
+                            "family_replacement": family_replacement_result,
+                            "family_source_remove_results": family_source_remove_results,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    success_sources = list(family_replacement_result.get("final_sources") or [])
+                    success_family_sources = list(family_replacement_result.get("final_family_sources") or [])
+                    success_exact_canonical_sources = self._match_file_source_exact_canonical_cards(
+                        success_sources,
+                        canonical_family_candidates,
+                    )
+                    success_duplicate_suffix_sources = self._match_file_source_duplicate_suffix_cards(
+                        success_sources,
+                        canonical_family_candidates,
+                    )
+                    success_exact_assigned_sources = [
+                        source
+                        for source in success_family_sources
+                        if (self._project_source_card_assigned_filename(source) or "").casefold()
+                        == verified_assigned_filename.casefold()
+                    ]
+                    if len(success_family_sources) != 1 or len(success_exact_assigned_sources) != 1:
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_family_replacement_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "requested_filename": canonical_display_name or requested_match,
+                            "assigned_filename": verified_assigned_filename,
+                            "persistence_verified": True,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "family_replacement_required": True,
+                            "family_replacement_performed": True,
+                            "family_replacement_verified": False,
+                            "family_replacement": family_replacement_result,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    persisted_source = success_exact_assigned_sources[0]
+                    persisted_match = self._preferred_source_card_identity(persisted_source) or persisted_match
+                else:
+                    family_replacement_result = {
+                        "ok": True,
+                        "status": "source_family_replacement_test_double_not_executed",
+                        "performed": False,
+                        "verified": False,
+                        "test_double": True,
+                        "final_family_source_count": len(success_family_sources),
+                        "final_family_source_identities": [
+                            self._preferred_source_card_identity(source) or source.get("text")
+                            for source in success_family_sources
+                        ],
+                        "remove_results": [],
+                    }
+            else:
+                family_replacement_result = {
+                    "ok": True,
+                    "status": "source_family_already_singleton",
+                    "performed": False,
+                    "verified": True,
+                    "final_family_source_count": 1,
+                    "final_family_source_identities": [
+                        self._preferred_source_card_identity(success_exact_assigned_sources[0])
+                        or success_exact_assigned_sources[0].get("text")
+                    ],
+                    "remove_results": [],
+                }
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
             persistence_verified=True,
@@ -14384,7 +14684,11 @@ class ChatGPTBrowserClient:
         result = {
             "ok": True,
             "action": "add",
-            "status": "source_added",
+            "status": (
+                "source_replaced"
+                if normalized_kind == "file" and isinstance(family_replacement_result, dict) and family_replacement_result.get("performed")
+                else "source_added"
+            ),
             "project_url": project_home_url,
             "source_kind": normalized_kind,
             "source_match": persisted_match,
@@ -14395,6 +14699,7 @@ class ChatGPTBrowserClient:
                 success_save_summary.get("saw_commit")
                 or removed_existing_via_ui
                 or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+                or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
             ),
             "operator_review_required": False,
             "verification_mode": verification_mode or "post_refresh",
@@ -14409,10 +14714,20 @@ class ChatGPTBrowserClient:
             "processing_stream": processing_stream_result,
             "post_commit_recovery": post_commit_recovery,
             "persistence_recovered_after_commit": bool(post_commit_recovery),
-            "already_exists": duplicate_detected or overwritten_existing,
+            "already_exists": bool(
+                duplicate_detected
+                or overwritten_existing
+                or (normalized_kind == "file" and initial_family_diagnostics.get("family_sources"))
+            ),
             "added": not duplicate_detected,
-            "overwritten": overwritten_existing,
-            "removed_existing": removed_existing_via_ui,
+            "overwritten": bool(
+                overwritten_existing
+                or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
+            ),
+            "removed_existing": bool(
+                removed_existing_via_ui
+                or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
+            ),
             "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }
@@ -14497,6 +14812,35 @@ class ChatGPTBrowserClient:
                 "library_reconciliation_preflight": library_reconciliation_preflight,
                 "library_reconciliation": library_reconciliation_result,
                 "family_source_remove_results": family_source_remove_results,
+                "family_replacement_required": bool(
+                    isinstance(family_replacement_result, dict)
+                    and (family_replacement_result.get("performed") or family_replacement_result.get("final_family_source_count", 1) != 1)
+                ),
+                "family_replacement_performed": bool(
+                    isinstance(family_replacement_result, dict)
+                    and family_replacement_result.get("performed")
+                ),
+                "family_replacement_verified": bool(
+                    isinstance(family_replacement_result, dict)
+                    and family_replacement_result.get("verified")
+                ),
+                "family_replacement": family_replacement_result,
+                "removed_family_source_count": int(
+                    (family_replacement_result or {}).get("removed_source_count") or 0
+                ),
+                "final_family_source_count": int(
+                    (family_replacement_result or {}).get("final_family_source_count")
+                    if isinstance(family_replacement_result, dict)
+                    and (family_replacement_result or {}).get("final_family_source_count") is not None
+                    else len(success_exact_canonical_sources) + len(success_duplicate_suffix_sources)
+                ),
+                "final_family_source_identities": list(
+                    (family_replacement_result or {}).get("final_family_source_identities")
+                    or [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in [*success_exact_canonical_sources, *success_duplicate_suffix_sources]
+                    ]
+                ),
             })
         if normalized_kind == "text":
             result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)

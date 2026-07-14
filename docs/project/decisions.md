@@ -891,3 +891,8 @@ A canonical local artifact such as `platform-gitops_v0.0.6.6.zip` remains the re
 ## v0.1.103.10.107: the stream-assigned filename becomes the verification target immediately
 
 A pre-existing indexed Project Source such as `(14)` is pre-upload family evidence, not a reuse target for a normal `pb src add`. Promptbranch uses one escaped canonical/indexed-family regex, records the highest existing suffix, uploads exactly once, and then treats the processing-stream `assigned_filename` such as `(15)` as the sole persistence-verification target. Once that assigned identity is known, canonical unsuffixed persistence retries are forbidden. An index increment of one is diagnostic evidence, not mutation authority; exact current-upload file/libfile identity and one unique exact assigned card remain authoritative.
+
+
+## v0.1.103.10.108: one canonical/indexed Project Source family has one visible member
+
+A successful file-source add is now a replacement transaction, not merely proof that the new assigned card exists. After the assigned source is proven, every other visible member of the same escaped filename family is removed by exact identity. Success requires an authoritative final surface with exactly one family member, the source assigned to the current upload.

@@ -1105,3 +1105,8 @@ No migration or rename is performed. Canonical local ZIP names remain canonical.
 ## Exact assigned Project Source verification note — v0.1.103.10.107
 
 No command or state migration is required. Existing indexed Project Sources remain valid family members. For a normal new `pb src add`, the highest existing suffix is diagnostic pre-upload evidence only; Promptbranch uploads once and verifies the exact filename assigned by the processing stream. It does not reuse the previous indexed source and does not wait for the canonical unsuffixed filename after an assigned name is known.
+
+
+## Singleton Project Source family note — v0.1.103.10.108
+
+No state migration is required. A future successful default `pb src add` removes older canonical/indexed Project Source siblings after the new assigned source is verified. `--no-overwrite` refuses an existing indexed family rather than creating another sibling.

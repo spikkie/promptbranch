@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip
-active candidate version: v0.1.103.10.107
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip
-next normal slice: v0.1.103.10.107 — verify exact assigned Project Source without canonical retries
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip
+active candidate version: v0.1.103.10.108
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip
+next normal slice: v0.1.103.10.108 — enforce one Project Source per canonical/indexed family
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip
-release status: v0.1.103.10.107 is an exact assigned-name fast-verification repair candidate; canonical release pbsa and adoption remain prohibited pending live validation
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip
+release status: v0.1.103.10.108 is a singleton Project Source family-replacement repair candidate; canonical release pbsa and adoption remain prohibited pending live validation
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Install v0.1.103.10.107. A future explicitly authorized single `pb src add` should treat the existing highest family index as pre-upload evidence, upload exactly once, verify the exact stream-assigned next source immediately, and skip canonical-name persistence retries. Do not run canonical release pbsa or adopt Promptbranch.
+Install v0.1.103.10.108. A future explicitly authorized single `pb src add` should upload and verify the exact stream-assigned source, remove every older source in the same canonical/indexed family, and return success only when one final family member remains. Do not run canonical release pbsa or adopt Promptbranch.
 ```
 
 Operator promotion command after candidate ZIP creation:
