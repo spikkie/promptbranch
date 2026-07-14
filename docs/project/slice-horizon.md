@@ -119,3 +119,6 @@ Recover the active Library UI exactly once after authoritative backend presence:
 
 Remove repo-local artifact-registry fallback and the legacy registry-import path. Require explicit repository identity, configured project membership, canonical repo-root agreement, and an existing valid project-scoped registry for artifact reads and mutations. Missing, invalid, unreadable, unresolved, or ambiguous state fails closed. This is a clean development-state break: no migration, reconciliation, filename-order inference, or automatic adoption is provided.
 
+### v0.1.103.10.106 repair-only correlation
+
+Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata. Canonical artifact identity and version remain unchanged; the numeric suffix is Project Source metadata only. No release pbsa, adoption, or unrelated Library cleanup is performed.

@@ -3431,7 +3431,7 @@ def _report_artifact_current_matches_candidate(
         consistency = entry.get("consistency") if isinstance(entry.get("consistency"), dict) else {}
         checks = {
             "state_artifact_ref_matches_candidate": Path(str(state.get("artifact_ref") or "")).name == expected_filename,
-            "state_source_ref_matches_candidate": Path(str(state.get("source_ref") or "")).name == expected_filename,
+            "state_source_ref_matches_candidate": _source_filename_match_details({"filename": Path(str(state.get("source_ref") or "")).name}, expected_filename).get("matched") is True,
             "state_artifact_version_matches_candidate": state.get("artifact_version") == version,
             "state_source_version_matches_candidate": state.get("source_version") == version,
             "registry_current_matches_candidate": Path(str(registry_current.get("filename") or "")).name == expected_filename and registry_current.get("version") == version,
@@ -9154,21 +9154,47 @@ def _source_stable_key(source: dict[str, Any]) -> str:
     return json.dumps(source, sort_keys=True, ensure_ascii=False)
 
 
-def _source_matches_filename(source: dict[str, Any], filename: str) -> bool:
-    target = str(filename or "").strip()
+def _source_filename_match_details(source: dict[str, Any], filename: str) -> dict[str, Any]:
+    target = Path(str(filename or "").strip()).name
     if not target:
-        return False
-    target_lower = target.lower()
+        return {"matched": False, "requested_filename": target, "assigned_filename": None, "match_kind": None}
+    suffix = Path(target).suffix
+    stem = target[:-len(suffix)] if suffix else target
+    exact_pattern = re.compile(rf"(?<![A-Za-z0-9_.-])({re.escape(target)})(?![A-Za-z0-9_.-])", re.IGNORECASE)
+    indexed_pattern = re.compile(
+        rf"(?<![A-Za-z0-9_.-])({re.escape(stem)}\(\d+\){re.escape(suffix)})(?![A-Za-z0-9_.-])",
+        re.IGNORECASE,
+    )
+    indexed_matches: list[str] = []
     for value in _source_identity_values(source):
-        value_lower = value.lower()
-        if value_lower == target_lower:
-            return True
-        # Source cards sometimes render a filename plus type/subtitle in one text
-        # blob. Allow substring matching for the exact filename, but not for an
-        # empty or generic token.
-        if target_lower in value_lower:
-            return True
-    return False
+        exact = exact_pattern.search(value)
+        if exact:
+            return {
+                "matched": True,
+                "requested_filename": target,
+                "assigned_filename": exact.group(1),
+                "match_kind": "exact_canonical",
+            }
+        indexed = indexed_pattern.search(value)
+        if indexed and indexed.group(1).casefold() not in {item.casefold() for item in indexed_matches}:
+            indexed_matches.append(indexed.group(1))
+    if len(indexed_matches) == 1:
+        return {
+            "matched": True,
+            "requested_filename": target,
+            "assigned_filename": indexed_matches[0],
+            "match_kind": "backend_assigned_indexed",
+        }
+    return {
+        "matched": False,
+        "requested_filename": target,
+        "assigned_filename": None,
+        "match_kind": "ambiguous_within_source" if len(indexed_matches) > 1 else None,
+    }
+
+
+def _source_matches_filename(source: dict[str, Any], filename: str) -> bool:
+    return bool(_source_filename_match_details(source, filename).get("matched"))
 
 
 
@@ -9808,9 +9834,23 @@ def _resolve_adopt_local_zip(artifact_name: str, *, local_path: str | None, regi
 
 def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     sources, payload = _project_source_list_payload(result)
-    matched = [item for item in sources if isinstance(item, dict) and _source_matches_filename(item, filename)]
+    matched: list[dict[str, Any]] = []
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        details = _source_filename_match_details(item, filename)
+        if not details.get("matched"):
+            continue
+        matched.append({
+            **item,
+            "requested_filename": details.get("requested_filename"),
+            "assigned_filename": details.get("assigned_filename"),
+            "filename_match_kind": details.get("match_kind"),
+        })
     payload["matching_expected_count"] = len(matched)
     payload["matching_expected"] = matched[:5]
+    payload["matching_assigned_filenames"] = [item.get("assigned_filename") for item in matched]
+    payload["matching_kinds"] = [item.get("filename_match_kind") for item in matched]
     return matched, payload
 
 
@@ -10060,7 +10100,7 @@ def _artifact_current_payload(
         state_source_version = str(state.get("source_version") or "")
         runtime_version = f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION)
         registry_matches_state = bool(registry_current) and registry_filename == state_artifact_ref and registry_version == state_artifact_version
-        state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and state_artifact_ref == state_source_ref and state_artifact_version == state_source_version
+        state_source_matches_artifact = bool(state_artifact_ref or state_source_ref) and _source_filename_match_details({"filename": state_source_ref}, state_artifact_ref).get("matched") is True and state_artifact_version == state_source_version
         code_matches_adopted_source = runtime_version == state_source_version
         code_version_relation = (
             "runtime_source_match"
@@ -15654,6 +15694,7 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
     if plan_only:
         return emit({**base_payload, "ok": True, "status": "planned", "operator_instruction": "Read-only release adopt plan. Green acceptance report and Project Source visibility are verified; no local artifact/source state was advanced."}, 0)
 
+    matched_source_ref = str((matched_source or {}).get("assigned_filename") or artifact_filename)
     artifact_path = Path(str(artifact_payload.get("path") or getattr(args, "artifact", "") or "")).expanduser().resolve()
     zip_check = artifact_payload.get("verification") if isinstance(artifact_payload.get("verification"), dict) else verify_zip_artifact(artifact_path)
     repo_id = infer_repo_id_from_artifact_filename(artifact_filename)
@@ -15668,7 +15709,7 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         size_bytes=int(artifact_payload.get("size_bytes") or zip_check.get("size_bytes") or artifact_path.stat().st_size),
         file_count=int(artifact_payload.get("entry_count") or zip_check.get("entry_count") or 0),
         created_at=utc_now(),
-        source_ref=artifact_filename,
+        source_ref=matched_source_ref,
         project_url=project_url,
     )
     artifact_record = registry.add(record)
@@ -15676,7 +15717,7 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         project_url=project_url,
         artifact_ref=artifact_filename,
         artifact_version=artifact_version,
-        source_ref=artifact_filename,
+        source_ref=matched_source_ref,
         source_version=artifact_version,
         repo_id=repo_id,
     )
@@ -20478,6 +20519,11 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
             }
             return emit(payload, 1)
 
+    matched_source_ref = (
+        str((matched_sources[0] if matched_sources else {}).get("assigned_filename") or filename)
+        if from_project_source
+        else filename
+    )
     local_zip = _resolve_adopt_local_zip(filename if not Path(requested).is_file() else requested, local_path=getattr(args, "local_path", None), registry=registry)
     if local_zip is None:
         attempted_local_path = getattr(args, "local_path", None)
@@ -20546,7 +20592,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         size_bytes=int(zip_check.get("size_bytes") or local_zip.stat().st_size),
         file_count=int(zip_check.get("entry_count") or 0),
         created_at=utc_now(),
-        source_ref=filename,
+        source_ref=matched_source_ref,
         project_url=project_url,
     )
     artifact_payload = registry.add(record)
@@ -20554,7 +20600,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         project_url=project_url,
         artifact_ref=filename,
         artifact_version=filename_version,
-        source_ref=filename,
+        source_ref=matched_source_ref,
         source_version=filename_version,
         repo_id=repo_id,
     )
@@ -20574,7 +20620,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "zip_version_matches_filename": normalized_zip_version == filename_version,
         "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == filename and str((after_registry.get("current") or {}).get("repo_id") or repo_id) == repo_id,
         "state_artifact_updated": _state_artifact_summary(after_state).get("artifact_ref") == filename and _state_artifact_summary(after_state).get("artifact_version") == filename_version,
-        "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == filename and _state_artifact_summary(after_state).get("source_version") == filename_version,
+        "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == matched_source_ref and _state_artifact_summary(after_state).get("source_version") == filename_version,
         "project_source_mutated": False,
     }
     ok = all(value for key, value in checks.items() if key not in {"project_source_mutated", "source_verified"})
@@ -20584,7 +20630,9 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "status": ("adopted_local" if local_only and ok else ("adopted" if ok else "adoption_verification_failed")),
         "artifact_ref": filename,
         "artifact_version": filename_version,
-        "source_ref": filename,
+        "source_ref": matched_source_ref,
+        "requested_source_ref": filename,
+        "assigned_source_ref": matched_source_ref,
         "source_version": filename_version,
         "source_verified": bool(from_project_source and len(matched_sources) == 1),
         "source_verification": source_verification,

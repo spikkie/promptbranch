@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
-active candidate version: v0.1.103.10.105
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
-next normal slice: v0.1.103.10.105 — fail-closed project registry clean break
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip
+active candidate version: v0.1.103.10.106
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip
+next normal slice: v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
-release status: v0.1.103.10.105 is a clean-break registry repair candidate; canonical Project Source upload and adoption remain prohibited pending validation
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip
+release status: v0.1.103.10.106 is an indexed Project Source correlation repair candidate; canonical release pbsa and adoption remain prohibited pending live validation
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Initialize a clean Promptbranch project dataset with `pb project join`, verify `pb artifact current --all --json` resolves the project registry from every member repository, and confirm `pb repo doctor --json` reports no legacy repo-local artifact registries. Do not import or reconcile old registries.
+Install v0.1.103.10.106 and run `pb src add` once for the existing canonical platform-gitops_v0.0.6.6.zip. It must correlate and reuse platform-gitops_v0.0.6.6(14).zip without creating (15), then return requested/assigned identities with persistence_verified=true. Do not run canonical release pbsa or adopt Promptbranch.
 ```
 
 Operator promotion command after candidate ZIP creation:

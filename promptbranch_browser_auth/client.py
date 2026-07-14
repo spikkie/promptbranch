@@ -6742,63 +6742,6 @@ class ChatGPTBrowserClient:
             "timeout_ms": timeout_ms,
         }
 
-    async def _rollback_backend_renamed_file_source(
-        self,
-        *,
-        context: Any,
-        page: Any,
-        project_url: str,
-        duplicate_suffix_sources: list[dict[str, str]],
-        before_sources: Optional[list[dict[str, str]]] = None,
-    ) -> dict[str, Any]:
-        before_identities = {
-            (self._preferred_source_card_identity(source) or source.get("text") or "").casefold()
-            for source in before_sources or []
-        }
-        new_suffix_sources = [
-            source for source in duplicate_suffix_sources
-            if (self._preferred_source_card_identity(source) or source.get("text") or "").casefold() not in before_identities
-        ]
-        if len(new_suffix_sources) != 1:
-            return {
-                "attempted": False,
-                "status": "not_unambiguous",
-                "candidate_count": len(new_suffix_sources),
-            }
-        source = new_suffix_sources[0]
-        source_name = (
-            self._normalize_source_match_text(source.get("title"))
-            or self._preferred_source_card_identity(source)
-            or self._normalize_source_match_text(source.get("text"))
-        )
-        if not source_name:
-            return {"attempted": False, "status": "missing_source_identity", "candidate_count": 1}
-        try:
-            remove_result = await self._remove_project_source_operation(
-                context=context,
-                page=page,
-                source_name=source_name,
-                exact=True,
-                keep_open=False,
-            )
-            removed = bool(isinstance(remove_result, dict) and (remove_result.get("removed_via_ui") or remove_result.get("already_absent") or remove_result.get("ok")))
-            return {
-                "attempted": True,
-                "status": "removed" if removed else "remove_not_verified",
-                "source_name": source_name,
-                "removed": removed,
-                "remove_result": remove_result,
-                "project_url": project_url,
-            }
-        except Exception as exc:
-            return {
-                "attempted": True,
-                "status": "remove_failed",
-                "source_name": source_name,
-                "error": repr(exc),
-                "project_url": project_url,
-            }
-
     async def _find_existing_file_source_for_overwrite(
         self,
         page: Any,
@@ -6917,6 +6860,10 @@ class ChatGPTBrowserClient:
         canonical_name: str,
         file_ids: list[str],
         assigned_names: list[str],
+        processed_file_id: Optional[str] = None,
+        library_metadata_object_id: Optional[str] = None,
+        local_sha256: Optional[str] = None,
+        local_size_bytes: Optional[int] = None,
     ) -> None:
         normalized_ids = [item for item in file_ids if self._library_file_record_id(item)]
         if not normalized_ids:
@@ -6931,6 +6878,10 @@ class ChatGPTBrowserClient:
                 "canonical_name": self._file_source_family_filename(canonical_name),
                 "assigned_name": assigned_name,
                 "project_id": project_id,
+                "processed_file_id": self._library_file_record_id(processed_file_id),
+                "library_metadata_object_id": self._library_file_record_id(library_metadata_object_id),
+                "local_sha256": str(local_sha256 or '').strip().lower() or None,
+                "local_size_bytes": int(local_size_bytes) if local_size_bytes is not None else None,
                 "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             }
             records = [item for item in records if str(item.get("file_id")) != file_id]
@@ -6956,6 +6907,221 @@ class ChatGPTBrowserClient:
             if any(self._file_source_family_member(name, canonical_name) for name in names):
                 result.add(file_id)
         return result
+
+    def _local_file_artifact_identity(self, file_path: Optional[str]) -> dict[str, Any]:
+        path = Path(str(file_path or ''))
+        if not file_path or not path.is_file():
+            return {'ok': False, 'sha256': None, 'size_bytes': None}
+        digest = hashlib.sha256()
+        with path.open('rb') as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                digest.update(chunk)
+        return {
+            'ok': True,
+            'sha256': digest.hexdigest(),
+            'size_bytes': path.stat().st_size,
+        }
+
+    def _project_source_card_assigned_filename(self, card: Optional[dict[str, Any]]) -> Optional[str]:
+        if not isinstance(card, dict):
+            return None
+        for value in (card.get('title'), card.get('identity'), card.get('text')):
+            normalized = self._file_source_family_filename(value)
+            if normalized:
+                return normalized
+        return None
+
+    async def _inspect_active_library_family_for_source_correlation(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_url: str,
+        canonical_name: str,
+    ) -> dict[str, Any]:
+        watch = self._install_library_response_watch(context)
+        active_surface: dict[str, Any] = {}
+        try:
+            await self._goto(page, self._library_url(), label='project-source-existing-indexed-library-inspect')
+            await page.wait_for_timeout(500)
+            await self._library_search_exact_family(page, canonical_name)
+            active_surface = await self._wait_for_authoritative_library_family_surface(
+                page,
+                canonical_name=canonical_name,
+                label='project-source-existing-indexed-library-authority',
+                surface_kind='active',
+            )
+            await self._settle_library_response_watch(watch)
+            if not active_surface.get('ok'):
+                return {
+                    'ok': False,
+                    'status': 'indexed_source_library_surface_not_authoritative',
+                    'active_surface': active_surface,
+                    'records': [],
+                }
+            records = self._merge_library_file_records(
+                [dict(item) for item in active_surface.get('records') or [] if isinstance(item, dict)],
+                [dict(item) for item in watch.get('records') or [] if isinstance(item, dict)],
+                canonical_name=canonical_name,
+            )
+            return {
+                'ok': True,
+                'status': 'indexed_source_library_family_inspected',
+                'active_surface': active_surface,
+                'records': [item for item in records if not item.get('deleted')],
+                'request_count': len(watch.get('requests') or []),
+            }
+        finally:
+            await self._settle_library_response_watch(watch)
+            self._dispose_library_response_watch(context, watch)
+            try:
+                await self._goto(page, self._project_sources_url(project_url), label='project-source-existing-indexed-return')
+                await self._open_project_sources_tab(page, project_url=project_url)
+            except Exception as exc:
+                self._log('project-source-add', 'failed to return after indexed-source Library inspection', error=repr(exc))
+
+    async def _correlate_existing_indexed_project_source(
+        self,
+        *,
+        context: Any,
+        page: Any,
+        project_url: str,
+        canonical_name: str,
+        file_path: Optional[str],
+        suffix_sources: list[dict[str, Any]],
+        exact_canonical_sources: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if exact_canonical_sources or len(suffix_sources) != 1:
+            return {
+                'ok': False,
+                'status': 'indexed_source_correlation_ambiguous',
+                'exact_canonical_count': len(exact_canonical_sources),
+                'indexed_source_count': len(suffix_sources),
+            }
+        assigned_filename = self._project_source_card_assigned_filename(suffix_sources[0])
+        if not assigned_filename or not self._file_source_family_member(assigned_filename, canonical_name):
+            return {'ok': False, 'status': 'indexed_source_assigned_filename_invalid'}
+        local_identity = self._local_file_artifact_identity(file_path)
+        if not local_identity.get('ok'):
+            return {'ok': False, 'status': 'indexed_source_local_artifact_unavailable'}
+        inspection = await self._inspect_active_library_family_for_source_correlation(
+            context=context,
+            page=page,
+            project_url=project_url,
+            canonical_name=canonical_name,
+        )
+        if not inspection.get('ok'):
+            return {**inspection, 'assigned_filename': assigned_filename, 'local_identity': local_identity}
+        matches = [
+            item for item in inspection.get('records') or []
+            if self._file_source_family_filename(item.get('filename')).casefold() == assigned_filename.casefold()
+        ]
+        size_matches = [
+            item for item in matches
+            if item.get('file_size_bytes') is None
+            or int(item.get('file_size_bytes')) == int(local_identity.get('size_bytes'))
+        ]
+        if len(matches) != 1 or len(size_matches) != 1:
+            return {
+                'ok': False,
+                'status': 'indexed_source_correlation_ambiguous',
+                'assigned_filename': assigned_filename,
+                'matching_library_record_count': len(matches),
+                'size_matching_library_record_count': len(size_matches),
+                'local_identity': local_identity,
+                'library_inspection': inspection,
+            }
+        record = size_matches[0]
+        processed_file_id = self._library_file_record_id(record.get('processed_file_id'))
+        library_metadata_object_id = self._library_file_record_id(record.get('library_metadata_object_id'))
+        file_id = self._library_file_record_id(record.get('file_id'))
+        if not processed_file_id and file_id and file_id.startswith('file_'):
+            processed_file_id = file_id
+        if not library_metadata_object_id and file_id and file_id.startswith('libfile_'):
+            library_metadata_object_id = file_id
+        if not processed_file_id or not library_metadata_object_id:
+            return {
+                'ok': False,
+                'status': 'indexed_source_backend_identity_incomplete',
+                'assigned_filename': assigned_filename,
+                'record': record,
+                'local_identity': local_identity,
+            }
+        self._record_library_upload_transactions(
+            project_url=project_url,
+            canonical_name=canonical_name,
+            file_ids=[processed_file_id],
+            assigned_names=[assigned_filename],
+            processed_file_id=processed_file_id,
+            library_metadata_object_id=library_metadata_object_id,
+            local_sha256=local_identity.get('sha256'),
+            local_size_bytes=local_identity.get('size_bytes'),
+        )
+        return {
+            'ok': True,
+            'status': 'existing_correlated_source',
+            'requested_filename': canonical_name,
+            'assigned_filename': assigned_filename,
+            'processed_file_id': processed_file_id,
+            'library_metadata_object_id': library_metadata_object_id,
+            'local_sha256': local_identity.get('sha256'),
+            'local_size_bytes': local_identity.get('size_bytes'),
+            'content_identity_mode': 'size_and_uploaded_file_identity' if record.get('file_size_bytes') is not None else 'uploaded_file_identity',
+            'source_card': suffix_sources[0],
+            'library_record': record,
+            'library_inspection': inspection,
+        }
+
+    def _correlate_current_indexed_project_source(
+        self,
+        *,
+        canonical_name: str,
+        before_sources: Optional[list[dict[str, Any]]],
+        suffix_sources: list[dict[str, Any]],
+        exact_canonical_sources: list[dict[str, Any]],
+        processing_stream: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        stream = processing_stream if isinstance(processing_stream, dict) else {}
+        assigned_filename = self._file_source_family_filename(
+            stream.get('assigned_filename') or stream.get('library_file_name')
+        )
+        processed_file_id = self._library_file_record_id(stream.get('processed_file_id'))
+        library_metadata_object_id = self._library_file_record_id(stream.get('library_metadata_object_id'))
+        if exact_canonical_sources or len(suffix_sources) != 1:
+            return {
+                'ok': False,
+                'status': 'indexed_source_correlation_ambiguous',
+                'exact_canonical_count': len(exact_canonical_sources),
+                'indexed_source_count': len(suffix_sources),
+            }
+        card = suffix_sources[0]
+        observed_assigned = self._project_source_card_assigned_filename(card)
+        if not assigned_filename or not observed_assigned or assigned_filename.casefold() != observed_assigned.casefold():
+            return {
+                'ok': False,
+                'status': 'indexed_source_assigned_filename_mismatch',
+                'stream_assigned_filename': assigned_filename,
+                'observed_assigned_filename': observed_assigned,
+            }
+        if not self._file_source_family_member(assigned_filename, canonical_name):
+            return {'ok': False, 'status': 'indexed_source_not_in_requested_family'}
+        before_names = {
+            (self._project_source_card_assigned_filename(item) or '').casefold()
+            for item in before_sources or []
+        }
+        if assigned_filename.casefold() in before_names:
+            return {'ok': False, 'status': 'indexed_source_not_created_by_current_upload'}
+        if not processed_file_id or not library_metadata_object_id:
+            return {'ok': False, 'status': 'indexed_source_backend_identity_incomplete'}
+        return {
+            'ok': True,
+            'status': 'current_upload_correlated_indexed_source',
+            'requested_filename': canonical_name,
+            'assigned_filename': assigned_filename,
+            'processed_file_id': processed_file_id,
+            'library_metadata_object_id': library_metadata_object_id,
+            'source_card': card,
+        }
 
     def _library_url(self) -> str:
         return urljoin(self._chatgpt_home_url().rstrip('/') + '/', 'library')
@@ -7144,6 +7310,13 @@ class ChatGPTBrowserClient:
                     identity_candidates = [
                         candidate for candidate in (metadata_id, processed_id, file_id) if candidate
                     ]
+                    raw_size = node.get('file_size_bytes')
+                    if raw_size is None:
+                        raw_size = node.get('size_bytes')
+                    try:
+                        file_size_bytes = int(raw_size) if raw_size is not None else None
+                    except (TypeError, ValueError):
+                        file_size_bytes = None
                     record = {
                         'file_id': file_id,
                         'filename': filename,
@@ -7155,6 +7328,8 @@ class ChatGPTBrowserClient:
                         ),
                         'source_url': source_url,
                     }
+                    if file_size_bytes is not None:
+                        record['file_size_bytes'] = file_size_bytes
                     # Preserve the long-standing record shape for ordinary upload responses.
                     # Library-node payloads expose both identities on one object; retain both
                     # only when the libfile metadata identity is present.
@@ -7875,9 +8050,24 @@ class ChatGPTBrowserClient:
                     )
                 )
             ]
+            def unique_value(key: str) -> Any:
+                values = [candidate.get(key) for candidate in reference_candidates if candidate.get(key) not in (None, '')]
+                normalized = []
+                for value in values:
+                    if value not in normalized:
+                        normalized.append(value)
+                return normalized[0] if len(normalized) == 1 else None
+
             merged.append({
                 'file_id': file_id,
                 'filename': filename,
+                'file_size_bytes': unique_value('file_size_bytes'),
+                'processed_file_id': unique_value('processed_file_id') or (
+                    file_id if str(file_id or '').startswith('file_') else None
+                ),
+                'library_metadata_object_id': unique_value('library_metadata_object_id') or (
+                    file_id if str(file_id or '').startswith('libfile_') else None
+                ),
                 'project_ids': project_ids,
                 'project_references_known': any(bool(candidate.get('project_references_known')) for candidate in reference_candidates),
                 'deleted': any(bool(candidate.get('deleted')) for candidate in reference_candidates),
@@ -12698,134 +12888,78 @@ class ChatGPTBrowserClient:
                 if source_file_id and source_file_id not in family_source_backing_file_ids:
                     family_source_backing_file_ids.append(source_file_id)
             if duplicate_suffix_conflicts:
-                library_cleanup_required = True
-                library_cleanup_trigger = "visible_suffix_family"
-                exact_canonical_sources = self._match_file_source_exact_canonical_cards(
-                    before_sources,
-                    source_match_candidates,
-                )
-                for suffix_source in duplicate_suffix_conflicts:
-                    suffix_file_id = self._library_file_record_id(suffix_source.get("file_id"))
-                    if suffix_file_id and suffix_file_id not in family_source_backing_file_ids:
-                        family_source_backing_file_ids.append(suffix_file_id)
-                if context is None or not hasattr(context, "on"):
-                    return self._file_source_exact_name_conflict_result(
+                exact_canonical_sources = list(initial_exact_canonical_sources)
+                if context is not None and hasattr(context, "on"):
+                    correlation = await self._correlate_existing_indexed_project_source(
+                        context=context,
+                        page=page,
                         project_url=project_home_url,
-                        source_kind=normalized_kind,
-                        requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                        source_match_candidates=source_match_candidates,
-                        current_sources=before_sources,
-                        duplicate_suffix_sources=duplicate_suffix_conflicts,
+                        canonical_name=canonical_display_name or source_match_candidates[0],
+                        file_path=file_path,
+                        suffix_sources=duplicate_suffix_conflicts,
                         exact_canonical_sources=exact_canonical_sources,
-                        status="blocked_conflict",
-                        conflict_reason=(
-                            "suffix_renamed_source_visible_alongside_canonical"
-                            if exact_canonical_sources
-                            else "suffix_renamed_source_visible_without_canonical"
-                        ),
-                        already_exists=bool(exact_canonical_sources),
-                        overwritten=False,
-                        removed_existing=False,
-                        save_summary=None,
-                        save_request_quiet=None,
-                        transaction=None,
-                        current_url=await self._safe_page_url(page),
                     )
-                if not overwrite_existing:
-                    return self._file_source_exact_name_conflict_result(
-                        project_url=project_home_url,
-                        source_kind=normalized_kind,
-                        requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                        source_match_candidates=source_match_candidates,
-                        current_sources=before_sources,
-                        duplicate_suffix_sources=duplicate_suffix_conflicts,
-                        exact_canonical_sources=exact_canonical_sources,
-                        status="blocked_conflict",
-                        conflict_reason=(
-                            "suffix_renamed_source_visible_alongside_canonical"
-                            if exact_canonical_sources
-                            else "suffix_renamed_source_visible_without_canonical"
-                        ),
-                        already_exists=bool(exact_canonical_sources),
-                        overwritten=False,
-                        removed_existing=False,
-                        save_summary=None,
-                        save_request_quiet=None,
-                        transaction=None,
-                        current_url=await self._safe_page_url(page),
-                    )
-                for suffix_source in duplicate_suffix_conflicts:
-                    suffix_name = (
-                        self._normalize_source_match_text(suffix_source.get("title"))
-                        or self._preferred_source_card_identity(suffix_source)
-                        or self._normalize_source_match_text(suffix_source.get("text"))
-                    )
-                    if not suffix_name:
-                        return self._file_source_exact_name_conflict_result(
-                            project_url=project_home_url,
-                            source_kind=normalized_kind,
-                            requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                            source_match_candidates=source_match_candidates,
-                            current_sources=before_sources,
-                            duplicate_suffix_sources=duplicate_suffix_conflicts,
-                            exact_canonical_sources=exact_canonical_sources,
-                            status="library_collision_ambiguous",
-                            conflict_reason="visible_suffix_source_missing_exact_identity",
-                            already_exists=bool(exact_canonical_sources),
-                            overwritten=False,
-                            removed_existing=False,
-                            save_summary=None,
-                            save_request_quiet=None,
-                            transaction=None,
-                            current_url=await self._safe_page_url(page),
-                        )
-                    try:
-                        family_source_remove_results.append(
-                            await self._remove_project_source_operation(
-                                context=context,
-                                page=page,
-                                source_name=suffix_name,
-                                exact=True,
-                                keep_open=False,
-                            )
-                        )
-                    except ResponseTimeoutError as exc:
-                        return {
-                            "ok": False,
-                            "action": "add",
-                            "status": "library_collision_ambiguous",
-                            "project_url": project_home_url,
-                            "source_kind": normalized_kind,
-                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                            "persistence_verified": False,
-                            "release_blocking": True,
-                            "project_source_mutated": bool(family_source_remove_results),
-                            "operator_review_required": True,
-                            "error": str(exc),
-                            "family_source_remove_results": family_source_remove_results,
-                            "family_source_backing_file_ids": family_source_backing_file_ids,
-                        }
-                await self._open_project_sources_tab(page, project_url=project_home_url)
-                source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
-                    page,
-                    project_url=project_home_url,
-                    label="project-source-add-post-suffix-family-remove-preflight",
-                )
-                if not source_surface_preflight.get("ok"):
-                    return {
+                else:
+                    correlation = {
                         "ok": False,
+                        "status": "indexed_source_correlation_unavailable_in_test_double",
+                    }
+                if correlation.get("ok"):
+                    assigned_filename = str(correlation.get("assigned_filename") or "")
+                    source_card = correlation.get("source_card") if isinstance(correlation.get("source_card"), dict) else duplicate_suffix_conflicts[0]
+                    return {
+                        "ok": True,
                         "action": "add",
-                        "status": "source_preflight_not_authoritative",
+                        "status": "existing_correlated_source",
                         "project_url": project_home_url,
                         "source_kind": normalized_kind,
-                        "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                        "persistence_verified": False,
-                        "project_source_mutated": True,
-                        "release_blocking": True,
-                        "source_surface_preflight": source_surface_preflight,
-                        "family_source_remove_results": family_source_remove_results,
+                        "file_path": file_path,
+                        "requested_filename": canonical_display_name or source_match_candidates[0],
+                        "assigned_filename": assigned_filename,
+                        "source_match": self._preferred_source_card_identity(source_card) or assigned_filename,
+                        "source_match_requested": canonical_display_name or source_match_candidates[0],
+                        "source_match_candidates": source_match_candidates,
+                        "processed_file_id": correlation.get("processed_file_id"),
+                        "library_metadata_object_id": correlation.get("library_metadata_object_id"),
+                        "local_sha256": correlation.get("local_sha256"),
+                        "local_size_bytes": correlation.get("local_size_bytes"),
+                        "content_identity_mode": correlation.get("content_identity_mode"),
+                        "project_source_mutated": False,
+                        "persistence_verified": True,
+                        "verification_mode": "existing_indexed_source_library_readback",
+                        "already_exists": True,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "operator_review_required": False,
+                        "indexed_source_correlation": correlation,
+                        "current_url": await self._safe_page_url(page),
                     }
-                before_sources = list(source_surface_preflight.get("sources") or [])
+                conflict = self._file_source_exact_name_conflict_result(
+                    project_url=project_home_url,
+                    source_kind=normalized_kind,
+                    requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                    source_match_candidates=source_match_candidates,
+                    current_sources=before_sources,
+                    duplicate_suffix_sources=duplicate_suffix_conflicts,
+                    exact_canonical_sources=exact_canonical_sources,
+                    status="blocked_ambiguous",
+                    conflict_reason=(
+                        "indexed_source_visible_alongside_canonical"
+                        if exact_canonical_sources
+                        else "indexed_source_not_correlated_to_local_artifact"
+                    ),
+                    already_exists=bool(exact_canonical_sources),
+                    overwritten=False,
+                    removed_existing=False,
+                    save_summary=None,
+                    save_request_quiet=None,
+                    transaction=None,
+                    current_url=await self._safe_page_url(page),
+                )
+                conflict["indexed_source_correlation"] = correlation
+                conflict["operator_review_required"] = True
+                return conflict
             existing_source = await self._find_existing_file_source_for_overwrite(
                 page,
                 source_match_candidates=source_match_candidates,
@@ -13355,6 +13489,7 @@ class ChatGPTBrowserClient:
         save_request_watch = None
         save_request_quiet_result: Optional[dict[str, Any]] = None
         processing_stream_result: Optional[dict[str, Any]] = None
+        indexed_assignment_correlation: Optional[dict[str, Any]] = None
         save_request_watch_disposed = False
         proceed_to_persistence_verification = False
 
@@ -13464,87 +13599,43 @@ class ChatGPTBrowserClient:
                     backend_renamed_sources = list(post_commit_resolution.get("duplicate_suffix_sources") or [])
                     if backend_renamed_sources:
                         exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
-                        rollback_result = await self._rollback_backend_renamed_file_source(
-                            context=context,
-                            page=page,
-                            project_url=project_home_url,
-                            duplicate_suffix_sources=backend_renamed_sources,
+                        indexed_assignment_correlation = self._correlate_current_indexed_project_source(
+                            canonical_name=canonical_display_name or source_match_candidates[0],
                             before_sources=before_sources,
-                        )
-                        save_summary = self._project_source_save_watch_summary(save_request_watch)
-                        backing_file_ids = list(save_summary.get("backing_file_ids") or [])
-                        if backing_file_ids:
-                            library_cleanup = await self._reconcile_library_file_family(
-                                context=context,
-                                page=page,
-                                project_url=project_home_url,
-                                canonical_name=canonical_display_name or (source_match_candidates[0] if source_match_candidates else ""),
-                                required_file_ids=backing_file_ids,
-                            )
-                            conflict_status = "library_collision_not_cleared"
-                        else:
-                            library_cleanup = {
-                                "ok": False,
-                                "status": "library_backing_file_identity_missing",
-                                "release_blocking": True,
-                                "operator_review_required": True,
-                                "canonical_name": canonical_display_name or (source_match_candidates[0] if source_match_candidates else ""),
-                                "response_diagnostics": list(save_summary.get("response_diagnostics") or []),
-                            }
-                            conflict_status = "library_backing_file_identity_missing"
-                        if library_cleanup.get("status") == "library_family_absent":
-                            library_cleanup = {
-                                **library_cleanup,
-                                "ok": False,
-                                "status": "library_collision_not_cleared",
-                                "release_blocking": True,
-                                "previous_status": "library_family_absent",
-                                "post_upload_reservation_proven": True,
-                            }
-                        conflict_result = self._file_source_exact_name_conflict_result(
-                            project_url=project_home_url,
-                            source_kind=normalized_kind,
-                            requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                            source_match_candidates=source_match_candidates,
-                            current_sources=list(post_commit_resolution.get("sources") or []),
-                            duplicate_suffix_sources=backend_renamed_sources,
+                            suffix_sources=backend_renamed_sources,
                             exact_canonical_sources=exact_canonical_sources,
-                            status=conflict_status,
-                            conflict_reason=(
-                                "backend_created_suffix_renamed_source_alongside_canonical"
-                                if exact_canonical_sources
-                                else "backend_created_suffix_renamed_source_without_canonical"
-                            ),
-                            already_exists=duplicate_detected or overwritten_existing,
-                            overwritten=overwritten_existing,
-                            removed_existing=bool(
-                                (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
-                                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
-                            ),
-                            save_summary=save_summary,
-                            save_request_quiet=save_request_quiet_result,
-                            transaction={
-                                "transaction_status": "commit_seen_but_backend_renamed_source",
-                                "release_blocking": True,
-                                "save_saw_commit": bool(save_summary.get("saw_commit")),
-                            },
-                            current_url=await self._safe_page_url(page),
-                            post_commit_recovery={
-                                "attempted": False,
-                                "status": "blocked_backend_renamed_source",
-                            },
-                            rollback_result=rollback_result,
+                            processing_stream=processing_stream_result,
                         )
-                        conflict_result.update({
-                            "backend_renamed_source": True,
-                            "library_collision_not_cleared": conflict_status == "library_collision_not_cleared",
-                            "library_backing_file_identity_missing": conflict_status == "library_backing_file_identity_missing",
-                            "operator_review_required": conflict_status == "library_backing_file_identity_missing",
-                            "library_backing_file_cleanup": library_cleanup,
-                            "backing_file_ids": list(save_summary.get("backing_file_ids") or []),
-                            "backend_assigned_names": list(save_summary.get("backend_assigned_names") or []),
-                        })
-                        return conflict_result
+                        if not indexed_assignment_correlation.get("ok"):
+                            conflict_result = self._file_source_exact_name_conflict_result(
+                                project_url=project_home_url,
+                                source_kind=normalized_kind,
+                                requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                                source_match_candidates=source_match_candidates,
+                                current_sources=list(post_commit_resolution.get("sources") or []),
+                                duplicate_suffix_sources=backend_renamed_sources,
+                                exact_canonical_sources=exact_canonical_sources,
+                                status="blocked_ambiguous",
+                                conflict_reason="backend_assigned_indexed_source_not_correlated_to_current_upload",
+                                already_exists=duplicate_detected or overwritten_existing,
+                                overwritten=overwritten_existing,
+                                removed_existing=bool(
+                                    (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+                                    or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+                                ),
+                                save_summary=self._project_source_save_watch_summary(save_request_watch),
+                                save_request_quiet=save_request_quiet_result,
+                                transaction={
+                                    "transaction_status": "commit_seen_with_uncorrelated_indexed_source",
+                                    "release_blocking": True,
+                                },
+                                current_url=await self._safe_page_url(page),
+                            )
+                            conflict_result["indexed_source_correlation"] = indexed_assignment_correlation
+                            conflict_result["operator_review_required"] = True
+                            return conflict_result
+                        matched_source = dict(indexed_assignment_correlation["source_card"])
+                        matched_source["_promptbranch_indexed_assignment_correlation"] = dict(indexed_assignment_correlation)
                     exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
                     if exact_canonical_sources:
                         matched_source = exact_canonical_sources[0]
@@ -13613,6 +13704,7 @@ class ChatGPTBrowserClient:
             or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
         )
         post_commit_recovery: Optional[dict[str, Any]] = None
+        persisted_source: Optional[dict[str, Any]] = None
         try:
             persisted_source = await self._verify_project_source_persistence(
                 page,
@@ -13640,82 +13732,49 @@ class ChatGPTBrowserClient:
                         current_sources,
                         persistence_candidates,
                     )
-                    backend_rollback_result = await self._rollback_backend_renamed_file_source(
-                        context=context,
-                        page=page,
-                        project_url=project_home_url,
-                        duplicate_suffix_sources=backend_renamed_sources,
+                    indexed_assignment_correlation = self._correlate_current_indexed_project_source(
+                        canonical_name=canonical_display_name or requested_match or "",
                         before_sources=before_sources,
-                    )
-                    backing_file_ids = list(save_summary.get("backing_file_ids") or [])
-                    if backing_file_ids:
-                        library_cleanup = await self._reconcile_library_file_family(
-                            context=context,
-                            page=page,
-                            project_url=project_home_url,
-                            canonical_name=canonical_display_name or requested_match or "",
-                            required_file_ids=backing_file_ids,
-                        )
-                        conflict_status = "library_collision_not_cleared"
-                    else:
-                        library_cleanup = {
-                            "ok": False,
-                            "status": "library_backing_file_identity_missing",
-                            "release_blocking": True,
-                            "operator_review_required": True,
-                            "canonical_name": canonical_display_name or requested_match or "",
-                            "response_diagnostics": list(save_summary.get("response_diagnostics") or []),
-                        }
-                        conflict_status = "library_backing_file_identity_missing"
-                    if library_cleanup.get("status") == "library_family_absent":
-                        library_cleanup = {
-                            **library_cleanup,
-                            "ok": False,
-                            "status": "library_collision_not_cleared",
-                            "release_blocking": True,
-                            "previous_status": "library_family_absent",
-                            "post_upload_reservation_proven": True,
-                        }
-                    conflict_result = self._file_source_exact_name_conflict_result(
-                        project_url=project_home_url,
-                        source_kind=normalized_kind,
-                        requested_match=requested_match,
-                        source_match_candidates=persistence_candidates,
-                        current_sources=current_sources,
-                        duplicate_suffix_sources=backend_renamed_sources,
+                        suffix_sources=backend_renamed_sources,
                         exact_canonical_sources=exact_canonical_sources,
-                        status=conflict_status,
-                        conflict_reason=(
-                            "backend_created_suffix_renamed_source_alongside_canonical"
-                            if exact_canonical_sources
-                            else "backend_created_suffix_renamed_source_without_canonical"
-                        ),
-                        already_exists=duplicate_detected or overwritten_existing,
-                        overwritten=overwritten_existing,
-                        removed_existing=removed_existing_via_ui,
-                        save_summary=save_summary,
-                        save_request_quiet=save_request_quiet_result,
-                        transaction=transaction,
-                        persistence_error=str(exc),
-                        current_url=await self._safe_page_url(page),
-                        post_commit_recovery={
-                            "attempted": False,
-                            "status": "blocked_backend_renamed_source",
-                        },
-                        rollback_result=backend_rollback_result,
+                        processing_stream=processing_stream_result,
                     )
-                    conflict_result.update({
-                        "backend_renamed_source": True,
-                        "library_collision_not_cleared": conflict_status == "library_collision_not_cleared",
-                        "library_backing_file_identity_missing": conflict_status == "library_backing_file_identity_missing",
-                        "operator_review_required": conflict_status == "library_backing_file_identity_missing",
-                        "library_backing_file_cleanup": library_cleanup,
-                        "backing_file_ids": list(save_summary.get("backing_file_ids") or []),
-                        "backend_assigned_names": list(save_summary.get("backend_assigned_names") or []),
-                    })
-                    return conflict_result
+                    if indexed_assignment_correlation.get("ok"):
+                        persisted_source = dict(indexed_assignment_correlation["source_card"])
+                        persisted_source["_promptbranch_verification_mode"] = "post_refresh_indexed_assignment_reconciled"
+                        persisted_source["_promptbranch_ui_card_seen_before_refresh"] = True
+                        persisted_source["_promptbranch_post_refresh_attempt"] = None
+                        persisted_source["_promptbranch_indexed_assignment_correlation"] = dict(indexed_assignment_correlation)
+                        post_commit_recovery = {
+                            "status": "recovered_correlated_indexed_assignment_after_refresh_timeout",
+                            "method": "processing_stream_ids_plus_exact_assigned_source_card",
+                            "indexed_source_correlation": indexed_assignment_correlation,
+                        }
+                    else:
+                        conflict_result = self._file_source_exact_name_conflict_result(
+                            project_url=project_home_url,
+                            source_kind=normalized_kind,
+                            requested_match=requested_match,
+                            source_match_candidates=persistence_candidates,
+                            current_sources=current_sources,
+                            duplicate_suffix_sources=backend_renamed_sources,
+                            exact_canonical_sources=exact_canonical_sources,
+                            status="blocked_ambiguous",
+                            conflict_reason="backend_assigned_indexed_source_not_correlated_to_current_upload",
+                            already_exists=duplicate_detected or overwritten_existing,
+                            overwritten=overwritten_existing,
+                            removed_existing=removed_existing_via_ui,
+                            save_summary=save_summary,
+                            save_request_quiet=save_request_quiet_result,
+                            transaction=transaction,
+                            persistence_error=str(exc),
+                            current_url=await self._safe_page_url(page),
+                        )
+                        conflict_result["indexed_source_correlation"] = indexed_assignment_correlation
+                        conflict_result["operator_review_required"] = True
+                        return conflict_result
             recovered_source: Optional[dict[str, str]] = None
-            if self._project_source_post_commit_recovery_allowed(
+            if persisted_source is None and self._project_source_post_commit_recovery_allowed(
                 source_kind=normalized_kind,
                 transaction=transaction,
             ):
@@ -13730,11 +13789,13 @@ class ChatGPTBrowserClient:
                     save_watch=save_request_watch,
                     original_error=str(exc),
                 )
-            recovery_attempted = self._project_source_post_commit_recovery_allowed(
+            recovery_attempted = bool(persisted_source is None and self._project_source_post_commit_recovery_allowed(
                 source_kind=normalized_kind,
                 transaction=transaction,
-            )
-            if recovered_source is not None:
+            ))
+            if persisted_source is not None:
+                pass
+            elif recovered_source is not None:
                 persisted_source = recovered_source
                 post_commit_recovery = (
                     recovered_source.get("_promptbranch_post_commit_recovery")
@@ -13952,8 +14013,17 @@ class ChatGPTBrowserClient:
                 success_sources,
                 persistence_candidates,
             )
-            if len(success_exact_canonical_sources) != 1 or success_duplicate_suffix_sources:
-                return self._file_source_exact_name_conflict_result(
+            canonical_success = len(success_exact_canonical_sources) == 1 and not success_duplicate_suffix_sources
+            indexed_success = (
+                not success_exact_canonical_sources
+                and len(success_duplicate_suffix_sources) == 1
+                and isinstance(indexed_assignment_correlation, dict)
+                and indexed_assignment_correlation.get("ok")
+                and (self._project_source_card_assigned_filename(success_duplicate_suffix_sources[0]) or "").casefold()
+                    == str(indexed_assignment_correlation.get("assigned_filename") or "").casefold()
+            )
+            if not canonical_success and not indexed_success:
+                conflict = self._file_source_exact_name_conflict_result(
                     project_url=project_home_url,
                     source_kind=normalized_kind,
                     requested_match=requested_match,
@@ -13961,8 +14031,8 @@ class ChatGPTBrowserClient:
                     current_sources=success_sources,
                     duplicate_suffix_sources=success_duplicate_suffix_sources,
                     exact_canonical_sources=success_exact_canonical_sources,
-                    status="library_collision_not_cleared",
-                    conflict_reason="successful_add_did_not_leave_exactly_one_canonical_and_zero_suffix_sources",
+                    status="blocked_ambiguous",
+                    conflict_reason="successful_add_source_identity_not_uniquely_correlated",
                     already_exists=duplicate_detected or overwritten_existing,
                     overwritten=overwritten_existing,
                     removed_existing=removed_existing_via_ui,
@@ -13971,6 +14041,8 @@ class ChatGPTBrowserClient:
                     transaction=None,
                     current_url=await self._safe_page_url(page),
                 )
+                conflict["indexed_source_correlation"] = indexed_assignment_correlation
+                return conflict
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
             persistence_verified=True,
@@ -13983,12 +14055,19 @@ class ChatGPTBrowserClient:
         result = {
             "ok": True,
             "action": "add",
+            "status": "source_added",
             "project_url": project_home_url,
             "source_kind": normalized_kind,
             "source_match": persisted_match,
             "source_match_requested": requested_match,
             "source_match_candidates": persistence_candidates,
             "persistence_verified": True,
+            "project_source_mutated": bool(
+                success_save_summary.get("saw_commit")
+                or removed_existing_via_ui
+                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+            ),
+            "operator_review_required": False,
             "verification_mode": verification_mode or "post_refresh",
             "ui_card_seen": ui_card_seen_before_refresh,
             "post_refresh_verified": True,
@@ -14010,18 +14089,44 @@ class ChatGPTBrowserClient:
         }
         if normalized_kind == "file":
             assigned_names = list(success_save_summary.get("backend_assigned_names") or [])
+            local_identity = self._local_file_artifact_identity(file_path)
+            stream_identity = processing_stream_result if isinstance(processing_stream_result, dict) else {}
+            backend_assigned_name = str(
+                (indexed_assignment_correlation or {}).get("assigned_filename")
+                or stream_identity.get("assigned_filename")
+                or next(
+                    (name for name in assigned_names if self._file_source_family_member(name, canonical_display_name)),
+                    canonical_display_name or requested_match,
+                )
+            )
+            processed_file_id = self._library_file_record_id(
+                (indexed_assignment_correlation or {}).get("processed_file_id")
+                or stream_identity.get("processed_file_id")
+            )
+            library_metadata_object_id = self._library_file_record_id(
+                (indexed_assignment_correlation or {}).get("library_metadata_object_id")
+                or stream_identity.get("library_metadata_object_id")
+            )
+            ledger_file_ids = [item for item in [processed_file_id, *list(success_save_summary.get("backing_file_ids") or [])] if item]
             self._record_library_upload_transactions(
                 project_url=project_home_url,
                 canonical_name=canonical_display_name or requested_match or "",
-                file_ids=list(success_save_summary.get("backing_file_ids") or []),
-                assigned_names=assigned_names,
-            )
-            backend_assigned_name = next(
-                (name for name in assigned_names if self._file_source_family_member(name, canonical_display_name)),
-                canonical_display_name or requested_match,
+                file_ids=ledger_file_ids,
+                assigned_names=[backend_assigned_name],
+                processed_file_id=processed_file_id,
+                library_metadata_object_id=library_metadata_object_id,
+                local_sha256=local_identity.get("sha256"),
+                local_size_bytes=local_identity.get("size_bytes"),
             )
             result.update({
+                "requested_filename": canonical_display_name or requested_match,
+                "assigned_filename": backend_assigned_name,
                 "backend_assigned_name": backend_assigned_name,
+                "processed_file_id": processed_file_id,
+                "library_metadata_object_id": library_metadata_object_id,
+                "local_sha256": local_identity.get("sha256"),
+                "local_size_bytes": local_identity.get("size_bytes"),
+                "indexed_source_correlation": indexed_assignment_correlation,
                 "backing_file_ids": list(success_save_summary.get("backing_file_ids") or []),
                 "exact_canonical_source_count": len(success_exact_canonical_sources),
                 "exact_canonical_source_identities": [
@@ -23661,7 +23766,10 @@ class ChatGPTBrowserClient:
                 return
             if source_kind == "file" and from_matched_card:
                 normalized_lower = normalized.lower()
-                if requested_file_anchors and not any(anchor in normalized_lower for anchor in requested_file_anchors):
+                if requested_file_anchors and not any(
+                    anchor in normalized_lower or self._file_source_family_member(normalized, anchor)
+                    for anchor in requested_file_anchors
+                ):
                     return
             if normalized not in candidates:
                 candidates.append(normalized)
@@ -24102,7 +24210,6 @@ class ChatGPTBrowserClient:
         persistence_error: Optional[str] = None,
         current_url: Optional[str] = None,
         post_commit_recovery: Optional[dict[str, Any]] = None,
-        rollback_result: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         duplicate_suffix_sources = duplicate_suffix_sources or []
         exact_canonical_sources = exact_canonical_sources or []
@@ -24122,9 +24229,15 @@ class ChatGPTBrowserClient:
             "source_match_requested": requested_match,
             "source_match_candidates": list(source_match_candidates or []),
             "persistence_verified": False,
+            "project_source_mutated": bool(
+                removed_existing
+                or (save_summary or {}).get("saw_commit")
+                or (transaction or {}).get("save_saw_commit")
+            ),
             "persistence_error": persistence_error,
             "persistence_false_negative_possible": False,
-            "exact_name_required": True,
+            "exact_name_required": False,
+            "correlated_assigned_name_allowed": True,
             "conflict_reason": conflict_reason,
             "blocked_conflict": True,
             "hidden_stale_collision": "without_canonical" in conflict_reason,
@@ -24144,12 +24257,11 @@ class ChatGPTBrowserClient:
             "overwritten": overwritten,
             "removed_existing": removed_existing,
             "post_commit_recovery": post_commit_recovery or {"attempted": False, "status": "not_applicable_exact_name_conflict"},
-            "backend_renamed_source_rollback": rollback_result or {"attempted": False, "status": "not_attempted"},
             "operator_review_required": True,
             "recovery_guidance": [
-                "Run `pb src list --json` and inspect the ChatGPT Project Sources UI before retrying.",
-                "Remove or reconcile suffix-renamed Project Sources before adding this canonical filename again.",
-                "Do not retry `pb src add` for the same file while suffix-renamed variants are visible; each retry can create another indexed source.",
+                "Run `pb src list --json` and inspect the exact indexed Project Source identities before retrying.",
+                "Do not delete or retry an indexed source unless its upload identity is unambiguously correlated.",
+                "Resolve multiple or identity-incomplete indexed matches explicitly; Promptbranch will not select one arbitrarily.",
             ],
             "current_source_count": len(current_sources),
             "current_source_identities": [source_identity(source) for source in current_sources[:10]],
@@ -25717,6 +25829,12 @@ class ChatGPTBrowserClient:
             if terminal_lower == 'file.processing.completed'
             else 'failed'
         )
+        filename_correlation = None
+        if library_file_name and expected:
+            if library_file_name.casefold() == expected.casefold():
+                filename_correlation = 'exact_canonical'
+            elif self._file_source_family_member(library_file_name, expected):
+                filename_correlation = 'backend_assigned_indexed'
         return {
             'status': status,
             'terminal_event': terminal_event,
@@ -25724,15 +25842,16 @@ class ChatGPTBrowserClient:
             'processed_file_id': processed_file_id,
             'library_metadata_object_id': library_metadata_object_id,
             'library_file_name': library_file_name,
+            'requested_filename': expected,
+            'assigned_filename': library_file_name,
             'expected_filename': expected,
             'events': events,
+            'filename_correlation': filename_correlation,
             'identity_verified': bool(
                 status == 'completed'
                 and processed_file_id
                 and library_metadata_object_id
-                and library_file_name
-                and expected
-                and library_file_name == expected
+                and filename_correlation
             ),
         }
 
@@ -26233,16 +26352,19 @@ class ChatGPTBrowserClient:
                         "status": "project_source_processing_stream_completed",
                         "source_kind": source_kind,
                         "expected_filename": expected,
+                        "requested_filename": expected,
+                        "assigned_filename": terminal.get("library_file_name"),
                         "processed_file_id": terminal.get("processed_file_id"),
                         "library_metadata_object_id": terminal.get("library_metadata_object_id"),
                         "library_file_name": terminal.get("library_file_name"),
+                        "filename_correlation": terminal.get("filename_correlation"),
                         "terminal_event": terminal.get("terminal_event"),
                         "events": list(terminal.get("events") or []),
                         "observations": observations,
                     }
                     self._log(
                         "project-source-add",
-                        "project source processing stream completed with exact identity",
+                        "project source processing stream completed with correlated identity",
                         **result,
                     )
                     return result

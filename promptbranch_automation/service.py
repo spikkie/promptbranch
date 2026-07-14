@@ -1229,82 +1229,12 @@ class ChatGPTAutomationService:
         async with self._lock.operation("add_project_source", wait_timeout_seconds=profile_lock_wait_seconds):
             logger.info("Adding ChatGPT project source")
             normalized_kind = str(source_kind or "").strip().lower()
-            remembered_source: Optional[dict[str, Any]] = None
-            remembered_remove_result: Optional[dict[str, Any]] = None
             bot = self._build_bot()
 
-            if normalized_kind == "file" and overwrite_existing:
-                remembered_source = self._lookup_recent_project_source(
-                    source_kind=normalized_kind,
-                    file_path=file_path,
-                    display_name=display_name,
-                )
-                if remembered_source:
-                    source_name = self._remembered_file_source_exact_name(
-                        remembered_source,
-                        file_path=file_path,
-                        display_name=display_name,
-                    )
-                    if source_name:
-                        logger.info(
-                            "Removing remembered verified ChatGPT project file source before overwrite using exact source name: %s",
-                            source_name,
-                        )
-                        try:
-                            remembered_remove_result = await bot.remove_project_source(
-                                source_name=source_name,
-                                exact=True,
-                                keep_open=False,
-                            )
-                        except ResponseTimeoutError as exc:
-                            self._forget_recent_project_source(
-                                source_kind=normalized_kind,
-                                file_path=file_path,
-                                display_name=display_name,
-                            )
-                            return {
-                                "ok": False,
-                                "action": "add",
-                                "status": "remembered_overwrite_remove_failed",
-                                "source_kind": normalized_kind,
-                                "source_match": remembered_source.get("source_match") or source_name,
-                                "source_match_requested": remembered_source.get("source_match_requested") or source_name,
-                                "source_match_candidates": remembered_source.get("source_match_candidates"),
-                                "persistence_verified": False,
-                                "already_exists": True,
-                                "added": False,
-                                "overwritten": False,
-                                "removed_existing": False,
-                                "overwrite_classification_source": "remembered_verified_before_state",
-                                "overwrite_source_name": source_name,
-                                "overwrite_remove_error": str(exc),
-                                "operator_review_required": True,
-                            }
-                        if not (isinstance(remembered_remove_result, dict) and remembered_remove_result.get("ok")):
-                            self._forget_recent_project_source(
-                                source_kind=normalized_kind,
-                                file_path=file_path,
-                                display_name=display_name,
-                            )
-                            return {
-                                "ok": False,
-                                "action": "add",
-                                "status": "remembered_overwrite_remove_not_verified",
-                                "source_kind": normalized_kind,
-                                "source_match": remembered_source.get("source_match") or source_name,
-                                "source_match_requested": remembered_source.get("source_match_requested") or source_name,
-                                "source_match_candidates": remembered_source.get("source_match_candidates"),
-                                "persistence_verified": False,
-                                "already_exists": True,
-                                "added": False,
-                                "overwritten": False,
-                                "removed_existing": False,
-                                "overwrite_classification_source": "remembered_verified_before_state",
-                                "overwrite_source_name": source_name,
-                                "overwrite_remove_result": remembered_remove_result,
-                                "operator_review_required": True,
-                            }
-
+            # Do not remove a remembered file source before the browser client has
+            # re-read and correlated the current Project Sources state. Backend-
+            # assigned indexed names are valid identities and a blind remembered
+            # removal would turn an idempotent retry into another numbered copy.
             result = await bot.add_project_source(
                 source_kind=source_kind,
                 value=value,
@@ -1313,15 +1243,6 @@ class ChatGPTAutomationService:
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
             )
-
-            if remembered_remove_result is not None and isinstance(result, dict) and result.get("ok") and result.get("persistence_verified"):
-                result = dict(result)
-                result["already_exists"] = True
-                result["overwritten"] = True
-                result["removed_existing"] = True
-                result["overwrite_classification_source"] = "remembered_verified_before_state"
-                result["remembered_source"] = remembered_source
-                result["remembered_overwrite_remove_result"] = remembered_remove_result
 
             if isinstance(result, dict) and result.get("ok") and result.get("persistence_verified"):
                 self._remember_verified_project_source(

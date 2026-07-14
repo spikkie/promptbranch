@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-  "active_candidate_version": "v0.1.103.10.105",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+  "active_candidate_version": "v0.1.103.10.106",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+  "active_slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -235,16 +235,23 @@
       "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
       "status": "candidate",
       "created_at": "2026-07-14T12:34:56Z"
+    },
+    {
+      "version": "v0.1.103.10.106",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "status": "candidate",
+      "created_at": "2026-07-14T14:20:00Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-14T12:34:56Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-  "next_normal_slice": "v0.1.103.10.105 — fail-closed project registry clean break",
-  "next_normal_version": "v0.1.103.10.105",
+  "last_updated": "2026-07-14T14:20:00Z",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+  "next_normal_slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+  "next_normal_version": "v0.1.103.10.106",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -617,6 +624,14 @@
       "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
       "status": "candidate",
       "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
+    },
+    {
+      "version": "v0.1.103.10.106",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "status": "candidate",
+      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata."
     }
   ],
   "release_mode": "repair",
@@ -727,6 +742,12 @@
       "kind": "repair",
       "status": "candidate",
       "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
+    },
+    {
+      "version": "v0.1.103.10.106",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -751,13 +772,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
       "release_mode": "repair",
-      "scope": "remove repo-local artifact-registry fallback and legacy registry import; require explicit repository identity, configured project membership, canonical repo-root agreement, and an existing valid project registry for all artifact reads and mutations; classify missing, invalid, unreadable, unresolved, and ambiguous state explicitly and fail closed without migration or reconciliation",
-      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "scope": "correlate one backend-assigned indexed Project Source with the canonical local artifact using processing-stream IDs, exact assigned-card persistence, Library read-back identity and local size/hash metadata; reuse a unique existing correlated source, block multiple or incomplete matches, and keep canonical artifact/version identity separate from assigned source metadata",
+      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-      "version": "v0.1.103.10.105"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "version": "v0.1.103.10.106"
     },
     {
       "release_mode": "normal",
@@ -801,7 +822,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.105",
+  "updated_for": "v0.1.103.10.106",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -858,6 +879,13 @@
       "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
       "status": "candidate",
       "created_at": "2026-07-14T12:34:56Z"
+    },
+    {
+      "version": "v0.1.103.10.106",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "status": "candidate",
+      "created_at": "2026-07-14T14:20:00Z"
     }
   ]
 }

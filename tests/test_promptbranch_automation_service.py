@@ -200,7 +200,8 @@ def test_service_project_source_list_calls_automation(monkeypatch):
 
 
 
-def test_service_remembers_verified_file_source_for_next_overwrite(monkeypatch, tmp_path):
+
+def test_service_delegates_retry_idempotency_to_browser_correlation(monkeypatch, tmp_path):
     file_path = tmp_path / "itest-file.txt"
     file_path.write_text("demo", encoding="utf-8")
     add_calls: list[dict] = []
@@ -208,54 +209,49 @@ def test_service_remembers_verified_file_source_for_next_overwrite(monkeypatch, 
 
     async def fake_add_project_source(self, **kwargs):
         add_calls.append(kwargs)
+        call = len(add_calls)
         return {
             "ok": True,
             "action": "add",
+            "status": "source_added" if call == 1 else "existing_correlated_source",
             "project_url": "https://chatgpt.com/g/g-p-demo/project",
             "source_kind": "file",
-            "source_match": "itest-file.txt Document",
+            "requested_filename": "itest-file.txt",
+            "assigned_filename": "itest-file(14).txt",
+            "processed_file_id": "file_000000001234567890abcdef12345678",
+            "library_metadata_object_id": "libfile_1234567890abcdef1234567890abcdef",
+            "source_match": "itest-file(14).txt Document",
             "source_match_requested": "itest-file.txt",
             "source_match_candidates": ["itest-file.txt", "itest-file.txt Document"],
             "persistence_verified": True,
-            "already_exists": False,
-            "added": True,
+            "project_source_mutated": call == 1,
+            "already_exists": call > 1,
+            "added": call == 1,
             "overwritten": False,
             "removed_existing": False,
         }
 
     async def fake_remove_project_source(self, **kwargs):
         remove_calls.append(kwargs)
-        return {"ok": True, "removed_via_ui": True, "source_match": kwargs["source_name"]}
+        raise AssertionError("service must not pre-remove a remembered source before browser correlation")
 
     monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
     monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
 
-    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-demo/project",
-        email=None,
-        password=None,
-        profile_dir="/tmp/.pb_profile",
-        headless=True,
-        use_patchright=False,
-    ))
-
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(project_url="https://chatgpt.com/g/g-p-demo/project", email=None, password=None, profile_dir="/tmp/.pb_profile", headless=True, use_patchright=False))
     first = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
     second = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
 
-    assert first["persistence_verified"] is True
+    assert first["status"] == "source_added"
+    assert first["project_source_mutated"] is True
+    assert second["status"] == "existing_correlated_source"
+    assert second["project_source_mutated"] is False
+    assert second["persistence_verified"] is True
     assert len(add_calls) == 2
-    assert len(remove_calls) == 1
-    assert remove_calls[0]["source_name"] == "itest-file.txt"
-    assert remove_calls[0]["exact"] is True
-    assert second["already_exists"] is True
-    assert second["overwritten"] is True
-    assert second["removed_existing"] is True
-    assert second["overwrite_classification_source"] == "remembered_verified_before_state"
-    assert second["remembered_source"]["source_match"] == "itest-file.txt Document"
-    assert second["remembered_overwrite_remove_result"]["removed_via_ui"] is True
+    assert remove_calls == []
 
 
-def test_service_forgets_remembered_overwrite_when_remove_cannot_verify(monkeypatch, tmp_path):
+def test_service_retry_does_not_create_next_index_or_pre_remove(monkeypatch, tmp_path):
     file_path = tmp_path / "itest-file.txt"
     file_path.write_text("demo", encoding="utf-8")
     add_calls: list[dict] = []
@@ -266,52 +262,36 @@ def test_service_forgets_remembered_overwrite_when_remove_cannot_verify(monkeypa
         return {
             "ok": True,
             "action": "add",
+            "status": "existing_correlated_source",
             "project_url": "https://chatgpt.com/g/g-p-demo/project",
             "source_kind": "file",
-            "source_match": "itest-file.txt Document",
-            "source_match_requested": "itest-file.txt",
-            "source_match_candidates": ["itest-file.txt", "itest-file.txt Document"],
+            "requested_filename": "itest-file.txt",
+            "assigned_filename": "itest-file(14).txt",
+            "processed_file_id": "file_000000001234567890abcdef12345678",
+            "library_metadata_object_id": "libfile_1234567890abcdef1234567890abcdef",
             "persistence_verified": True,
-            "already_exists": False,
-            "added": True,
+            "project_source_mutated": False,
+            "already_exists": True,
+            "added": False,
             "overwritten": False,
             "removed_existing": False,
         }
 
     async def fake_remove_project_source(self, **kwargs):
         remove_calls.append(kwargs)
-        raise ResponseTimeoutError("remove did not verify")
+        raise AssertionError("retry must not pre-delete the correlated indexed source")
 
     monkeypatch.setattr(ChatGPTAutomation, "add_project_source", fake_add_project_source)
     monkeypatch.setattr(ChatGPTAutomation, "remove_project_source", fake_remove_project_source)
 
-    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(
-        project_url="https://chatgpt.com/g/g-p-demo/project",
-        email=None,
-        password=None,
-        profile_dir="/tmp/.pb_profile",
-        headless=True,
-        use_patchright=False,
-    ))
+    svc = ChatGPTAutomationService(ChatGPTAutomationSettings(project_url="https://chatgpt.com/g/g-p-demo/project", email=None, password=None, profile_dir="/tmp/.pb_profile", headless=True, use_patchright=False))
+    results = [asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True)) for _ in range(3)]
 
-    first = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
-    failed = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
-    third = asyncio.run(svc.add_project_source(source_kind="file", file_path=str(file_path), overwrite_existing=True))
-
-    assert first["persistence_verified"] is True
-    assert failed["ok"] is False
-    assert failed["status"] == "remembered_overwrite_remove_failed"
-    assert failed["already_exists"] is True
-    assert failed["overwritten"] is False
-    assert failed["removed_existing"] is False
-    assert failed["operator_review_required"] is True
-    assert failed["overwrite_classification_source"] == "remembered_verified_before_state"
-    assert len(remove_calls) == 1
-    # The failed remembered remove must clear the memory rather than looping on
-    # the same stale identity forever. The third call therefore falls back to
-    # the browser client's normal add/overwrite path.
-    assert third["ok"] is True
-    assert len(add_calls) == 2
+    assert all(item["ok"] is True for item in results)
+    assert all(item["status"] == "existing_correlated_source" for item in results)
+    assert all(item["assigned_filename"] == "itest-file(14).txt" for item in results)
+    assert len(add_calls) == 3
+    assert remove_calls == []
 
 def test_service_remembers_recent_task_from_ask_for_task_list(monkeypatch):
     async def fake_ask_question_result(self, **kwargs):

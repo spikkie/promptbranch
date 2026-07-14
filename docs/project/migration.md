@@ -1096,3 +1096,7 @@ This candidate adds one diagnostic-only bounded Library UI recovery cycle after 
 ## Clean-break state note — v0.1.103.10.105
 
 There is intentionally no backward-compatible registry migration. Start with a new Promptbranch project dataset, join every repository explicitly with `pb project join`, and allow that command to initialize the project-scoped `promptbranch_artifacts.json`. Remove or archive obsolete repository-local `.pb_profile/promptbranch_artifacts.json` files before artifact operations. Old registry records, noncanonical artifact names, missing explicit `repo_id`, invalid JSON, unreadable state, and unresolved project membership fail closed. No current/adopted state is inferred or reconciled automatically.
+
+## Indexed Project Source identity note — v0.1.103.10.106
+
+No migration or rename is performed. Canonical local ZIP names remain canonical. A uniquely correlated backend-assigned `(n)` display name is retained as Project Source metadata and may be referenced during adoption; ambiguous indexed families remain blocked.
