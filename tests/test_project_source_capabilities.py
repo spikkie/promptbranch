@@ -1359,11 +1359,11 @@ def test_add_project_source_operation_overwrite_uses_clean_title_and_retries_anc
 
 
 
-def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_snapshot_miss(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
+
+def test_add_project_source_operation_skips_legacy_absence_probe_for_nonempty_family_miss(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
     calls: dict[str, object] = {
-        "preflight_presence_calls": 0,
-        "post_upload_presence_calls": 0,
+        "presence_calls": 0,
         "removed": False,
         "added": False,
     }
@@ -1380,21 +1380,13 @@ def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_sna
     async def fake_snapshot(*_args, **_kwargs):
         return [{"identity": "other-file.txt", "title": "other-file.txt", "text": "other-file.txt"}]
 
-    async def fake_wait_for_source_presence(*_args, **kwargs):
-        if not calls["added"]:
-            calls["preflight_presence_calls"] = int(calls["preflight_presence_calls"]) + 1
-            assert kwargs["timeout_ms"] <= 750
-            raise ResponseTimeoutError("reduced absence probe did not find requested source")
-        calls["post_upload_presence_calls"] = int(calls["post_upload_presence_calls"]) + 1
-        return {
-            "identity": "itest-file.txt Document",
-            "title": "itest-file.txt Document",
-            "text": "itest-file.txt Document · Jun 10, 2026",
-        }
+    async def fail_wait_for_source_presence(*_args, **_kwargs):
+        calls["presence_calls"] = int(calls["presence_calls"]) + 1
+        raise AssertionError("file adds must not use the legacy exact-name absence/presence probe")
 
     async def fake_remove(*_args, **_kwargs):
         calls["removed"] = True
-        raise AssertionError("absence preflight miss must not remove any source")
+        raise AssertionError("a family miss must not remove any source")
 
     async def fake_add_file_source(*_args, **_kwargs) -> None:
         calls["added"] = True
@@ -1408,7 +1400,7 @@ def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_sna
     async def fake_verify_persistence(*_args, **_kwargs):
         return {
             "identity": "itest-file.txt Document",
-            "title": "itest-file.txt Document",
+            "title": "itest-file.txt",
             "text": "itest-file.txt Document · Jun 10, 2026",
         }
 
@@ -1419,7 +1411,7 @@ def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_sna
     browser_client._goto = fake_goto  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
     browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
-    browser_client._wait_for_source_presence = fake_wait_for_source_presence  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fail_wait_for_source_presence  # type: ignore[method-assign]
     browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
     browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
     browser_client._wait_for_project_source_post_save_settle = fake_wait_for_post_save_settle  # type: ignore[method-assign]
@@ -1443,15 +1435,10 @@ def test_add_project_source_operation_reduces_absence_preflight_for_nonempty_sna
         )
     )
 
-    assert calls["preflight_presence_calls"] == 1
-    assert calls["post_upload_presence_calls"] == 1
-    assert calls["removed"] is False
-    assert calls["added"] is True
+    assert calls == {"presence_calls": 0, "removed": False, "added": True}
     assert result["ok"] is True
-    assert result["already_exists"] is False
-    assert result["overwritten"] is False
-    assert result["removed_existing"] is False
-
+    assert result["pre_upload_family_source_count"] == 0
+    assert result["source_family_regex"].startswith("^itest")
 
 def test_add_project_source_operation_returns_structured_overwrite_failure(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
@@ -2162,7 +2149,6 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
     assert call_order == [
         "remove:chatgpt_claudecode_workflow_v0.0.275.zip",
         "add_file",
-        "presence",
         "settle",
         "save_quiet",
         "verify",
@@ -2293,7 +2279,7 @@ def test_add_project_source_operation_prunes_old_generated_release_zips_to_keep_
         "remove:chatgpt_claudecode_workflow-2_v0.1.89.zip",
         "remove:chatgpt_claudecode_workflow-2_v0.1.90.zip",
     ]
-    assert call_order[3:] == ["add_file", "presence", "settle", "save_quiet", "verify"]
+    assert call_order[3:] == ["add_file", "settle", "save_quiet", "verify"]
     assert "docs-project-mvp.md" in {source["title"] for source in current_sources}
     assert "ib_forex_trading.0.248.21.zip" in {source["title"] for source in current_sources}
     assert result["ok"] is True
@@ -3365,7 +3351,11 @@ def test_add_file_source_operation_recovers_post_commit_visible_snapshot_after_r
 
     browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
     browser_client._goto = fake_goto  # type: ignore[method-assign]
+    async def fake_preflight(*_args, **_kwargs):
+        return {"ok": True, "status": "authoritative_empty", "sources": [], "source_card_count": 0, "source_identities": [], "empty_state_visible": True}
+
     browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_preflight  # type: ignore[method-assign]
     browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
     browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._add_project_file_source = fake_add_file_source  # type: ignore[method-assign]
@@ -3610,43 +3600,45 @@ def test_existing_source_replace_capability_failure_is_non_destructive(
 
 
 
-def test_add_file_source_operation_reuses_uniquely_correlated_indexed_source_before_upload(
-    browser_client: ChatGPTBrowserClient,
-    tmp_path: Path,
-) -> None:
-    class Context:
-        def on(self, *_args, **_kwargs) -> None:
-            return None
 
+def test_add_file_source_operation_increments_existing_indexed_family_once(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     page = object()
-    suffix_card = {
-        "identity": "release(14).zip Document",
-        "title": "release(14).zip",
-        "text": "release(14).zip File contents may not be accessible",
-    }
+    old_card = {"identity": "release(14).zip Document", "title": "release(14).zip", "text": "release(14).zip Document"}
+    new_card = {"identity": "release(15).zip Document", "title": "release(15).zip", "text": "release(15).zip Document"}
+    calls = {"uploads": 0, "generic_verify": 0}
+    processed_file_id = "file_000000001234567890abcdef12345678"
+    library_object_id = "libfile_1234567890abcdef1234567890abcdef"
 
     async def fake_noop(*_args, **_kwargs) -> None:
         return None
 
-    async def fake_snapshot(*_args, **_kwargs):
-        return [suffix_card]
+    async def fake_preflight(*_args, **_kwargs):
+        return {"ok": True, "status": "authoritative", "sources": [old_card], "source_card_count": 1, "source_identities": [old_card["identity"]], "empty_state_visible": False}
 
-    async def fake_correlate(*_args, **_kwargs):
+    async def fake_upload(*_args, **_kwargs):
+        calls["uploads"] += 1
+
+    async def fake_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0}
+
+    async def fake_processing(*_args, **_kwargs):
         return {
-            "ok": True,
-            "status": "existing_correlated_source",
-            "requested_filename": "release.zip",
-            "assigned_filename": "release(14).zip",
-            "processed_file_id": "file_000000001234567890abcdef12345678",
-            "library_metadata_object_id": "libfile_1234567890abcdef1234567890abcdef",
-            "local_sha256": "a" * 64,
-            "local_size_bytes": 3,
-            "content_identity_mode": "size_and_uploaded_file_identity",
-            "source_card": suffix_card,
+            "status": "project_source_processing_stream_completed",
+            "assigned_filename": "release(15).zip",
+            "library_file_name": "release(15).zip",
+            "processed_file_id": processed_file_id,
+            "library_metadata_object_id": library_object_id,
         }
 
-    async def fail_upload(*_args, **_kwargs) -> None:
-        raise AssertionError("a correlated indexed source must be reused without another upload")
+    async def fake_snapshot(*_args, **_kwargs):
+        return [old_card, new_card]
+
+    async def fail_generic_verify(*_args, **_kwargs):
+        calls["generic_verify"] += 1
+        raise AssertionError("assigned-name fast verification must skip canonical persistence retries")
 
     async def fake_safe_page_url(*_args, **_kwargs) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
@@ -3654,35 +3646,33 @@ def test_add_file_source_operation_reuses_uniquely_correlated_indexed_source_bef
     browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
     browser_client._goto = fake_noop  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_preflight  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
     browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
-    browser_client._correlate_existing_indexed_project_source = fake_correlate  # type: ignore[method-assign]
-    browser_client._add_project_file_source = fail_upload  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fail_generic_verify  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "source_kind": "file", "started": 2, "finished": 2, "failed": 0, "saw_relevant": True, "saw_commit": True, "inflight": set(), "backing_file_ids": [processed_file_id], "backend_assigned_names": ["release.zip", "release(15).zip"]}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
     file_path = tmp_path / "release.zip"
     file_path.write_bytes(b"zip")
-    result = asyncio.run(
-        browser_client._add_project_source_operation(
-            context=Context(),
-            page=page,
-            source_kind="file",
-            value=None,
-            file_path=str(file_path),
-            display_name=str(file_path),
-            keep_open=False,
-        )
-    )
+    result = asyncio.run(browser_client._add_project_source_operation(context=None, page=page, source_kind="file", value=None, file_path=str(file_path), display_name=str(file_path), keep_open=False))
 
+    assert calls == {"uploads": 1, "generic_verify": 0}
     assert result["ok"] is True
-    assert result["status"] == "existing_correlated_source"
+    assert result["status"] == "source_added"
     assert result["requested_filename"] == "release.zip"
-    assert result["assigned_filename"] == "release(14).zip"
-    assert result["processed_file_id"].startswith("file_")
-    assert result["library_metadata_object_id"].startswith("libfile_")
-    assert result["project_source_mutated"] is False
-    assert result["persistence_verified"] is True
-    assert result["operator_review_required"] is False
-
+    assert result["assigned_filename"] == "release(15).zip"
+    assert result["previous_max_assigned_index"] == 14
+    assert result["expected_next_assigned_index"] == 15
+    assert result["assigned_index"] == 15
+    assert result["assigned_index_delta"] == 1
+    assert result["assigned_index_is_expected_next"] is True
+    assert result["pre_upload_family_source_identities"] == ["release(14).zip Document"]
+    assert result["canonical_persistence_retry_skipped"] is True
 
 def test_add_file_source_operation_blocks_uncorrelated_indexed_source_after_committed_upload(
     browser_client: ChatGPTBrowserClient,
@@ -3728,6 +3718,17 @@ def test_add_file_source_operation_blocks_uncorrelated_indexed_source_after_comm
     async def fake_safe_url(*_args, **_kwargs):
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
 
+    async def fake_exact_assigned(*_args, **_kwargs):
+        return {
+            "ok": True,
+            "status": "exact_assigned_source_verified",
+            "requested_filename": "release.zip",
+            "assigned_filename": "release(1).zip",
+            "assigned_index": 1,
+            "source_card": suffix_card,
+            "family_sources": [suffix_card],
+        }
+
     browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
     browser_client._goto = fake_noop  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
@@ -3739,6 +3740,7 @@ def test_add_file_source_operation_blocks_uncorrelated_indexed_source_after_comm
     browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
     browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
     browser_client._wait_for_post_commit_file_source_resolution = fake_resolution  # type: ignore[method-assign]
+    browser_client._wait_for_exact_assigned_file_source = fake_exact_assigned  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
     browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "source_kind": "file", "started": 2, "finished": 2, "failed": 0, "saw_relevant": True, "saw_commit": True, "inflight": set()}  # type: ignore[method-assign]
     browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
@@ -3750,7 +3752,7 @@ def test_add_file_source_operation_blocks_uncorrelated_indexed_source_after_comm
     assert calls == {"removed": True, "added": True}
     assert result["ok"] is False
     assert result["status"] == "blocked_ambiguous"
-    assert result["conflict_reason"] == "backend_assigned_indexed_source_not_correlated_to_current_upload"
+    assert result["conflict_reason"] == "exact_assigned_source_not_correlated_to_current_upload"
     assert result["persistence_verified"] is False
     assert result["project_source_mutated"] is True
     assert result["operator_review_required"] is True
@@ -4061,73 +4063,68 @@ def test_project_source_preflight_zero_cards_without_empty_state_is_not_authorit
     assert result["empty_state_visible"] is False
 
 
-def test_add_file_source_delayed_surface_loading_detects_suffix_conflict_before_upload(
-    browser_client: ChatGPTBrowserClient,
-    tmp_path: Path,
-) -> None:
+
+def test_add_file_source_delayed_surface_loading_captures_previous_index_and_uploads_next(browser_client: ChatGPTBrowserClient, tmp_path: Path) -> None:
     class Page:
         async def wait_for_timeout(self, _milliseconds: int) -> None:
             await asyncio.sleep(0)
 
-    snapshots = iter([
-        [],
-        [{"identity": "release(4).zip Document", "title": "release(4).zip", "text": "release(4).zip Document"}],
-        [{"identity": "release(4).zip Document", "title": "release(4).zip", "text": "release(4).zip Document"}],
-    ])
+    old_card = {"identity": "release(4).zip Document", "title": "release(4).zip", "text": "release(4).zip Document"}
+    new_card = {"identity": "release(5).zip Document", "title": "release(5).zip", "text": "release(5).zip Document"}
+    snapshots = iter([[], [old_card], [old_card]])
+    calls = {"uploads": 0}
+    processed_file_id = "file_000000001234567890abcdef12345678"
+    library_object_id = "libfile_1234567890abcdef1234567890abcdef"
 
-    async def fake_ensure(*_args, **_kwargs) -> None:
-        return None
-
-    async def fake_goto(*_args, **_kwargs) -> None:
-        return None
-
-    async def fake_open(*_args, **_kwargs) -> None:
+    async def fake_noop(*_args, **_kwargs) -> None:
         return None
 
     async def fake_snapshot(*_args, **_kwargs):
         try:
             return next(snapshots)
         except StopIteration:
-            return [{"identity": "release(4).zip Document", "title": "release(4).zip", "text": "release(4).zip Document"}]
+            return [old_card, new_card]
 
     async def fake_empty(*_args, **_kwargs) -> bool:
         return False
 
-    async def fail_upload(*_args, **_kwargs) -> None:
-        raise AssertionError("upload must not start before authoritative suffix-conflict preflight")
+    async def fake_upload(*_args, **_kwargs) -> None:
+        calls["uploads"] += 1
+
+    async def fake_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0}
+
+    async def fake_processing(*_args, **_kwargs):
+        return {"status": "project_source_processing_stream_completed", "assigned_filename": "release(5).zip", "library_file_name": "release(5).zip", "processed_file_id": processed_file_id, "library_metadata_object_id": library_object_id}
 
     async def fake_safe_url(*_args, **_kwargs) -> str:
         return "https://chatgpt.com/g/g-p-123/project?tab=sources"
 
-    browser_client.ensure_logged_in = fake_ensure  # type: ignore[method-assign]
-    browser_client._goto = fake_goto  # type: ignore[method-assign]
-    browser_client._open_project_sources_tab = fake_open  # type: ignore[method-assign]
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
     browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
     browser_client._project_sources_empty_state_visible = fake_empty  # type: ignore[method-assign]
-    browser_client._add_project_file_source = fail_upload  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "source_kind": "file", "started": 2, "finished": 2, "failed": 0, "saw_relevant": True, "saw_commit": True, "inflight": set(), "backing_file_ids": [processed_file_id], "backend_assigned_names": ["release(5).zip"]}  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
     file_path = tmp_path / "release.zip"
     file_path.write_bytes(b"zip")
-    result = asyncio.run(
-        browser_client._add_project_source_operation(
-            context=None,
-            page=Page(),
-            source_kind="file",
-            value=None,
-            file_path=str(file_path),
-            display_name=str(file_path),
-            keep_open=False,
-        )
-    )
+    result = asyncio.run(browser_client._add_project_source_operation(context=None, page=Page(), source_kind="file", value=None, file_path=str(file_path), display_name=str(file_path), keep_open=False))
 
-    assert result["ok"] is False
-    assert result["status"] == "blocked_ambiguous"
-    assert result["conflict_reason"] == "indexed_source_not_correlated_to_local_artifact"
-    assert result["duplicate_suffix_source_identities"] == ["release(4).zip Document"]
-    assert result["added"] is False
-
-
+    assert calls["uploads"] == 1
+    assert result["ok"] is True
+    assert result["previous_max_assigned_index"] == 4
+    assert result["assigned_index"] == 5
+    assert result["assigned_index_is_expected_next"] is True
 
 def test_source_add_accepts_correlated_indexed_assigned_filename(
     browser_client: ChatGPTBrowserClient,
@@ -4205,7 +4202,7 @@ def test_source_add_accepts_correlated_indexed_assigned_filename(
     file_path.write_bytes(b"zip")
     result = asyncio.run(browser_client._add_project_source_operation(context=None, page=page, source_kind="file", value=None, file_path=str(file_path), display_name=str(file_path), keep_open=False))
 
-    assert calls == {"uploaded": True, "verified": True}
+    assert calls == {"uploaded": True, "verified": False}
     assert result["ok"] is True
     assert result["status"] == "source_added"
     assert result["requested_filename"] == "release.zip"
@@ -4215,7 +4212,9 @@ def test_source_add_accepts_correlated_indexed_assigned_filename(
     assert result["project_source_mutated"] is True
     assert result["persistence_verified"] is True
     assert result["operator_review_required"] is False
-    assert result["indexed_source_correlation"]["status"] == "current_upload_correlated_indexed_source"
+    assert result["indexed_source_correlation"]["status"] == "current_upload_correlated_assigned_source"
+    assert result["verification_mode"] == "processing_stream_assigned_filename_exact"
+    assert result["canonical_persistence_retry_skipped"] is True
     assert result["duplicate_suffix_source_count"] == 1
 
 def _library_surface(records, *, reason: str = "stable_library_snapshot"):

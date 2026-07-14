@@ -122,3 +122,8 @@ Remove repo-local artifact-registry fallback and the legacy registry-import path
 ### v0.1.103.10.106 repair-only correlation
 
 Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata. Canonical artifact identity and version remain unchanged; the numeric suffix is Project Source metadata only. No release pbsa, adoption, or unrelated Library cleanup is performed.
+
+
+### v0.1.103.10.107 repair-only exact assigned-name verification
+
+Uses one escaped canonical/indexed filename-family matcher across preflight and verification. The pre-upload family snapshot records the highest existing numeric suffix as evidence only; a normal add uploads exactly once, accepts the processing-stream `assigned_filename`, verifies that exact assigned Project Source card immediately, and never enters canonical-name persistence retries after assigned identity is known. Malformed assigned names and duplicate exact assigned cards remain fail closed.

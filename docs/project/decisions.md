@@ -886,3 +886,8 @@ Promptbranch is still under active development, so artifact state uses a clean-b
 ## v0.1.103.10.106: canonical artifacts and backend-assigned Project Source names are separate identities
 
 A canonical local artifact such as `platform-gitops_v0.0.6.6.zip` remains the release, Git, version, and registry artifact identity even when ChatGPT persists it as `platform-gitops_v0.0.6.6(14).zip`. Promptbranch accepts that assigned name only when one exact indexed card is correlated to the current upload through terminal processing-stream `file_...` and `libfile_...` identities and stable read-back. One existing correlated indexed source is reused; multiple family members or incomplete identity proof fail closed. Service retries do not pre-delete remembered sources.
+
+
+## v0.1.103.10.107: the stream-assigned filename becomes the verification target immediately
+
+A pre-existing indexed Project Source such as `(14)` is pre-upload family evidence, not a reuse target for a normal `pb src add`. Promptbranch uses one escaped canonical/indexed-family regex, records the highest existing suffix, uploads exactly once, and then treats the processing-stream `assigned_filename` such as `(15)` as the sole persistence-verification target. Once that assigned identity is known, canonical unsuffixed persistence retries are forbidden. An index increment of one is diagnostic evidence, not mutation authority; exact current-upload file/libfile identity and one unique exact assigned card remain authoritative.

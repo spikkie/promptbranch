@@ -1100,3 +1100,8 @@ There is intentionally no backward-compatible registry migration. Start with a n
 ## Indexed Project Source identity note — v0.1.103.10.106
 
 No migration or rename is performed. Canonical local ZIP names remain canonical. A uniquely correlated backend-assigned `(n)` display name is retained as Project Source metadata and may be referenced during adoption; ambiguous indexed families remain blocked.
+
+
+## Exact assigned Project Source verification note — v0.1.103.10.107
+
+No command or state migration is required. Existing indexed Project Sources remain valid family members. For a normal new `pb src add`, the highest existing suffix is diagnostic pre-upload evidence only; Promptbranch uploads once and verifies the exact filename assigned by the processing stream. It does not reuse the previous indexed source and does not wait for the canonical unsuffixed filename after an assigned name is known.

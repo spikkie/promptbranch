@@ -6742,6 +6742,131 @@ class ChatGPTBrowserClient:
             "timeout_ms": timeout_ms,
         }
 
+    async def _wait_for_exact_assigned_file_source(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        canonical_name: str,
+        assigned_filename: str,
+        before_sources: Optional[list[dict[str, Any]]],
+        timeout_ms: int = 10_000,
+        poll_interval_ms: int = 250,
+        required_stable_observations: int = 2,
+    ) -> dict[str, Any]:
+        """Verify the exact backend-assigned card without canonical retries.
+
+        Once the processing stream returns ``assigned_filename``, that identity is
+        authoritative for the current upload.  Older family siblings remain valid
+        pre-existing state and do not make the new assignment ambiguous.
+        """
+        assignment = self._file_source_family_match_details(assigned_filename, canonical_name)
+        if not assignment:
+            return {
+                "ok": False,
+                "status": "assigned_filename_outside_requested_family",
+                "requested_filename": canonical_name,
+                "assigned_filename": assigned_filename,
+                "source_family_regex": (self._file_source_family_regex(canonical_name) or re.compile(r"$^")).pattern,
+            }
+        before_assigned = [
+            item
+            for item in self._match_file_source_family_cards(before_sources, canonical_name)
+            if (self._project_source_card_assigned_filename(item) or "").casefold() == assigned_filename.casefold()
+        ]
+        if before_assigned:
+            return {
+                "ok": False,
+                "status": "assigned_filename_preexisted_current_upload",
+                "requested_filename": canonical_name,
+                "assigned_filename": assigned_filename,
+                "assigned_index": assignment.get("assigned_index"),
+                "preexisting_exact_assigned_count": len(before_assigned),
+            }
+
+        deadline = asyncio.get_running_loop().time() + (max(timeout_ms, 1) / 1000)
+        stable_observations = 0
+        observations = 0
+        previous_signature: Optional[tuple[str, ...]] = None
+        last_sources: list[dict[str, Any]] = []
+        last_family: list[dict[str, Any]] = []
+        last_assigned: list[dict[str, Any]] = []
+        while asyncio.get_running_loop().time() < deadline:
+            observations += 1
+            last_sources = await self._snapshot_project_source_cards(page)
+            last_family = self._match_file_source_family_cards(last_sources, canonical_name)
+            last_assigned = [
+                item
+                for item in last_family
+                if (self._project_source_card_assigned_filename(item) or "").casefold() == assigned_filename.casefold()
+            ]
+            if len(last_assigned) > 1:
+                return {
+                    "ok": False,
+                    "status": "duplicate_exact_assigned_source_cards",
+                    "requested_filename": canonical_name,
+                    "assigned_filename": assigned_filename,
+                    "assigned_index": assignment.get("assigned_index"),
+                    "exact_assigned_count": len(last_assigned),
+                    "exact_assigned_identities": [
+                        self._preferred_source_card_identity(item) or item.get("text")
+                        for item in last_assigned
+                    ],
+                    "family_source_count": len(last_family),
+                    "observations": observations,
+                }
+            signature = self._project_source_surface_signature(last_assigned) if last_assigned else None
+            if signature is not None and signature == previous_signature:
+                stable_observations += 1
+            elif signature is not None:
+                previous_signature = signature
+                stable_observations = 1
+            else:
+                previous_signature = None
+                stable_observations = 0
+            self._log(
+                "project-source-add",
+                "exact assigned filename verification probe",
+                project_url=project_url,
+                requested_filename=canonical_name,
+                assigned_filename=assigned_filename,
+                assigned_index=assignment.get("assigned_index"),
+                observation=observations,
+                family_source_count=len(last_family),
+                exact_assigned_count=len(last_assigned),
+                stable_observations=stable_observations,
+                required_stable_observations=required_stable_observations,
+            )
+            if len(last_assigned) == 1 and stable_observations >= max(required_stable_observations, 1):
+                return {
+                    "ok": True,
+                    "status": "exact_assigned_source_verified",
+                    "requested_filename": canonical_name,
+                    "assigned_filename": assigned_filename,
+                    "assigned_index": assignment.get("assigned_index"),
+                    "source_family_regex": assignment.get("family_regex"),
+                    "source_card": last_assigned[0],
+                    "family_sources": last_family,
+                    "family_source_count": len(last_family),
+                    "observations": observations,
+                    "stable_observations": stable_observations,
+                    "timeout_ms": timeout_ms,
+                }
+            await self._project_source_probe_pause(page, poll_interval_ms)
+        return {
+            "ok": False,
+            "status": "exact_assigned_source_verification_timeout",
+            "requested_filename": canonical_name,
+            "assigned_filename": assigned_filename,
+            "assigned_index": assignment.get("assigned_index"),
+            "source_family_regex": assignment.get("family_regex"),
+            "family_source_count": len(last_family),
+            "exact_assigned_count": len(last_assigned),
+            "observations": observations,
+            "stable_observations": stable_observations,
+            "timeout_ms": timeout_ms,
+        }
+
     async def _find_existing_file_source_for_overwrite(
         self,
         page: Any,
@@ -7081,46 +7206,74 @@ class ChatGPTBrowserClient:
         exact_canonical_sources: list[dict[str, Any]],
         processing_stream: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
+        """Correlate the exact stream assignment while permitting older siblings.
+
+        The old implementation required exactly one indexed family member, which
+        made a normal ``(14) -> (15)`` add ambiguous.  Only duplicate cards for the
+        exact newly assigned filename are ambiguous; older family members are
+        expected input state.
+        """
         stream = processing_stream if isinstance(processing_stream, dict) else {}
         assigned_filename = self._file_source_family_filename(
-            stream.get('assigned_filename') or stream.get('library_file_name')
+            stream.get("assigned_filename") or stream.get("library_file_name")
         )
-        processed_file_id = self._library_file_record_id(stream.get('processed_file_id'))
-        library_metadata_object_id = self._library_file_record_id(stream.get('library_metadata_object_id'))
-        if exact_canonical_sources or len(suffix_sources) != 1:
+        processed_file_id = self._library_file_record_id(stream.get("processed_file_id"))
+        library_metadata_object_id = self._library_file_record_id(stream.get("library_metadata_object_id"))
+        assignment = self._file_source_family_match_details(assigned_filename, canonical_name)
+        if not assignment:
             return {
-                'ok': False,
-                'status': 'indexed_source_correlation_ambiguous',
-                'exact_canonical_count': len(exact_canonical_sources),
-                'indexed_source_count': len(suffix_sources),
+                "ok": False,
+                "status": "indexed_source_not_in_requested_family",
+                "assigned_filename": assigned_filename,
             }
-        card = suffix_sources[0]
-        observed_assigned = self._project_source_card_assigned_filename(card)
-        if not assigned_filename or not observed_assigned or assigned_filename.casefold() != observed_assigned.casefold():
+        family_sources = [*exact_canonical_sources, *suffix_sources]
+        assigned_matches = [
+            item
+            for item in family_sources
+            if (self._project_source_card_assigned_filename(item) or "").casefold() == assigned_filename.casefold()
+        ]
+        if len(assigned_matches) != 1:
             return {
-                'ok': False,
-                'status': 'indexed_source_assigned_filename_mismatch',
-                'stream_assigned_filename': assigned_filename,
-                'observed_assigned_filename': observed_assigned,
+                "ok": False,
+                "status": "indexed_source_correlation_ambiguous",
+                "exact_assigned_count": len(assigned_matches),
+                "exact_assigned_identities": [
+                    self._preferred_source_card_identity(item) or item.get("text")
+                    for item in assigned_matches
+                ],
+                "family_source_count": len(family_sources),
+                "assigned_filename": assigned_filename,
+                "assigned_index": assignment.get("assigned_index"),
             }
-        if not self._file_source_family_member(assigned_filename, canonical_name):
-            return {'ok': False, 'status': 'indexed_source_not_in_requested_family'}
         before_names = {
-            (self._project_source_card_assigned_filename(item) or '').casefold()
+            (self._project_source_card_assigned_filename(item) or "").casefold()
             for item in before_sources or []
         }
         if assigned_filename.casefold() in before_names:
-            return {'ok': False, 'status': 'indexed_source_not_created_by_current_upload'}
+            return {
+                "ok": False,
+                "status": "indexed_source_not_created_by_current_upload",
+                "assigned_filename": assigned_filename,
+                "assigned_index": assignment.get("assigned_index"),
+            }
         if not processed_file_id or not library_metadata_object_id:
-            return {'ok': False, 'status': 'indexed_source_backend_identity_incomplete'}
+            return {
+                "ok": False,
+                "status": "indexed_source_backend_identity_incomplete",
+                "assigned_filename": assigned_filename,
+                "assigned_index": assignment.get("assigned_index"),
+            }
         return {
-            'ok': True,
-            'status': 'current_upload_correlated_indexed_source',
-            'requested_filename': canonical_name,
-            'assigned_filename': assigned_filename,
-            'processed_file_id': processed_file_id,
-            'library_metadata_object_id': library_metadata_object_id,
-            'source_card': card,
+            "ok": True,
+            "status": "current_upload_correlated_assigned_source",
+            "requested_filename": canonical_name,
+            "assigned_filename": assigned_filename,
+            "assigned_index": assignment.get("assigned_index"),
+            "source_family_regex": assignment.get("family_regex"),
+            "processed_file_id": processed_file_id,
+            "library_metadata_object_id": library_metadata_object_id,
+            "source_card": assigned_matches[0],
+            "family_source_count": len(family_sources),
         }
 
     def _library_url(self) -> str:
@@ -7130,18 +7283,110 @@ class ChatGPTBrowserClient:
         normalized = self._normalize_file_source_identity_for_duplicate_suffix_match(value)
         return normalized.strip()
 
-    def _file_source_family_member(self, candidate: Optional[str], canonical_name: Optional[str]) -> bool:
-        candidate_name = self._file_source_family_filename(candidate)
+    def _file_source_family_regex(self, canonical_name: Optional[str]) -> Optional[re.Pattern[str]]:
+        """Return the single canonical/indexed filename-family matcher.
+
+        The canonical filename and every backend collision name are one family:
+        ``name.ext``, ``name(1).ext``, ``name (14).ext``.  All Project Source
+        family classification must flow through this expression so exact and
+        indexed paths cannot drift apart.
+        """
         canonical = self._file_source_family_filename(canonical_name)
-        if not candidate_name or not canonical:
-            return False
-        if candidate_name.casefold() == canonical.casefold():
-            return True
+        if not canonical:
+            return None
         canonical_path = Path(canonical)
         suffix = canonical_path.suffix
         stem = canonical[:-len(suffix)] if suffix else canonical
-        pattern = rf"^{re.escape(stem)}\s*\(\d+\){re.escape(suffix)}$"
-        return re.fullmatch(pattern, candidate_name, flags=re.IGNORECASE) is not None
+        return re.compile(
+            rf"^{re.escape(stem)}(?:\s*\((?P<index>\d+)\))?{re.escape(suffix)}$",
+            flags=re.IGNORECASE,
+        )
+
+    def _file_source_family_match_details(
+        self,
+        candidate: Optional[str],
+        canonical_name: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        candidate_name = self._file_source_family_filename(candidate)
+        canonical = self._file_source_family_filename(canonical_name)
+        pattern = self._file_source_family_regex(canonical)
+        if not candidate_name or not canonical or pattern is None:
+            return None
+        match = pattern.fullmatch(candidate_name)
+        if match is None:
+            return None
+        raw_index = match.group("index")
+        assigned_index = int(raw_index) if raw_index is not None else None
+        return {
+            "canonical_filename": canonical,
+            "observed_filename": candidate_name,
+            "assigned_index": assigned_index,
+            "match_kind": "file_indexed_family" if assigned_index is not None else "file_exact_canonical",
+            "family_regex": pattern.pattern,
+        }
+
+    def _file_source_family_member(self, candidate: Optional[str], canonical_name: Optional[str]) -> bool:
+        return self._file_source_family_match_details(candidate, canonical_name) is not None
+
+    def _file_source_assigned_index(self, candidate: Optional[str], canonical_name: Optional[str]) -> Optional[int]:
+        details = self._file_source_family_match_details(candidate, canonical_name)
+        if not details:
+            return None
+        return details.get("assigned_index")
+
+    def _match_file_source_family_cards(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        canonical_name: Optional[str],
+    ) -> list[dict[str, Any]]:
+        matches: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for card in cards or []:
+            for identity in self._source_card_identity_candidates(card):
+                details = self._file_source_family_match_details(identity, canonical_name)
+                if not details:
+                    continue
+                matched: dict[str, Any] = dict(card)
+                matched["_promptbranch_file_family_match"] = details
+                key = (self._preferred_source_card_identity(matched) or identity or "").casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(matched)
+                break
+        return matches
+
+    def _file_source_family_snapshot_diagnostics(
+        self,
+        cards: Optional[list[dict[str, str]]],
+        canonical_name: Optional[str],
+    ) -> dict[str, Any]:
+        family = self._match_file_source_family_cards(cards, canonical_name)
+        indexed = [
+            item
+            for item in family
+            if isinstance(item.get("_promptbranch_file_family_match"), dict)
+            and item["_promptbranch_file_family_match"].get("assigned_index") is not None
+        ]
+        exact = [item for item in family if item not in indexed]
+        indexes = [
+            int(item["_promptbranch_file_family_match"]["assigned_index"])
+            for item in indexed
+        ]
+        previous_max = max(indexes) if indexes else (0 if exact else None)
+        pattern = self._file_source_family_regex(canonical_name)
+        return {
+            "family_sources": family,
+            "exact_canonical_sources": exact,
+            "indexed_sources": indexed,
+            "previous_max_assigned_index": previous_max,
+            "expected_next_assigned_index": previous_max + 1 if previous_max is not None else None,
+            "source_family_regex": pattern.pattern if pattern is not None else None,
+            "source_family_identities": [
+                self._preferred_source_card_identity(item) or item.get("text")
+                for item in family
+            ],
+        }
 
     def _compact_library_filename_fragment(self, value: Any) -> str:
         return re.sub(r"\s+", "", str(value or "")).strip()
@@ -12367,17 +12612,17 @@ class ChatGPTBrowserClient:
                 )
 
             initial_presence_error = None
-            if not duplicate_detected:
+            if not duplicate_detected and normalized_kind != "file":
                 try:
                     matched_source = await self._wait_for_source_presence(
                         page,
                         source_match_candidates=source_match_candidates,
                         before_sources=before_sources,
                         accept_single_new_card=normalized_kind == "text",
-                        timeout_ms=5_000 if normalized_kind in {"text", "file"} else 20_000,
+                        timeout_ms=5_000 if normalized_kind == "text" else 20_000,
                     )
                 except ResponseTimeoutError as exc:
-                    if normalized_kind not in {"text", "file"}:
+                    if normalized_kind != "text":
                         raise
                     initial_presence_error = str(exc)
                     self._log(
@@ -12388,6 +12633,8 @@ class ChatGPTBrowserClient:
                         before_source_count=len(before_sources or []),
                         error=initial_presence_error,
                     )
+            elif normalized_kind == "file" and not duplicate_detected:
+                initial_presence_error = "deferred_to_processing_stream_assigned_filename"
             if normalized_kind in {"text", "file"} and not duplicate_detected:
                 await self._wait_for_project_source_post_save_settle(
                     page,
@@ -12867,6 +13114,15 @@ class ChatGPTBrowserClient:
         family_source_backing_file_ids: list[str] = []
         library_cleanup_required = False
         library_cleanup_trigger: Optional[str] = None
+        initial_family_diagnostics: dict[str, Any] = {
+            "family_sources": [],
+            "exact_canonical_sources": [],
+            "indexed_sources": [],
+            "previous_max_assigned_index": None,
+            "expected_next_assigned_index": None,
+            "source_family_regex": None,
+            "source_family_identities": [],
+        }
 
         if normalized_kind == "file":
             source_match_candidates = self._build_source_match_candidates(
@@ -12875,81 +13131,42 @@ class ChatGPTBrowserClient:
                 display_name=canonical_display_name,
                 file_path=file_path,
             )
-            duplicate_suffix_conflicts = self._match_file_source_duplicate_suffix_cards(
+            canonical_family_name = canonical_display_name or (source_match_candidates[0] if source_match_candidates else "")
+            initial_family_diagnostics = self._file_source_family_snapshot_diagnostics(
                 before_sources,
-                source_match_candidates,
+                canonical_family_name,
             )
-            initial_exact_canonical_sources = self._match_file_source_exact_canonical_cards(
-                before_sources,
-                source_match_candidates,
-            )
-            for family_source in initial_exact_canonical_sources + duplicate_suffix_conflicts:
-                source_file_id = self._library_file_record_id(family_source.get('file_id'))
+            duplicate_suffix_conflicts = list(initial_family_diagnostics.get("indexed_sources") or [])
+            initial_exact_canonical_sources = list(initial_family_diagnostics.get("exact_canonical_sources") or [])
+            for family_source in list(initial_family_diagnostics.get("family_sources") or []):
+                source_file_id = self._library_file_record_id(family_source.get("file_id"))
                 if source_file_id and source_file_id not in family_source_backing_file_ids:
                     family_source_backing_file_ids.append(source_file_id)
-            if duplicate_suffix_conflicts:
-                exact_canonical_sources = list(initial_exact_canonical_sources)
-                if context is not None and hasattr(context, "on"):
-                    correlation = await self._correlate_existing_indexed_project_source(
-                        context=context,
-                        page=page,
-                        project_url=project_home_url,
-                        canonical_name=canonical_display_name or source_match_candidates[0],
-                        file_path=file_path,
-                        suffix_sources=duplicate_suffix_conflicts,
-                        exact_canonical_sources=exact_canonical_sources,
-                    )
-                else:
-                    correlation = {
-                        "ok": False,
-                        "status": "indexed_source_correlation_unavailable_in_test_double",
-                    }
-                if correlation.get("ok"):
-                    assigned_filename = str(correlation.get("assigned_filename") or "")
-                    source_card = correlation.get("source_card") if isinstance(correlation.get("source_card"), dict) else duplicate_suffix_conflicts[0]
-                    return {
-                        "ok": True,
-                        "action": "add",
-                        "status": "existing_correlated_source",
-                        "project_url": project_home_url,
-                        "source_kind": normalized_kind,
-                        "file_path": file_path,
-                        "requested_filename": canonical_display_name or source_match_candidates[0],
-                        "assigned_filename": assigned_filename,
-                        "source_match": self._preferred_source_card_identity(source_card) or assigned_filename,
-                        "source_match_requested": canonical_display_name or source_match_candidates[0],
-                        "source_match_candidates": source_match_candidates,
-                        "processed_file_id": correlation.get("processed_file_id"),
-                        "library_metadata_object_id": correlation.get("library_metadata_object_id"),
-                        "local_sha256": correlation.get("local_sha256"),
-                        "local_size_bytes": correlation.get("local_size_bytes"),
-                        "content_identity_mode": correlation.get("content_identity_mode"),
-                        "project_source_mutated": False,
-                        "persistence_verified": True,
-                        "verification_mode": "existing_indexed_source_library_readback",
-                        "already_exists": True,
-                        "added": False,
-                        "overwritten": False,
-                        "removed_existing": False,
-                        "operator_review_required": False,
-                        "indexed_source_correlation": correlation,
-                        "current_url": await self._safe_page_url(page),
-                    }
+            self._log(
+                "project-source-add",
+                "captured canonical/indexed source family before upload",
+                project_url=project_home_url,
+                requested_filename=canonical_family_name,
+                source_family_regex=initial_family_diagnostics.get("source_family_regex"),
+                family_source_count=len(initial_family_diagnostics.get("family_sources") or []),
+                exact_canonical_count=len(initial_exact_canonical_sources),
+                indexed_source_count=len(duplicate_suffix_conflicts),
+                previous_max_assigned_index=initial_family_diagnostics.get("previous_max_assigned_index"),
+                expected_next_assigned_index=initial_family_diagnostics.get("expected_next_assigned_index"),
+                source_family_identities=initial_family_diagnostics.get("source_family_identities"),
+            )
+            if len(initial_exact_canonical_sources) > 1:
                 conflict = self._file_source_exact_name_conflict_result(
                     project_url=project_home_url,
                     source_kind=normalized_kind,
-                    requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                    requested_match=canonical_family_name,
                     source_match_candidates=source_match_candidates,
                     current_sources=before_sources,
                     duplicate_suffix_sources=duplicate_suffix_conflicts,
-                    exact_canonical_sources=exact_canonical_sources,
+                    exact_canonical_sources=initial_exact_canonical_sources,
                     status="blocked_ambiguous",
-                    conflict_reason=(
-                        "indexed_source_visible_alongside_canonical"
-                        if exact_canonical_sources
-                        else "indexed_source_not_correlated_to_local_artifact"
-                    ),
-                    already_exists=bool(exact_canonical_sources),
+                    conflict_reason="duplicate_exact_canonical_source_cards",
+                    already_exists=True,
                     overwritten=False,
                     removed_existing=False,
                     save_summary=None,
@@ -12957,14 +13174,18 @@ class ChatGPTBrowserClient:
                     transaction=None,
                     current_url=await self._safe_page_url(page),
                 )
-                conflict["indexed_source_correlation"] = correlation
-                conflict["operator_review_required"] = True
+                conflict.update({
+                    "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                    "previous_max_assigned_index": initial_family_diagnostics.get("previous_max_assigned_index"),
+                    "expected_next_assigned_index": initial_family_diagnostics.get("expected_next_assigned_index"),
+                })
                 return conflict
-            existing_source = await self._find_existing_file_source_for_overwrite(
-                page,
-                source_match_candidates=source_match_candidates,
-                initial_sources=before_sources,
-                project_url=project_home_url,
+            # Indexed siblings are expected input state for a normal add.  Only an
+            # exact unsuffixed canonical card participates in overwrite semantics.
+            existing_source = (
+                {key: value for key, value in initial_exact_canonical_sources[0].items() if key != "_promptbranch_file_family_match"}
+                if initial_exact_canonical_sources
+                else None
             )
             if existing_source is not None:
                 matched_source = existing_source
@@ -13489,6 +13710,7 @@ class ChatGPTBrowserClient:
         save_request_watch = None
         save_request_quiet_result: Optional[dict[str, Any]] = None
         processing_stream_result: Optional[dict[str, Any]] = None
+        assigned_source_verification: Optional[dict[str, Any]] = None
         indexed_assignment_correlation: Optional[dict[str, Any]] = None
         save_request_watch_disposed = False
         proceed_to_persistence_verification = False
@@ -13533,17 +13755,17 @@ class ChatGPTBrowserClient:
                 )
 
             initial_presence_error = None
-            if not duplicate_detected:
+            if not duplicate_detected and normalized_kind != "file":
                 try:
                     matched_source = await self._wait_for_source_presence(
                         page,
                         source_match_candidates=source_match_candidates,
                         before_sources=before_sources,
                         accept_single_new_card=normalized_kind == "text",
-                        timeout_ms=5_000 if normalized_kind in {"text", "file"} else 20_000,
+                        timeout_ms=5_000 if normalized_kind == "text" else 20_000,
                     )
                 except ResponseTimeoutError as exc:
-                    if normalized_kind not in {"text", "file"}:
+                    if normalized_kind != "text":
                         raise
                     initial_presence_error = str(exc)
                     self._log(
@@ -13554,6 +13776,8 @@ class ChatGPTBrowserClient:
                         before_source_count=len(before_sources or []),
                         error=initial_presence_error,
                     )
+            elif normalized_kind == "file" and not duplicate_detected:
+                initial_presence_error = "deferred_to_processing_stream_assigned_filename"
             if normalized_kind in {"text", "file"} and not duplicate_detected:
                 await self._wait_for_project_source_post_save_settle(
                     page,
@@ -13590,55 +13814,129 @@ class ChatGPTBrowserClient:
                 if normalized_kind == "file" and bool(
                     self._project_source_save_watch_summary(save_request_watch).get("saw_commit")
                 ):
-                    post_commit_resolution = await self._wait_for_post_commit_file_source_resolution(
-                        page,
-                        project_url=project_home_url,
-                        source_match_candidates=source_match_candidates,
-                        before_sources=before_sources,
+                    stream_identity = processing_stream_result if isinstance(processing_stream_result, dict) else {}
+                    assigned_filename = self._file_source_family_filename(
+                        stream_identity.get("assigned_filename") or stream_identity.get("library_file_name")
                     )
-                    backend_renamed_sources = list(post_commit_resolution.get("duplicate_suffix_sources") or [])
-                    if backend_renamed_sources:
-                        exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
-                        indexed_assignment_correlation = self._correlate_current_indexed_project_source(
-                            canonical_name=canonical_display_name or source_match_candidates[0],
+                    canonical_family_name = canonical_display_name or (source_match_candidates[0] if source_match_candidates else "")
+                    assignment_details = self._file_source_family_match_details(
+                        assigned_filename,
+                        canonical_family_name,
+                    )
+                    if assigned_filename and not assignment_details:
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "assigned_filename_outside_requested_family",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "requested_filename": canonical_family_name,
+                            "assigned_filename": assigned_filename,
+                            "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                            "previous_max_assigned_index": initial_family_diagnostics.get("previous_max_assigned_index"),
+                            "expected_next_assigned_index": initial_family_diagnostics.get("expected_next_assigned_index"),
+                            "processing_stream": processing_stream_result,
+                            "persistence_verified": False,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    if not assignment_details:
+                        self._log(
+                            "project-source-add",
+                            "processing stream did not expose an assigned filename; retaining generic persistence verification",
+                            requested_filename=canonical_family_name,
+                            processing_stream_status=stream_identity.get("status"),
+                        )
+                    else:
+                        assigned_source_verification = await self._wait_for_exact_assigned_file_source(
+                            page,
+                            project_url=project_home_url,
+                            canonical_name=canonical_family_name,
+                            assigned_filename=assigned_filename,
                             before_sources=before_sources,
-                            suffix_sources=backend_renamed_sources,
-                            exact_canonical_sources=exact_canonical_sources,
+                        )
+                    if assigned_source_verification is not None and not assigned_source_verification.get("ok"):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": assigned_source_verification.get("status") or "assigned_source_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "requested_filename": canonical_family_name,
+                            "assigned_filename": assigned_filename,
+                            "assigned_index": self._file_source_assigned_index(assigned_filename, canonical_family_name),
+                            "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                            "previous_max_assigned_index": initial_family_diagnostics.get("previous_max_assigned_index"),
+                            "expected_next_assigned_index": initial_family_diagnostics.get("expected_next_assigned_index"),
+                            "assigned_source_verification": assigned_source_verification,
+                            "processing_stream": processing_stream_result,
+                            "persistence_verified": False,
+                            "project_source_mutated": bool(
+                                self._project_source_save_watch_summary(save_request_watch).get("saw_commit")
+                            ),
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    if assigned_source_verification is None:
+                        verified_family = []
+                    else:
+                        verified_family = list(assigned_source_verification.get("family_sources") or [])
+                    verified_exact = [
+                        item
+                        for item in verified_family
+                        if (item.get("_promptbranch_file_family_match") or {}).get("assigned_index") is None
+                    ]
+                    verified_indexed = [
+                        item
+                        for item in verified_family
+                        if (item.get("_promptbranch_file_family_match") or {}).get("assigned_index") is not None
+                    ]
+                    if assigned_source_verification is not None:
+                        indexed_assignment_correlation = self._correlate_current_indexed_project_source(
+                            canonical_name=canonical_family_name,
+                            before_sources=before_sources,
+                            suffix_sources=verified_indexed,
+                            exact_canonical_sources=verified_exact,
                             processing_stream=processing_stream_result,
                         )
-                        if not indexed_assignment_correlation.get("ok"):
-                            conflict_result = self._file_source_exact_name_conflict_result(
-                                project_url=project_home_url,
-                                source_kind=normalized_kind,
-                                requested_match=source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                                source_match_candidates=source_match_candidates,
-                                current_sources=list(post_commit_resolution.get("sources") or []),
-                                duplicate_suffix_sources=backend_renamed_sources,
-                                exact_canonical_sources=exact_canonical_sources,
-                                status="blocked_ambiguous",
-                                conflict_reason="backend_assigned_indexed_source_not_correlated_to_current_upload",
-                                already_exists=duplicate_detected or overwritten_existing,
-                                overwritten=overwritten_existing,
-                                removed_existing=bool(
-                                    (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
-                                    or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
-                                ),
-                                save_summary=self._project_source_save_watch_summary(save_request_watch),
-                                save_request_quiet=save_request_quiet_result,
-                                transaction={
-                                    "transaction_status": "commit_seen_with_uncorrelated_indexed_source",
-                                    "release_blocking": True,
-                                },
-                                current_url=await self._safe_page_url(page),
-                            )
-                            conflict_result["indexed_source_correlation"] = indexed_assignment_correlation
-                            conflict_result["operator_review_required"] = True
-                            return conflict_result
+                    if indexed_assignment_correlation is not None and not indexed_assignment_correlation.get("ok"):
+                        conflict_result = self._file_source_exact_name_conflict_result(
+                            project_url=project_home_url,
+                            source_kind=normalized_kind,
+                            requested_match=canonical_family_name,
+                            source_match_candidates=source_match_candidates,
+                            current_sources=verified_family,
+                            duplicate_suffix_sources=verified_indexed,
+                            exact_canonical_sources=verified_exact,
+                            status="blocked_ambiguous",
+                            conflict_reason="exact_assigned_source_not_correlated_to_current_upload",
+                            already_exists=duplicate_detected or overwritten_existing,
+                            overwritten=overwritten_existing,
+                            removed_existing=bool(
+                                (overwrite_remove_result and overwrite_remove_result.get("removed_via_ui"))
+                                or (capacity_prune_result and capacity_prune_result.get("removed_via_ui"))
+                            ),
+                            save_summary=self._project_source_save_watch_summary(save_request_watch),
+                            save_request_quiet=save_request_quiet_result,
+                            transaction={
+                                "transaction_status": "commit_seen_with_uncorrelated_assigned_source",
+                                "release_blocking": True,
+                            },
+                            current_url=await self._safe_page_url(page),
+                        )
+                        conflict_result["indexed_source_correlation"] = indexed_assignment_correlation
+                        conflict_result["assigned_source_verification"] = assigned_source_verification
+                        conflict_result["operator_review_required"] = True
+                        return conflict_result
+                    if indexed_assignment_correlation is not None and indexed_assignment_correlation.get("ok"):
                         matched_source = dict(indexed_assignment_correlation["source_card"])
+                        matched_source["_promptbranch_verification_mode"] = "processing_stream_assigned_filename_exact"
+                        matched_source["_promptbranch_ui_card_seen_before_refresh"] = True
+                        matched_source["_promptbranch_post_refresh_attempt"] = None
                         matched_source["_promptbranch_indexed_assignment_correlation"] = dict(indexed_assignment_correlation)
-                    exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
-                    if exact_canonical_sources:
-                        matched_source = exact_canonical_sources[0]
             proceed_to_persistence_verification = True
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
@@ -13706,14 +14004,28 @@ class ChatGPTBrowserClient:
         post_commit_recovery: Optional[dict[str, Any]] = None
         persisted_source: Optional[dict[str, Any]] = None
         try:
-            persisted_source = await self._verify_project_source_persistence(
-                page,
-                project_url=project_home_url,
-                source_match_candidates=persistence_candidates,
-                before_sources=before_sources,
-                save_watch=save_request_watch,
-            )
-            dispose_save_request_watch_once()
+            if (
+                normalized_kind == "file"
+                and isinstance(assigned_source_verification, dict)
+                and assigned_source_verification.get("ok")
+                and isinstance(indexed_assignment_correlation, dict)
+                and indexed_assignment_correlation.get("ok")
+                and isinstance(matched_source, dict)
+            ):
+                # The processing stream already supplied the authoritative assigned
+                # filename and the exact card was verified.  Do not fall back to the
+                # canonical-name refresh/retry path.
+                persisted_source = dict(matched_source)
+                dispose_save_request_watch_once()
+            else:
+                persisted_source = await self._verify_project_source_persistence(
+                    page,
+                    project_url=project_home_url,
+                    source_match_candidates=persistence_candidates,
+                    before_sources=before_sources,
+                    save_watch=save_request_watch,
+                )
+                dispose_save_request_watch_once()
         except ResponseTimeoutError as exc:
             dispose_save_request_watch_once()
             current_sources = await self._snapshot_project_source_cards(page)
@@ -14005,24 +14317,35 @@ class ChatGPTBrowserClient:
                 success_sources = await self._snapshot_project_source_cards(page)
                 if not success_sources and isinstance(persisted_source, dict):
                     success_sources = [persisted_source]
+            canonical_family_candidates = [canonical_display_name or requested_match or ""]
             success_exact_canonical_sources = self._match_file_source_exact_canonical_cards(
                 success_sources,
-                persistence_candidates,
+                canonical_family_candidates,
             )
             success_duplicate_suffix_sources = self._match_file_source_duplicate_suffix_cards(
                 success_sources,
-                persistence_candidates,
+                canonical_family_candidates,
             )
-            canonical_success = len(success_exact_canonical_sources) == 1 and not success_duplicate_suffix_sources
-            indexed_success = (
-                not success_exact_canonical_sources
-                and len(success_duplicate_suffix_sources) == 1
-                and isinstance(indexed_assignment_correlation, dict)
-                and indexed_assignment_correlation.get("ok")
-                and (self._project_source_card_assigned_filename(success_duplicate_suffix_sources[0]) or "").casefold()
-                    == str(indexed_assignment_correlation.get("assigned_filename") or "").casefold()
+            verified_assigned_filename = self._file_source_family_filename(
+                (indexed_assignment_correlation or {}).get("assigned_filename")
+                or (processing_stream_result or {}).get("assigned_filename")
+                or (processing_stream_result or {}).get("library_file_name")
+                or self._project_source_card_assigned_filename(persisted_source or {})
+                or canonical_display_name
+                or requested_match
             )
-            if not canonical_success and not indexed_success:
+            success_family_sources = self._match_file_source_family_cards(
+                success_sources,
+                canonical_display_name or requested_match,
+            )
+            success_exact_assigned_sources = [
+                item
+                for item in success_family_sources
+                if (self._project_source_card_assigned_filename(item) or "").casefold()
+                == verified_assigned_filename.casefold()
+            ] if verified_assigned_filename else []
+            assigned_success = len(success_exact_assigned_sources) == 1
+            if not assigned_success:
                 conflict = self._file_source_exact_name_conflict_result(
                     project_url=project_home_url,
                     source_kind=normalized_kind,
@@ -14032,7 +14355,7 @@ class ChatGPTBrowserClient:
                     duplicate_suffix_sources=success_duplicate_suffix_sources,
                     exact_canonical_sources=success_exact_canonical_sources,
                     status="blocked_ambiguous",
-                    conflict_reason="successful_add_source_identity_not_uniquely_correlated",
+                    conflict_reason="successful_add_exact_assigned_source_not_unique",
                     already_exists=duplicate_detected or overwritten_existing,
                     overwritten=overwritten_existing,
                     removed_existing=removed_existing_via_ui,
@@ -14042,6 +14365,12 @@ class ChatGPTBrowserClient:
                     current_url=await self._safe_page_url(page),
                 )
                 conflict["indexed_source_correlation"] = indexed_assignment_correlation
+                conflict["assigned_filename"] = verified_assigned_filename
+                conflict["exact_assigned_source_count"] = len(success_exact_assigned_sources)
+                conflict["exact_assigned_source_identities"] = [
+                    self._preferred_source_card_identity(source) or source.get("text")
+                    for source in success_exact_assigned_sources
+                ]
                 return conflict
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
@@ -14118,6 +14447,12 @@ class ChatGPTBrowserClient:
                 local_sha256=local_identity.get("sha256"),
                 local_size_bytes=local_identity.get("size_bytes"),
             )
+            assigned_index = self._file_source_assigned_index(
+                backend_assigned_name,
+                canonical_display_name or requested_match,
+            )
+            previous_max_assigned_index = initial_family_diagnostics.get("previous_max_assigned_index")
+            expected_next_assigned_index = initial_family_diagnostics.get("expected_next_assigned_index")
             result.update({
                 "requested_filename": canonical_display_name or requested_match,
                 "assigned_filename": backend_assigned_name,
@@ -14126,6 +14461,27 @@ class ChatGPTBrowserClient:
                 "library_metadata_object_id": library_metadata_object_id,
                 "local_sha256": local_identity.get("sha256"),
                 "local_size_bytes": local_identity.get("size_bytes"),
+                "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
+                "pre_upload_family_source_count": len(initial_family_diagnostics.get("family_sources") or []),
+                "pre_upload_family_source_identities": list(initial_family_diagnostics.get("source_family_identities") or []),
+                "previous_max_assigned_index": previous_max_assigned_index,
+                "expected_next_assigned_index": expected_next_assigned_index,
+                "assigned_index": assigned_index,
+                "assigned_index_delta": (
+                    assigned_index - previous_max_assigned_index
+                    if assigned_index is not None and previous_max_assigned_index is not None
+                    else None
+                ),
+                "assigned_index_is_expected_next": (
+                    assigned_index == expected_next_assigned_index
+                    if assigned_index is not None and expected_next_assigned_index is not None
+                    else None
+                ),
+                "assigned_source_verification": assigned_source_verification,
+                "canonical_persistence_retry_skipped": bool(
+                    isinstance(assigned_source_verification, dict)
+                    and assigned_source_verification.get("ok")
+                ),
                 "indexed_source_correlation": indexed_assignment_correlation,
                 "backing_file_ids": list(success_save_summary.get("backing_file_ids") or []),
                 "exact_canonical_source_count": len(success_exact_canonical_sources),
@@ -24085,23 +24441,20 @@ class ChatGPTBrowserClient:
         requested_candidates: Optional[list[str]],
         observed_identity: Optional[str],
     ) -> Optional[dict[str, Any]]:
-        observed = self._normalize_file_source_identity_for_duplicate_suffix_match(observed_identity)
+        observed = self._file_source_family_filename(observed_identity)
         if not observed:
             return None
-        observed_stripped = self._strip_file_duplicate_suffix(observed)
-        if not observed_stripped or observed_stripped.lower() == observed.lower():
-            return None
         for candidate in requested_candidates or []:
-            requested = self._normalize_file_source_identity_for_duplicate_suffix_match(candidate)
-            if not requested:
+            requested = self._file_source_family_filename(candidate)
+            details = self._file_source_family_match_details(observed, requested)
+            if not details or details.get("assigned_index") is None:
                 continue
-            if observed_stripped.lower() == requested.lower():
-                return {
-                    "requested": requested,
-                    "observed": observed,
-                    "observed_without_duplicate_suffix": observed_stripped,
-                    "match_kind": "file_duplicate_suffix",
-                }
+            return {
+                "requested": requested,
+                "observed": observed,
+                "observed_without_duplicate_suffix": requested,
+                "match_kind": "file_duplicate_suffix",
+            }
         return None
 
     def _match_file_source_duplicate_suffix_cards(
@@ -24143,25 +24496,19 @@ class ChatGPTBrowserClient:
         requested_candidates: Optional[list[str]],
         observed_identity: Optional[str],
     ) -> Optional[dict[str, Any]]:
-        observed = self._normalize_file_source_identity_for_duplicate_suffix_match(observed_identity)
+        observed = self._file_source_family_filename(observed_identity)
         if not observed:
             return None
-        # Reject collision-suffixed identities here; they are explicit conflicts,
-        # not canonical exact-name evidence.
-        if self._strip_file_duplicate_suffix(observed).lower() != observed.lower():
-            return None
         for candidate in requested_candidates or []:
-            requested = self._normalize_file_source_identity_for_duplicate_suffix_match(candidate)
-            if not requested:
+            requested = self._file_source_family_filename(candidate)
+            details = self._file_source_family_match_details(observed, requested)
+            if not details or details.get("assigned_index") is not None:
                 continue
-            if self._strip_file_duplicate_suffix(requested).lower() != requested.lower():
-                continue
-            if observed.lower() == requested.lower():
-                return {
-                    "requested": requested,
-                    "observed": observed,
-                    "match_kind": "file_exact_canonical",
-                }
+            return {
+                "requested": requested,
+                "observed": observed,
+                "match_kind": "file_exact_canonical",
+            }
         return None
 
     def _match_file_source_exact_canonical_cards(

@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-  "active_candidate_version": "v0.1.103.10.106",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+  "active_candidate_version": "v0.1.103.10.107",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+  "active_slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -242,6 +242,13 @@
       "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
       "status": "candidate",
       "created_at": "2026-07-14T14:20:00Z"
+    },
+    {
+      "version": "v0.1.103.10.107",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+      "slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
+      "status": "candidate",
+      "created_at": "2026-07-14T15:50:00Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
@@ -249,9 +256,9 @@
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
   "last_updated": "2026-07-14T14:20:00Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-  "next_normal_slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
-  "next_normal_version": "v0.1.103.10.106",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+  "next_normal_slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
+  "next_normal_version": "v0.1.103.10.107",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -748,6 +755,12 @@
       "kind": "repair",
       "status": "candidate",
       "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata."
+    },
+    {
+      "version": "v0.1.103.10.107",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Uses one escaped canonical/indexed Project Source filename-family matcher, captures the highest pre-upload suffix as diagnostic evidence, uploads once, verifies the exact processing-stream assigned filename immediately, skips canonical-name persistence retries after assigned identity is known, and preserves malformed or duplicate exact-card fail-closed behavior."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -772,13 +785,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
       "release_mode": "repair",
-      "scope": "correlate one backend-assigned indexed Project Source with the canonical local artifact using processing-stream IDs, exact assigned-card persistence, Library read-back identity and local size/hash metadata; reuse a unique existing correlated source, block multiple or incomplete matches, and keep canonical artifact/version identity separate from assigned source metadata",
-      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "scope": "use one escaped canonical/indexed filename-family regex for Project Source cards; capture the pre-upload family and highest numeric suffix, upload exactly once, accept the processing-stream assigned filename, verify that exact assigned card immediately, and skip all canonical-name persistence retries once assigned identity is known; report prior/assigned index diagnostics and retain malformed or duplicate exact-card fail-closed behavior",
+      "slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-      "version": "v0.1.103.10.106"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+      "version": "v0.1.103.10.107"
     },
     {
       "release_mode": "normal",
@@ -822,7 +835,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.106",
+  "updated_for": "v0.1.103.10.107",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -886,6 +899,13 @@
       "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
       "status": "candidate",
       "created_at": "2026-07-14T14:20:00Z"
+    },
+    {
+      "version": "v0.1.103.10.107",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+      "slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
+      "status": "candidate",
+      "created_at": "2026-07-14T15:50:00Z"
     }
   ]
 }
