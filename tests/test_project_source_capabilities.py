@@ -5162,3 +5162,624 @@ def test_save_watch_persists_bounded_upload_response_diagnostics(
     assert diagnostic["extracted_file_ids"] == ["file-diagnostic-123456789"]
     assert diagnostic["extracted_filenames"] == ["release.zip"]
     assert len(diagnostic["body_sample"]) <= 2048
+
+
+def test_processing_stream_terminal_result_requires_exact_completed_identity(browser_client: ChatGPTBrowserClient) -> None:
+    body = "\n".join([
+        '{"file_id":"file_00000000111122223333444455556666","event":"file.processing.started","message":"start","extra":null}',
+        '{"file_id":"file_00000000111122223333444455556666","event":"file.indexing.completed","message":"","extra":{"metadata_object_id":"libfile_abcdef1234567890abcdef1234567890","library_file_name":"release.zip"}}',
+        '{"file_id":"file_00000000111122223333444455556666","event":"file.processing.completed","message":"done","extra":null}',
+    ])
+
+    result = browser_client._project_source_processing_stream_terminal_result(
+        body,
+        expected_filename="release.zip",
+    )
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["identity_verified"] is True
+    assert result["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert result["library_metadata_object_id"] == "libfile_abcdef1234567890abcdef1234567890"
+    assert result["library_file_name"] == "release.zip"
+
+
+def test_processing_stream_aware_quiet_settle_recovers_when_stream_completes_at_logical_95_seconds(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    class LogicalPage:
+        def __init__(self, watch: dict) -> None:
+            self.watch = watch
+            self.logical_elapsed_ms = 0
+
+        async def wait_for_timeout(self, milliseconds: int) -> None:
+            self.logical_elapsed_ms += int(milliseconds)
+            if self.logical_elapsed_ms >= 95_000 and self.watch.get("processing_stream_terminal") is None:
+                self.watch["processing_stream_terminal"] = {
+                    "status": "completed",
+                    "terminal_event": "file.processing.completed",
+                    "terminal_message": "done",
+                    "processed_file_id": "file_00000000111122223333444455556666",
+                    "library_metadata_object_id": "libfile_abcdef1234567890abcdef1234567890",
+                    "library_file_name": "release.zip",
+                    "expected_filename": "release.zip",
+                    "events": [
+                        "file.processing.started",
+                        "file.indexing.completed",
+                        "file.processing.completed",
+                    ],
+                    "identity_verified": True,
+                }
+
+    async def run() -> tuple[dict, dict, int]:
+        loop = asyncio.get_running_loop()
+        watch = {
+            "source_kind": "file",
+            "expected_filename": "release.zip",
+            "installed": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": True,
+            "inflight": {2},
+            "processing_stream_inflight": {2},
+            "processing_stream_started": 1,
+            "processing_stream_finished": 0,
+            "processing_stream_failed": 0,
+            "processing_stream_terminal": None,
+            "last_activity": loop.time() - 5,
+            "commit_seen_at": loop.time() - 5,
+            "ordinary_response_tasks": [],
+            "response_tasks": [],
+        }
+        page = LogicalPage(watch)
+        quiet = await browser_client._wait_for_project_source_save_request_quiet(
+            page,
+            watch,
+            source_kind="file",
+            timeout_ms=60_000,
+            observation_window_ms=8_000,
+            quiet_window_ms=2_000,
+        )
+        stream = await browser_client._wait_for_project_source_processing_stream(
+            page,
+            watch,
+            source_kind="file",
+            expected_filename="release.zip",
+            timeout_ms=120_000,
+            poll_interval_ms=5_000,
+        )
+        return quiet, stream, page.logical_elapsed_ms
+
+    quiet, stream, logical_elapsed_ms = asyncio.run(run())
+
+    assert quiet["quiet_now"] is True
+    assert quiet["ordinary_inflight"] == 0
+    assert quiet["processing_stream_inflight"] == 1
+    assert quiet["quiet_reason"] == "ordinary_save_quiet_processing_stream_pending"
+    assert stream["status"] == "project_source_processing_stream_completed"
+    assert stream["library_metadata_object_id"] == "libfile_abcdef1234567890abcdef1234567890"
+    assert logical_elapsed_ms == 95_000
+
+
+def test_processing_stream_wait_fails_when_terminal_identity_is_incomplete(browser_client: ChatGPTBrowserClient) -> None:
+    watch = {
+        "processing_stream_started": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_terminal": {
+            "status": "completed",
+            "terminal_event": "file.processing.completed",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": None,
+            "library_file_name": "release.zip",
+            "identity_verified": False,
+        },
+    }
+
+    class Page:
+        async def wait_for_timeout(self, _milliseconds: int) -> None:
+            return None
+
+    with pytest.raises(ResponseTimeoutError, match="project_source_processing_stream_identity_not_verified"):
+        asyncio.run(
+            browser_client._wait_for_project_source_processing_stream(
+                Page(),
+                watch,
+                source_kind="file",
+                expected_filename="release.zip",
+                timeout_ms=100,
+            )
+        )
+
+
+def test_library_backend_diagnostic_exception_reason_is_explicit(browser_client: ChatGPTBrowserClient) -> None:
+    assert browser_client._library_backend_protocol_reupload_exception_reason(
+        ResponseTimeoutError("fetch_xhr_protocol_watch_settle_timeout: pending_task_count=1")
+    ) == "fetch_xhr_protocol_watch_settle_timeout"
+    assert browser_client._library_backend_protocol_reupload_exception_reason(
+        ResponseTimeoutError("project_source_processing_stream_timeout: release.zip")
+    ) == "project_source_processing_stream_timeout"
+    assert browser_client._library_backend_protocol_reupload_exception_reason(
+        ResponseTimeoutError("Timed out waiting for project source save requests to go quiet")
+    ) == "project_source_save_quiet_timeout"
+    assert browser_client._library_backend_protocol_reupload_exception_reason(
+        ResponseTimeoutError("other timeout")
+    ) == "diagnostic_response_timeout"
+
+
+def test_processing_stream_response_body_is_captured_only_after_requestfinished(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    context = _LibraryWatchContext()
+
+    class Request:
+        url = "https://chatgpt.com/backend-api/files/process_upload_stream"
+        method = "POST"
+
+    request = Request()
+
+    class Response:
+        status = 200
+
+        def __init__(self, bound_request) -> None:
+            self.request = bound_request
+            self.url = bound_request.url
+
+        async def text(self) -> str:
+            return "\n".join([
+                '{"file_id":"file_00000000111122223333444455556666","event":"file.processing.started","message":"start","extra":null}',
+                '{"file_id":"file_00000000111122223333444455556666","event":"file.indexing.completed","message":"","extra":{"metadata_object_id":"libfile_abcdef1234567890abcdef1234567890","library_file_name":"release.zip"}}',
+                '{"file_id":"file_00000000111122223333444455556666","event":"file.processing.completed","message":"done","extra":null}',
+            ])
+
+        async def all_headers(self):
+            return {"content-type": "text/event-stream"}
+
+    async def run() -> dict:
+        watch = browser_client._install_project_source_save_request_watch(
+            context,
+            source_kind="file",
+            expected_filename="release.zip",
+        )
+        context.handlers["request"](request)
+        context.handlers["response"](Response(request))
+        await asyncio.sleep(0)
+        assert watch["processing_stream_terminal"] is None
+        assert watch["processing_stream_response_tasks"] == []
+        assert id(request) in watch["processing_stream_responses"]
+
+        context.handlers["requestfinished"](request)
+        await asyncio.gather(*watch["processing_stream_response_tasks"])
+        return watch
+
+    watch = asyncio.run(run())
+    terminal = watch["processing_stream_terminal"]
+    assert terminal["status"] == "completed"
+    assert terminal["identity_verified"] is True
+    assert terminal["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert terminal["library_metadata_object_id"] == "libfile_abcdef1234567890abcdef1234567890"
+    assert terminal["library_file_name"] == "release.zip"
+
+
+def test_file_add_orders_processing_before_persistence_and_disposal(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    order: list[str] = []
+    persisted = {
+        "identity": "release.zip",
+        "title": "release.zip",
+        "text": "release.zip",
+        "_promptbranch_verification_mode": "post_refresh",
+    }
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_presence(*_args, **_kwargs):
+        return dict(persisted)
+
+    async def fake_quiet(*_args, **_kwargs):
+        order.append("ordinary_quiet")
+        return {
+            "quiet_now": True,
+            "saw_commit": False,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "ordinary_inflight": 0,
+            "processing_stream_inflight": 1,
+        }
+
+    async def fake_processing(*_args, **_kwargs):
+        order.append("processing_completion")
+        return {
+            "ok": True,
+            "status": "project_source_processing_stream_completed",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": "libfile_abcdef1234567890abcdef1234567890",
+            "library_file_name": "release.zip",
+        }
+
+    async def fake_persistence(*_args, **_kwargs):
+        order.append("persistence_verification")
+        return dict(persisted)
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    watch = {
+        "installed": True,
+        "source_kind": "file",
+        "expected_filename": "release.zip",
+        "started": 2,
+        "finished": 1,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": False,
+        "inflight": {2},
+        "processing_stream_inflight": {2},
+        "processing_stream_started": 1,
+        "processing_stream_finished": 0,
+        "processing_stream_failed": 0,
+        "processing_stream_terminal": None,
+        "responses": [],
+        "backend_assigned_names": ["release.zip"],
+        "backing_file_ids": ["file_00000000111122223333444455556666"],
+    }
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watch  # type: ignore[method-assign]
+
+    def fake_dispose(*_args, **_kwargs) -> None:
+        order.append("watcher_disposal")
+
+    browser_client._dispose_project_source_save_request_watch = fake_dispose  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["processing_stream"]["status"] == "project_source_processing_stream_completed"
+    assert order == [
+        "ordinary_quiet",
+        "processing_completion",
+        "persistence_verification",
+        "watcher_disposal",
+    ]
+
+
+def test_file_add_reports_post_processing_persistence_failure_explicitly(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    disposed: list[bool] = []
+    persisted = {"identity": "release.zip", "title": "release.zip", "text": "release.zip"}
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_presence(*_args, **_kwargs):
+        return dict(persisted)
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"quiet_now": True, "saw_commit": False, "started": 2, "finished": 1, "failed": 0}
+
+    async def fake_processing(*_args, **_kwargs):
+        return {
+            "ok": True,
+            "status": "project_source_processing_stream_completed",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": "libfile_abcdef1234567890abcdef1234567890",
+            "library_file_name": "release.zip",
+        }
+
+    async def fake_persistence(*_args, **_kwargs):
+        raise ResponseTimeoutError("source card absent after completed processing")
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    watch = {
+        "installed": True,
+        "source_kind": "file",
+        "expected_filename": "release.zip",
+        "started": 2,
+        "finished": 2,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": False,
+        "inflight": set(),
+        "processing_stream_inflight": set(),
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "responses": [],
+        "backend_assigned_names": ["release.zip"],
+        "backing_file_ids": ["file_00000000111122223333444455556666"],
+    }
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watch  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: disposed.append(True)  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "project_source_persistence_not_verified_after_processing_completion"
+    assert result["processing_stream"]["status"] == "project_source_processing_stream_completed"
+    assert disposed == [True]
+
+
+def test_file_add_disposes_watcher_when_processing_stream_fails_before_persistence(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    calls: list[str] = []
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_presence(*_args, **_kwargs):
+        return {"identity": "release.zip", "title": "release.zip", "text": "release.zip"}
+
+    async def fake_quiet(*_args, **_kwargs):
+        calls.append("quiet")
+        return {"quiet_now": True, "saw_commit": False, "started": 2, "finished": 1, "failed": 0}
+
+    async def fake_processing(*_args, **_kwargs):
+        calls.append("processing")
+        raise ResponseTimeoutError("project_source_processing_stream_failed: event=file.processing.failed")
+
+    async def fake_persistence(*_args, **_kwargs):
+        calls.append("persistence")
+        raise AssertionError("persistence must not run after processing failure")
+
+    async def fake_no_duplicate(*_args, **_kwargs):
+        return None
+
+    watch = {"installed": True, "source_kind": "file", "started": 2, "finished": 1, "failed": 0}
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_persistence  # type: ignore[method-assign]
+    browser_client._find_project_source_duplicate_notice = fake_no_duplicate  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watch  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: calls.append("dispose")  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"zip")
+    with pytest.raises(ResponseTimeoutError, match="project_source_processing_stream_failed"):
+        asyncio.run(
+            browser_client._add_project_source_operation(
+                context=None,
+                page=page,
+                source_kind="file",
+                value=None,
+                file_path=str(file_path),
+                display_name=str(file_path),
+                keep_open=False,
+            )
+        )
+
+    assert calls == ["quiet", "processing", "dispose"]
+
+
+def test_legacy_diagnostic_file_add_orders_processing_before_persistence_and_disposal(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    order: list[str] = []
+    persisted = {
+        "identity": "diagnostic.txt",
+        "title": "diagnostic.txt",
+        "text": "diagnostic.txt",
+        "_promptbranch_verification_mode": "post_refresh",
+    }
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_find_existing(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_presence(*_args, **_kwargs):
+        return dict(persisted)
+
+    async def fake_quiet(*_args, **_kwargs):
+        order.append("ordinary_quiet")
+        return {
+            "quiet_now": True,
+            "quiet_reason": "ordinary_save_quiet_processing_stream_pending",
+            "processing_stream_pending": True,
+            "saw_commit": True,
+            "started": 2,
+            "finished": 1,
+            "failed": 0,
+            "ordinary_inflight": 0,
+            "processing_stream_inflight": 1,
+        }
+
+    async def fake_processing(*_args, **_kwargs):
+        order.append("processing_completion")
+        return {
+            "ok": True,
+            "status": "project_source_processing_stream_completed",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": "libfile_abcdef1234567890abcdef1234567890",
+            "library_file_name": "diagnostic.txt",
+            "terminal_event": "file.processing.completed",
+        }
+
+    async def fake_persistence(*_args, **_kwargs):
+        order.append("persistence_verification")
+        return dict(persisted)
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    watch = {
+        "installed": True,
+        "source_kind": "file",
+        "expected_filename": "diagnostic.txt",
+        "started": 2,
+        "finished": 2,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": set(),
+        "processing_stream_inflight": set(),
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_terminal": {
+            "status": "completed",
+            "identity_verified": True,
+        },
+        "responses": [],
+        "backend_assigned_names": ["diagnostic.txt"],
+        "backing_file_ids": ["file_00000000111122223333444455556666"],
+    }
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._find_existing_file_source_for_overwrite = fake_find_existing  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watch  # type: ignore[method-assign]
+
+    def fake_dispose(*_args, **_kwargs) -> None:
+        order.append("watcher_disposal")
+
+    browser_client._dispose_project_source_save_request_watch = fake_dispose  # type: ignore[method-assign]
+
+    file_path = tmp_path / "diagnostic.txt"
+    file_path.write_text("diagnostic", encoding="utf-8")
+    result = asyncio.run(
+        browser_client._add_project_source_operation_legacy_10_75(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+            keep_open=False,
+            overwrite_existing=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["processing_stream"]["status"] == "project_source_processing_stream_completed"
+    assert order == [
+        "ordinary_quiet",
+        "processing_completion",
+        "persistence_verification",
+        "watcher_disposal",
+    ]
+
+
+def test_processing_stream_pending_without_result_is_internal_contract_failure(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    invariant = browser_client._project_source_processing_stream_result_invariant(
+        {
+            "save_request_quiet": {
+                "processing_stream_pending": True,
+                "quiet_reason": "ordinary_save_quiet_processing_stream_pending",
+            },
+            "processing_stream": None,
+        }
+    )
+    assert invariant == {
+        "ok": False,
+        "status": "internal_processing_stream_wait_skipped",
+        "processing_stream_pending": True,
+        "processing_stream_result_present": False,
+        "processing_stream_status": None,
+        "quiet_reason": "ordinary_save_quiet_processing_stream_pending",
+    }

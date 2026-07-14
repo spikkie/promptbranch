@@ -79,3 +79,39 @@ Separate exact filename-leaf row discovery from hover-activated row-menu binding
 - Prove Recently deleted navigation, inventory endpoint discovery, and exact deleted-object presence before permanent deletion.
 - Keep target deletion, canonical reupload, release `pbsa`, and adoption blocked.
 
+
+### v0.1.103.10.97 repair-only diagnostic
+
+Handle `/backend-api/files/process_upload_stream` as a separate bounded processing phase after ordinary save quietness. Require terminal completion with the exact processed-file ID, Library metadata ID, and expected filename before continuing the unchanged soft-delete and Recently deleted diagnostic. Emit explicit failure reasons and preserve all mutation/adoption freezes.
+
+### v0.1.103.10.98 repair-only diagnostic
+
+Await exact terminal `/backend-api/files/process_upload_stream` identity before Project Source persistence verification, retain request listeners until terminal handling and persistence verification complete, and capture the SSE body only after `requestfinished`. Accepted/current remains `v0.1.103.10.68`; release `pbsa` and adoption remain prohibited.
+
+
+### v0.1.103.10.99 repair-only diagnostic
+
+Patch the diagnostic-only legacy Project Source upload path actually invoked by `library_backend_protocol_reupload_diagnostic`. Enforce terminal processing-stream identity before rendered persistence verification, keep the watcher installed through both boundaries, and fail with `internal_processing_stream_wait_skipped` if a pending stream reaches the caller without a stream result. Accepted/current remains `v0.1.103.10.68`; release `pbsa` and adoption remain prohibited.
+
+### v0.1.103.10.100 repair-only diagnostic
+
+Bound generic Fetch/XHR response-capture settlement, omit streaming bodies, classify and cancel unresolved tasks, preserve completed trace evidence, and guarantee structured timeout JSON. This repair does not advance the normal horizon.
+
+### v0.1.103.10.101 repair-only diagnostic
+
+Install a dedicated bounded processing-stream watcher for the disposable visible-Library upload, require exact terminal backing identity, and keep generic tracing non-authoritative. This repair does not advance the normal horizon.
+
+
+### v0.1.103.10.102 repair-only diagnostic
+
+Settle pre-delete trace work, freeze the maximum request sequence before the exact row-scoped Delete click, snapshot each request phase immutably, and discover successful exact-ID deletion mutations from paired post-boundary request/response events. Report sanitized mutation candidates when identity is not verified, reconcile the visible upload after later authoritative proof, and suppress unchanged settlement duplicates. This repair does not advance the normal horizon.
+
+
+### v0.1.103.10.103 repair-only diagnostic
+
+Bound and uniquely bind the asynchronous visible-Library delete confirmation. Promote to `delete_triggered` only with exact post-boundary mutation proof; preserve all downstream discovery gates and do not advance normal scope.
+
+### v0.1.103.10.104 repair-only diagnostic
+
+Recover the active Library UI exactly once after authoritative backend presence: exact-search reapplication, then at most one controlled reload and another exact-search reapplication. Exact row binding remains mandatory and the v0.1.103.10.103 delete-confirmation contract remains unchanged.
+

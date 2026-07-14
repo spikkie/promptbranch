@@ -1061,3 +1061,35 @@ No workflow or command surface is migrated. `pbsa <file>` remains unchanged. The
 - `v0.1.103.10.95` adds filename-leaf row discovery, hover-triggered row-menu evidence, backend `libfile_...` deduplication, and bounded non-authoritative-surface evidence to the diagnostic repair ledger. Accepted/current remains `v0.1.103.10.68`; no release source or adoption mutation is performed.
 - `v0.1.103.10.96` adds exact soft-delete mutation proof, stable active-inventory absence/trashed verification, explicit Recently deleted navigation states, and exact deleted-inventory presence gating. Accepted/current remains `v0.1.103.10.68`; no release source or adoption mutation is performed.
 
+
+- `v0.1.103.10.97` separates long-lived `/backend-api/files/process_upload_stream` completion from ordinary Project Source save quietness, requires exact terminal `file_...`/`libfile_...`/filename identity, and emits explicit top-level diagnostic reasons. Accepted/current remains `v0.1.103.10.68`; no release source upload or adoption is performed.
+
+- `v0.1.103.10.98` orders Project Source file proof as ordinary save quietness, terminal processing identity, rendered persistence verification, then watcher disposal. No CLI migration is introduced. Accepted/current remains `v0.1.103.10.68`; no release source upload or adoption is performed.
+
+- `v0.1.103.10.99` patches only the diagnostic-only legacy Project Source upload transaction used by the backend-protocol discovery run. Normal `pbsa` selection and behavior remain unchanged. Accepted/current remains `v0.1.103.10.68`; no release source upload or adoption is performed.
+
+## Repair migration note — v0.1.103.10.100
+
+- `v0.1.103.10.100` changes only diagnostic response-capture settlement and reporting. It preserves the `v0.1.103.10.100` predecessor's Project Source terminal-processing path, the `v0.1.103.10.96` deletion flow, normal `pbsa`, and accepted/current `v0.1.103.10.68`.
+
+## Repair migration note — v0.1.103.10.101
+
+- `v0.1.103.10.101` changes only diagnostic visible-Library upload identity capture. Generic Fetch/XHR tracing remains stream-safe, the v0.1.103.10.99 Project Source terminal-processing path and v0.1.103.10.96 deletion flow remain unchanged, normal `pbsa` remains unchanged, and accepted/current remains `v0.1.103.10.68`.
+
+
+## Repair migration note — v0.1.103.10.102
+
+- No operator migration is required.
+- The diagnostic trace gains immutable `request_phase`, `response_observed_phase`, request sequence boundaries, sanitized soft-delete mutation candidates, and deduplicated settlement history.
+- Existing `v0.1.103.10.99` Project Source stream handling, `v0.1.103.10.100` generic trace settlement, `v0.1.103.10.101` visible-Library stream handling, and `v0.1.103.10.96` deletion/reupload gates remain unchanged.
+- Accepted/current remains `v0.1.103.10.68`; normal `pbsa`, canonical release upload, and adoption remain blocked.
+
+
+## Repair migration note — v0.1.103.10.103
+
+The diagnostic Library delete helper now waits for asynchronous confirmation surfaces and no longer treats an absent immediate dialog as success. Existing request-sequence protocol discovery remains the authority for direct no-confirmation flows. No accepted/current state, Project Source, or release-adoption behavior changes.
+
+## Repair migration note — v0.1.103.10.104
+
+This candidate adds one diagnostic-only bounded Library UI recovery cycle after exact backend inventory presence is stable. It first clears and reapplies the exact filename search, then may perform one controlled reload and reapply the search. It does not change Project Source processing, visible-Library processing, deletion confirmation, backend protocol discovery, Recently deleted, hard-delete, canonical reupload, `pbsa`, or adoption behavior.
+

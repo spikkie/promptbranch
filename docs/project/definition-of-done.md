@@ -715,3 +715,18 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-264 | Exact Library filename leaf binds to one local file row before a hover-revealed row-owned menu; repeated backend observations deduplicate by `libfile_...`; non-authoritative surfaces fail before row absence | in_progress | `v0.1.103.10.95` focused deterministic tests; live diagnostic pending | v0.1.103.10.95 |
 | DOD-265 | Disposable Library soft deletion is proven by a successful exact-ID mutation plus stable active absence/trashed state; Recently deleted navigation and exact deleted-inventory presence are independently proven before permanent deletion | in_progress | `v0.1.103.10.96` focused deterministic tests; live diagnostic pending | v0.1.103.10.96 |
 
+
+| DOD-266 | Long-lived Project Source processing streams do not block ordinary save quietness; terminal completion requires exact file/libfile/filename identity and all diagnostic exceptions expose a top-level reason | in_progress | `v0.1.103.10.97` focused deterministic tests; live diagnostic pending | v0.1.103.10.97 |
+
+| DOD-267 | Project Source processing reaches exact terminal identity before rendered persistence verification; SSE body capture occurs after request completion and watcher disposal follows persistence verification | in_progress | `v0.1.103.10.98` focused deterministic tests; live diagnostic pending | v0.1.103.10.98 |
+
+| DOD-268 | The real backend-protocol diagnostic upload path cannot verify Project Source persistence while its processing stream is pending; pending stream state requires a non-null terminal stream result and watcher disposal follows persistence verification | in_progress | `v0.1.103.10.99` legacy-path order test, diagnostic caller invariant test, focused deterministic suites; live diagnostic pending | v0.1.103.10.99 |
+| DOD-269 | Generic Fetch/XHR diagnostic response capture is bounded, stream-safe, reports unresolved task classifications/counts, and cannot suppress structured diagnostic JSON | in_progress | `v0.1.103.10.100` focused watcher/diagnostic tests and packaged validation; live diagnostic pending | v0.1.103.10.100 |
+| DOD-270 | Disposable visible-Library upload has dedicated bounded terminal stream identity capture and never derives deletion identity from generic trace body samples | done | `v0.1.103.10.101` live diagnostic proved exact terminal file/libfile/filename identity, stable backend presence, and exact UI row binding | v0.1.103.10.101 |
+
+
+| DOD-271 | Soft-delete protocol discovery uses immutable request phases and a pre-click request-sequence boundary, requires paired 2xx exact-ID mutation evidence, and reports sanitized post-boundary candidates on failure | in_progress | `v0.1.103.10.102` focused phase/boundary/discovery tests and packaged validation; live diagnostic pending | v0.1.103.10.102 |
+
+| DOD-272 | Library soft-delete reports `delete_triggered` only after unique confirmation plus exact mutation proof, or exact direct mutation proof for a no-confirmation flow | in_progress | `v0.1.103.10.103` focused confirmation/direct-mutation tests and packaged validation; live diagnostic pending | v0.1.103.10.103 |
+| DOD-273 | After authoritative backend presence, one bounded Library UI recovery cycle may restore exact row binding without weakening deletion safety | in_progress | `v0.1.103.10.104` focused search-reapply/reload/fail-closed tests and packaged validation; live diagnostic pending | v0.1.103.10.104 |
+

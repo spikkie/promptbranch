@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-active candidate version: v0.1.103.10.96
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-next normal slice: v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+active candidate version: v0.1.103.10.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+next normal slice: v0.1.103.10.104 — recover the Library UI after authoritative backend presence
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -792,3 +792,12 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 
 
 | v0.1.103.10.94 | `chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip` | candidate | diagnostic-only | v0.1.103.10.94 — bind Library filenames only to actionable file rows; not adopted |
+
+| v0.1.103.10.100 | repair | Bounded stream-safe Fetch/XHR protocol-watch settlement | candidate | focused protocol-watch, Project Source, Library diagnostic, control-surface, version, syntax, packaging and clean-extraction validation; live diagnostic pending | no normal slice advanced | pending |
+
+| v0.1.103.10.101 | repair | Dedicated visible-Library processing-stream identity capture | candidate | focused visible-stream, Project Source, Library diagnostic, control-surface, version, syntax, packaging and clean-extraction validation; live diagnostic pending | no normal slice advanced | pending |
+
+
+| v0.1.103.10.102 | repair | Immutable request phase and sequence-bound soft-delete discovery | candidate | focused request-phase, sequence-bound discovery, candidate-classification, settlement-deduplication, Library diagnostic, control-surface, version, syntax, packaging and clean-extraction validation; live diagnostic pending | no normal slice advanced | pending |
+
+| v0.1.103.10.103 | repair | Bounded unique Library delete-confirmation proof | candidate | focused confirmation-delay/direct-mutation, Library diagnostic, Project Source, control-surface, version, syntax, packaging and clean-extraction validation; live diagnostic pending | no normal slice advanced | pending |

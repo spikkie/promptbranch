@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-active candidate version: v0.1.103.10.96
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-next normal slice: v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+active candidate version: v0.1.103.10.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+next normal slice: v0.1.103.10.104 — recover the Library UI after authoritative backend presence
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-release status: v0.1.103.10.96 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+release status: v0.1.103.10.104 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Run the disposable v0.1.103.10.96 diagnostic and require a successful exact-ID soft-delete mutation, stable active-inventory absence or trashed state, an active Recently deleted surface, and stable exact deleted-inventory presence before permanent deletion.
+Run the disposable v0.1.103.10.104 diagnostic. After exact backend presence is stable, permit one bounded Library UI recovery cycle before exact row binding. Keep the v0.1.103.10.103 confirmation or direct-mutation proof unchanged, then continue the existing active-inventory, Recently deleted, hard-delete, and canonical reupload proofs.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -1227,3 +1227,21 @@ Active candidate version: `v0.1.103.10.94`.
 Active slice: `v0.1.103.10.94 — bind Library filenames only to actionable file rows`.
 
 Accepted/current remains `v0.1.103.10.68`. `v0.1.103.10.94` repairs the `10.93` DOM-scope ambiguity by admitting only structurally actionable file rows and binding menu interaction to the unique exact row. No Project Source release upload or adoption is performed.
+
+## v0.1.103.10.100 diagnostic repair status
+
+`v0.1.103.10.100` bounds generic Fetch/XHR response capture, omits streaming bodies from the generic trace, classifies and cancels unresolved trace tasks, and guarantees structured JSON with `fetch_xhr_protocol_watch_settle_timeout`. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.
+
+## v0.1.103.10.101 diagnostic repair status
+
+`v0.1.103.10.101` adds dedicated, bounded terminal processing-stream identity capture to the disposable visible-Library upload. Exact mutation identity comes only from the dedicated stream result; generic Fetch/XHR trace bodies remain stream-safe and non-authoritative. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.
+
+
+## v0.1.103.10.102 diagnostic repair status
+
+`v0.1.103.10.102` freezes an authoritative request-sequence boundary before the exact row-scoped Library Delete click and snapshots request phase immutably at request start. Soft-delete protocol discovery now uses paired successful post-boundary mutation traffic as authority, reports sanitized candidates when exact identity is missing, reconciles the visible upload after terminal/backend/UI proof, and suppresses duplicate unchanged settlement history. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.
+
+
+## v0.1.103.10.103 diagnostic repair status
+
+`v0.1.103.10.103` waits for one unique asynchronous Library delete confirmation inside a visible dialog, alertdialog, or native dialog. The row-menu action alone can no longer produce `delete_triggered`; a no-confirmation path is accepted only after exact post-boundary backend mutation proof. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.

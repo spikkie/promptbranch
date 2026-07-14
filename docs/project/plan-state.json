@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
-  "active_candidate_version": "v0.1.103.10.96",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+  "active_candidate_version": "v0.1.103.10.104",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
+  "active_slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -186,16 +186,58 @@
       "slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
       "status": "candidate",
       "created_at": "2026-07-13T20:30:00Z"
+    },
+    {
+      "version": "v0.1.103.10.97",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.97.zip",
+      "slice": "v0.1.103.10.97 — handle long-lived Project Source processing streams separately from save quietness",
+      "status": "candidate",
+      "created_at": "2026-07-13T21:45:00Z"
+    },
+    {
+      "version": "v0.1.103.10.100",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
+      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "status": "candidate",
+      "created_at": "2026-07-14T10:45:00Z"
+    },
+    {
+      "version": "v0.1.103.10.101",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
+      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:30:00Z"
+    },
+    {
+      "version": "v0.1.103.10.102",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
+      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
+      "status": "candidate",
+      "created_at": "2026-07-14T11:15:00Z"
+    },
+    {
+      "version": "v0.1.103.10.103",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
+      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
+      "status": "candidate",
+      "created_at": "2026-07-14T11:35:00Z"
+    },
+    {
+      "version": "v0.1.103.10.104",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:10:00Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-13T20:30:00Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
-  "next_normal_slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
-  "next_normal_version": "v0.1.103.10.96",
+  "last_updated": "2026-07-14T12:10:00Z",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+  "next_normal_slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+  "next_normal_version": "v0.1.103.10.104",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -496,6 +538,70 @@
       "slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
       "status": "candidate",
       "summary": "Requires one successful exact-ID soft-delete mutation, stable authenticated active-inventory absence or trashed proof, active Recently deleted navigation, and stable exact deleted-inventory presence before permanent deletion; release pbsa and adoption remain blocked."
+    },
+    {
+      "version": "v0.1.103.10.97",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.97.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.97 — handle long-lived Project Source processing streams separately from save quietness",
+      "status": "candidate",
+      "summary": "Separates ordinary save quietness from the long-lived processing stream, requires terminal exact file/libfile/filename identity, and exposes explicit diagnostic exception reasons."
+    },
+    {
+      "version": "v0.1.103.10.98",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.98.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.98 — await processing completion before Project Source persistence verification",
+      "status": "candidate",
+      "summary": "Orders terminal processing proof before rendered Project Source persistence in the normal add path, retains request listeners through terminal handling, and captures SSE only after request completion."
+    },
+    {
+      "version": "v0.1.103.10.99",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.99.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.99 — enforce processing-stream completion in the real diagnostic upload path",
+      "status": "candidate",
+      "summary": "Applies processing-before-persistence ordering to the legacy diagnostic-only upload path actually used by the backend-protocol diagnostic, adds a pending-stream/non-null-result invariant at the caller boundary, and preserves all deletion and release gates."
+    },
+    {
+      "version": "v0.1.103.10.100",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "status": "candidate",
+      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics."
+    },
+    {
+      "version": "v0.1.103.10.101",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
+      "status": "candidate",
+      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics."
+    },
+    {
+      "version": "v0.1.103.10.102",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
+      "status": "candidate",
+      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements."
+    },
+    {
+      "version": "v0.1.103.10.103",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
+      "status": "candidate",
+      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists."
+    },
+    {
+      "version": "v0.1.103.10.104",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "status": "candidate",
+      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
     }
   ],
   "release_mode": "repair",
@@ -570,6 +676,36 @@
       "kind": "repair",
       "status": "candidate",
       "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed."
+    },
+    {
+      "version": "v0.1.103.10.100",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics."
+    },
+    {
+      "version": "v0.1.103.10.101",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics."
+    },
+    {
+      "version": "v0.1.103.10.102",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements."
+    },
+    {
+      "version": "v0.1.103.10.103",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists."
+    },
+    {
+      "version": "v0.1.103.10.104",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -594,13 +730,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
       "release_mode": "repair",
-      "scope": "prove one successful exact-ID soft-delete mutation, verify stable active absence or trashed state, discover the active Recently deleted surface and inventory endpoint, and require exact deleted identity presence before permanent deletion",
-      "slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
+      "scope": "after exact backend presence is stable, perform one bounded active-Library UI recovery cycle: clear and reapply the exact search, then at most one controlled reload and exact-search reapplication; exact row binding and the v0.1.103.10.103 confirmation/mutation proof remain mandatory",
+      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
-      "version": "v0.1.103.10.96"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "version": "v0.1.103.10.104"
     },
     {
       "release_mode": "normal",
@@ -644,5 +780,56 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.95"
+  "updated_for": "v0.1.103.10.104",
+  "candidate_history": [
+    {
+      "version": "v0.1.103.10.98",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.98.zip",
+      "slice": "v0.1.103.10.98 — await processing completion before Project Source persistence verification",
+      "status": "candidate",
+      "created_at": "2026-07-14T08:10:00Z"
+    },
+    {
+      "version": "v0.1.103.10.99",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.99.zip",
+      "slice": "v0.1.103.10.99 — enforce processing-stream completion in the real diagnostic upload path",
+      "status": "candidate",
+      "created_at": "2026-07-14T09:00:00Z"
+    },
+    {
+      "version": "v0.1.103.10.100",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
+      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "status": "candidate",
+      "created_at": "2026-07-14T10:45:00Z"
+    },
+    {
+      "version": "v0.1.103.10.101",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
+      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:30:00Z"
+    },
+    {
+      "version": "v0.1.103.10.102",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
+      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
+      "status": "candidate",
+      "created_at": "2026-07-14T11:15:00Z"
+    },
+    {
+      "version": "v0.1.103.10.103",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
+      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
+      "status": "candidate",
+      "created_at": "2026-07-14T11:35:00Z"
+    },
+    {
+      "version": "v0.1.103.10.104",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:10:00Z"
+    }
+  ]
 }

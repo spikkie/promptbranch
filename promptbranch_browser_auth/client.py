@@ -5303,7 +5303,7 @@ class ChatGPTBrowserClient:
             })
 
         if response_tasks:
-            await asyncio.gather(*response_tasks, return_exceptions=True)
+            await self._bounded_settle_response_capture_tasks(response_tasks)
 
         summary = {
             "ok": True,
@@ -5766,7 +5766,7 @@ class ChatGPTBrowserClient:
         all_ids = sorted({item for item in [*dom_ids, *snorlax_ids, *history_ids] if item})
 
         if response_tasks:
-            await asyncio.gather(*response_tasks, return_exceptions=True)
+            await self._bounded_settle_response_capture_tasks(response_tasks)
 
         summary = {
             'ok': True,
@@ -5963,7 +5963,7 @@ class ChatGPTBrowserClient:
             }
 
         if response_tasks:
-            await asyncio.gather(*response_tasks, return_exceptions=True)
+            await self._bounded_settle_response_capture_tasks(response_tasks)
 
         cooldown = self._rate_limit_cooldown_snapshot()
         guardrail_responses = [item for item in observed_responses if int(item.get('status') or 0) in {403, 429}]
@@ -7412,7 +7412,17 @@ class ChatGPTBrowserClient:
                 url = str(getattr(resp, 'url', '') or '')
                 if not self._is_library_backend_url(url):
                     return
-                body = await resp.text()
+                headers = await asyncio.wait_for(self._read_response_headers(resp), timeout=1.5)
+                content_type = str(headers.get('content-type') or '').lower()
+                if (
+                    'text/event-stream' in content_type
+                    or 'application/x-ndjson' in content_type
+                    or 'application/json-seq' in content_type
+                    or 'multipart/mixed' in content_type
+                    or '/process_upload_stream' in url.lower()
+                ):
+                    return
+                body = await asyncio.wait_for(resp.text(), timeout=1.5)
                 extracted = self._extract_library_file_records_from_text(body, source_url=url)
                 existing = {(str(item.get('file_id')), str(item.get('filename')).casefold()) for item in watch['records']}
                 for item in extracted:
@@ -7441,9 +7451,7 @@ class ChatGPTBrowserClient:
     async def _settle_library_response_watch(self, watch: Optional[dict[str, Any]]) -> None:
         if not isinstance(watch, dict):
             return
-        tasks = [task for task in watch.get('tasks') or [] if isinstance(task, asyncio.Task)]
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._bounded_settle_response_capture_tasks(watch.get('tasks') or [])
 
     def _dispose_library_response_watch(self, context: Any, watch: Optional[dict[str, Any]]) -> None:
         if context is None or not isinstance(watch, dict) or not watch.get('installed'):
@@ -7692,6 +7700,133 @@ class ChatGPTBrowserClient:
         if search is not None:
             await self._fill_locator_text(search, canonical_name)
             await page.wait_for_timeout(900)
+
+    async def _library_reapply_exact_family_search(
+        self,
+        page: Any,
+        canonical_name: str,
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        """Clear and reapply one exact Library search without broadening scope."""
+        search = await self._find_visible_locator(
+            page,
+            [
+                'input[placeholder*="Search files" i]',
+                'input[placeholder*="Search" i]',
+                'input[aria-label*="Search files" i]',
+                'input[aria-label*="Search" i]',
+            ],
+            label=f'{label}-search-input',
+            timeout_ms=2_000,
+        )
+        if search is None:
+            return {
+                'ok': False,
+                'status': 'library_search_input_not_available',
+                'search_cleared': False,
+                'search_reapplied': False,
+            }
+        await self._fill_locator_text(search, '')
+        await page.wait_for_timeout(250)
+        await self._fill_locator_text(search, canonical_name)
+        await page.wait_for_timeout(900)
+        return {
+            'ok': True,
+            'status': 'library_exact_search_reapplied',
+            'search_cleared': True,
+            'search_reapplied': True,
+        }
+
+    async def _recover_library_surface_after_backend_presence(
+        self,
+        page: Any,
+        *,
+        canonical_name: str,
+        initial_surface: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run exactly one bounded UI recovery cycle after backend presence proof."""
+        evidence: dict[str, Any] = {
+            'backend_presence_authoritative': True,
+            'initial_identical_observations': int(
+                initial_surface.get('identical_non_authoritative_observations') or 0
+            ),
+            'initial_observation_count': len(initial_surface.get('observations') or []),
+            'initial_surface_reason': str(initial_surface.get('reason') or ''),
+            'initial_last_state': (initial_surface.get('observations') or [None])[-1],
+            'recovery_attempted': True,
+            'search_reapplied': False,
+            'page_reloaded': False,
+            'reload_attempt_count': 0,
+            'post_recovery_observation_count': 0,
+        }
+
+        search_reapply = await self._library_reapply_exact_family_search(
+            page,
+            canonical_name,
+            label='library-backend-presence-recovery-reapply',
+        )
+        evidence['search_reapply'] = search_reapply
+        evidence['search_reapplied'] = bool(search_reapply.get('search_reapplied'))
+        reapply_surface = await self._wait_for_authoritative_library_family_surface(
+            page,
+            canonical_name=canonical_name,
+            label='library-backend-presence-recovery-after-reapply',
+            timeout_ms=4_000,
+            max_identical_non_authoritative_observations=5,
+        )
+        evidence['after_search_reapply_surface'] = reapply_surface
+        evidence['post_recovery_observation_count'] += len(reapply_surface.get('observations') or [])
+        if reapply_surface.get('ok') and reapply_surface.get('authoritative'):
+            evidence['ok'] = True
+            evidence['status'] = 'library_surface_recovered_after_search_reapply'
+            evidence['final_surface_reason'] = str(reapply_surface.get('reason') or '')
+            evidence['final_last_state'] = (reapply_surface.get('observations') or [None])[-1]
+            return {'ok': True, 'surface': reapply_surface, 'recovery': evidence}
+
+        reload_surface = reapply_surface
+        if hasattr(page, 'reload'):
+            evidence['reload_attempt_count'] = 1
+            try:
+                await page.reload(wait_until='domcontentloaded')
+                evidence['page_reloaded'] = True
+                await page.wait_for_timeout(900)
+                post_reload_search = await self._library_reapply_exact_family_search(
+                    page,
+                    canonical_name,
+                    label='library-backend-presence-recovery-after-reload',
+                )
+                evidence['post_reload_search_reapply'] = post_reload_search
+                evidence['search_reapplied_after_reload'] = bool(
+                    post_reload_search.get('search_reapplied')
+                )
+                reload_surface = await self._wait_for_authoritative_library_family_surface(
+                    page,
+                    canonical_name=canonical_name,
+                    label='library-backend-presence-recovery-after-reload-ready',
+                    timeout_ms=8_000,
+                    max_identical_non_authoritative_observations=0,
+                )
+                evidence['after_reload_surface'] = reload_surface
+                evidence['post_recovery_observation_count'] += len(
+                    reload_surface.get('observations') or []
+                )
+            except Exception as exc:
+                evidence['reload_error_type'] = type(exc).__name__
+                evidence['reload_error'] = str(exc)
+        else:
+            evidence['reload_not_supported'] = True
+
+        recovered = bool(reload_surface.get('ok')) and bool(reload_surface.get('authoritative'))
+        evidence['ok'] = recovered
+        evidence['status'] = (
+            'library_surface_recovered_after_reload'
+            if recovered
+            else 'library_surface_not_authoritative_after_bounded_recovery'
+        )
+        evidence['final_surface_reason'] = str(reload_surface.get('reason') or '')
+        evidence['final_last_state'] = (reload_surface.get('observations') or [None])[-1]
+        return {'ok': recovered, 'surface': reload_surface, 'recovery': evidence}
 
     def _merge_library_file_records(
         self,
@@ -8389,12 +8524,55 @@ class ChatGPTBrowserClient:
             sanitized = re.sub(r'(?i)\buser-[A-Za-z0-9_-]+\b', '<redacted-user-id>', sanitized)
         return sanitized[:max(limit, 0)]
 
+    async def _bounded_settle_response_capture_tasks(
+        self,
+        tasks: Any,
+        *,
+        timeout_seconds: float = 2.0,
+        cancel_timeout_seconds: float = 0.25,
+    ) -> dict[str, int]:
+        capture_tasks = [task for task in tasks or [] if isinstance(task, asyncio.Task)]
+        pending = [task for task in capture_tasks if not task.done()]
+        if pending:
+            _done, pending_set = await asyncio.wait(
+                pending,
+                timeout=max(float(timeout_seconds), 0.01),
+            )
+            pending = list(pending_set)
+        for task in pending:
+            task.cancel()
+        detached: list[asyncio.Task] = []
+        if pending:
+            _done, still_pending = await asyncio.wait(
+                pending,
+                timeout=max(float(cancel_timeout_seconds), 0.0),
+            )
+            detached = list(still_pending)
+        for task in detached:
+            task.add_done_callback(
+                lambda completed: completed.exception()
+                if not completed.cancelled()
+                else None
+            )
+        counts = self._fetch_xhr_protocol_task_counts(capture_tasks)
+        return {
+            **counts,
+            'pending_task_count': len(pending),
+            'detached_task_count': len(detached),
+        }
+
     def _install_fetch_xhr_protocol_watch(self, context: Any) -> dict[str, Any]:
         watch: dict[str, Any] = {
             'installed': False,
             'phase': 'initial',
+            'phase_history': [],
             'events': [],
             'tasks': [],
+            'task_metadata': {},
+            'settlement_history': [],
+            'response_body_timeout_seconds': 1.5,
+            'settlement_timeout_seconds': 2.0,
+            'cancel_timeout_seconds': 0.25,
             'handlers': {},
             'requests': {},
             # Private executable request headers are retained only in memory.
@@ -8405,6 +8583,20 @@ class ChatGPTBrowserClient:
         if context is None or not hasattr(context, 'on'):
             return watch
         loop = asyncio.get_running_loop()
+
+        def register_task(coro: Any, metadata: dict[str, Any]) -> asyncio.Task:
+            task = loop.create_task(coro)
+            watch.setdefault('tasks', []).append(task)
+            watch.setdefault('task_metadata', {})[id(task)] = {
+                'task_kind': str(metadata.get('task_kind') or 'capture'),
+                'sequence': int(metadata.get('sequence') or 0) or None,
+                'phase': str(metadata.get('phase') or 'unattributed'),
+                'method': str(metadata.get('method') or '').upper() or None,
+                'resource_type': str(metadata.get('resource_type') or '').lower() or None,
+                'url': self._redact_backend_api_url(str(metadata.get('url') or '')).get('redacted_url'),
+                'content_type': metadata.get('content_type'),
+            }
+            return task
 
         def request_headers(request: Any) -> dict[str, str]:
             try:
@@ -8449,10 +8641,12 @@ class ChatGPTBrowserClient:
                 raw_url = str(getattr(request, 'url', '') or '')
                 raw_body = getattr(request, 'post_data', None)
                 initial_raw_headers = request_headers(request)
+                request_phase = str(watch.get('phase') or 'unknown')
                 event = {
                     'kind': 'request',
                     'sequence': sequence,
-                    'phase': str(watch.get('phase') or 'unknown'),
+                    'phase': request_phase,
+                    'request_phase': request_phase,
                     'resource_type': resource_type,
                     'method': str(getattr(request, 'method', '') or 'GET').upper(),
                     'url': self._redact_backend_api_url(raw_url).get('redacted_url'),
@@ -8465,8 +8659,16 @@ class ChatGPTBrowserClient:
                 }
                 watch.setdefault('requests', {})[id(request)] = event
                 watch.setdefault('events', []).append(event)
-                watch.setdefault('tasks', []).append(
-                    loop.create_task(capture_private_request_headers(request, event))
+                register_task(
+                    capture_private_request_headers(request, event),
+                    {
+                        'task_kind': 'request_headers_capture',
+                        'sequence': sequence,
+                        'phase': request_phase,
+                        'method': event.get('method'),
+                        'resource_type': event.get('resource_type'),
+                        'url': raw_url,
+                    },
                 )
             except Exception:
                 return
@@ -8481,16 +8683,54 @@ class ChatGPTBrowserClient:
                 raw_url = str(getattr(response, 'url', '') or request_event.get('_raw_url') or '')
                 body_text = ''
                 body_error = None
+                body_timeout = max(float(watch.get('response_body_timeout_seconds') or 1.5), 0.01)
+                headers: dict[str, str] = {}
                 try:
-                    body_text = await response.text()
+                    headers = await asyncio.wait_for(
+                        self._read_response_headers(response),
+                        timeout=body_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    body_error = 'response_headers_timeout'
                 except Exception as exc:
-                    body_error = repr(exc)
-                headers = await self._read_response_headers(response)
+                    body_error = f'response_headers_error:{type(exc).__name__}'
+                content_type = str(headers.get('content-type') or '').lower()
+                current_task = asyncio.current_task()
+                metadata = (
+                    watch.get('task_metadata', {}).get(id(current_task), {})
+                    if current_task is not None
+                    else {}
+                )
+                if isinstance(metadata, dict):
+                    metadata['content_type'] = content_type or None
+                streaming_response = (
+                    'text/event-stream' in content_type
+                    or 'application/x-ndjson' in content_type
+                    or 'application/json-seq' in content_type
+                    or 'multipart/mixed' in content_type
+                    or '/process_upload_stream' in raw_url.lower()
+                )
+                if streaming_response:
+                    body_error = body_error or 'streaming_response_body_omitted'
+                else:
+                    try:
+                        body_text = await asyncio.wait_for(response.text(), timeout=body_timeout)
+                    except asyncio.TimeoutError:
+                        body_error = body_error or 'response_body_timeout'
+                    except Exception as exc:
+                        body_error = body_error or f'response_body_error:{type(exc).__name__}'
                 records = self._extract_library_file_records_from_text(body_text, source_url=raw_url)
+                request_phase = str(
+                    request_event.get('request_phase')
+                    or request_event.get('phase')
+                    or 'unattributed'
+                )
                 event = {
                     'kind': 'response',
                     'sequence': request_event.get('sequence'),
-                    'phase': request_event.get('phase') or str(watch.get('phase') or 'unknown'),
+                    'phase': request_phase,
+                    'request_phase': request_phase,
+                    'response_observed_phase': str(watch.get('phase') or 'unknown'),
                     'resource_type': resource_type,
                     'method': request_event.get('method') or str(getattr(request, 'method', '') or 'GET').upper(),
                     'url': self._redact_backend_api_url(raw_url).get('redacted_url'),
@@ -8521,7 +8761,22 @@ class ChatGPTBrowserClient:
                 resource_type = str(getattr(request, 'resource_type', '') or '').lower() if request is not None else ''
                 if resource_type not in {'fetch', 'xhr'}:
                     return
-                watch.setdefault('tasks', []).append(loop.create_task(capture_response(response)))
+                request_event = watch.get('requests', {}).get(id(request), {}) if request is not None else {}
+                register_task(
+                    capture_response(response),
+                    {
+                        'task_kind': 'response_capture',
+                        'sequence': int(request_event.get('sequence') or 0) or None,
+                        'phase': str(
+                            request_event.get('request_phase')
+                            or request_event.get('phase')
+                            or 'unattributed'
+                        ),
+                        'method': request_event.get('method') or str(getattr(request, 'method', '') or 'GET').upper(),
+                        'resource_type': resource_type,
+                        'url': str(getattr(response, 'url', '') or request_event.get('_raw_url') or ''),
+                    },
+                )
             except Exception:
                 return
 
@@ -8532,29 +8787,219 @@ class ChatGPTBrowserClient:
         return watch
 
     def _set_fetch_xhr_protocol_phase(self, watch: Optional[dict[str, Any]], phase: str) -> None:
-        if isinstance(watch, dict):
-            watch['phase'] = str(phase or 'unknown')
-
-    async def _settle_fetch_xhr_protocol_watch(self, watch: Optional[dict[str, Any]]) -> None:
         if not isinstance(watch, dict):
             return
+        normalized = str(phase or 'unknown')
+        if str(watch.get('phase') or 'unknown') == normalized:
+            return
+        watch['phase'] = normalized
+        watch.setdefault('phase_history', []).append({
+            'phase': normalized,
+            'event_count': len(watch.get('events') or []),
+            'task_count': len(watch.get('tasks') or []),
+            'next_sequence': int(watch.get('next_sequence') or 1),
+        })
+
+    def _fetch_xhr_protocol_sequence_boundary(
+        self,
+        watch: Optional[dict[str, Any]],
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        payload = watch if isinstance(watch, dict) else {}
+        request_sequences = [
+            int(event.get('sequence') or 0)
+            for event in payload.get('events') or []
+            if isinstance(event, dict) and event.get('kind') == 'request'
+        ]
+        return {
+            'label': str(label or 'boundary'),
+            'phase_before_boundary': str(payload.get('phase') or 'unknown'),
+            'max_request_sequence': max(request_sequences, default=0),
+            'next_request_sequence': int(payload.get('next_sequence') or 1),
+            'event_count': len(payload.get('events') or []),
+            'task_count': len(payload.get('tasks') or []),
+        }
+
+    def _fetch_xhr_protocol_task_descriptor(
+        self,
+        watch: dict[str, Any],
+        task: asyncio.Task,
+    ) -> dict[str, Any]:
+        metadata = watch.get('task_metadata', {}).get(id(task), {})
+        payload = metadata if isinstance(metadata, dict) else {}
+        descriptor = {
+            'task_kind': payload.get('task_kind') or 'capture',
+            'phase': payload.get('phase') or 'unknown',
+            'method': payload.get('method'),
+            'resource_type': payload.get('resource_type'),
+            'url': payload.get('url'),
+            'content_type': payload.get('content_type'),
+        }
+        if payload.get('sequence') is not None:
+            descriptor['sequence'] = payload.get('sequence')
+        return descriptor
+
+    def _fetch_xhr_protocol_task_counts(self, tasks: list[asyncio.Task]) -> dict[str, int]:
+        completed = 0
+        cancelled = 0
+        failed = 0
+        pending = 0
+        for task in tasks:
+            if not task.done():
+                pending += 1
+                continue
+            if task.cancelled():
+                cancelled += 1
+                continue
+            try:
+                error = task.exception()
+            except asyncio.CancelledError:
+                cancelled += 1
+                continue
+            if error is not None:
+                failed += 1
+            else:
+                completed += 1
+        return {
+            'task_count': len(tasks),
+            'completed_task_count': completed,
+            'cancelled_task_count': cancelled,
+            'failed_task_count': failed,
+            'pending_task_count': pending,
+        }
+
+    async def _settle_fetch_xhr_protocol_watch(
+        self,
+        watch: Optional[dict[str, Any]],
+        *,
+        timeout_seconds: Optional[float] = None,
+        cancel_timeout_seconds: Optional[float] = None,
+        raise_on_timeout: bool = True,
+    ) -> dict[str, Any]:
+        if not isinstance(watch, dict):
+            return {
+                'ok': True,
+                'status': 'fetch_xhr_protocol_watch_not_installed',
+                'task_count': 0,
+                'completed_task_count': 0,
+                'cancelled_task_count': 0,
+                'failed_task_count': 0,
+                'pending_task_count': 0,
+                'detached_task_count': 0,
+                'unresolved_tasks': [],
+            }
+        settle_timeout = max(
+            float(
+                timeout_seconds
+                if timeout_seconds is not None
+                else watch.get('settlement_timeout_seconds') or 2.0
+            ),
+            0.01,
+        )
+        cancel_timeout = max(
+            float(
+                cancel_timeout_seconds
+                if cancel_timeout_seconds is not None
+                else watch.get('cancel_timeout_seconds') or 0.25
+            ),
+            0.0,
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + settle_timeout
+        stable_rounds = 0
         observed_count = -1
-        for _round in range(8):
-            tasks = [
-                task for task in watch.get('tasks') or []
-                if isinstance(task, asyncio.Task) and not task.done()
-            ]
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            await asyncio.sleep(0.05)
-            current_count = len(watch.get('tasks') or [])
-            pending = [
-                task for task in watch.get('tasks') or []
-                if isinstance(task, asyncio.Task) and not task.done()
-            ]
-            if not pending and current_count == observed_count:
-                break
+        timed_out = False
+        unresolved: list[asyncio.Task] = []
+        while loop.time() < deadline:
+            tasks = [task for task in watch.get('tasks') or [] if isinstance(task, asyncio.Task)]
+            pending = [task for task in tasks if not task.done()]
+            current_count = len(tasks)
+            if not pending:
+                stable_rounds = stable_rounds + 1 if current_count == observed_count else 0
+                observed_count = current_count
+                if stable_rounds >= 1:
+                    break
+                await asyncio.sleep(min(0.05, max(deadline - loop.time(), 0.0)))
+                continue
             observed_count = current_count
+            remaining = max(deadline - loop.time(), 0.0)
+            if remaining <= 0:
+                timed_out = True
+                unresolved = pending
+                break
+            await asyncio.wait(pending, timeout=min(0.10, remaining))
+        else:
+            timed_out = True
+
+        tasks = [task for task in watch.get('tasks') or [] if isinstance(task, asyncio.Task)]
+        if not unresolved:
+            unresolved = [task for task in tasks if not task.done()]
+        if not timed_out:
+            timed_out = bool(unresolved)
+
+        unresolved_descriptors = [
+            self._fetch_xhr_protocol_task_descriptor(watch, task)
+            for task in unresolved
+        ]
+        pending_before_cancel = len(unresolved)
+        detached: list[asyncio.Task] = []
+        if unresolved:
+            for task in unresolved:
+                task.cancel()
+            if cancel_timeout > 0:
+                _done, still_pending = await asyncio.wait(unresolved, timeout=cancel_timeout)
+                detached = list(still_pending)
+            else:
+                detached = [task for task in unresolved if not task.done()]
+            for task in detached:
+                task.add_done_callback(
+                    lambda completed: completed.exception()
+                    if not completed.cancelled()
+                    else None
+                )
+
+        counts = self._fetch_xhr_protocol_task_counts(tasks)
+        history = watch.setdefault('settlement_history', [])
+        result = {
+            'ok': not timed_out,
+            'settlement_index': len(history) + 1,
+            'phase': str(watch.get('phase') or 'unknown'),
+            'status': (
+                'fetch_xhr_protocol_watch_settled'
+                if not timed_out
+                else 'fetch_xhr_protocol_watch_settle_timeout'
+            ),
+            **counts,
+            'pending_task_count': pending_before_cancel if timed_out else counts['pending_task_count'],
+            'detached_task_count': len(detached),
+            'unresolved_tasks': unresolved_descriptors,
+            'timeout_seconds': settle_timeout,
+            'cancel_timeout_seconds': cancel_timeout,
+        }
+        signature_keys = (
+            'phase',
+            'status',
+            'task_count',
+            'completed_task_count',
+            'cancelled_task_count',
+            'failed_task_count',
+            'pending_task_count',
+            'detached_task_count',
+        )
+        previous = history[-1] if history and isinstance(history[-1], dict) else None
+        if previous and all(previous.get(key) == result.get(key) for key in signature_keys):
+            result['settlement_index'] = int(previous.get('settlement_index') or len(history))
+            result['duplicate_history_entry_suppressed'] = True
+        else:
+            history.append(result)
+        watch['last_settlement'] = result
+        if timed_out and raise_on_timeout:
+            raise ResponseTimeoutError(
+                'fetch_xhr_protocol_watch_settle_timeout: '
+                f'pending_task_count={pending_before_cancel}, detached_task_count={len(detached)}'
+            )
+        return result
 
     def _dispose_fetch_xhr_protocol_watch(self, context: Any, watch: Optional[dict[str, Any]]) -> None:
         if context is None or not isinstance(watch, dict) or not watch.get('installed'):
@@ -8567,6 +9012,18 @@ class ChatGPTBrowserClient:
                     context.off(event_name, handler)
             except Exception:
                 pass
+        pending = [
+            task for task in watch.get('tasks') or []
+            if isinstance(task, asyncio.Task) and not task.done()
+        ]
+        for task in pending:
+            task.cancel()
+            task.add_done_callback(
+                lambda completed: completed.exception()
+                if not completed.cancelled()
+                else None
+            )
+        watch['disposed_pending_task_count'] = len(pending)
 
     def _public_protocol_record(self, record: Any) -> dict[str, Any]:
         payload = record if isinstance(record, dict) else {}
@@ -8629,6 +9086,10 @@ class ChatGPTBrowserClient:
             'sensitive_body_fields_redacted': True,
             'unrelated_body_samples_omitted': True,
             'url_query_values_redacted': True,
+            'task_settlement': payload.get('last_settlement'),
+            'task_settlement_history': list(payload.get('settlement_history') or []),
+            'phase_history': list(payload.get('phase_history') or []),
+            'disposed_pending_task_count': int(payload.get('disposed_pending_task_count') or 0),
         }
 
     def _protocol_event_contains_any(self, event: dict[str, Any], values: list[str]) -> bool:
@@ -8736,15 +9197,95 @@ class ChatGPTBrowserClient:
             ),
         }
 
-    def _discover_backend_delete_protocol(
+    def _protocol_event_identity_candidates(self, event: Any) -> list[str]:
+        payload = event if isinstance(event, dict) else {}
+        text = '\n'.join(
+            str(payload.get(key) or '')
+            for key in (
+                '_raw_url',
+                '_raw_post_data',
+                '_raw_body',
+                'body_sample',
+                'request_post_data_sample',
+            )
+        )
+        found: list[str] = []
+        for pattern in (
+            r'\blibfile_[A-Za-z0-9_-]+\b',
+            r'\bfile_[A-Za-z0-9_-]+\b',
+        ):
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                value = match.group(0)
+                if value not in found:
+                    found.append(value)
+        return found
+
+    def _backend_delete_protocol_candidate_diagnostic(
+        self,
+        *,
+        request: dict[str, Any],
+        response: Optional[dict[str, Any]],
+        exact_values: list[str],
+        filename: str,
+    ) -> dict[str, Any]:
+        response_payload = response if isinstance(response, dict) else {}
+        raw_url = str(request.get('_raw_url') or response_payload.get('_raw_url') or '')
+        try:
+            url_path = urlparse(raw_url).path
+        except Exception:
+            url_path = ''
+        request_headers = request.get('_raw_headers') if isinstance(request.get('_raw_headers'), dict) else {}
+        request_content_type = str(request_headers.get('content-type') or '')
+        request_body = str(request.get('_raw_post_data') or '')
+        response_body = str(response_payload.get('_raw_body') or '')
+        response_content_type = str(response_payload.get('content_type') or '')
+        observed_identities = list(dict.fromkeys(
+            self._protocol_event_identity_candidates(request)
+            + self._protocol_event_identity_candidates(response_payload)
+        ))
+        exact_identity_observed = (
+            self._protocol_event_contains_any(request, exact_values)
+            or self._protocol_event_contains_any(response_payload, exact_values)
+        )
+        return {
+            'sequence': int(request.get('sequence') or response_payload.get('sequence') or 0),
+            'request_phase': str(request.get('request_phase') or request.get('phase') or 'unattributed'),
+            'response_phase': str(response_payload.get('request_phase') or response_payload.get('phase') or 'unattributed'),
+            'response_observed_phase': response_payload.get('response_observed_phase'),
+            'method': str(request.get('method') or response_payload.get('method') or 'GET').upper(),
+            'url_path': url_path,
+            'status': response_payload.get('status'),
+            'content_type': response_payload.get('content_type'),
+            'identity_candidates': observed_identities,
+            'exact_identity_observed': bool(exact_identity_observed),
+            'filename_observed': bool(
+                self._protocol_event_contains_any(request, [filename])
+                or self._protocol_event_contains_any(response_payload, [filename])
+            ),
+            'request_body_schema': self._upload_response_body_schema(
+                request_body,
+                content_type=request_content_type,
+            ),
+            'response_body_schema': (
+                response_payload.get('body_schema')
+                if isinstance(response_payload.get('body_schema'), dict)
+                else self._upload_response_body_schema(
+                    response_body,
+                    content_type=response_content_type,
+                )
+            ),
+        }
+
+    def _discover_backend_delete_protocol_result(
         self,
         watch: Optional[dict[str, Any]],
         *,
         id_candidates: list[str],
         filename: str,
-        phase: str,
-    ) -> Optional[dict[str, Any]]:
-        """Discover one successful exact-ID file mutation from paired fetch/XHR events."""
+        phase: Optional[str] = None,
+        sequence_after: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Discover one successful exact-ID mutation after an optional request boundary."""
         payload = watch if isinstance(watch, dict) else {}
         events = [event for event in payload.get('events') or [] if isinstance(event, dict)]
         responses_by_sequence = {
@@ -8752,11 +9293,18 @@ class ChatGPTBrowserClient:
             for event in events
             if event.get('kind') == 'response' and int(event.get('sequence') or 0)
         }
-        candidate_pairs: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
-        exact_values = [value for value in id_candidates if str(value or '').strip()]
+        exact_values = [str(value) for value in id_candidates if str(value or '').strip()]
+        successful_mutation_candidates: list[dict[str, Any]] = []
+        exact_pairs: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+        boundary = int(sequence_after or 0)
 
         for request in events:
-            if request.get('kind') != 'request' or str(request.get('phase') or '') != phase:
+            if request.get('kind') != 'request':
+                continue
+            sequence = int(request.get('sequence') or 0)
+            if sequence_after is not None and sequence <= boundary:
+                continue
+            if sequence_after is None and phase is not None and str(request.get('phase') or '') != phase:
                 continue
             method = str(request.get('method') or 'GET').upper()
             if method in {'GET', 'HEAD', 'OPTIONS'}:
@@ -8764,50 +9312,100 @@ class ChatGPTBrowserClient:
             raw_url = str(request.get('_raw_url') or '')
             if '/backend-api/' not in raw_url.lower():
                 continue
-            response = responses_by_sequence.get(int(request.get('sequence') or 0))
+            response = responses_by_sequence.get(sequence)
             if not isinstance(response, dict):
                 continue
             status = int(response.get('status') or 0)
             if not 200 <= status < 300:
                 continue
-            exact = self._protocol_event_contains_any(request, exact_values) or self._protocol_event_contains_any(response, exact_values)
-            if not exact:
+            diagnostic = self._backend_delete_protocol_candidate_diagnostic(
+                request=request,
+                response=response,
+                exact_values=exact_values,
+                filename=filename,
+            )
+            successful_mutation_candidates.append(diagnostic)
+            if not diagnostic.get('exact_identity_observed'):
                 continue
-            filename_match = self._protocol_event_contains_any(request, [filename]) or self._protocol_event_contains_any(response, [filename])
-            files_path = '/backend-api/files' in raw_url.lower() or '/backend-api/library' in raw_url.lower()
-            score = 140 + (30 if files_path else 0) + (10 if method in {'DELETE', 'PATCH', 'PUT'} else 0) + (5 if filename_match else 0)
-            candidate_pairs.append((score, request, response))
+            files_path = (
+                '/backend-api/files' in raw_url.lower()
+                or '/backend-api/library' in raw_url.lower()
+            )
+            score = (
+                140
+                + (30 if files_path else 0)
+                + (10 if method in {'DELETE', 'PATCH', 'PUT'} else 0)
+                + (5 if diagnostic.get('filename_observed') else 0)
+            )
+            exact_pairs.append((score, request, response))
 
-        # Preserve compatibility with captures/tests containing only response events.
-        for response in events:
-            if response.get('kind') != 'response' or str(response.get('phase') or '') != phase:
-                continue
-            method = str(response.get('method') or 'GET').upper()
-            status = int(response.get('status') or 0)
-            if method in {'GET', 'HEAD', 'OPTIONS'} or not 200 <= status < 300:
-                continue
-            if not self._protocol_event_contains_any(response, exact_values):
-                continue
-            raw_url = str(response.get('_raw_url') or '')
-            files_path = '/backend-api/files' in raw_url.lower() or '/backend-api/library' in raw_url.lower()
-            score = 100 + (30 if files_path else 0) + (5 if self._protocol_event_contains_any(response, [filename]) else 0)
-            candidate_pairs.append((score, response, response))
+        # Historical response-only fixtures remain supported. Live sequence-bounded
+        # diagnostics require paired request/response evidence and skip this fallback.
+        if sequence_after is None:
+            for response in events:
+                if response.get('kind') != 'response':
+                    continue
+                if phase is not None and str(response.get('phase') or '') != phase:
+                    continue
+                method = str(response.get('method') or 'GET').upper()
+                status = int(response.get('status') or 0)
+                if method in {'GET', 'HEAD', 'OPTIONS'} or not 200 <= status < 300:
+                    continue
+                raw_url = str(response.get('_raw_url') or '')
+                if '/backend-api/' not in raw_url.lower():
+                    continue
+                if not self._protocol_event_contains_any(response, exact_values):
+                    continue
+                diagnostic = self._backend_delete_protocol_candidate_diagnostic(
+                    request=response,
+                    response=response,
+                    exact_values=exact_values,
+                    filename=filename,
+                )
+                successful_mutation_candidates.append(diagnostic)
+                files_path = (
+                    '/backend-api/files' in raw_url.lower()
+                    or '/backend-api/library' in raw_url.lower()
+                )
+                score = 100 + (30 if files_path else 0) + (5 if diagnostic.get('filename_observed') else 0)
+                exact_pairs.append((score, response, response))
 
-        if not candidate_pairs:
-            return None
-        _, request, response = sorted(candidate_pairs, key=lambda item: item[0], reverse=True)[0]
+        if not exact_pairs:
+            return {
+                'ok': False,
+                'status': (
+                    'soft_delete_protocol_identity_not_verified'
+                    if successful_mutation_candidates
+                    else 'soft_delete_protocol_not_discovered'
+                ),
+                'sequence_after': boundary if sequence_after is not None else None,
+                'phase': phase,
+                'mutation_candidates': successful_mutation_candidates,
+                'protocol': None,
+            }
+
+        _, request, response = sorted(exact_pairs, key=lambda item: item[0], reverse=True)[0]
         sequence = int(request.get('sequence') or response.get('sequence') or 0)
-        return {
+        protocol = {
+            'sequence': sequence,
+            'sequence_after': boundary if sequence_after is not None else None,
             'method': str(request.get('method') or response.get('method') or 'POST').upper(),
             'url': response.get('url') or request.get('url'),
             'headers': request.get('headers') or response.get('request_headers') or {},
             'post_data_sample': request.get('post_data_sample') or response.get('request_post_data_sample') or '',
-            'phase': response.get('phase') or request.get('phase'),
+            'phase': request.get('request_phase') or request.get('phase') or response.get('phase'),
+            'request_phase': request.get('request_phase') or request.get('phase'),
+            'response_phase': response.get('request_phase') or response.get('phase'),
+            'response_observed_phase': response.get('response_observed_phase'),
             'status': response.get('status'),
             'exact_identity_observed': True,
             'response_proven_successful': True,
             '_raw_url': request.get('_raw_url') or response.get('_raw_url'),
-            '_raw_post_data': request.get('_raw_post_data') if request.get('_raw_post_data') is not None else response.get('_raw_post_data'),
+            '_raw_post_data': (
+                request.get('_raw_post_data')
+                if request.get('_raw_post_data') is not None
+                else response.get('_raw_post_data')
+            ),
             '_raw_headers': (
                 payload.get('private_request_headers', {}).get(sequence)
                 or request.get('_raw_headers')
@@ -8815,6 +9413,33 @@ class ChatGPTBrowserClient:
                 or {}
             ),
         }
+        return {
+            'ok': True,
+            'status': 'soft_delete_protocol_discovered',
+            'sequence_after': boundary if sequence_after is not None else None,
+            'phase': phase,
+            'mutation_candidates': successful_mutation_candidates,
+            'protocol': protocol,
+        }
+
+    def _discover_backend_delete_protocol(
+        self,
+        watch: Optional[dict[str, Any]],
+        *,
+        id_candidates: list[str],
+        filename: str,
+        phase: Optional[str] = None,
+        sequence_after: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
+        result = self._discover_backend_delete_protocol_result(
+            watch,
+            id_candidates=id_candidates,
+            filename=filename,
+            phase=phase,
+            sequence_after=sequence_after,
+        )
+        protocol = result.get('protocol')
+        return protocol if isinstance(protocol, dict) else None
 
     def _public_backend_protocol(self, protocol: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if not isinstance(protocol, dict):
@@ -9503,54 +10128,117 @@ class ChatGPTBrowserClient:
             label='library-disposable-delete-forever-action' if delete_forever else 'library-disposable-delete-action',
             timeout_ms=5_000,
         )
-        confirm_selector = (
-            '[role="dialog"] button:has-text("Delete forever"), dialog[open] button:has-text("Delete forever")'
-            if delete_forever
-            else '[role="dialog"] button:has-text("Delete"), dialog[open] button:has-text("Delete")'
-        )
-        confirm_locator = page.locator(confirm_selector)
-        visible_confirms = []
-        for index in range(await self._safe_count(confirm_locator, 'library-disposable-delete-confirm')):
-            candidate = confirm_locator.nth(index)
-            try:
-                if await candidate.is_visible():
-                    visible_confirms.append(candidate)
-            except Exception:
-                continue
-        if len(visible_confirms) > 1:
-            return {
-                'ok': False,
-                'status': 'disposable_library_delete_confirm_ambiguous',
-                'filename': filename,
-                'delete_forever': delete_forever,
-                'confirm_count': len(visible_confirms),
-            }
-        if visible_confirms:
-            await self._click_locator_with_fallback(
-                visible_confirms[0],
-                label='library-disposable-delete-confirm',
-                timeout_ms=5_000,
-            )
-        await page.wait_for_timeout(700)
-        return {
-            'ok': True,
-            'status': 'delete_forever_triggered' if delete_forever else 'delete_triggered',
+        # The Library UI renders its destructive confirmation asynchronously.
+        # Do not treat the menu action as a completed delete. Wait for one unique
+        # destructive action inside a visible dialog/alertdialog/native dialog.
+        confirmation_timeout_ms = 3_000
+        confirmation_poll_ms = 100
+        confirmation_observations = 0
+        visible_surface_count = 0
+        visible_confirms: list[Any] = []
+        elapsed_ms = 0
+        expected_label = 'Delete forever' if delete_forever else 'Delete'
+
+        async def visible_confirmation_actions() -> tuple[int, list[Any]]:
+            surfaces = page.locator('[role="dialog"], [role="alertdialog"], dialog[open]')
+            visible_surfaces: list[Any] = []
+            for surface_index in range(await self._safe_count(surfaces, 'library-disposable-delete-confirm-surface')):
+                surface = surfaces.nth(surface_index)
+                try:
+                    if await surface.is_visible():
+                        visible_surfaces.append(surface)
+                except Exception:
+                    continue
+            confirms: list[Any] = []
+            for surface in visible_surfaces:
+                candidates = surface.locator('button, [role="button"]')
+                for candidate_index in range(await self._safe_count(candidates, 'library-disposable-delete-confirm-action')):
+                    candidate = candidates.nth(candidate_index)
+                    try:
+                        if not await candidate.is_visible():
+                            continue
+                        text = ''
+                        if hasattr(candidate, 'inner_text'):
+                            text = str(await candidate.inner_text() or '')
+                        if not text and hasattr(candidate, 'get_attribute'):
+                            text = str(await candidate.get_attribute('aria-label') or '')
+                        normalized = ' '.join(text.split()).strip()
+                        if normalized.casefold() == expected_label.casefold():
+                            confirms.append(candidate)
+                    except Exception:
+                        continue
+            return len(visible_surfaces), confirms
+
+        while elapsed_ms <= confirmation_timeout_ms:
+            confirmation_observations += 1
+            visible_surface_count, visible_confirms = await visible_confirmation_actions()
+            if len(visible_confirms) != 0:
+                break
+            if elapsed_ms >= confirmation_timeout_ms:
+                break
+            await page.wait_for_timeout(confirmation_poll_ms)
+            elapsed_ms += confirmation_poll_ms
+
+        common_evidence = {
             'filename': filename,
             'delete_forever': delete_forever,
             'row_scoped_menu_binding': True,
             'pre_hover_menu_count': len(pre_hover_menus),
             'post_hover_menu_count': len(post_hover_menus),
+            'delete_action_clicked': True,
+            'confirmation_wait_timeout_ms': confirmation_timeout_ms,
+            'confirmation_observations': confirmation_observations,
+            'confirmation_surface_count': visible_surface_count,
+            'confirmation_count': len(visible_confirms),
+            'confirmation_required': bool(visible_confirms),
+            'confirmation_observed': bool(visible_confirms),
+            'confirmation_clicked': False,
+            'direct_mutation_observed': False,
+        }
+        if len(visible_confirms) > 1:
+            return {
+                **common_evidence,
+                'ok': False,
+                'status': 'delete_confirmation_ambiguous',
+            }
+        if not visible_confirms:
+            # A no-confirmation UI may submit the mutation directly. The caller
+            # owns the authoritative request-sequence proof and may promote this
+            # result only when an exact post-boundary mutation is discovered.
+            return {
+                **common_evidence,
+                'ok': False,
+                'status': 'delete_confirmation_not_observed',
+            }
+        await self._click_locator_with_fallback(
+            visible_confirms[0],
+            label='library-disposable-delete-confirm',
+            timeout_ms=5_000,
+        )
+        await page.wait_for_timeout(700)
+        return {
+            **common_evidence,
+            'ok': True,
+            'status': 'delete_confirmation_clicked',
+            'confirmation_required': True,
+            'confirmation_clicked': True,
         }
 
     def _browser_diagnostic_upload_identity(self, result: Any, requested_filename: str) -> dict[str, Any]:
         payload = result if isinstance(result, dict) else {}
         summary = payload.get('save_request_summary') if isinstance(payload.get('save_request_summary'), dict) else {}
         diagnostics = summary.get('response_diagnostics') if isinstance(summary.get('response_diagnostics'), list) else []
+        processing_stream = payload.get('processing_stream') if isinstance(payload.get('processing_stream'), dict) else {}
         requested = Path(requested_filename).name
-        library_name = None
-        processed_file_id = None
-        metadata_object_id = None
-        completed_event = None
+        library_name = self._file_source_family_filename(processing_stream.get('library_file_name')) or None
+        processed_file_id = self._library_file_record_id(processing_stream.get('processed_file_id')) or None
+        metadata_candidate = str(processing_stream.get('library_metadata_object_id') or '').strip()
+        metadata_object_id = metadata_candidate if metadata_candidate.startswith('libfile_') else None
+        completed_event = (
+            {'event': processing_stream.get('terminal_event')}
+            if processing_stream.get('terminal_event')
+            else None
+        )
         for diagnostic in diagnostics:
             if not isinstance(diagnostic, dict):
                 continue
@@ -9644,6 +10332,189 @@ class ChatGPTBrowserClient:
             'observations': observations,
         }
 
+    def _project_source_processing_stream_result_invariant(self, upload_result: Any) -> dict[str, Any]:
+        payload = upload_result if isinstance(upload_result, dict) else {}
+        quiet = payload.get('save_request_quiet') if isinstance(payload.get('save_request_quiet'), dict) else {}
+        processing_stream = payload.get('processing_stream') if isinstance(payload.get('processing_stream'), dict) else None
+        pending = bool(quiet.get('processing_stream_pending'))
+        ok = not pending or processing_stream is not None
+        return {
+            'ok': ok,
+            'status': (
+                'processing_stream_result_present'
+                if processing_stream is not None
+                else 'processing_stream_not_pending'
+                if not pending
+                else 'internal_processing_stream_wait_skipped'
+            ),
+            'processing_stream_pending': pending,
+            'processing_stream_result_present': processing_stream is not None,
+            'processing_stream_status': (
+                str(processing_stream.get('status') or '') or None
+                if processing_stream is not None
+                else None
+            ),
+            'quiet_reason': quiet.get('quiet_reason'),
+        }
+
+    def _install_visible_library_processing_stream_watch(
+        self,
+        context: Any,
+        *,
+        expected_filename: str,
+    ) -> dict[str, Any]:
+        """Install one watcher instance owned only by the visible-Library upload."""
+        watch = self._install_project_source_save_request_watch(
+            context,
+            source_kind='file',
+            expected_filename=expected_filename,
+        )
+        if isinstance(watch, dict):
+            watch['watch_kind'] = 'visible_library_processing_stream'
+        return watch
+
+    def _dispose_visible_library_processing_stream_watch(
+        self,
+        context: Any,
+        watch: Optional[dict[str, Any]],
+    ) -> None:
+        self._dispose_project_source_save_request_watch(context, watch)
+
+    async def _wait_for_visible_library_processing_stream(
+        self,
+        page: Any,
+        watch: Optional[dict[str, Any]],
+        *,
+        expected_filename: str,
+        timeout_ms: int = 180_000,
+        poll_interval_ms: int = 250,
+    ) -> dict[str, Any]:
+        """Wait for exact terminal identity from the disposable Library upload stream.
+
+        This is intentionally separate from the generic Fetch/XHR trace.  The
+        generic trace must remain stream-safe and therefore never reads the
+        long-lived ``process_upload_stream`` body.  This dedicated watcher owns
+        that response only after ``requestfinished`` and has an independent
+        bounded timeout.
+        """
+        expected = self._file_source_family_filename(expected_filename)
+        if not isinstance(watch, dict):
+            return {
+                'ok': False,
+                'status': 'visible_library_processing_stream_timeout',
+                'expected_filename': expected,
+                'observations': 0,
+                'reason': 'processing_stream_watch_not_installed',
+            }
+
+        deadline = asyncio.get_running_loop().time() + max(int(timeout_ms), 0) / 1000
+        observations = 0
+        last_task_settlement: Optional[dict[str, Any]] = None
+        while asyncio.get_running_loop().time() < deadline:
+            observations += 1
+            if int(watch.get('processing_stream_finished') or 0) > 0:
+                response_tasks = [
+                    task
+                    for task in list(watch.get('processing_stream_response_tasks') or [])
+                    if isinstance(task, asyncio.Task)
+                ]
+                if response_tasks:
+                    last_task_settlement = await self._bounded_settle_response_capture_tasks(
+                        response_tasks,
+                        timeout_seconds=2.0,
+                        cancel_timeout_seconds=0.25,
+                    )
+                    if (
+                        int(last_task_settlement.get('pending_task_count') or 0) > 0
+                        or int(last_task_settlement.get('detached_task_count') or 0) > 0
+                    ):
+                        return {
+                            'ok': False,
+                            'status': 'visible_library_processing_stream_timeout',
+                            'expected_filename': expected,
+                            'observations': observations,
+                            'task_settlement': last_task_settlement,
+                            'reason': 'terminal_response_capture_did_not_settle',
+                        }
+
+            terminal = watch.get('processing_stream_terminal')
+            if isinstance(terminal, dict):
+                terminal_status = str(terminal.get('status') or '')
+                base = {
+                    'expected_filename': expected,
+                    'processed_file_id': terminal.get('processed_file_id'),
+                    'library_metadata_object_id': terminal.get('library_metadata_object_id'),
+                    'library_file_name': terminal.get('library_file_name'),
+                    'terminal_event': terminal.get('terminal_event'),
+                    'terminal_message': terminal.get('terminal_message'),
+                    'events': list(terminal.get('events') or []),
+                    'observations': observations,
+                    'task_settlement': last_task_settlement,
+                }
+                if terminal_status == 'failed':
+                    return {
+                        'ok': False,
+                        'status': 'visible_library_processing_stream_failed',
+                        **base,
+                    }
+                if terminal_status == 'completed':
+                    if not terminal.get('identity_verified'):
+                        return {
+                            'ok': False,
+                            'status': 'visible_library_processing_stream_identity_not_verified',
+                            **base,
+                        }
+                    result = {
+                        'ok': True,
+                        'status': 'visible_library_processing_stream_completed',
+                        **base,
+                    }
+                    self._log(
+                        'library-backend-protocol',
+                        'visible Library processing stream completed with exact identity',
+                        **result,
+                    )
+                    return result
+
+            if int(watch.get('processing_stream_failed') or 0) > 0:
+                return {
+                    'ok': False,
+                    'status': 'visible_library_processing_stream_failed',
+                    'expected_filename': expected,
+                    'observations': observations,
+                    'reason': 'requestfailed_before_terminal_completion',
+                }
+            await page.wait_for_timeout(max(int(poll_interval_ms), 1))
+
+        return {
+            'ok': False,
+            'status': 'visible_library_processing_stream_timeout',
+            'expected_filename': expected,
+            'observations': observations,
+            'processing_stream_started': int(watch.get('processing_stream_started') or 0),
+            'processing_stream_finished': int(watch.get('processing_stream_finished') or 0),
+            'processing_stream_failed': int(watch.get('processing_stream_failed') or 0),
+            'terminal': watch.get('processing_stream_terminal'),
+            'task_settlement': last_task_settlement,
+        }
+
+    def _library_backend_protocol_reupload_exception_reason(self, exc: Exception) -> str:
+        message = str(exc or '')
+        for reason in (
+            'fetch_xhr_protocol_watch_settle_timeout',
+            'internal_processing_stream_wait_skipped',
+            'project_source_processing_stream_failed',
+            'project_source_processing_stream_timeout',
+            'project_source_processing_stream_identity_not_verified',
+        ):
+            if reason in message:
+                return reason
+        if isinstance(exc, ResponseTimeoutError):
+            if 'Timed out waiting for project source save requests to go quiet' in message:
+                return 'project_source_save_quiet_timeout'
+            return 'diagnostic_response_timeout'
+        return 'diagnostic_exception'
+
     async def _library_backend_protocol_reupload_diagnostic_operation(
         self,
         *,
@@ -9696,6 +10567,15 @@ class ChatGPTBrowserClient:
                 file_path=str(source_path), display_name=filename, keep_open=False,
                 overwrite_existing=False,
             )
+            first_processing_invariant = self._project_source_processing_stream_result_invariant(first_result)
+            result_base['first_upload_processing_invariant'] = first_processing_invariant
+            if not first_processing_invariant.get('ok'):
+                result_base['first_upload'] = self._browser_diagnostic_upload_identity(first_result, filename)
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'internal_processing_stream_wait_skipped',
+                })
+                return result_base
             first_identity = self._browser_diagnostic_upload_identity(first_result, filename)
             first_presence = await self._browser_poll_project_source_family_state(
                 page, project_url=project_url, requested_filename=filename, expect_present=True,
@@ -9728,10 +10608,32 @@ class ChatGPTBrowserClient:
             await page.wait_for_timeout(1_000)
 
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_file_upload')
-            visible_upload = await self._upload_disposable_library_file_via_ui(
-                page, file_path=str(visible_path), filename=visible_filename,
+            visible_stream_watch = self._install_visible_library_processing_stream_watch(
+                context,
+                expected_filename=visible_filename,
             )
+            try:
+                visible_upload = await self._upload_disposable_library_file_via_ui(
+                    page, file_path=str(visible_path), filename=visible_filename,
+                )
+                visible_processing_stream = await self._wait_for_visible_library_processing_stream(
+                    page,
+                    visible_stream_watch,
+                    expected_filename=visible_filename,
+                )
+            finally:
+                self._dispose_visible_library_processing_stream_watch(context, visible_stream_watch)
             result_base['visible_library_file_upload'] = visible_upload
+            result_base['visible_library_upload_processing_stream'] = visible_processing_stream
+            if not visible_processing_stream.get('ok'):
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': str(
+                        visible_processing_stream.get('status')
+                        or 'visible_library_processing_stream_identity_not_verified'
+                    ),
+                })
+                return result_base
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
             visible_records: list[dict[str, Any]] = []
             for event in protocol_watch.get('events') or []:
@@ -9741,30 +10643,15 @@ class ChatGPTBrowserClient:
                     if isinstance(record, dict) and self._file_source_family_member(record.get('filename'), visible_filename):
                         visible_records.append(record)
 
-            visible_libfile_id = ''
-            visible_processed_id = ''
-            for record in visible_records:
-                record_ids = [
-                    record.get('library_metadata_object_id'),
-                    record.get('processed_file_id'),
-                    record.get('file_id'),
-                    *(record.get('identity_candidates') or []),
-                ]
-                for raw_id in record_ids:
-                    candidate = str(raw_id or '')
-                    if candidate.startswith('libfile_') and not visible_libfile_id:
-                        visible_libfile_id = candidate
-                    elif candidate.startswith('file_') and not visible_processed_id:
-                        visible_processed_id = candidate
-            if not visible_processed_id:
-                for event in protocol_watch.get('events') or []:
-                    if not isinstance(event, dict) or event.get('kind') != 'response':
-                        continue
-                    if self._protocol_event_contains_any(event, [visible_filename]):
-                        match = re.search(r'file_[0-9a-fA-F]{32}', str(event.get('_raw_body') or ''))
-                        if match:
-                            visible_processed_id = match.group(0)
-                            break
+            # Mutation identity comes only from the dedicated processing-stream
+            # watcher.  Generic trace records remain diagnostic context and are
+            # never authoritative for deletion identity.
+            visible_libfile_id = str(
+                visible_processing_stream.get('library_metadata_object_id') or ''
+            )
+            visible_processed_id = str(
+                visible_processing_stream.get('processed_file_id') or ''
+            )
             result_base['visible_library_identity'] = {
                 'filename': visible_filename,
                 'processed_file_id': visible_processed_id or None,
@@ -9775,7 +10662,7 @@ class ChatGPTBrowserClient:
             if not visible_processed_id or not visible_libfile_id:
                 result_base.update({
                     'conclusion': 'diagnostic_inconclusive',
-                    'reason': 'disposable_library_upload_identity_not_captured',
+                    'reason': 'visible_library_processing_stream_identity_not_verified',
                 })
                 return result_base
             visible_ids = self._library_exact_id_candidates(
@@ -9831,19 +10718,44 @@ class ChatGPTBrowserClient:
                 timeout_ms=12_000,
                 max_identical_non_authoritative_observations=5,
             )
+            result_base['visible_library_surface_after_backend_presence_initial'] = visible_surface
+            if not visible_surface.get('ok') or not visible_surface.get('authoritative'):
+                recovery_result = await self._recover_library_surface_after_backend_presence(
+                    page,
+                    canonical_name=visible_filename,
+                    initial_surface=visible_surface,
+                )
+                result_base['visible_library_ui_recovery'] = recovery_result.get('recovery')
+                visible_surface = recovery_result.get('surface') or visible_surface
             result_base['visible_library_surface_after_backend_presence'] = visible_surface
             if not visible_surface.get('ok') or not visible_surface.get('authoritative'):
+                recovery_evidence = result_base.get('visible_library_ui_recovery') or {}
+                last_observations = visible_surface.get('observations') or []
                 visible_ui_binding = {
                     'ok': False,
-                    'status': 'library_surface_not_authoritative_after_backend_presence',
+                    'status': 'library_surface_not_authoritative_after_bounded_recovery',
                     'surface_reason': str(visible_surface.get('reason') or ''),
                     'bounded_identical_state_stop': bool(visible_surface.get('bounded_identical_state_stop')),
-                    'observation_count': len(visible_surface.get('observations') or []),
+                    'observation_count': len(last_observations),
+                    'last_surface_state': last_observations[-1] if last_observations else None,
+                    'route_state': visible_surface.get('route_state'),
+                    'record_count': int(visible_surface.get('record_count') or 0),
+                    'family_record_count': int(visible_surface.get('family_record_count') or 0),
+                    'empty_state_visible': bool(visible_surface.get('empty_state_visible')),
+                    'identical_non_authoritative_observations': int(
+                        visible_surface.get('identical_non_authoritative_observations') or 0
+                    ),
+                    'recovery_attempted': bool(recovery_evidence.get('recovery_attempted')),
+                    'search_reapplied': bool(recovery_evidence.get('search_reapplied')),
+                    'page_reloaded': bool(recovery_evidence.get('page_reloaded')),
+                    'post_recovery_observation_count': int(
+                        recovery_evidence.get('post_recovery_observation_count') or 0
+                    ),
                 }
                 result_base['visible_library_ui_binding'] = visible_ui_binding
                 result_base.update({
                     'conclusion': 'diagnostic_inconclusive',
-                    'reason': 'library_surface_not_authoritative_after_backend_presence',
+                    'reason': 'library_surface_not_authoritative_after_bounded_recovery',
                 })
                 return result_base
             visible_ui_binding = self._validate_exact_library_ui_binding(
@@ -9860,30 +10772,105 @@ class ChatGPTBrowserClient:
                 })
                 return result_base
 
+            # Reconcile the initial UI upload observation only after exact terminal
+            # stream identity, stable backend presence, and exact row binding agree.
+            initial_visible_upload = dict(visible_upload) if isinstance(visible_upload, dict) else {}
+            result_base['visible_library_file_upload_initial'] = initial_visible_upload
+            result_base['visible_library_file_upload'] = {
+                **initial_visible_upload,
+                'ok': True,
+                'status': 'library_disposable_upload_verified_after_processing',
+                'initial_ok': bool(initial_visible_upload.get('ok')),
+                'initial_status': initial_visible_upload.get('status'),
+                'processing_stream_verified': True,
+                'backend_presence_verified': True,
+                'ui_binding_verified': True,
+            }
+            if isinstance(result_base.get('visible_library_identity'), dict):
+                result_base['visible_library_identity']['upload_ui_verified'] = True
+
+            # Settle all earlier inventory traffic, freeze an authoritative request
+            # sequence boundary, and only then arm the soft-delete phase before the
+            # row-scoped click. Discovery uses the sequence boundary as authority;
+            # immutable per-request phase remains audit evidence.
+            pre_soft_delete_settlement = await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            result_base['soft_delete_pre_boundary_settlement'] = pre_soft_delete_settlement
+            soft_delete_boundary = self._fetch_xhr_protocol_sequence_boundary(
+                protocol_watch,
+                label='visible_library_soft_delete_start',
+            )
+            result_base['soft_delete_sequence_boundary'] = soft_delete_boundary
             self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_soft_delete')
             visible_soft_delete = await self._delete_disposable_library_file_via_ui(
                 page, filename=visible_filename, delete_forever=False, ui_binding=visible_ui_binding,
             )
             result_base['visible_library_soft_delete'] = visible_soft_delete
-            if not visible_soft_delete.get('ok'):
+            confirmation_not_observed = (
+                not visible_soft_delete.get('ok')
+                and visible_soft_delete.get('status') == 'delete_confirmation_not_observed'
+            )
+            if not visible_soft_delete.get('ok') and not confirmation_not_observed:
                 result_base.update({
                     'conclusion': 'diagnostic_inconclusive',
                     'reason': str(visible_soft_delete.get('status') or 'visible_library_soft_delete_not_triggered'),
                 })
                 return result_base
+
+            # Whether the UI required a confirmation or submitted directly, only
+            # post-boundary paired exact-ID mutation evidence may promote the
+            # action to delete_triggered. A missing asynchronous confirmation is
+            # therefore not an early success and not an early failure.
             await page.wait_for_timeout(1_000)
             await self._settle_fetch_xhr_protocol_watch(protocol_watch)
-            soft_delete_protocol = self._discover_backend_delete_protocol(
-                protocol_watch, id_candidates=visible_ids, filename=visible_filename,
+            soft_delete_discovery = self._discover_backend_delete_protocol_result(
+                protocol_watch,
+                id_candidates=visible_ids,
+                filename=visible_filename,
                 phase='visible_library_soft_delete',
+                sequence_after=int(soft_delete_boundary.get('max_request_sequence') or 0),
             )
-            result_base['soft_delete_protocol'] = self._public_backend_protocol(soft_delete_protocol)
-            if soft_delete_protocol is None:
+            soft_delete_protocol = soft_delete_discovery.get('protocol')
+            mutation_candidates = list(soft_delete_discovery.get('mutation_candidates') or [])
+            result_base['soft_delete_protocol_discovery'] = {
+                key: value
+                for key, value in soft_delete_discovery.items()
+                if key != 'protocol'
+            }
+            result_base['soft_delete_protocol_candidates'] = mutation_candidates
+            result_base['soft_delete_protocol'] = self._public_backend_protocol(
+                soft_delete_protocol if isinstance(soft_delete_protocol, dict) else None
+            )
+            if not isinstance(soft_delete_protocol, dict):
+                if confirmation_not_observed and not mutation_candidates:
+                    reason = 'soft_delete_confirmation_or_direct_mutation_not_observed'
+                    conclusion = 'diagnostic_inconclusive'
+                else:
+                    reason = str(
+                        soft_delete_discovery.get('status')
+                        or 'soft_delete_protocol_not_discovered'
+                    )
+                    conclusion = 'backend_delete_protocol_not_discovered'
                 result_base.update({
-                    'conclusion': 'backend_delete_protocol_not_discovered',
-                    'reason': 'soft_delete_protocol_not_discovered',
+                    'conclusion': conclusion,
+                    'reason': reason,
                 })
                 return result_base
+
+            visible_soft_delete = {
+                **visible_soft_delete,
+                'ok': True,
+                'status': 'delete_triggered',
+                'direct_mutation_observed': True,
+                'mutation_sequence': soft_delete_protocol.get('sequence'),
+                'mutation_method': soft_delete_protocol.get('method'),
+                'mutation_status': soft_delete_protocol.get('status'),
+                'mutation_proof': (
+                    'confirmation_then_exact_backend_mutation'
+                    if visible_soft_delete.get('confirmation_clicked')
+                    else 'direct_exact_backend_mutation'
+                ),
+            }
+            result_base['visible_library_soft_delete'] = visible_soft_delete
             soft_delete_backend_state = await self._poll_exact_backend_inventory_soft_deleted(
                 page,
                 protocol=active_inventory_protocol,
@@ -10076,6 +11063,15 @@ class ChatGPTBrowserClient:
                 file_path=str(source_path), display_name=filename, keep_open=keep_open,
                 overwrite_existing=False,
             )
+            second_processing_invariant = self._project_source_processing_stream_result_invariant(second_result)
+            result_base['second_upload_processing_invariant'] = second_processing_invariant
+            if not second_processing_invariant.get('ok'):
+                result_base['second_upload'] = self._browser_diagnostic_upload_identity(second_result, filename)
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'internal_processing_stream_wait_skipped',
+                })
+                return result_base
             second_identity = self._browser_diagnostic_upload_identity(second_result, filename)
             final_presence = await self._browser_poll_project_source_family_state(
                 page, project_url=project_url, requested_filename=filename, expect_present=True,
@@ -10096,13 +11092,70 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             result_base.update({
                 'conclusion': 'diagnostic_inconclusive',
+                'reason': self._library_backend_protocol_reupload_exception_reason(exc),
                 'error': str(exc),
                 'error_type': type(exc).__name__,
             })
             return result_base
         finally:
             self.config.project_url = original_project_url
-            await self._settle_fetch_xhr_protocol_watch(protocol_watch)
+            final_settlement: dict[str, Any]
+            try:
+                final_settlement_result = await self._settle_fetch_xhr_protocol_watch(
+                    protocol_watch,
+                    raise_on_timeout=False,
+                )
+                final_settlement = (
+                    final_settlement_result
+                    if isinstance(final_settlement_result, dict)
+                    else {
+                        'ok': True,
+                        'status': 'fetch_xhr_protocol_watch_settled',
+                        'task_count': len(protocol_watch.get('tasks') or []),
+                        'completed_task_count': 0,
+                        'cancelled_task_count': 0,
+                        'failed_task_count': 0,
+                        'pending_task_count': 0,
+                        'detached_task_count': 0,
+                        'unresolved_tasks': [],
+                    }
+                )
+                protocol_watch['last_settlement'] = final_settlement
+                history = protocol_watch.setdefault('settlement_history', [])
+                if not history:
+                    history.append(final_settlement)
+                elif not final_settlement.get('duplicate_history_entry_suppressed') and history[-1] is not final_settlement:
+                    history.append(final_settlement)
+            except Exception as settle_exc:
+                final_settlement = {
+                    'ok': False,
+                    'status': 'fetch_xhr_protocol_watch_settle_timeout',
+                    'task_count': len(protocol_watch.get('tasks') or []),
+                    'completed_task_count': 0,
+                    'cancelled_task_count': 0,
+                    'failed_task_count': 1,
+                    'pending_task_count': 0,
+                    'detached_task_count': 0,
+                    'unresolved_tasks': [],
+                    'error_type': type(settle_exc).__name__,
+                    'error': str(settle_exc),
+                }
+                protocol_watch['last_settlement'] = final_settlement
+                protocol_watch.setdefault('settlement_history', []).append(final_settlement)
+            if not final_settlement.get('ok'):
+                prior_reason = result_base.get('reason')
+                if prior_reason and prior_reason != 'fetch_xhr_protocol_watch_settle_timeout':
+                    result_base['reason_before_fetch_xhr_settlement'] = prior_reason
+                result_base.update({
+                    'conclusion': 'diagnostic_inconclusive',
+                    'reason': 'fetch_xhr_protocol_watch_settle_timeout',
+                    'error_type': 'ResponseTimeoutError',
+                    'error': (
+                        'fetch_xhr_protocol_watch_settle_timeout: '
+                        f"pending_task_count={final_settlement.get('pending_task_count')}, "
+                        f"detached_task_count={final_settlement.get('detached_task_count')}"
+                    ),
+                })
             self._dispose_fetch_xhr_protocol_watch(context, protocol_watch)
             result_base['fetch_xhr_trace'] = self._public_fetch_xhr_protocol_trace(protocol_watch)
             source_path.unlink(missing_ok=True)
@@ -11080,10 +12133,22 @@ class ChatGPTBrowserClient:
 
         save_request_watch = None
         save_request_quiet_result: Optional[dict[str, Any]] = None
+        processing_stream_result: Optional[dict[str, Any]] = None
+        save_request_watch_disposed = False
+        proceed_to_persistence_verification = False
+
+        def dispose_save_request_watch_once() -> None:
+            nonlocal save_request_watch_disposed
+            if save_request_watch_disposed or save_request_watch is None:
+                return
+            self._dispose_project_source_save_request_watch(context, save_request_watch)
+            save_request_watch_disposed = True
+
         if normalized_kind in {"text", "file"} and not duplicate_detected:
             save_request_watch = self._install_project_source_save_request_watch(
                 context,
                 source_kind=normalized_kind,
+                expected_filename=canonical_display_name if normalized_kind == "file" else display_name,
             )
 
         try:
@@ -11155,6 +12220,20 @@ class ChatGPTBrowserClient:
                     timeout_ms=60_000 if normalized_kind == "file" else 15_000,
                     allow_stale_inflight_after_commit=normalized_kind == "text",
                 )
+                processing_stream_result = await self._wait_for_project_source_processing_stream(
+                    page,
+                    save_request_watch,
+                    source_kind=normalized_kind,
+                    expected_filename=canonical_display_name if normalized_kind == "file" else display_name,
+                )
+                if bool(save_request_quiet_result.get("processing_stream_pending")) and not isinstance(
+                    processing_stream_result, dict
+                ):
+                    raise ResponseTimeoutError(
+                        "internal_processing_stream_wait_skipped: "
+                        f"source_kind={normalized_kind}, quiet_reason={save_request_quiet_result.get('quiet_reason')}"
+                    )
+            proceed_to_persistence_verification = True
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
             duplicate_detected = True
@@ -11202,8 +12281,8 @@ class ChatGPTBrowserClient:
             else:
                 raise
         finally:
-            if save_request_watch is not None:
-                self._dispose_project_source_save_request_watch(context, save_request_watch)
+            if not proceed_to_persistence_verification:
+                dispose_save_request_watch_once()
 
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
@@ -11227,7 +12306,9 @@ class ChatGPTBrowserClient:
                 before_sources=before_sources,
                 save_watch=save_request_watch,
             )
+            dispose_save_request_watch_once()
         except ResponseTimeoutError as exc:
+            dispose_save_request_watch_once()
             current_sources = await self._snapshot_project_source_cards(page)
             save_summary = self._project_source_save_watch_summary(save_request_watch)
             transaction = self._project_source_mutation_transaction_status(
@@ -11325,6 +12406,9 @@ class ChatGPTBrowserClient:
                     status = (
                         "overwrite_persistence_not_verified"
                         if overwritten_existing and removed_existing_via_ui
+                        else "project_source_persistence_not_verified_after_processing_completion"
+                        if isinstance(processing_stream_result, dict)
+                        and processing_stream_result.get("status") == "project_source_processing_stream_completed"
                         else "post_commit_source_absent_after_stale_inflight"
                         if post_commit_source_absent_after_recovery
                         else "post_commit_source_surface_not_refreshed"
@@ -11362,6 +12446,7 @@ class ChatGPTBrowserClient:
                     "release_blocking": transaction.get("release_blocking"),
                     "save_request_summary": save_summary,
                     "save_request_quiet": save_request_quiet_result,
+                    "processing_stream": processing_stream_result,
                     "already_exists": duplicate_detected or overwritten_existing,
                     "added": False,
                     "overwritten": overwritten_existing,
@@ -11459,6 +12544,7 @@ class ChatGPTBrowserClient:
             "release_blocking": success_transaction.get("release_blocking"),
             "save_request_summary": success_save_summary,
             "save_request_quiet": save_request_quiet_result,
+            "processing_stream": processing_stream_result,
             "post_commit_recovery": post_commit_recovery,
             "persistence_recovered_after_commit": bool(post_commit_recovery),
             "already_exists": duplicate_detected or overwritten_existing,
@@ -12268,6 +13354,17 @@ class ChatGPTBrowserClient:
 
         save_request_watch = None
         save_request_quiet_result: Optional[dict[str, Any]] = None
+        processing_stream_result: Optional[dict[str, Any]] = None
+        save_request_watch_disposed = False
+        proceed_to_persistence_verification = False
+
+        def dispose_save_request_watch_once() -> None:
+            nonlocal save_request_watch_disposed
+            if save_request_watch_disposed or save_request_watch is None:
+                return
+            self._dispose_project_source_save_request_watch(context, save_request_watch)
+            save_request_watch_disposed = True
+
         if normalized_kind in {"text", "file"} and not duplicate_detected:
             save_request_watch = self._install_project_source_save_request_watch(
                 context,
@@ -12343,6 +13440,17 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     timeout_ms=60_000 if normalized_kind == "file" else 15_000,
                     allow_stale_inflight_after_commit=normalized_kind == "text",
+                )
+                # The processing endpoint is a long-lived event stream.  Ordinary
+                # save quietness only proves that allocation/upload requests have
+                # settled; it does not prove that the Project Source is indexed.
+                # Keep the watcher installed, wait for terminal exact identity,
+                # and only then inspect the rendered Project Sources surface.
+                processing_stream_result = await self._wait_for_project_source_processing_stream(
+                    page,
+                    save_request_watch,
+                    source_kind=normalized_kind,
+                    expected_filename=canonical_display_name if normalized_kind == "file" else display_name,
                 )
                 if normalized_kind == "file" and bool(
                     self._project_source_save_watch_summary(save_request_watch).get("saw_commit")
@@ -12440,6 +13548,7 @@ class ChatGPTBrowserClient:
                     exact_canonical_sources = list(post_commit_resolution.get("exact_canonical_sources") or [])
                     if exact_canonical_sources:
                         matched_source = exact_canonical_sources[0]
+            proceed_to_persistence_verification = True
         except _ProjectSourceAlreadyExists as exc:
             duplicate_notice = exc.notice
             duplicate_detected = True
@@ -12487,8 +13596,8 @@ class ChatGPTBrowserClient:
             else:
                 raise
         finally:
-            if save_request_watch is not None:
-                self._dispose_project_source_save_request_watch(context, save_request_watch)
+            if not proceed_to_persistence_verification:
+                dispose_save_request_watch_once()
 
         requested_match = source_match_candidates[0] if source_match_candidates else None
         actual_match = self._preferred_source_card_identity(matched_source) or (matched_source or {}).get("text") or requested_match
@@ -12512,7 +13621,9 @@ class ChatGPTBrowserClient:
                 before_sources=before_sources,
                 save_watch=save_request_watch,
             )
+            dispose_save_request_watch_once()
         except ResponseTimeoutError as exc:
+            dispose_save_request_watch_once()
             current_sources = await self._snapshot_project_source_cards(page)
             save_summary = self._project_source_save_watch_summary(save_request_watch)
             transaction = self._project_source_mutation_transaction_status(
@@ -12713,6 +13824,9 @@ class ChatGPTBrowserClient:
                     status = (
                         "overwrite_persistence_not_verified"
                         if overwritten_existing and removed_existing_via_ui
+                        else "project_source_persistence_not_verified_after_processing_completion"
+                        if isinstance(processing_stream_result, dict)
+                        and processing_stream_result.get("status") == "project_source_processing_stream_completed"
                         else "post_commit_source_absent_after_stale_inflight"
                         if post_commit_source_absent_after_recovery
                         else "post_commit_source_surface_not_refreshed"
@@ -12750,6 +13864,7 @@ class ChatGPTBrowserClient:
                     "release_blocking": transaction.get("release_blocking"),
                     "save_request_summary": save_summary,
                     "save_request_quiet": save_request_quiet_result,
+                    "processing_stream": processing_stream_result,
                     "already_exists": duplicate_detected or overwritten_existing,
                     "added": False,
                     "overwritten": overwritten_existing,
@@ -12883,6 +13998,7 @@ class ChatGPTBrowserClient:
             "release_blocking": success_transaction.get("release_blocking"),
             "save_request_summary": success_save_summary,
             "save_request_quiet": save_request_quiet_result,
+            "processing_stream": processing_stream_result,
             "post_commit_recovery": post_commit_recovery,
             "persistence_recovered_after_commit": bool(post_commit_recovery),
             "already_exists": duplicate_detected or overwritten_existing,
@@ -24521,6 +25637,17 @@ class ChatGPTBrowserClient:
         await page.wait_for_timeout(1_500)
 
 
+    def _is_project_source_processing_stream_request(self, request_or_url: Any, *, source_kind: str) -> bool:
+        try:
+            url = request_or_url.url if hasattr(request_or_url, "url") else str(request_or_url)
+        except Exception:
+            return False
+        normalized_url = (url or "").lower()
+        return bool(
+            source_kind in {"text", "file"}
+            and '/backend-api/files/process_upload_stream' in normalized_url
+        )
+
     def _is_project_source_commit_request(self, request_or_url: Any, *, source_kind: str) -> bool:
         try:
             url = request_or_url.url if hasattr(request_or_url, "url") else str(request_or_url)
@@ -24531,9 +25658,83 @@ class ChatGPTBrowserClient:
             return False
         if '/backend-api/gizmos/snorlax/upsert' in normalized_url:
             return True
-        if source_kind in {"text", "file"} and '/backend-api/files/process_upload_stream' in normalized_url:
+        if self._is_project_source_processing_stream_request(normalized_url, source_kind=source_kind):
             return True
         return False
+
+    def _project_source_processing_stream_terminal_result(
+        self,
+        body: str,
+        *,
+        expected_filename: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        expected = self._file_source_family_filename(expected_filename)
+        processed_file_id: Optional[str] = None
+        library_metadata_object_id: Optional[str] = None
+        library_file_name: Optional[str] = None
+        terminal_event: Optional[str] = None
+        terminal_message: Optional[str] = None
+        events: list[str] = []
+
+        for raw_line in str(body or '').splitlines():
+            line = raw_line.strip()
+            if line.lower().startswith('data:'):
+                line = line[5:].strip()
+            if not line or line == '[DONE]':
+                continue
+            try:
+                event = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(event, dict):
+                continue
+            event_name = str(event.get('event') or '').strip()
+            if event_name:
+                events.append(event_name)
+            file_id = self._library_file_record_id(event.get('file_id'))
+            if file_id:
+                processed_file_id = file_id
+            extra = event.get('extra') if isinstance(event.get('extra'), dict) else {}
+            metadata_id = str(extra.get('metadata_object_id') or '').strip()
+            if metadata_id.startswith('libfile_'):
+                library_metadata_object_id = metadata_id
+            assigned_name = self._file_source_family_filename(extra.get('library_file_name'))
+            if assigned_name:
+                library_file_name = assigned_name
+            lowered = event_name.casefold()
+            if lowered == 'file.processing.completed':
+                terminal_event = event_name
+                terminal_message = str(event.get('message') or '') or None
+            elif any(token in lowered for token in ('failed', 'failure', 'error', 'cancelled', 'canceled')):
+                terminal_event = event_name
+                terminal_message = str(event.get('message') or '') or None
+
+        if not terminal_event:
+            return None
+        terminal_lower = terminal_event.casefold()
+        status = (
+            'completed'
+            if terminal_lower == 'file.processing.completed'
+            else 'failed'
+        )
+        return {
+            'status': status,
+            'terminal_event': terminal_event,
+            'terminal_message': terminal_message,
+            'processed_file_id': processed_file_id,
+            'library_metadata_object_id': library_metadata_object_id,
+            'library_file_name': library_file_name,
+            'expected_filename': expected,
+            'events': events,
+            'identity_verified': bool(
+                status == 'completed'
+                and processed_file_id
+                and library_metadata_object_id
+                and library_file_name
+                and expected
+                and library_file_name == expected
+            ),
+        }
 
     def _is_project_source_save_request(self, request_or_url: Any, *, source_kind: str) -> bool:
         try:
@@ -24566,9 +25767,18 @@ class ChatGPTBrowserClient:
             "saw_relevant": False,
             "saw_commit": False,
             "inflight": set(),
+            "inflight_requests": {},
+            "processing_stream_inflight": set(),
+            "processing_stream_started": 0,
+            "processing_stream_finished": 0,
+            "processing_stream_failed": 0,
+            "processing_stream_terminal": None,
             "last_activity": None,
             "responses": [],
             "response_tasks": [],
+            "ordinary_response_tasks": [],
+            "processing_stream_response_tasks": [],
+            "processing_stream_responses": {},
             "backend_assigned_names": [],
             "backing_file_ids": [],
             "handlers": None,
@@ -24582,7 +25792,17 @@ class ChatGPTBrowserClient:
             if not self._is_project_source_save_request(req, source_kind=source_kind):
                 return
             inflight = watch.setdefault("inflight", set())
-            inflight.add(id(req))
+            token = id(req)
+            inflight.add(token)
+            is_processing_stream = self._is_project_source_processing_stream_request(req, source_kind=source_kind)
+            watch.setdefault("inflight_requests", {})[token] = {
+                "url": str(getattr(req, "url", "") or ""),
+                "method": str(getattr(req, "method", "") or "").upper(),
+                "is_processing_stream": is_processing_stream,
+            }
+            if is_processing_stream:
+                watch.setdefault("processing_stream_inflight", set()).add(token)
+                watch["processing_stream_started"] = int(watch.get("processing_stream_started") or 0) + 1
             watch["started"] = int(watch.get("started") or 0) + 1
             watch["saw_relevant"] = True
             is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
@@ -24598,6 +25818,7 @@ class ChatGPTBrowserClient:
                 method=getattr(req, "method", None),
                 url=getattr(req, "url", None),
                 is_commit=is_commit,
+                is_processing_stream=is_processing_stream,
                 started=watch.get("started"),
                 inflight=len(inflight),
             )
@@ -24608,6 +25829,19 @@ class ChatGPTBrowserClient:
             if token not in inflight:
                 return
             inflight.discard(token)
+            request_info = watch.setdefault("inflight_requests", {}).pop(token, {})
+            is_processing_stream = bool(
+                request_info.get("is_processing_stream")
+                or token in watch.setdefault("processing_stream_inflight", set())
+            )
+            watch.setdefault("processing_stream_inflight", set()).discard(token)
+            if is_processing_stream:
+                watch["processing_stream_finished"] = int(watch.get("processing_stream_finished") or 0) + 1
+                response = watch.setdefault("processing_stream_responses", {}).pop(token, None)
+                if response is not None:
+                    task = loop.create_task(capture_response(response))
+                    watch.setdefault("response_tasks", []).append(task)
+                    watch.setdefault("processing_stream_response_tasks", []).append(task)
             watch["finished"] = int(watch.get("finished") or 0) + 1
             watch["last_activity"] = loop.time()
             self._log(
@@ -24616,6 +25850,7 @@ class ChatGPTBrowserClient:
                 source_kind=source_kind,
                 method=getattr(req, "method", None),
                 url=getattr(req, "url", None),
+                is_processing_stream=is_processing_stream,
                 finished=watch.get("finished"),
                 inflight=len(inflight),
             )
@@ -24638,9 +25873,23 @@ class ChatGPTBrowserClient:
                 headers=headers,
                 expected_filename=watch.get('expected_filename'),
             )
+            is_processing_stream = self._is_project_source_processing_stream_request(url, source_kind=source_kind)
+            processing_stream_terminal = (
+                self._project_source_processing_stream_terminal_result(
+                    body_text,
+                    expected_filename=watch.get('expected_filename'),
+                )
+                if is_processing_stream
+                else None
+            )
+            if processing_stream_terminal is not None:
+                watch["processing_stream_terminal"] = processing_stream_terminal
+                watch["processing_stream_terminal_seen_at"] = loop.time()
             response_record = {
                 "url": self._redact_backend_api_url(url).get("redacted_url"),
                 "status": getattr(resp, "status", None),
+                "is_processing_stream": is_processing_stream,
+                "processing_stream_terminal": processing_stream_terminal,
                 "content_type": content_type or None,
                 "body_schema": self._upload_response_body_schema(body_text, content_type=content_type),
                 "body_sample": self._bounded_upload_response_sample(body_text),
@@ -24672,7 +25921,24 @@ class ChatGPTBrowserClient:
                 url = str(getattr(resp, "url", "") or "")
                 if not self._is_project_source_save_request(url, source_kind=source_kind):
                     return
-                watch.setdefault("response_tasks", []).append(loop.create_task(capture_response(resp)))
+                if self._is_project_source_processing_stream_request(url, source_kind=source_kind):
+                    request = getattr(resp, "request", None)
+                    token = id(request) if request is not None else None
+                    if token is not None and token in watch.setdefault("inflight", set()):
+                        # Response headers arrive before the long-lived SSE body is
+                        # readable.  Retain the response privately and capture its
+                        # body from requestfinished, after the stream closes.
+                        watch.setdefault("processing_stream_responses", {})[token] = resp
+                    else:
+                        # Test doubles and already-completed responses may not expose
+                        # a Request object.  Capture those immediately.
+                        task = loop.create_task(capture_response(resp))
+                        watch.setdefault("response_tasks", []).append(task)
+                        watch.setdefault("processing_stream_response_tasks", []).append(task)
+                else:
+                    task = loop.create_task(capture_response(resp))
+                    watch.setdefault("response_tasks", []).append(task)
+                    watch.setdefault("ordinary_response_tasks", []).append(task)
             except Exception:
                 return
 
@@ -24684,6 +25950,26 @@ class ChatGPTBrowserClient:
             if not relevant and not was_inflight:
                 return
             inflight.discard(token)
+            request_info = watch.setdefault("inflight_requests", {}).pop(token, {})
+            is_processing_stream = bool(
+                request_info.get("is_processing_stream")
+                or token in watch.setdefault("processing_stream_inflight", set())
+                or self._is_project_source_processing_stream_request(req, source_kind=source_kind)
+            )
+            watch.setdefault("processing_stream_inflight", set()).discard(token)
+            if is_processing_stream:
+                watch["processing_stream_failed"] = int(watch.get("processing_stream_failed") or 0) + 1
+                watch["processing_stream_terminal"] = {
+                    "status": "failed",
+                    "terminal_event": "requestfailed",
+                    "terminal_message": None,
+                    "processed_file_id": None,
+                    "library_metadata_object_id": None,
+                    "library_file_name": None,
+                    "expected_filename": watch.get("expected_filename"),
+                    "events": [],
+                    "identity_verified": False,
+                }
             watch["failed"] = int(watch.get("failed") or 0) + 1
             watch["saw_relevant"] = True
             is_commit = self._is_project_source_commit_request(req, source_kind=source_kind)
@@ -24705,6 +25991,7 @@ class ChatGPTBrowserClient:
                 method=getattr(req, "method", None),
                 url=getattr(req, "url", None),
                 is_commit=is_commit,
+                is_processing_stream=is_processing_stream,
                 failure=failure_text,
                 failed=watch.get("failed"),
                 inflight=len(inflight),
@@ -24781,6 +26068,8 @@ class ChatGPTBrowserClient:
             saw_relevant = bool(watch.get("saw_relevant"))
             saw_commit = bool(watch.get("saw_commit"))
             inflight = watch.get("inflight") or set()
+            processing_stream_inflight = watch.get("processing_stream_inflight") or set()
+            ordinary_inflight = set(inflight) - set(processing_stream_inflight)
             started = int(watch.get("started") or 0)
             finished = int(watch.get("finished") or 0)
             failed = int(watch.get("failed") or 0)
@@ -24796,14 +26085,14 @@ class ChatGPTBrowserClient:
                 source_kind in {"text", "file"}
                 and saw_relevant
                 and saw_commit
-                and bool(inflight)
+                and bool(ordinary_inflight)
                 and failed == 0
                 and finished >= 1
                 and quiet_enough
                 and commit_age_s is not None
                 and commit_age_s >= stale_inflight_after_commit_grace_s
             )
-            normal_quiet = not inflight and (
+            normal_quiet = not ordinary_inflight and (
                 (
                     saw_relevant
                     and quiet_enough
@@ -24821,7 +26110,10 @@ class ChatGPTBrowserClient:
             quiet_now = normal_quiet or stale_inflight_soft_quiet
             quiet_reason = None
             if normal_quiet:
-                quiet_reason = "no_inflight_quiet" if saw_relevant else "observation_window_no_relevant_requests"
+                if processing_stream_inflight:
+                    quiet_reason = "ordinary_save_quiet_processing_stream_pending"
+                else:
+                    quiet_reason = "no_inflight_quiet" if saw_relevant else "observation_window_no_relevant_requests"
             elif stale_inflight_soft_quiet:
                 quiet_reason = "stale_inflight_after_commit_soft_quiet_requires_persistence_verification"
             elif stale_inflight_after_commit:
@@ -24834,6 +26126,9 @@ class ChatGPTBrowserClient:
                 "finished": finished,
                 "failed": failed,
                 "inflight": len(inflight),
+                "ordinary_inflight": len(ordinary_inflight),
+                "processing_stream_inflight": len(processing_stream_inflight),
+                "processing_stream_pending": bool(processing_stream_inflight and not watch.get("processing_stream_terminal")),
                 "idle_for_s": idle_for_s,
                 "commit_age_s": commit_age_s,
                 "observation_window_elapsed": observation_window_elapsed,
@@ -24853,12 +26148,16 @@ class ChatGPTBrowserClient:
                 **last_state,
             )
             if quiet_now:
-                response_tasks = [
-                    task for task in (watch.get("response_tasks") or [])
+                ordinary_response_tasks = [
+                    task for task in (
+                        watch.get("ordinary_response_tasks")
+                        if isinstance(watch, dict) and watch.get("ordinary_response_tasks") is not None
+                        else watch.get("response_tasks") if isinstance(watch, dict) else []
+                    ) or []
                     if isinstance(task, asyncio.Task)
-                ] if isinstance(watch, dict) else []
-                if response_tasks:
-                    await asyncio.gather(*response_tasks, return_exceptions=True)
+                ]
+                if ordinary_response_tasks:
+                    await asyncio.gather(*ordinary_response_tasks, return_exceptions=True)
                 return last_state
             await page.wait_for_timeout(poll_interval_ms)
 
@@ -24867,10 +26166,99 @@ class ChatGPTBrowserClient:
             f"(source_kind={source_kind}, saw_relevant={last_state.get('saw_relevant')}, "
             f"saw_commit={last_state.get('saw_commit')}, started={last_state.get('started')}, "
             f"finished={last_state.get('finished')}, failed={last_state.get('failed')}, "
-            f"inflight={last_state.get('inflight')}, idle_for_s={last_state.get('idle_for_s')}, "
+            f"inflight={last_state.get('inflight')}, ordinary_inflight={last_state.get('ordinary_inflight')}, "
+            f"processing_stream_inflight={last_state.get('processing_stream_inflight')}, "
+            f"idle_for_s={last_state.get('idle_for_s')}, "
             f"commit_age_s={last_state.get('commit_age_s')}, "
             f"stale_inflight_after_commit={last_state.get('stale_inflight_after_commit')}, "
             f"quiet_reason={last_state.get('quiet_reason')})"
+        )
+
+    async def _wait_for_project_source_processing_stream(
+        self,
+        page: Any,
+        watch: Optional[dict[str, Any]],
+        *,
+        source_kind: str,
+        expected_filename: Optional[str],
+        timeout_ms: int = 180_000,
+        poll_interval_ms: int = 250,
+    ) -> dict[str, Any]:
+        if source_kind not in {"file", "text"} or not isinstance(watch, dict):
+            return {
+                "ok": True,
+                "status": "processing_stream_not_applicable",
+                "source_kind": source_kind,
+            }
+        started = int(watch.get("processing_stream_started") or 0)
+        if started == 0:
+            return {
+                "ok": True,
+                "status": "processing_stream_not_observed",
+                "source_kind": source_kind,
+                "expected_filename": self._file_source_family_filename(expected_filename),
+            }
+
+        expected = self._file_source_family_filename(expected_filename)
+        deadline = asyncio.get_running_loop().time() + max(int(timeout_ms), 0) / 1000
+        observations = 0
+        while asyncio.get_running_loop().time() < deadline:
+            observations += 1
+            if int(watch.get("processing_stream_finished") or 0) > 0:
+                response_tasks = [
+                    task
+                    for task in list(watch.get("processing_stream_response_tasks") or [])
+                    if isinstance(task, asyncio.Task)
+                ]
+                if response_tasks:
+                    await asyncio.gather(*response_tasks, return_exceptions=True)
+            terminal = watch.get("processing_stream_terminal")
+            if isinstance(terminal, dict):
+                status = str(terminal.get("status") or "")
+                if status == "failed":
+                    raise ResponseTimeoutError(
+                        "project_source_processing_stream_failed: "
+                        f"event={terminal.get('terminal_event')}, message={terminal.get('terminal_message')}"
+                    )
+                if status == "completed":
+                    if not terminal.get("identity_verified"):
+                        raise ResponseTimeoutError(
+                            "project_source_processing_stream_identity_not_verified: "
+                            f"expected_filename={expected}, assigned_filename={terminal.get('library_file_name')}, "
+                            f"processed_file_id={terminal.get('processed_file_id')}, "
+                            f"library_metadata_object_id={terminal.get('library_metadata_object_id')}"
+                        )
+                    result = {
+                        "ok": True,
+                        "status": "project_source_processing_stream_completed",
+                        "source_kind": source_kind,
+                        "expected_filename": expected,
+                        "processed_file_id": terminal.get("processed_file_id"),
+                        "library_metadata_object_id": terminal.get("library_metadata_object_id"),
+                        "library_file_name": terminal.get("library_file_name"),
+                        "terminal_event": terminal.get("terminal_event"),
+                        "events": list(terminal.get("events") or []),
+                        "observations": observations,
+                    }
+                    self._log(
+                        "project-source-add",
+                        "project source processing stream completed with exact identity",
+                        **result,
+                    )
+                    return result
+            if int(watch.get("processing_stream_failed") or 0) > 0:
+                raise ResponseTimeoutError(
+                    "project_source_processing_stream_failed: requestfailed before terminal completion"
+                )
+            await page.wait_for_timeout(max(int(poll_interval_ms), 1))
+
+        raise ResponseTimeoutError(
+            "project_source_processing_stream_timeout: "
+            f"source_kind={source_kind}, expected_filename={expected}, "
+            f"started={watch.get('processing_stream_started')}, "
+            f"finished={watch.get('processing_stream_finished')}, "
+            f"failed={watch.get('processing_stream_failed')}, "
+            f"terminal={watch.get('processing_stream_terminal')}"
         )
 
     def _project_source_post_commit_recovery_allowed(
@@ -25500,6 +26888,8 @@ class ChatGPTBrowserClient:
                 'body_schema': item.get('body_schema'),
                 'body_sample': item.get('body_sample'),
                 'body_error': item.get('body_error'),
+                'is_processing_stream': bool(item.get('is_processing_stream')),
+                'processing_stream_terminal': item.get('processing_stream_terminal'),
                 'extracted_filenames': list(item.get('extracted_filenames') or []),
                 'extracted_file_ids': list(item.get('extracted_file_ids') or []),
             })
@@ -25512,6 +26902,11 @@ class ChatGPTBrowserClient:
             "saw_relevant": bool(watch.get("saw_relevant")),
             "saw_commit": bool(watch.get("saw_commit")),
             "inflight": len(inflight),
+            "processing_stream_started": int(watch.get("processing_stream_started") or 0),
+            "processing_stream_finished": int(watch.get("processing_stream_finished") or 0),
+            "processing_stream_failed": int(watch.get("processing_stream_failed") or 0),
+            "processing_stream_inflight": len(watch.get("processing_stream_inflight") or set()),
+            "processing_stream_terminal": watch.get("processing_stream_terminal"),
             "backend_assigned_names": list(watch.get("backend_assigned_names") or []),
             "backing_file_ids": list(watch.get("backing_file_ids") or []),
             "backing_file_identity_captured": bool(watch.get("backing_file_ids")),

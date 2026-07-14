@@ -843,3 +843,39 @@ A Library file row may be authoritative before its action menu is visible. Promp
 
 The diagnostic must capture one successful exact-ID backend mutation and then prove the disposable `libfile_...` is absent from active inventory or explicitly marked trashed for two authenticated observations. Recently deleted navigation, endpoint discovery, exact deleted-inventory presence, and permanent deletion are separate gates. Accepted/current remains `v0.1.103.10.68`; release `pbsa` and adoption remain prohibited.
 
+
+## v0.1.103.10.97: processing completion is a separate proof phase
+
+`/backend-api/files/process_upload_stream` is a long-lived event stream, not an ordinary save request. Ordinary save quietness may be reached while this known stream remains open, but the source operation cannot succeed until the stream emits terminal completion and the combined events prove the exact processed-file ID, Library metadata ID, and expected filename. Stream failure, timeout, incomplete identity, and generic diagnostic exceptions must produce explicit machine-readable `reason` values.
+
+## v0.1.103.10.98: processing proof precedes UI persistence proof
+
+A Project Source file cannot be checked for rendered persistence until `/backend-api/files/process_upload_stream` has reached terminal completion with exact `file_...`, `libfile_...`, and canonical filename identity. Response headers are not body-completion evidence for the long-lived SSE request. The response is retained privately and parsed only after `requestfinished`; the watcher remains installed through terminal processing and persistence verification.
+
+
+## v0.1.103.10.99: diagnostic upload path owns the processing-before-persistence invariant
+
+The backend-protocol diagnostic intentionally uses the isolated `v0.1.103.10.75` transaction body rather than normal `pbsa`. Therefore processing-stream ordering must be enforced in that exact diagnostic-only path, not merely in the normal source-add implementation. A caller-level invariant rejects any result where ordinary quietness reports a pending processing stream but no `processing_stream` result is present.
+
+## v0.1.103.10.100: diagnostic trace capture is observational and time-bounded
+
+Generic Fetch/XHR trace capture may never hold the diagnostic lifecycle open indefinitely. Streaming response bodies are omitted from the generic trace, non-streaming body reads and task settlement are bounded, unresolved tasks are reported with sanitized URL/phase/method/resource/content-type metadata, and the main diagnostic returns `fetch_xhr_protocol_watch_settle_timeout` rather than hanging. Project Source processing-stream ownership remains unchanged.
+
+## v0.1.103.10.101: visible-Library upload identity requires a dedicated stream owner
+
+Generic Fetch/XHR tracing remains observational and must not read long-lived processing streams. The disposable visible-Library upload therefore owns a separate bounded watcher installed before file selection and disposed after terminal handling. Only its exact terminal `file_...`/`libfile_...`/filename tuple may authorize later deletion identity.
+
+
+## v0.1.103.10.102: deletion discovery is sequence-bound, phase is audit metadata
+
+A mutable global phase is not a reliable transaction boundary because requests may start in one phase and their response-capture tasks may finish after a later phase transition. Every request therefore snapshots its phase and sequence once at request start. For the row-scoped visible-Library Delete action, the diagnostic first settles prior capture work, freezes the maximum request sequence, then clicks Delete. A successful paired mutation with `sequence` greater than that boundary is authoritative; phase remains useful for audit but cannot exclude a valid post-boundary mutation. Exact backing identity is still mandatory before replay or further deletion.
+
+
+## v0.1.103.10.103: Library deletion requires confirmation or exact direct mutation proof
+
+A row-menu Delete click is only an intent signal. Promptbranch may report `delete_triggered` only after a unique destructive confirmation has been clicked and an exact post-boundary backend mutation is discovered, or after an exact direct mutation proves a no-confirmation UI flow.
+
+## v0.1.103.10.104: authoritative backend presence permits one bounded Library UI recovery
+
+When the exact disposable Library identity is stably present in authenticated backend inventory but the active Library UI remains non-authoritative, the diagnostic may perform exactly one bounded recovery cycle: clear and reapply the exact filename search, poll again, then perform at most one controlled page reload and reapply the exact search. Backend presence alone never authorizes an unrelated row click; exact UI row binding remains mandatory. The v0.1.103.10.103 deletion-confirmation contract is unchanged.
+

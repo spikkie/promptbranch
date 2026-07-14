@@ -4,9 +4,11 @@ import asyncio
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from promptbranch_browser_auth.client import ChatGPTBrowserClient
 from promptbranch_browser_auth.config import ChatGPTBrowserConfig
+from promptbranch_browser_auth.exceptions import ResponseTimeoutError
 from promptbranch_container_api import app
 
 
@@ -126,6 +128,216 @@ def test_public_trace_removes_raw_protocol_material(tmp_path: Path) -> None:
     assert trace["capture_scope"] == "all_fetch_xhr"
     assert trace["event_count"] == 1
     assert all(not key.startswith("_") for key in trace["events"][0])
+
+
+def test_public_trace_reports_bounded_task_settlement(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    settlement = {
+        "ok": False,
+        "status": "fetch_xhr_protocol_watch_settle_timeout",
+        "task_count": 3,
+        "completed_task_count": 2,
+        "cancelled_task_count": 1,
+        "failed_task_count": 0,
+        "pending_task_count": 1,
+        "detached_task_count": 0,
+        "unresolved_tasks": [
+            {
+                "task_kind": "response_capture",
+                "phase": "visible_library_file_upload",
+                "method": "GET",
+                "resource_type": "fetch",
+                "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                "content_type": "application/json",
+            }
+        ],
+    }
+    trace = client._public_fetch_xhr_protocol_trace(
+        {
+            "installed": True,
+            "events": [],
+            "last_settlement": settlement,
+            "settlement_history": [settlement],
+            "disposed_pending_task_count": 0,
+        }
+    )
+    assert trace["task_settlement"] == settlement
+    assert trace["task_settlement_history"] == [settlement]
+    assert trace["task_settlement"]["pending_task_count"] == 1
+    assert trace["task_settlement"]["unresolved_tasks"][0]["phase"] == "visible_library_file_upload"
+
+
+def test_fetch_xhr_protocol_watch_settlement_is_bounded_and_classifies_pending_task(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def scenario() -> tuple[dict, asyncio.Task]:
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        watch = {
+            "tasks": [task],
+            "task_metadata": {
+                id(task): {
+                    "task_kind": "response_capture",
+                    "phase": "visible_library_file_upload",
+                    "method": "GET",
+                    "resource_type": "fetch",
+                    "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+                    "content_type": "application/json",
+                }
+            },
+            "settlement_history": [],
+        }
+        result = await client._settle_fetch_xhr_protocol_watch(
+            watch,
+            timeout_seconds=0.01,
+            cancel_timeout_seconds=0.05,
+            raise_on_timeout=False,
+        )
+        return result, task
+
+    result, task = asyncio.run(scenario())
+    assert result["ok"] is False
+    assert result["status"] == "fetch_xhr_protocol_watch_settle_timeout"
+    assert result["pending_task_count"] == 1
+    assert result["cancelled_task_count"] == 1
+    assert result["detached_task_count"] == 0
+    assert result["unresolved_tasks"] == [
+        {
+            "task_kind": "response_capture",
+            "phase": "visible_library_file_upload",
+            "method": "GET",
+            "resource_type": "fetch",
+            "url": "https://chatgpt.com/backend-api/files/library/nodes?q=<redacted>",
+            "content_type": "application/json",
+        }
+    ]
+    assert task.cancelled()
+
+
+def test_fetch_xhr_protocol_watch_settlement_raises_explicit_timeout(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def scenario() -> None:
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        watch = {
+            "tasks": [task],
+            "task_metadata": {id(task): {"task_kind": "response_capture", "phase": "test"}},
+            "settlement_history": [],
+        }
+        with pytest.raises(ResponseTimeoutError, match="fetch_xhr_protocol_watch_settle_timeout"):
+            await client._settle_fetch_xhr_protocol_watch(
+                watch,
+                timeout_seconds=0.01,
+                cancel_timeout_seconds=0.05,
+            )
+
+    asyncio.run(scenario())
+
+
+def test_fetch_xhr_protocol_watch_never_reads_event_stream_body(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Context:
+        def __init__(self) -> None:
+            self.handlers = {}
+
+        def on(self, name, handler) -> None:
+            self.handlers[name] = handler
+
+        def remove_listener(self, name, handler) -> None:
+            assert self.handlers.get(name) is handler
+
+    class Request:
+        resource_type = "fetch"
+        method = "POST"
+        url = "https://chatgpt.com/backend-api/files/process_upload_stream"
+        headers = {"accept": "text/event-stream"}
+        post_data = "{}"
+
+    class Response:
+        status = 200
+        url = Request.url
+
+        def __init__(self, request) -> None:
+            self.request = request
+            self.text_called = False
+
+        async def all_headers(self):
+            return {"content-type": "text/event-stream"}
+
+        async def text(self):
+            self.text_called = True
+            raise AssertionError("streaming response body must not be awaited")
+
+    async def scenario() -> tuple[dict, Response]:
+        context = Context()
+        watch = client._install_fetch_xhr_protocol_watch(context)
+        request = Request()
+        response = Response(request)
+        context.handlers["request"](request)
+        context.handlers["response"](response)
+        settlement = await client._settle_fetch_xhr_protocol_watch(watch)
+        assert settlement["ok"] is True
+        return watch, response
+
+    watch, response = asyncio.run(scenario())
+    assert response.text_called is False
+    response_events = [event for event in watch["events"] if event.get("kind") == "response"]
+    assert len(response_events) == 1
+    assert response_events[0]["content_type"] == "text/event-stream"
+    assert response_events[0]["body_error"] == "streaming_response_body_omitted"
+
+
+def test_fetch_xhr_protocol_watch_bounds_non_streaming_response_text(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Context:
+        def __init__(self) -> None:
+            self.handlers = {}
+
+        def on(self, name, handler) -> None:
+            self.handlers[name] = handler
+
+    class Request:
+        resource_type = "fetch"
+        method = "GET"
+        url = "https://chatgpt.com/backend-api/files/library/nodes?q=test"
+        headers = {"accept": "application/json"}
+        post_data = None
+
+    class Response:
+        status = 200
+        url = Request.url
+
+        def __init__(self, request) -> None:
+            self.request = request
+
+        async def all_headers(self):
+            return {"content-type": "application/json"}
+
+        async def text(self):
+            await asyncio.Event().wait()
+
+    async def scenario() -> dict:
+        context = Context()
+        watch = client._install_fetch_xhr_protocol_watch(context)
+        watch["response_body_timeout_seconds"] = 0.01
+        request = Request()
+        context.handlers["request"](request)
+        context.handlers["response"](Response(request))
+        settlement = await client._settle_fetch_xhr_protocol_watch(
+            watch,
+            timeout_seconds=0.25,
+        )
+        assert settlement["ok"] is True
+        return watch
+
+    watch = asyncio.run(scenario())
+    response_events = [event for event in watch["events"] if event.get("kind") == "response"]
+    assert len(response_events) == 1
+    assert response_events[0]["body_error"] == "response_body_timeout"
+    assert response_events[0]["body_sample"] == ""
 
 
 def test_endpoint_returns_browser_diagnostic_and_preserves_safety(monkeypatch) -> None:
@@ -782,11 +994,110 @@ def test_disposable_delete_uses_only_row_scoped_menu(tmp_path: Path) -> None:
             "row_binding_key": "pb-library-row-1",
         },
     ))
-    assert result["ok"] is True
+    assert result["ok"] is False
+    assert result["status"] == "delete_confirmation_not_observed"
+    assert result["delete_action_clicked"] is True
+    assert result["confirmation_observed"] is False
+    assert result["confirmation_clicked"] is False
     assert result["row_scoped_menu_binding"] is True
     assert clicked == [
         "row-menu:library-disposable-row-options",
         "delete-action:library-disposable-delete-action",
+    ]
+
+
+def test_disposable_delete_waits_for_delayed_unique_confirmation(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    clicked: list[str] = []
+    state = {"surface_polls": 0, "delete_clicked": False}
+
+    class Item:
+        def __init__(self, name: str, text: str = ""):
+            self.name = name
+            self.text = text
+
+        async def is_visible(self):
+            return True
+
+        async def inner_text(self):
+            return self.text
+
+        async def get_attribute(self, _name):
+            return None
+
+    class LocatorList:
+        def __init__(self, items):
+            self.items = list(items)
+
+        async def count(self):
+            return len(self.items)
+
+        def nth(self, index):
+            return self.items[index]
+
+    menu = Item("row-menu")
+    action = Item("delete-action", "Delete")
+    confirm = Item("delete-confirm", "Delete")
+
+    class Surface(Item):
+        def locator(self, selector):
+            assert selector == 'button, [role="button"]'
+            return LocatorList([confirm])
+
+    surface = Surface("confirm-surface")
+
+    class Row:
+        async def hover(self):
+            return None
+
+        def locator(self, selector):
+            assert 'aria-haspopup="menu"' in selector
+            return LocatorList([menu])
+
+    class Page:
+        def locator(self, selector):
+            if '[role="menu"]' in selector:
+                return LocatorList([action])
+            if selector == '[role="dialog"], [role="alertdialog"], dialog[open]':
+                state["surface_polls"] += 1
+                if state["delete_clicked"] and state["surface_polls"] >= 3:
+                    return LocatorList([surface])
+                return LocatorList([])
+            raise AssertionError(f"unexpected page-level selector: {selector}")
+
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_find(*_args, **_kwargs):
+        return Row()
+
+    async def fake_click(locator, *, label: str, **_kwargs):
+        clicked.append(f"{getattr(locator, 'name', 'unknown')}:{label}")
+        if getattr(locator, "name", "") == "delete-action":
+            state["delete_clicked"] = True
+
+    client._find_disposable_library_file_card_by_filename = fake_find  # type: ignore[method-assign]
+    client._click_locator_with_fallback = fake_click  # type: ignore[method-assign]
+    result = asyncio.run(client._delete_disposable_library_file_via_ui(
+        Page(),
+        filename="release.zip",
+        delete_forever=False,
+        ui_binding={
+            "ok": True,
+            "status": "exact_library_file_row_bound",
+            "row_binding_key": "pb-library-row-1",
+        },
+    ))
+    assert result["ok"] is True
+    assert result["status"] == "delete_confirmation_clicked"
+    assert result["delete_action_clicked"] is True
+    assert result["confirmation_observed"] is True
+    assert result["confirmation_clicked"] is True
+    assert result["confirmation_observations"] >= 3
+    assert clicked == [
+        "row-menu:library-disposable-row-options",
+        "delete-action:library-disposable-delete-action",
+        "delete-confirm:library-disposable-delete-confirm",
     ]
 
 
@@ -1096,3 +1407,772 @@ def test_recently_deleted_navigation_proves_active_surface(tmp_path: Path) -> No
     assert result["ok"] is True
     assert result["status"] == "recently_deleted_surface_active"
     assert clicked == ["library-recently-deleted"]
+
+
+def test_diagnostic_operation_exposes_processing_stream_timeout_reason(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def fake_ensure_logged_in(_page, _context):
+        return None
+
+    async def fake_create_project_operation(**_kwargs):
+        from promptbranch_browser_auth.exceptions import ResponseTimeoutError
+        raise ResponseTimeoutError(
+            "project_source_processing_stream_timeout: expected_filename=release.zip"
+        )
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._create_project_operation = fake_create_project_operation  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._library_backend_protocol_reupload_diagnostic_operation(
+            context=object(),
+            page=object(),
+            project_name_prefix="itest",
+        )
+    )
+
+    assert result["status"] == "diagnostic_completed"
+    assert result["conclusion"] == "diagnostic_inconclusive"
+    assert result["reason"] == "project_source_processing_stream_timeout"
+    assert result["error_type"] == "ResponseTimeoutError"
+
+
+def test_diagnostic_finalizer_returns_structured_json_when_trace_settlement_times_out(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def fake_ensure_logged_in(_page, _context):
+        return None
+
+    async def fake_create_project_operation(**_kwargs):
+        return {"ok": False, "project_url": None}
+
+    async def fake_settle(_watch, **_kwargs):
+        return {
+            "ok": False,
+            "status": "fetch_xhr_protocol_watch_settle_timeout",
+            "task_count": 2,
+            "completed_task_count": 1,
+            "cancelled_task_count": 1,
+            "failed_task_count": 0,
+            "pending_task_count": 1,
+            "detached_task_count": 0,
+            "unresolved_tasks": [
+                {
+                    "task_kind": "response_capture",
+                    "phase": "project_create",
+                    "method": "GET",
+                    "resource_type": "fetch",
+                    "url": "https://chatgpt.com/backend-api/files/library",
+                    "content_type": "application/json",
+                }
+            ],
+        }
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._create_project_operation = fake_create_project_operation  # type: ignore[method-assign]
+    client._settle_fetch_xhr_protocol_watch = fake_settle  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        client._library_backend_protocol_reupload_diagnostic_operation(
+            context=object(),
+            page=object(),
+            project_name_prefix="itest",
+        )
+    )
+
+    assert result["status"] == "diagnostic_completed"
+    assert result["conclusion"] == "diagnostic_inconclusive"
+    assert result["reason"] == "fetch_xhr_protocol_watch_settle_timeout"
+    assert result["reason_before_fetch_xhr_settlement"] == "project_create_failed"
+    assert result["error_type"] == "ResponseTimeoutError"
+    assert result["fetch_xhr_trace"]["task_settlement"]["pending_task_count"] == 1
+
+
+def test_real_diagnostic_caller_rejects_pending_stream_without_result(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def fake_ensure_logged_in(_page, _context):
+        return None
+
+    async def fake_create_project_operation(**_kwargs):
+        return {
+            "ok": True,
+            "project_url": "https://chatgpt.com/g/g-p-diagnostic/project",
+        }
+
+    async def fake_legacy_upload(**_kwargs):
+        return {
+            "ok": False,
+            "status": "post_commit_source_surface_not_refreshed",
+            "save_request_quiet": {
+                "processing_stream_pending": True,
+                "quiet_reason": "ordinary_save_quiet_processing_stream_pending",
+            },
+            "processing_stream": None,
+            "save_request_summary": {},
+        }
+
+    async def should_not_poll(*_args, **_kwargs):
+        raise AssertionError("source persistence polling must not run after invariant failure")
+
+    async def fake_settle(_watch, **_kwargs):
+        return None
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._create_project_operation = fake_create_project_operation  # type: ignore[method-assign]
+    client._add_project_source_operation_legacy_10_75 = fake_legacy_upload  # type: ignore[method-assign]
+    client._browser_poll_project_source_family_state = should_not_poll  # type: ignore[method-assign]
+    client._install_fetch_xhr_protocol_watch = lambda _context: {"installed": False, "events": []}  # type: ignore[method-assign]
+    client._set_fetch_xhr_protocol_phase = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    client._settle_fetch_xhr_protocol_watch = fake_settle  # type: ignore[method-assign]
+    client._dispose_fetch_xhr_protocol_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    client._public_fetch_xhr_protocol_trace = lambda _watch: {  # type: ignore[method-assign]
+        "installed": False,
+        "event_count": 0,
+        "trace_truncated": False,
+        "sensitive_headers_redacted": True,
+        "sensitive_body_fields_redacted": True,
+    }
+
+    result = asyncio.run(
+        client._library_backend_protocol_reupload_diagnostic_operation(
+            context=object(),
+            page=object(),
+            project_name_prefix="itest",
+        )
+    )
+
+    assert result["status"] == "diagnostic_completed"
+    assert result["conclusion"] == "diagnostic_inconclusive"
+    assert result["reason"] == "internal_processing_stream_wait_skipped"
+    assert result["first_upload_processing_invariant"]["ok"] is False
+    assert result["first_upload"]["upload_response"]["processing_stream"] is None
+
+
+def test_visible_library_processing_stream_returns_exact_terminal_identity(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    watch = {
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_response_tasks": [],
+        "processing_stream_terminal": {
+            "status": "completed",
+            "terminal_event": "file.processing.completed",
+            "terminal_message": "done",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": "libfile_visible",
+            "library_file_name": "visible.txt",
+            "expected_filename": "visible.txt",
+            "events": [
+                "file.processing.started",
+                "file.processing.file_ready",
+                "file.indexing.completed",
+                "file.processing.completed",
+            ],
+            "identity_verified": True,
+        },
+    }
+
+    result = asyncio.run(
+        client._wait_for_visible_library_processing_stream(
+            Page(),
+            watch,
+            expected_filename="visible.txt",
+            timeout_ms=50,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "visible_library_processing_stream_completed"
+    assert result["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert result["library_metadata_object_id"] == "libfile_visible"
+    assert result["library_file_name"] == "visible.txt"
+
+
+def test_visible_library_processing_stream_rejects_incomplete_terminal_identity(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    watch = {
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_response_tasks": [],
+        "processing_stream_terminal": {
+            "status": "completed",
+            "terminal_event": "file.processing.completed",
+            "terminal_message": "done",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": None,
+            "library_file_name": "visible.txt",
+            "expected_filename": "visible.txt",
+            "events": ["file.processing.completed"],
+            "identity_verified": False,
+        },
+    }
+
+    result = asyncio.run(
+        client._wait_for_visible_library_processing_stream(
+            Page(),
+            watch,
+            expected_filename="visible.txt",
+            timeout_ms=50,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "visible_library_processing_stream_identity_not_verified"
+    assert result["library_metadata_object_id"] is None
+
+
+def test_real_diagnostic_uses_dedicated_visible_library_stream_identity(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    calls: list[str] = []
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_ensure_logged_in(_page, _context):
+        return None
+
+    async def fake_create_project_operation(**_kwargs):
+        return {"ok": True, "project_url": "https://chatgpt.com/g/g-p-diagnostic/project"}
+
+    async def fake_legacy_upload(**_kwargs):
+        return {
+            "ok": True,
+            "save_request_quiet": {
+                "processing_stream_pending": True,
+                "quiet_reason": "ordinary_save_quiet_processing_stream_pending",
+            },
+            "processing_stream": {
+                "status": "project_source_processing_stream_completed",
+                "processed_file_id": "file_00000000aaaaaaaaaaaaaaaaaaaaaaaa",
+                "library_metadata_object_id": "libfile_project",
+                "library_file_name": _kwargs["display_name"],
+                "terminal_event": "file.processing.completed",
+            },
+            "save_request_summary": {},
+        }
+
+    presence_calls = 0
+
+    async def fake_presence(*_args, **kwargs):
+        nonlocal presence_calls
+        presence_calls += 1
+        if kwargs.get("expect_present"):
+            return {"ok": True, "exact_source_name": kwargs["requested_filename"]}
+        return {"ok": True}
+
+    async def fake_remove(**_kwargs):
+        return {"ok": True}
+
+    async def fake_goto(*_args, **_kwargs):
+        return None
+
+    async def fake_upload(*_args, **_kwargs):
+        calls.append("visible_upload")
+        return {"ok": False, "status": "library_disposable_upload_not_verified"}
+
+    stream_watch = {"installed": True}
+
+    def fake_install_stream(*_args, **_kwargs):
+        calls.append("stream_watch_installed")
+        return stream_watch
+
+    async def fake_wait_stream(*_args, **_kwargs):
+        calls.append("stream_waited")
+        assert _args[1] is stream_watch
+        return {
+            "ok": True,
+            "status": "visible_library_processing_stream_completed",
+            "processed_file_id": "file_00000000111122223333444455556666",
+            "library_metadata_object_id": "libfile_visible",
+            "library_file_name": "pb-library-visible-test.txt",
+            "terminal_event": "file.processing.completed",
+            "events": ["file.processing.completed"],
+        }
+
+    def fake_dispose_stream(*_args, **_kwargs):
+        calls.append("stream_watch_disposed")
+
+    async def fake_settle(_watch, **_kwargs):
+        return {
+            "ok": True,
+            "status": "fetch_xhr_protocol_watch_settled",
+            "task_count": 0,
+            "completed_task_count": 0,
+            "cancelled_task_count": 0,
+            "failed_task_count": 0,
+            "pending_task_count": 0,
+            "detached_task_count": 0,
+            "unresolved_tasks": [],
+        }
+
+    client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    client._create_project_operation = fake_create_project_operation  # type: ignore[method-assign]
+    client._add_project_source_operation_legacy_10_75 = fake_legacy_upload  # type: ignore[method-assign]
+    client._browser_poll_project_source_family_state = fake_presence  # type: ignore[method-assign]
+    client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    client._goto = fake_goto  # type: ignore[method-assign]
+    client._upload_disposable_library_file_via_ui = fake_upload  # type: ignore[method-assign]
+    client._install_visible_library_processing_stream_watch = fake_install_stream  # type: ignore[method-assign]
+    client._wait_for_visible_library_processing_stream = fake_wait_stream  # type: ignore[method-assign]
+    client._dispose_visible_library_processing_stream_watch = fake_dispose_stream  # type: ignore[method-assign]
+    client._settle_fetch_xhr_protocol_watch = fake_settle  # type: ignore[method-assign]
+    client._library_search_exact_family = fake_goto  # type: ignore[method-assign]
+    client._discover_backend_inventory_protocol = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    client._install_fetch_xhr_protocol_watch = lambda _context: {  # type: ignore[method-assign]
+        "installed": False,
+        "events": [],
+        "phase": "initial",
+        "settlement_history": [],
+    }
+    client._set_fetch_xhr_protocol_phase = lambda watch, phase: watch.update({"phase": phase})  # type: ignore[method-assign]
+    client._dispose_fetch_xhr_protocol_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    client._public_fetch_xhr_protocol_trace = lambda _watch: {  # type: ignore[method-assign]
+        "installed": False,
+        "event_count": 0,
+        "trace_truncated": False,
+        "sensitive_headers_redacted": True,
+        "sensitive_body_fields_redacted": True,
+    }
+
+    result = asyncio.run(
+        client._library_backend_protocol_reupload_diagnostic_operation(
+            context=object(),
+            page=Page(),
+            project_name_prefix="itest",
+        )
+    )
+
+    assert result["reason"] == "active_inventory_endpoint_not_discovered"
+    assert result["visible_library_upload_processing_stream"]["ok"] is True
+    assert result["visible_library_identity"]["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert result["visible_library_identity"]["library_metadata_object_id"] == "libfile_visible"
+    assert calls == [
+        "stream_watch_installed",
+        "visible_upload",
+        "stream_waited",
+        "stream_watch_disposed",
+    ]
+    assert presence_calls == 2
+
+
+def test_fetch_xhr_protocol_watch_keeps_immutable_request_phase_on_response(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Context:
+        def __init__(self) -> None:
+            self.handlers = {}
+
+        def on(self, name, handler) -> None:
+            self.handlers[name] = handler
+
+    class Request:
+        resource_type = "fetch"
+        method = "PATCH"
+        url = "https://chatgpt.com/backend-api/files/library/nodes/libfile_target"
+        headers = {"content-type": "application/json"}
+        post_data = '{"trashed":true}'
+
+    class Response:
+        status = 204
+        url = Request.url
+
+        def __init__(self, request) -> None:
+            self.request = request
+
+        async def all_headers(self):
+            return {"content-type": "application/json"}
+
+        async def text(self):
+            return ""
+
+    async def scenario() -> dict:
+        context = Context()
+        watch = client._install_fetch_xhr_protocol_watch(context)
+        client._set_fetch_xhr_protocol_phase(watch, "visible_library_active_inventory")
+        request = Request()
+        context.handlers["request"](request)
+        client._set_fetch_xhr_protocol_phase(watch, "visible_library_soft_delete")
+        context.handlers["response"](Response(request))
+        await client._settle_fetch_xhr_protocol_watch(watch)
+        return watch
+
+    watch = asyncio.run(scenario())
+    request_event = next(event for event in watch["events"] if event.get("kind") == "request")
+    response_event = next(event for event in watch["events"] if event.get("kind") == "response")
+    assert request_event["phase"] == "visible_library_active_inventory"
+    assert request_event["request_phase"] == "visible_library_active_inventory"
+    assert response_event["phase"] == "visible_library_active_inventory"
+    assert response_event["request_phase"] == "visible_library_active_inventory"
+    assert response_event["response_observed_phase"] == "visible_library_soft_delete"
+    assert response_event["sequence"] == request_event["sequence"]
+
+
+def test_delete_protocol_sequence_boundary_is_authoritative_over_phase(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "private_request_headers": {8: {"authorization": "Bearer private"}},
+        "events": [
+            {
+                "kind": "request",
+                "sequence": 4,
+                "phase": "visible_library_active_inventory",
+                "request_phase": "visible_library_active_inventory",
+                "method": "PATCH",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_post_data": '{"trashed":true}',
+            },
+            {
+                "kind": "response",
+                "sequence": 4,
+                "phase": "visible_library_active_inventory",
+                "request_phase": "visible_library_active_inventory",
+                "method": "PATCH",
+                "status": 204,
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_body": "",
+            },
+            {
+                "kind": "request",
+                "sequence": 8,
+                "phase": "visible_library_active_inventory",
+                "request_phase": "visible_library_active_inventory",
+                "method": "PATCH",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_post_data": '{"trashed":true}',
+            },
+            {
+                "kind": "response",
+                "sequence": 8,
+                "phase": "visible_library_active_inventory",
+                "request_phase": "visible_library_active_inventory",
+                "response_observed_phase": "visible_library_soft_delete",
+                "method": "PATCH",
+                "status": 204,
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/libfile_target",
+                "_raw_body": "",
+            },
+        ],
+    }
+    result = client._discover_backend_delete_protocol_result(
+        watch,
+        id_candidates=["libfile_target"],
+        filename="visible.txt",
+        phase="visible_library_soft_delete",
+        sequence_after=7,
+    )
+    assert result["ok"] is True
+    assert result["status"] == "soft_delete_protocol_discovered"
+    assert result["protocol"]["sequence"] == 8
+    assert result["protocol"]["sequence_after"] == 7
+    assert result["protocol"]["phase"] == "visible_library_active_inventory"
+    assert result["protocol"]["response_observed_phase"] == "visible_library_soft_delete"
+
+
+def test_delete_protocol_sequence_boundary_reports_identity_not_verified(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    watch = {
+        "events": [
+            {
+                "kind": "request",
+                "sequence": 12,
+                "phase": "visible_library_soft_delete",
+                "request_phase": "visible_library_soft_delete",
+                "method": "POST",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/delete",
+                "_raw_post_data": '{"trashed":true}',
+                "_raw_headers": {"content-type": "application/json"},
+            },
+            {
+                "kind": "response",
+                "sequence": 12,
+                "phase": "visible_library_soft_delete",
+                "request_phase": "visible_library_soft_delete",
+                "method": "POST",
+                "status": 200,
+                "content_type": "application/json",
+                "_raw_url": "https://chatgpt.com/backend-api/files/library/nodes/delete",
+                "_raw_body": '{"ok":true}',
+            },
+        ]
+    }
+    result = client._discover_backend_delete_protocol_result(
+        watch,
+        id_candidates=["libfile_target", "file_target"],
+        filename="visible.txt",
+        phase="visible_library_soft_delete",
+        sequence_after=11,
+    )
+    assert result["ok"] is False
+    assert result["status"] == "soft_delete_protocol_identity_not_verified"
+    assert result["protocol"] is None
+    assert len(result["mutation_candidates"]) == 1
+    candidate = result["mutation_candidates"][0]
+    assert candidate["sequence"] == 12
+    assert candidate["url_path"] == "/backend-api/files/library/nodes/delete"
+    assert candidate["status"] == 200
+    assert candidate["exact_identity_observed"] is False
+    assert candidate["request_body_schema"]["format"] == "json"
+    assert candidate["response_body_schema"]["format"] == "json"
+
+
+def test_fetch_xhr_settlement_history_deduplicates_unchanged_phase_and_task_count(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    async def scenario() -> tuple[dict, dict, dict]:
+        watch = {
+            "phase": "visible_library_soft_delete",
+            "tasks": [],
+            "task_metadata": {},
+            "settlement_history": [],
+        }
+        first = await client._settle_fetch_xhr_protocol_watch(watch)
+        second = await client._settle_fetch_xhr_protocol_watch(watch)
+        return watch, first, second
+
+    watch, first, second = asyncio.run(scenario())
+    assert len(watch["settlement_history"]) == 1
+    assert first["settlement_index"] == 1
+    assert second["settlement_index"] == 1
+    assert second["duplicate_history_entry_suppressed"] is True
+
+
+def test_real_diagnostic_orders_soft_delete_boundary_before_phase_and_click() -> None:
+    source = Path(__file__).parents[1].joinpath("promptbranch_browser_auth/client.py").read_text()
+    operation = source[source.index("    async def _library_backend_protocol_reupload_diagnostic_operation("):]
+    settle_index = operation.index("pre_soft_delete_settlement = await self._settle_fetch_xhr_protocol_watch")
+    boundary_index = operation.index("soft_delete_boundary = self._fetch_xhr_protocol_sequence_boundary")
+    phase_index = operation.index("self._set_fetch_xhr_protocol_phase(protocol_watch, 'visible_library_soft_delete')")
+    click_index = operation.index("visible_soft_delete = await self._delete_disposable_library_file_via_ui")
+    discovery_index = operation.index("soft_delete_discovery = self._discover_backend_delete_protocol_result")
+    assert settle_index < boundary_index < phase_index < click_index < discovery_index
+    assert "sequence_after=int(soft_delete_boundary.get('max_request_sequence') or 0)" in operation
+
+
+def test_diagnostic_finalizer_does_not_reappend_suppressed_settlement() -> None:
+    source = Path(__file__).parents[1].joinpath("promptbranch_browser_auth/client.py").read_text()
+    operation = source[source.index("    async def _library_backend_protocol_reupload_diagnostic_operation("):]
+    assert "final_settlement.get('duplicate_history_entry_suppressed')" in operation
+
+
+def test_real_diagnostic_promotes_delete_triggered_only_after_exact_protocol_proof() -> None:
+    source = Path(__file__).parents[1].joinpath("promptbranch_browser_auth/client.py").read_text()
+    operation = source[source.index("    async def _library_backend_protocol_reupload_diagnostic_operation("):]
+    confirmation_missing_index = operation.index("confirmation_not_observed = (")
+    discovery_index = operation.index("soft_delete_discovery = self._discover_backend_delete_protocol_result")
+    protocol_guard_index = operation.index("if not isinstance(soft_delete_protocol, dict):")
+    promotion_index = operation.index("'status': 'delete_triggered'", protocol_guard_index)
+    assert confirmation_missing_index < discovery_index < protocol_guard_index < promotion_index
+    assert "soft_delete_confirmation_or_direct_mutation_not_observed" in operation
+    assert "direct_exact_backend_mutation" in operation
+    assert "confirmation_then_exact_backend_mutation" in operation
+
+
+def test_disposable_delete_helper_never_reports_delete_triggered_without_protocol_proof() -> None:
+    source = Path(__file__).parents[1].joinpath("promptbranch_browser_auth/client.py").read_text()
+    start = source.index("    async def _delete_disposable_library_file_via_ui(")
+    end = source.index("    def _browser_diagnostic_upload_identity", start)
+    helper = source[start:end]
+    assert "'status': 'delete_confirmation_clicked'" in helper
+    assert "'status': 'delete_confirmation_not_observed'" in helper
+    assert "'status': 'delete_triggered'" not in helper
+
+
+def test_library_ui_recovery_succeeds_after_exact_search_reapply(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    calls: list[str] = []
+
+    class Page:
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_reapply(_page, _canonical_name, *, label):
+        calls.append(label)
+        return {
+            "ok": True,
+            "status": "library_exact_search_reapplied",
+            "search_cleared": True,
+            "search_reapplied": True,
+        }
+
+    async def fake_wait(_page, **kwargs):
+        calls.append(kwargs["label"])
+        return {
+            "ok": True,
+            "authoritative": True,
+            "reason": "stable_library_snapshot",
+            "records": [{"filename": "visible.txt"}],
+            "family_records": [{"filename": "visible.txt"}],
+            "observations": [{"observation": 1}, {"observation": 2}],
+        }
+
+    client._library_reapply_exact_family_search = fake_reapply  # type: ignore[method-assign]
+    client._wait_for_authoritative_library_family_surface = fake_wait  # type: ignore[method-assign]
+    result = asyncio.run(client._recover_library_surface_after_backend_presence(
+        Page(),
+        canonical_name="visible.txt",
+        initial_surface={
+            "ok": False,
+            "reason": "library_surface_not_authoritative",
+            "identical_non_authoritative_observations": 5,
+            "observations": [{"observation": index} for index in range(1, 6)],
+        },
+    ))
+    assert result["ok"] is True
+    assert result["recovery"]["status"] == "library_surface_recovered_after_search_reapply"
+    assert result["recovery"]["search_reapplied"] is True
+    assert result["recovery"]["page_reloaded"] is False
+    assert result["recovery"]["initial_identical_observations"] == 5
+    assert calls == [
+        "library-backend-presence-recovery-reapply",
+        "library-backend-presence-recovery-after-reapply",
+    ]
+
+
+def test_library_ui_recovery_reloads_once_then_recovers(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+    wait_results = [
+        {
+            "ok": False,
+            "authoritative": False,
+            "reason": "library_surface_not_authoritative",
+            "observations": [{"observation": index} for index in range(1, 6)],
+        },
+        {
+            "ok": True,
+            "authoritative": True,
+            "reason": "stable_library_snapshot",
+            "records": [{"filename": "visible.txt"}],
+            "family_records": [{"filename": "visible.txt"}],
+            "observations": [{"observation": 1}, {"observation": 2}],
+        },
+    ]
+
+    class Page:
+        def __init__(self):
+            self.reload_count = 0
+
+        async def reload(self, *, wait_until):
+            assert wait_until == "domcontentloaded"
+            self.reload_count += 1
+
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_reapply(_page, _canonical_name, *, label):
+        return {
+            "ok": True,
+            "status": "library_exact_search_reapplied",
+            "search_cleared": True,
+            "search_reapplied": True,
+            "label": label,
+        }
+
+    async def fake_wait(_page, **_kwargs):
+        return wait_results.pop(0)
+
+    page = Page()
+    client._library_reapply_exact_family_search = fake_reapply  # type: ignore[method-assign]
+    client._wait_for_authoritative_library_family_surface = fake_wait  # type: ignore[method-assign]
+    result = asyncio.run(client._recover_library_surface_after_backend_presence(
+        page,
+        canonical_name="visible.txt",
+        initial_surface={
+            "ok": False,
+            "reason": "library_surface_not_authoritative",
+            "identical_non_authoritative_observations": 5,
+            "observations": [{"observation": index} for index in range(1, 6)],
+        },
+    ))
+    assert result["ok"] is True
+    assert result["recovery"]["status"] == "library_surface_recovered_after_reload"
+    assert result["recovery"]["reload_attempt_count"] == 1
+    assert result["recovery"]["page_reloaded"] is True
+    assert result["recovery"]["search_reapplied_after_reload"] is True
+    assert result["recovery"]["post_recovery_observation_count"] == 7
+    assert page.reload_count == 1
+    assert wait_results == []
+
+
+def test_library_ui_recovery_fails_closed_after_one_reload(tmp_path: Path) -> None:
+    client = browser_client(tmp_path)
+
+    class Page:
+        def __init__(self):
+            self.reload_count = 0
+
+        async def reload(self, *, wait_until):
+            assert wait_until == "domcontentloaded"
+            self.reload_count += 1
+
+        async def wait_for_timeout(self, _ms):
+            return None
+
+    async def fake_reapply(_page, _canonical_name, *, label):
+        return {
+            "ok": True,
+            "status": "library_exact_search_reapplied",
+            "search_cleared": True,
+            "search_reapplied": True,
+            "label": label,
+        }
+
+    async def fake_wait(_page, **_kwargs):
+        return {
+            "ok": False,
+            "authoritative": False,
+            "reason": "library_surface_not_authoritative",
+            "record_count": 0,
+            "family_record_count": 0,
+            "empty_state_visible": False,
+            "identical_non_authoritative_observations": 5,
+            "route_state": {"ready": True, "loading_visible": False},
+            "observations": [{"observation": index} for index in range(1, 6)],
+        }
+
+    page = Page()
+    client._library_reapply_exact_family_search = fake_reapply  # type: ignore[method-assign]
+    client._wait_for_authoritative_library_family_surface = fake_wait  # type: ignore[method-assign]
+    result = asyncio.run(client._recover_library_surface_after_backend_presence(
+        page,
+        canonical_name="visible.txt",
+        initial_surface={
+            "ok": False,
+            "reason": "library_surface_not_authoritative",
+            "identical_non_authoritative_observations": 5,
+            "observations": [{"observation": index} for index in range(1, 6)],
+        },
+    ))
+    assert result["ok"] is False
+    assert result["recovery"]["status"] == "library_surface_not_authoritative_after_bounded_recovery"
+    assert result["recovery"]["reload_attempt_count"] == 1
+    assert result["recovery"]["page_reloaded"] is True
+    assert page.reload_count == 1
+
+
+def test_real_diagnostic_recovers_library_ui_before_delete_boundary() -> None:
+    source = Path(__file__).parents[1].joinpath("promptbranch_browser_auth/client.py").read_text()
+    operation = source[source.index("    async def _library_backend_protocol_reupload_diagnostic_operation("):]
+    initial_wait_index = operation.index("visible_surface = await self._wait_for_authoritative_library_family_surface")
+    recovery_index = operation.index("recovery_result = await self._recover_library_surface_after_backend_presence")
+    binding_index = operation.index("visible_ui_binding = self._validate_exact_library_ui_binding")
+    boundary_index = operation.index("soft_delete_boundary = self._fetch_xhr_protocol_sequence_boundary")
+    assert initial_wait_index < recovery_index < binding_index < boundary_index
+    assert "library_surface_not_authoritative_after_bounded_recovery" in operation
+    assert "visible_library_ui_recovery" in operation

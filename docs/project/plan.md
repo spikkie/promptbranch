@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-active candidate version: v0.1.103.10.96
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip
-next normal slice: v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+active candidate version: v0.1.103.10.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
+next normal slice: v0.1.103.10.104 — recover the Library UI after authoritative backend presence
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -2221,3 +2221,51 @@ Active candidate version: `v0.1.103.10.94`.
 Active slice: `v0.1.103.10.94 — bind Library filenames only to actionable file rows`.
 
 Filter Library candidates to leaf-like actionable file rows; reject navigation, column headers, and ancestor containers; require local filename plus file metadata and exactly one row-owned action menu; bind deletion through that row-scoped menu only; preserve authenticated backend replay and fail closed before deletion, canonical reupload, release `pbsa`, or adoption.
+
+## Repair definition — v0.1.103.10.100
+
+```text
+Release: v0.1.103.10.100
+Base release: v0.1.103.10.99 diagnostic candidate
+Type: repair candidate
+Slice advanced: no
+Goal: prevent generic Fetch/XHR response-capture tasks from blocking the backend-protocol diagnostic indefinitely.
+In scope: bounded settlement, bounded non-streaming response body capture, streaming-body omission, unresolved-task classification, cancellation/detachment, structured fetch_xhr_protocol_watch_settle_timeout results, tests and release metadata.
+Out of scope: v0.1.103.10.99 Project Source processing semantics, v0.1.103.10.96 deletion semantics, normal pbsa behavior, release Project Source upload, adoption, ChatGPT Project deletion.
+Expected validation: focused watcher and diagnostic tests, Project Source regressions, control-surface/version tests, compileall, shell syntax, Artifact Guardian, ZIP import-plan, clean extraction.
+```
+
+## Repair definition — v0.1.103.10.101
+
+Release: v0.1.103.10.101
+
+Add one dedicated bounded processing-stream watcher around the disposable visible-Library upload. Require exact terminal `file_...`, `libfile_...`, and expected filename before inventory/UI binding. Preserve the v0.1.103.10.100 generic trace settlement, the v0.1.103.10.99 Project Source processing path, and all v0.1.103.10.96 deletion gates unchanged.
+
+
+## Repair definition — v0.1.103.10.102
+
+```text
+Release: v0.1.103.10.102
+Baseline candidate: v0.1.103.10.101
+Accepted/current: v0.1.103.10.68
+Type: repair-only diagnostic
+Slice: bind delete discovery to immutable request phases and a sequence boundary
+Goal: discover the exact visible-Library soft-delete backend mutation even when delayed response-capture tasks retain an earlier audit phase.
+In scope: immutable request-start phase, request/response sequence pairing, pre-click settlement and sequence boundary, successful post-boundary mutation classification, exact identity requirement, sanitized failed-discovery candidates, visible-upload status reconciliation, unchanged-settlement deduplication, focused tests and control-surface updates.
+Out of scope: Project Source processing changes, visible-Library upload-stream changes, active/deleted inventory semantics, hard-delete semantics, canonical reupload semantics, normal pbsa, release Project Source upload, adoption, ChatGPT Project deletion.
+Expected validation: focused Library diagnostic tests, Project Source regressions, control-surface/version/Guardian tests, stable service/API/automation tests, compileall, shell syntax, ZIP hygiene, clean extraction and isolated package installation.
+Promotion rule: diagnostic evidence only; no canonical release pbsa or adoption.
+```
+
+
+## Repair definition — v0.1.103.10.103
+
+Release: v0.1.103.10.103
+
+- wait a bounded period for a visible confirmation surface after the exact row-scoped Delete menu action;
+- require exactly one destructive confirmation action inside `dialog`, `alertdialog`, or native open `dialog`;
+- never report `delete_triggered` from the menu action alone;
+- permit a no-confirmation flow only when the existing post-boundary protocol discovery proves an exact paired 2xx mutation;
+- return `soft_delete_confirmation_or_direct_mutation_not_observed` when neither confirmation nor direct mutation is proven;
+- preserve both processing-stream watchers, bounded tracing, immutable request phases, sequence-bound protocol discovery, and all downstream deletion/reupload gates unchanged;
+- perform no canonical release `pbsa` and no adoption.
