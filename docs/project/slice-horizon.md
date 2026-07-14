@@ -115,3 +115,7 @@ Bound and uniquely bind the asynchronous visible-Library delete confirmation. Pr
 
 Recover the active Library UI exactly once after authoritative backend presence: exact-search reapplication, then at most one controlled reload and another exact-search reapplication. Exact row binding remains mandatory and the v0.1.103.10.103 delete-confirmation contract remains unchanged.
 
+### v0.1.103.10.105 repair-only clean break
+
+Remove repo-local artifact-registry fallback and the legacy registry-import path. Require explicit repository identity, configured project membership, canonical repo-root agreement, and an existing valid project-scoped registry for artifact reads and mutations. Missing, invalid, unreadable, unresolved, or ambiguous state fails closed. This is a clean development-state break: no migration, reconciliation, filename-order inference, or automatic adoption is provided.
+

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
-active candidate version: v0.1.103.10.104
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
-next normal slice: v0.1.103.10.104 — recover the Library UI after authoritative backend presence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
+active candidate version: v0.1.103.10.105
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
+next normal slice: v0.1.103.10.105 — fail-closed project registry clean break
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip
-release status: v0.1.103.10.104 is a diagnostic repair candidate; no release adoption or release Project Source upload is permitted from this diagnostic run
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip
+release status: v0.1.103.10.105 is a clean-break registry repair candidate; canonical Project Source upload and adoption remain prohibited pending validation
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Run the disposable v0.1.103.10.104 diagnostic. After exact backend presence is stable, permit one bounded Library UI recovery cycle before exact row binding. Keep the v0.1.103.10.103 confirmation or direct-mutation proof unchanged, then continue the existing active-inventory, Recently deleted, hard-delete, and canonical reupload proofs.
+Initialize a clean Promptbranch project dataset with `pb project join`, verify `pb artifact current --all --json` resolves the project registry from every member repository, and confirm `pb repo doctor --json` reports no legacy repo-local artifact registries. Do not import or reconcile old registries.
 ```
 
 Operator promotion command after candidate ZIP creation:

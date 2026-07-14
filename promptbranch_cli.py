@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, ArtifactRegistryStateError, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
 from promptbranch_artifact_guardian import guard_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
@@ -163,7 +163,6 @@ from promptbranch_project import (
     artifact_prefix_matches,
     configured_repos,
     ensure_project_registry,
-    import_current_registry,
     join_local_repo,
     load_repo_identity,
     project_registry_dir,
@@ -172,6 +171,47 @@ from promptbranch_project import (
     write_repo_identity,
 )
 from promptbranch_project_control import build_project_next_slice_payload, validate_project_control_surface
+
+class ProjectRegistryResolutionError(RuntimeError):
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = dict(payload)
+        super().__init__(str(self.payload.get("error") or self.payload.get("status") or "project registry resolution failed"))
+
+
+def _project_registry_failure(
+    status: str,
+    *,
+    error: str,
+    identity: Any = None,
+    registry: ArtifactRegistry | None = None,
+    registry_state: dict[str, Any] | None = None,
+    resolution_method: str = "identity_manifest",
+) -> ProjectRegistryResolutionError:
+    payload: dict[str, Any] = {
+        "ok": False,
+        "action": "project_registry_resolution",
+        "status": status,
+        "scope": {
+            "kind": "project" if identity is not None else "unresolved",
+            **({"project_id": getattr(identity, "project_id", None), "repo_id": getattr(identity, "repo_id", None)} if identity is not None else {}),
+        },
+        "registry_source": "project_registry" if registry is not None else "unresolved",
+        "registry_file": str(registry.path) if registry is not None else None,
+        "registry_exists": bool((registry_state or {}).get("registry_exists")),
+        "registry_valid": bool((registry_state or {}).get("registry_valid")),
+        "registry_readable": bool((registry_state or {}).get("registry_readable")),
+        "project_id": getattr(identity, "project_id", None),
+        "repo_id": getattr(identity, "repo_id", None),
+        "resolution_method": resolution_method,
+        "fallback_used": False,
+        "repo_count": None,
+        "repos": None,
+        "missing_repo_count": None,
+        "missing_repos": None,
+        "error": error,
+    }
+    return ProjectRegistryResolutionError(payload)
+
 
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_SERVICE_TIMEOUT_SECONDS = 900.0
@@ -8794,10 +8834,76 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
 
 
 def _artifact_registry_from_args(args: argparse.Namespace) -> ArtifactRegistry:
-    project_profile = _project_profile_dir_from_args(args)
-    if project_profile is not None:
-        return ArtifactRegistry(project_profile)
-    return ArtifactRegistry(resolve_profile_dir(getattr(args, "profile_dir", None)))
+    repo_context_raw = getattr(args, "repo_path", None)
+    repo_context = Path(str(repo_context_raw)).expanduser().resolve() if repo_context_raw else Path.cwd().resolve()
+    try:
+        identity = load_repo_identity(repo_context)
+    except ValueError as exc:
+        raise _project_registry_failure(
+            "project_identity_invalid",
+            error=str(exc),
+            resolution_method="identity_manifest",
+        ) from exc
+    if identity is None:
+        raise _project_registry_failure(
+            "project_scope_unresolved",
+            error=f"{REPO_IDENTITY_FILE_NAME} is required under {repo_context}; initialize this repository with pb project join",
+            resolution_method="identity_manifest",
+        )
+
+    repos = configured_repos(identity.project_id)
+    configured = repos.get(identity.repo_id)
+    if not isinstance(configured, dict):
+        raise _project_registry_failure(
+            "project_repo_not_configured",
+            error=f"repo_id {identity.repo_id!r} is not registered in the project dataset; run pb project join",
+            identity=identity,
+        )
+    configured_root_raw = configured.get("repo_root")
+    try:
+        configured_root = Path(str(configured_root_raw)).expanduser().resolve() if configured_root_raw else None
+    except OSError as exc:
+        raise _project_registry_failure(
+            "project_repo_configuration_invalid",
+            error=f"configured repo_root is invalid: {exc}",
+            identity=identity,
+        ) from exc
+    if configured_root is None or configured_root != identity.repo_root.resolve():
+        raise _project_registry_failure(
+            "project_repo_root_mismatch",
+            error=f"identity repo_root {identity.repo_root} does not match configured repo_root {configured_root_raw!r}",
+            identity=identity,
+        )
+
+    repo_local_registry = identity.repo_root / PROFILE_DIR_NAME / "promptbranch_artifacts.json"
+    if repo_local_registry.exists():
+        raise _project_registry_failure(
+            "legacy_repo_local_registry_detected",
+            error=f"remove or archive the obsolete repo-local artifact registry before continuing: {repo_local_registry}",
+            identity=identity,
+        )
+
+    registry = ArtifactRegistry(project_registry_dir(identity.project_id))
+    state = registry.inspect()
+    if not state.get("ok"):
+        raise _project_registry_failure(
+            str(state.get("status") or "artifact_registry_invalid"),
+            error=str(state.get("error") or "artifact registry is unavailable"),
+            identity=identity,
+            registry=registry,
+            registry_state=state,
+        )
+
+    registry.identity = identity  # type: ignore[attr-defined]
+    registry.project_id = identity.project_id  # type: ignore[attr-defined]
+    registry.repo_id = identity.repo_id  # type: ignore[attr-defined]
+    registry.resolution_method = "identity_manifest"  # type: ignore[attr-defined]
+    registry.registry_status = state.get("status")  # type: ignore[attr-defined]
+    return registry
+
+
+def _artifact_state_store(registry: ArtifactRegistry) -> ConversationStateStore:
+    return ConversationStateStore(str(registry.profile_dir))
 
 
 def _artifact_output_dir(args: argparse.Namespace, registry: ArtifactRegistry) -> Path:
@@ -9535,7 +9641,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     registry_updated = False
     state_artifact_updated = False
     state_source_updated = False
-    store = _state_store_from_args(args)
+    store = _artifact_state_store(registry)
     if no_upload_requested or uploaded:
         artifact_payload = registry.add(record)
         registry_updated = True
@@ -9625,14 +9731,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
 
 def _artifact_version_from_filename(filename: str) -> str | None:
     parsed = parse_canonical_artifact_filename(filename)
-    if parsed:
-        return parsed["version"]
-    value = Path(str(filename or "")).name
-    match = re.search(r"_(v?\d+(?:\.\d+){2,})\.zip$", value)
-    if not match:
-        return None
-    version = match.group(1)
-    return version if valid_version_text(version) else None
+    return parsed["version"] if parsed else None
 
 
 def _canonical_artifact_adopt_parse(filename: str, requested_repo_id: str | None = None) -> dict[str, Any]:
@@ -9644,16 +9743,11 @@ def _canonical_artifact_adopt_parse(filename: str, requested_repo_id: str | None
             "version": parsed["version"],
             "expected_canonical_filename": filename,
         }
-    inferred_legacy_version = _artifact_version_from_filename(filename)
-    if not inferred_legacy_version:
-        dot_match = re.search(r"(?:_|\.)(v?\d+(?:\.\d+){2,})\.zip$", Path(str(filename or "")).name)
-        inferred_legacy_version = dot_match.group(1) if dot_match else None
-    normalized_version = canonical_version_tag(inferred_legacy_version) if inferred_legacy_version else None
-    expected = canonical_artifact_filename(requested_repo_id or infer_repo_id_from_artifact_filename(filename) or "repo", normalized_version or "v0.0.0")
+    expected = canonical_artifact_filename(requested_repo_id or "repo", "v0.0.0")
     return {
         "ok": False,
         "status": "non_canonical_artifact_name",
-        "version": normalized_version,
+        "version": None,
         "expected_canonical_filename": expected,
     }
 
@@ -9724,39 +9818,25 @@ def _artifact_current_repo_entries(
     current_payload: dict[str, Any],
     *,
     repo_id: str | None = None,
-    allow_legacy_single_payload: bool = True,
 ) -> list[tuple[str | None, dict[str, Any]]]:
-    """Return artifact-current repo entries using the KISS repo-loop model.
-
-    The normal state contract is ``repos -> repo_id -> artifact_current`` for
-    both one-repo and many-repo projects. Legacy top-level payload parsing is
-    kept only for older logs or non-joined compatibility paths.
-    """
+    """Return entries from the mandatory project repo-loop payload."""
 
     if not isinstance(current_payload, dict):
         return []
     normalized_repo_id = normalize_repo_id(repo_id)
     repos = current_payload.get("repos")
+    if not isinstance(repos, dict):
+        return []
     entries: list[tuple[str | None, dict[str, Any]]] = []
-    if isinstance(repos, dict):
-        for key in sorted(repos):
-            repo_payload = repos.get(key)
-            if not isinstance(repo_payload, dict):
-                continue
-            entry_repo_id = normalize_repo_id(key) or key
-            if normalized_repo_id and entry_repo_id != normalized_repo_id:
-                continue
-            entries.append((entry_repo_id, repo_payload))
-        return entries
-
-    if allow_legacy_single_payload:
-        has_legacy_shape = any(isinstance(current_payload.get(key), dict) for key in ("state", "registry_current", "baseline_roles", "runtime"))
-        if has_legacy_shape:
-            scope = current_payload.get("scope") if isinstance(current_payload.get("scope"), dict) else {}
-            entry_repo_id = normalize_repo_id(scope.get("repo_id") or repo_id)
-            if not normalized_repo_id or entry_repo_id == normalized_repo_id:
-                return [(entry_repo_id, current_payload)]
-    return []
+    for key in sorted(repos):
+        repo_payload = repos.get(key)
+        if not isinstance(repo_payload, dict):
+            continue
+        entry_repo_id = normalize_repo_id(key) or key
+        if normalized_repo_id and entry_repo_id != normalized_repo_id:
+            continue
+        entries.append((entry_repo_id, repo_payload))
+    return entries
 
 
 def _artifact_current_select_entry(
@@ -9765,9 +9845,8 @@ def _artifact_current_select_entry(
     repo_id: str | None = None,
     filename: str | None = None,
     version: str | None = None,
-    allow_legacy_single_payload: bool = True,
 ) -> tuple[str | None, dict[str, Any]]:
-    entries = _artifact_current_repo_entries(current_payload, repo_id=repo_id, allow_legacy_single_payload=allow_legacy_single_payload)
+    entries = _artifact_current_repo_entries(current_payload, repo_id=repo_id)
     expected_filename = Path(str(filename)).name if filename else None
     expected_version = _candidate_version_normalized(version) if version else None
 
@@ -9797,22 +9876,14 @@ def _artifact_current_selected_sections(
     repo_id: str | None = None,
     filename: str | None = None,
     version: str | None = None,
-    allow_legacy_single_payload: bool = True,
 ) -> dict[str, Any]:
-    """Return the selected artifact-current repo entry and common sections.
-
-    Normal operator/release code should consume artifact-current state through
-    this helper so one-repo and many-repo project payloads follow the same
-    repo-loop contract. Legacy top-level payloads are accepted only when the
-    caller explicitly leaves compatibility enabled.
-    """
+    """Return common sections from the mandatory project repo-loop payload."""
 
     selected_repo_id, selected_current = _artifact_current_select_entry(
         current_payload,
         repo_id=repo_id,
         filename=filename,
         version=version,
-        allow_legacy_single_payload=allow_legacy_single_payload,
     )
     if not isinstance(selected_current, dict):
         selected_current = {}
@@ -9830,7 +9901,6 @@ def _artifact_current_selected_sections(
         "runtime": runtime,
         "consistency": consistency,
         "repo_loop_entry_present": bool(selected_current),
-        "legacy_single_payload_used": bool(selected_current is current_payload and "repos" not in current_payload),
     }
 
 
@@ -9845,6 +9915,97 @@ def _artifact_current_payload(
     normalized_repo_id = normalize_repo_id(repo_id)
     project_url = _artifact_state_project_url(backend)
     store = state_store
+    registry_state = registry.inspect()
+    if not registry_state.get("ok"):
+        return {
+            "ok": False,
+            "action": "artifact_current_all" if all_repos else "artifact_current",
+            "status": registry_state.get("status"),
+            "scope": {"kind": "unresolved"},
+            "registry_source": "project_registry",
+            "registry_file": str(registry.path),
+            "registry_exists": bool(registry_state.get("registry_exists")),
+            "registry_valid": bool(registry_state.get("registry_valid")),
+            "registry_readable": bool(registry_state.get("registry_readable")),
+            "project_id": None,
+            "repo_id": normalized_repo_id or None,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "repo_count": None,
+            "repos": None,
+            "missing_repo_count": None,
+            "missing_repos": None,
+            "error": registry_state.get("error"),
+        }
+    identity = getattr(registry, "identity", None)
+    try:
+        if identity is None:
+            identity = load_repo_identity(Path.cwd())
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "action": "artifact_current_all" if all_repos else "artifact_current",
+            "status": "project_identity_invalid",
+            "scope": {"kind": "unresolved"},
+            "registry_source": "unresolved",
+            "registry_file": str(registry.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "project_id": None,
+            "repo_id": normalized_repo_id or None,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "repo_count": None,
+            "repos": None,
+            "missing_repo_count": None,
+            "missing_repos": None,
+            "error": str(exc),
+        }
+    if identity is None:
+        return {
+            "ok": False,
+            "action": "artifact_current_all" if all_repos else "artifact_current",
+            "status": "project_scope_unresolved",
+            "scope": {"kind": "unresolved"},
+            "registry_source": "unresolved",
+            "registry_file": str(registry.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "project_id": None,
+            "repo_id": normalized_repo_id or None,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "repo_count": None,
+            "repos": None,
+            "missing_repo_count": None,
+            "missing_repos": None,
+            "error": f"{REPO_IDENTITY_FILE_NAME} is required; run pb project join",
+        }
+    expected_registry = project_registry_dir(identity.project_id).resolve()
+    resolver_verified = bool(getattr(registry, "resolution_method", None) == "identity_manifest")
+    if not resolver_verified and registry.profile_dir.resolve() != expected_registry:
+        return {
+            "ok": False,
+            "action": "artifact_current_all" if all_repos else "artifact_current",
+            "status": "non_authoritative_artifact_registry",
+            "scope": {"kind": "unresolved"},
+            "registry_source": "unresolved",
+            "registry_file": str(registry.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "project_id": identity.project_id,
+            "repo_id": identity.repo_id,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "repo_count": None,
+            "repos": None,
+            "missing_repo_count": None,
+            "missing_repos": None,
+            "error": f"artifact registry is not the authoritative project registry: {expected_registry}",
+        }
 
     def snapshot_for(scope_repo_id: str | None) -> dict[str, Any]:
         if store is not None:
@@ -9857,13 +10018,7 @@ def _artifact_current_payload(
     def available_repo_ids() -> list[str]:
         snapshot = snapshot_for(None)
         state_repos = (snapshot.get("artifacts_by_repo") or {}).keys() if isinstance(snapshot.get("artifacts_by_repo"), dict) else []
-        configured: set[str] = set()
-        try:
-            identity = load_repo_identity(Path.cwd())
-        except ValueError:
-            identity = None
-        if identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
-            configured = set(configured_repos(identity.project_id).keys())
+        configured = set(configured_repos(identity.project_id).keys())
         return sorted(set(registry.repo_ids()) | {str(item) for item in state_repos if item} | configured)
 
     def single_payload(scope_repo_id: str | None) -> dict[str, Any]:
@@ -9916,7 +10071,7 @@ def _artifact_current_payload(
         return {
             "ok": True,
             "action": "artifact_current",
-            "scope": {"kind": "repo" if scope_repo_id else "legacy", "repo_id": scope_repo_id},
+            "scope": {"kind": "repo", "repo_id": scope_repo_id or identity.repo_id, "project_id": identity.project_id},
             "runtime": {
                 "package_version": CLI_VERSION,
                 "version": runtime_version,
@@ -9947,18 +10102,17 @@ def _artifact_current_payload(
                 "code_version_match_status": "matches" if code_matches_adopted_source else ("not_applicable_external_repo_baseline" if not code_version_match_applicable else "mismatch"),
                 "project_home_url_present": bool(state.get("project_home_url")),
             },
+            "status": str(registry_state.get("status") or "artifact_registry_loaded"),
+            "registry_source": "project_registry",
             "registry_file": str(registry.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "project_id": identity.project_id,
+            "repo_id": identity.repo_id,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
         }
-
-    identity = None
-    try:
-        identity = load_repo_identity(Path.cwd())
-    except ValueError:
-        identity = None
-    project_scoped_registry = bool(
-        identity is not None
-        and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve()
-    )
 
     def all_payload(repo_filter: str | None = None) -> dict[str, Any]:
         selected_repo_ids = [repo_filter] if repo_filter else available_repo_ids()
@@ -9967,14 +10121,12 @@ def _artifact_current_payload(
             if not current_repo_id:
                 continue
             repos[current_repo_id] = single_payload(current_repo_id)
-        scope = {"kind": "project" if identity is not None else "all_repos"}
-        if identity is not None and project_scoped_registry:
-            scope.update({
-                "project_id": identity.project_id,
-                "project_home_url": identity.project_home_url,
-                "repo_id": identity.repo_id,
-                "registry_source": "project_registry",
-            })
+        scope = {
+            "kind": "project",
+            "project_id": identity.project_id,
+            "project_home_url": identity.project_home_url,
+            "repo_id": identity.repo_id,
+        }
         if repo_filter:
             scope["repo_filter"] = repo_filter
         missing = [repo_id for repo_id, repo_payload in repos.items() if isinstance(repo_payload, dict) and not repo_payload.get("ok")]
@@ -9982,43 +10134,28 @@ def _artifact_current_payload(
         payload = {
             "ok": ok,
             "action": "artifact_current_all",
+            "status": str(registry_state.get("status") or "artifact_registry_loaded"),
             "scope": scope,
             "repo_count": len(repos),
             "repos": repos,
             "missing_repo_count": len(missing),
             "missing_repos": missing,
+            "registry_source": "project_registry",
             "registry_file": str(registry.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "project_id": identity.project_id,
+            "repo_id": identity.repo_id,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
         }
         if repo_filter and missing:
             payload["status"] = "repo_current_not_found"
             payload["available_repos"] = available_repo_ids()
-            # Compatibility fields for callers that previously consumed the
-            # single-repo missing payload. The canonical state now lives under
-            # repos[repo_id], but missing lookups still fail closed at top level.
-            payload["state"] = None
-            payload["registry_current"] = None
         return payload
 
-    if project_scoped_registry:
-        return all_payload(normalized_repo_id or None)
-
-    if all_repos:
-        return all_payload(normalized_repo_id or None)
-
-    if not normalized_repo_id and registry.is_current_ambiguous():
-        available = registry.repo_ids()
-        return {
-            "ok": False,
-            "action": "artifact_current",
-            "status": "ambiguous_repo_scope",
-            "scope": {"kind": "ambiguous"},
-            "repo_count": len(available),
-            "available_repos": available,
-            "next_safe_commands": [*(f"pb artifact current --repo {repo} --json" for repo in available), "pb artifact current --all --json"],
-            "registry_file": str(registry.path),
-        }
-
-    return single_payload(normalized_repo_id)
+    return all_payload(normalized_repo_id or None)
 
 
 def _version_tuple_for_operator_order(value: Any) -> tuple[int, ...] | None:
@@ -15535,7 +15672,7 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         project_url=project_url,
     )
     artifact_record = registry.add(record)
-    _state_store_from_args(args).remember_artifact(
+    _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=artifact_filename,
         artifact_version=artifact_version,
@@ -15543,7 +15680,7 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         source_version=artifact_version,
         repo_id=repo_id,
     )
-    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_state_store_from_args(args))
+    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_artifact_state_store(registry))
     current_ok, current_checks = _report_artifact_current_matches_candidate(
         current_payload,
         filename=artifact_filename,
@@ -17892,45 +18029,45 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 for error in payload.get("errors") or []:
                     print(f"error={error}")
         return 0 if payload.get("ok") else 2
-    if args.project_command == "import-current-registry":
-        identity_payload = _current_project_identity_payload(args)
-        if not identity_payload.get("ok"):
-            payload = {"action": "project_import_current_registry", **identity_payload}
-        else:
-            try:
-                identity = load_repo_identity(Path.cwd())
-                if identity is None:
-                    raise ValueError("project identity not found")
-                payload = import_current_registry(
-                    identity,
-                    source_profile_dir=getattr(args, "from_profile_dir", None),
-                    dry_run=bool(getattr(args, "dry_run", False)),
-                    replace=bool(getattr(args, "replace", False)),
-                )
-            except Exception as exc:
-                payload = {"ok": False, "action": "project_import_current_registry", "status": "import_failed", "error": str(exc)}
-        if getattr(args, "json", False):
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print(f"status={payload.get('status')}")
-            print(f"project_id={payload.get('project_id') or ''}")
-            print(f"source_registry_file={payload.get('source_registry_file') or ''}")
-            print(f"target_registry_file={payload.get('target_registry_file') or payload.get('registry_file') or ''}")
-            print(f"planned_import_count={payload.get('planned_import_count', 0)}")
-            print(f"imported_count={payload.get('imported_count', 0)}")
-            print(f"conflict_count={payload.get('conflict_count', 0)}")
-            if payload.get("next_safe_action"):
-                print(f"next_safe_action={payload.get('next_safe_action')}")
-        return 0 if payload.get("ok") else 2
     raise RuntimeError(f"Unknown project command: {args.project_command}")
 
 
 def _repo_list_payload(args: argparse.Namespace) -> dict[str, Any]:
     identity_payload = _current_project_identity_payload(args)
     if not identity_payload.get("ok"):
-        return {"action": "repo_list", **identity_payload}
+        return {
+            "action": "repo_list",
+            **identity_payload,
+            "registry_source": "unresolved",
+            "registry_exists": False,
+            "registry_valid": False,
+            "registry_readable": False,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+        }
     project_id = str(identity_payload["project_id"])
+    current_repo_id = str(identity_payload["repo_id"])
     registry = ArtifactRegistry(project_registry_dir(project_id))
+    registry_state = registry.inspect()
+    if not registry_state.get("ok"):
+        return {
+            "ok": False,
+            "action": "repo_list",
+            "status": registry_state.get("status"),
+            "project_id": project_id,
+            "repo_id": current_repo_id,
+            "scope": {"kind": "project", "project_id": project_id, "repo_id": current_repo_id},
+            "registry_source": "project_registry",
+            "registry_file": str(registry.path),
+            "registry_exists": bool(registry_state.get("registry_exists")),
+            "registry_valid": bool(registry_state.get("registry_valid")),
+            "registry_readable": bool(registry_state.get("registry_readable")),
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "repo_count": None,
+            "repos": None,
+            "error": registry_state.get("error"),
+        }
     store = ConversationStateStore(str(project_registry_dir(project_id)))
     repos_cfg = configured_repos(project_id)
     registry_ids = registry.repo_ids()
@@ -17940,12 +18077,19 @@ def _repo_list_payload(args: argparse.Namespace) -> dict[str, Any]:
         current = registry.current(repo_id=repo_id)
         state = store.snapshot(identity_payload.get("project_home_url"), repo_id=repo_id)
         cfg = repos_cfg.get(repo_id, {})
+        repo_root = cfg.get("repo_root")
+        identity_file = str(Path(str(repo_root)).expanduser() / REPO_IDENTITY_FILE_NAME) if repo_root else None
+        legacy_registry_file = str(Path(str(repo_root)).expanduser() / ".pb_profile" / "promptbranch_artifacts.json") if repo_root else None
         repos.append({
             "repo_id": repo_id,
-            "repo_root": cfg.get("repo_root"),
+            "repo_root": repo_root,
             "role": cfg.get("role"),
             "artifact_pattern": cfg.get("artifact_pattern"),
             "configured": repo_id in repos_cfg,
+            "identity_file": identity_file,
+            "identity_exists": bool(identity_file and Path(identity_file).is_file()),
+            "legacy_repo_local_registry_file": legacy_registry_file,
+            "legacy_repo_local_registry_exists": bool(legacy_registry_file and Path(legacy_registry_file).exists()),
             "current_artifact": (current or {}).get("filename") or state.get("artifact_ref"),
             "current_version": (current or {}).get("version") or state.get("artifact_version"),
             "status": "current_found" if current else "missing_current_artifact",
@@ -17953,11 +18097,18 @@ def _repo_list_payload(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "ok": True,
         "action": "repo_list",
+        "status": registry_state.get("status"),
         "project_id": project_id,
         "project_home_url": identity_payload.get("project_home_url"),
-        "current_repo_id": identity_payload.get("repo_id"),
+        "current_repo_id": current_repo_id,
+        "scope": {"kind": "project", "project_id": project_id, "repo_id": current_repo_id},
         "registry_file": str(registry.path),
         "registry_source": "project_registry",
+        "registry_exists": True,
+        "registry_valid": True,
+        "registry_readable": True,
+        "resolution_method": "identity_manifest",
+        "fallback_used": False,
         "local_repo_config_file": str(project_repo_config_path(project_id)),
         "repo_count": len(repos),
         "repos": repos,
@@ -17969,34 +18120,55 @@ def _repo_doctor_payload(args: argparse.Namespace) -> dict[str, Any]:
     if not base.get("ok"):
         return {"action": "repo_doctor", **base, "status": base.get("status") or "failed"}
     checks: list[dict[str, Any]] = []
+
     def check(check_id: str, passed: bool, **details: Any) -> None:
         item = {"id": check_id, "status": "passed" if passed else "failed"}
         if details:
             item["details"] = details
         checks.append(item)
+
     project_id = str(base.get("project_id"))
     repos = base.get("repos") if isinstance(base.get("repos"), list) else []
     repo_ids = [str(item.get("repo_id")) for item in repos if isinstance(item, dict) and item.get("repo_id")]
     check("project_identity_found", True)
-    check("project_registry_readable", Path(str(base.get("registry_file"))).exists(), registry_file=base.get("registry_file"))
+    check("project_registry_loaded", base.get("registry_valid") is True and base.get("registry_readable") is True, registry_file=base.get("registry_file"), registry_status=base.get("status"))
     check("repo_ids_unique", len(repo_ids) == len(set(repo_ids)), repo_ids=repo_ids)
     not_joined = [repo for repo in repos if isinstance(repo, dict) and not repo.get("configured")]
-    check("configured_repos_known", not not_joined, missing_from_local_config=[r.get("repo_id") for r in not_joined])
+    check("registry_repos_are_configured", not not_joined, unconfigured_registry_repos=[r.get("repo_id") for r in not_joined])
+    missing_identity = [repo.get("repo_id") for repo in repos if isinstance(repo, dict) and repo.get("configured") and not repo.get("identity_exists")]
+    check("configured_repos_have_identity", not missing_identity, missing_identity_repos=missing_identity)
+    legacy_registries = [repo.get("repo_id") for repo in repos if isinstance(repo, dict) and repo.get("legacy_repo_local_registry_exists")]
+    check("legacy_repo_local_registries_absent", not legacy_registries, legacy_registry_repos=legacy_registries)
     missing_current = [repo.get("repo_id") for repo in repos if isinstance(repo, dict) and repo.get("status") != "current_found"]
     check("configured_repos_have_current_artifact", not missing_current, missing_current_artifact=missing_current)
-    bad_roots = []
-    bad_patterns = []
+    bad_roots: list[str] = []
+    bad_patterns: list[str] = []
+    mismatched_identities: list[str] = []
     for repo in repos:
         if not isinstance(repo, dict):
             continue
+        repo_id = str(repo.get("repo_id") or "")
         root = repo.get("repo_root")
-        if root and not Path(str(root)).expanduser().is_dir():
-            bad_roots.append(repo.get("repo_id"))
-        if not artifact_prefix_matches(str(repo.get("repo_id") or ""), repo.get("artifact_pattern") if isinstance(repo.get("artifact_pattern"), str) else None):
-            bad_patterns.append(repo.get("repo_id"))
+        if not root or not Path(str(root)).expanduser().is_dir():
+            bad_roots.append(repo_id)
+            continue
+        if not artifact_prefix_matches(repo_id, repo.get("artifact_pattern") if isinstance(repo.get("artifact_pattern"), str) else None):
+            bad_patterns.append(repo_id)
+        try:
+            identity = load_repo_identity(Path(str(root)))
+        except ValueError:
+            identity = None
+        if identity is None or identity.project_id != project_id or identity.repo_id != repo_id or identity.repo_root.resolve() != Path(str(root)).expanduser().resolve():
+            mismatched_identities.append(repo_id)
     check("repo_roots_exist", not bad_roots, missing_repo_roots=bad_roots)
     check("artifact_patterns_match_repo_ids", not bad_patterns, mismatched_patterns=bad_patterns)
-    missing_payload = _artifact_current_payload(None, ArtifactRegistry(project_registry_dir(project_id)), repo_id="__promptbranch_missing_repo_doctor__", state_store=ConversationStateStore(str(project_registry_dir(project_id))))
+    check("configured_repo_identities_match", not mismatched_identities, mismatched_identity_repos=mismatched_identities)
+    missing_payload = _artifact_current_payload(
+        None,
+        ArtifactRegistry(project_registry_dir(project_id)),
+        repo_id="__promptbranch_missing_repo_doctor__",
+        state_store=ConversationStateStore(str(project_registry_dir(project_id))),
+    )
     check("missing_repo_lookup_fails_closed", missing_payload.get("status") == "repo_current_not_found", observed_status=missing_payload.get("status"))
     ok = all(item.get("status") == "passed" for item in checks)
     return {**base, "action": "repo_doctor", "ok": ok, "status": "passed" if ok else "failed", "checks": checks}
@@ -18024,7 +18196,7 @@ async def cmd_artifact_current(backend: Any, args: argparse.Namespace) -> int:
     registry = _artifact_registry_from_args(args)
     repo_id = normalize_repo_id(getattr(args, "repo", None))
     all_repos = bool(getattr(args, "all", False))
-    payload = _artifact_current_payload(backend, registry, repo_id=repo_id, all_repos=all_repos, state_store=_state_store_from_args(args))
+    payload = _artifact_current_payload(backend, registry, repo_id=repo_id, all_repos=all_repos, state_store=_artifact_state_store(registry))
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -19153,7 +19325,6 @@ def _current_adopted_candidate_fallback(
         current_payload,
         filename=requested_artifact,
         version=requested_version,
-        allow_legacy_single_payload=True,
     )
     state = current_sections["state"]
     registry_current = current_sections["registry_current"]
@@ -20153,7 +20324,7 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         project_url=project_url,
     )
     artifact_payload = registry.add(record)
-    _state_store_from_args(args).remember_artifact(
+    _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=filename,
         artifact_version=candidate_version,
@@ -20161,7 +20332,7 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         source_version=candidate_version,
         repo_id=repo_id,
     )
-    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_state_store_from_args(args))
+    current_payload = _artifact_current_payload(backend, registry, repo_id=repo_id, state_store=_artifact_state_store(registry))
     current_ok, current_checks = _report_artifact_current_matches_candidate(current_payload, filename=filename, version=candidate_version, require_runtime_code_match=False)
     if not current_ok:
         return emit({**preflight, "ok": False, "status": "artifact_current_mismatch", "local_artifact": artifact_payload, "artifact_current": current_payload, "current_checks": current_checks, "adoption_performed": True, "artifact_registry_updated": True, "state_artifact_updated": True, "state_source_updated": True, "error": "local adoption was attempted, but artifact current does not match the accepted candidate"}, 1)
@@ -20200,7 +20371,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
     identity = _project_identity_from_cwd(args)
     if (not project_url or project_url == DEFAULT_PROJECT_URL) and identity is not None and registry.profile_dir.resolve() == project_registry_dir(identity.project_id).resolve():
         project_url = identity.project_home_url
-    before_state = _state_store_from_args(args).snapshot(project_url)
+    before_state = _artifact_state_store(registry).snapshot(project_url)
     before_registry = _artifact_registry_snapshot(registry)
 
     base_payload: dict[str, Any] = {
@@ -20379,7 +20550,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         project_url=project_url,
     )
     artifact_payload = registry.add(record)
-    _state_store_from_args(args).remember_artifact(
+    _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=filename,
         artifact_version=filename_version,
@@ -20387,7 +20558,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         source_version=filename_version,
         repo_id=repo_id,
     )
-    after_state = _state_store_from_args(args).snapshot(project_url, repo_id=repo_id)
+    after_state = _artifact_state_store(registry).snapshot(project_url, repo_id=repo_id)
     after_registry = _artifact_registry_snapshot(registry, repo_id=repo_id)
     source_verification = {
         "ok": True if local_only else len(matched_sources) == 1,
@@ -20510,7 +20681,7 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
     artifact_payload = registry.add(record)
     project_url = _artifact_state_project_url(backend)
     if project_url:
-        _state_store_from_args(args).remember_artifact(
+        _artifact_state_store(registry).remember_artifact(
             project_url=project_url,
             artifact_ref=record.filename,
             artifact_version=record.version,
@@ -23738,14 +23909,6 @@ def make_parser() -> argparse.ArgumentParser:
     project_next_slice = project_subparsers.add_parser("next-slice", help="Show the next slice derived from the validated project control surface.")
     project_next_slice.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     project_next_slice.add_argument("--json", action="store_true")
-    project_import = project_subparsers.add_parser(
-        "import-current-registry",
-        help="Explicitly import current records from an existing repo-local registry into the joined project registry.",
-    )
-    project_import.add_argument("--from-profile-dir", help="Legacy profile directory to import from. Defaults to the current repo's .pb_profile.")
-    project_import.add_argument("--dry-run", action="store_true", help="Plan the import without writing the project registry or project state.")
-    project_import.add_argument("--replace", action="store_true", help="Explicitly replace conflicting current records in the project registry.")
-    project_import.add_argument("--json", action="store_true")
 
     repo = subparsers.add_parser("repo", help="Project-scoped repo inventory and diagnostics.")
     repo_subparsers = repo.add_subparsers(dest="repo_command", required=True)
@@ -23759,7 +23922,7 @@ def make_parser() -> argparse.ArgumentParser:
 
     artifact_current = artifact_subparsers.add_parser("current", help="Show the current artifact/source state.")
     artifact_current.add_argument("--repo", help="Optional repo id filter. Project commands still use the same repo-loop payload shape.")
-    artifact_current.add_argument("--all", action="store_true", help="Compatibility no-op for joined projects: project current-state already loops over all configured repos.")
+    artifact_current.add_argument("--all", action="store_true", help="Show current state for every repository in the authoritative project dataset.")
     artifact_current.add_argument("--json", action="store_true")
 
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
@@ -24752,6 +24915,22 @@ async def _async_main(args: argparse.Namespace) -> int:
         if args.command == "shell":
             return await cmd_shell(backend, args)
         raise RuntimeError(f"Unknown command: {args.command}")
+    except ProjectRegistryResolutionError as exc:
+        payload = dict(exc.payload)
+        payload["command"] = getattr(args, "command", None)
+        if _json_output_requested(args):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"{payload.get('status')}: {payload.get('error')}", file=sys.stderr)
+        return 2
+    except ArtifactRegistryStateError as exc:
+        payload = exc.to_payload(action="artifact_registry")
+        payload["command"] = getattr(args, "command", None)
+        if _json_output_requested(args):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"{payload.get('status')}: {payload.get('error')}", file=sys.stderr)
+        return 2
     except ProfileLeaseError as exc:
         return _emit_profile_lease_error(exc, args)
     finally:

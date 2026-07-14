@@ -33,7 +33,7 @@ def load_config(path: str | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the v0.1.103.10.104 backend protocol discovery diagnostic with one bounded Library UI recovery cycle after authoritative backend presence and the unchanged bounded unique Library delete-confirmation proof, immutable request phases, an authoritative request-sequence boundary, dedicated bounded upload-stream identity capture, exact soft-delete proof, and Recently deleted inventory discovery."
+        description="Run the v0.1.103.10.105 backend protocol discovery diagnostic with one bounded Library UI recovery cycle after authoritative backend presence and the unchanged bounded unique Library delete-confirmation proof, immutable request phases, an authoritative request-sequence boundary, dedicated bounded upload-stream identity capture, exact soft-delete proof, and Recently deleted inventory discovery."
     )
     parser.add_argument("--config", default=os.getenv("CHATGPT_CLI_CONFIG", DEFAULT_CONFIG_PATH))
     parser.add_argument("--service-base-url")

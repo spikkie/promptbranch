@@ -145,25 +145,10 @@ def canonical_artifact_filename(repo_id: str, version: str) -> str | None:
 
 
 def infer_repo_id_from_artifact_filename(filename: str | None) -> str | None:
-    """Return a portable repo identifier inferred from a Promptbranch ZIP name.
-
-    New artifacts should use the canonical ``<repo_id>_v<version>.zip``
-    grammar.  This inference function still accepts older non-v filenames for
-    read-only compatibility with legacy registry records; mutating commands may
-    enforce the stricter canonical grammar explicitly.
-    """
+    """Return the explicit repository identifier from a canonical artifact name."""
 
     parsed = parse_canonical_artifact_filename(filename)
-    if parsed:
-        return parsed["repo_id"]
-    value = str(filename or "").strip()
-    if not value.endswith(".zip") or "_" not in value:
-        return None
-    stem = value[:-4]
-    prefix, version = stem.rsplit("_", 1)
-    if not prefix or not re.fullmatch(r"v?\d+(?:\.\d+){2,}", version):
-        return None
-    return prefix
+    return parsed["repo_id"] if parsed else None
 
 
 def normalize_repo_id(value: str | None) -> str | None:
@@ -417,6 +402,40 @@ class ArtifactRecord:
         return asdict(self)
 
 
+class ArtifactRegistryStateError(RuntimeError):
+    def __init__(
+        self,
+        status: str,
+        path: str | Path,
+        *,
+        registry_exists: bool,
+        registry_valid: bool,
+        registry_readable: bool,
+        error: str | None = None,
+    ) -> None:
+        self.status = status
+        self.path = Path(path).expanduser()
+        self.registry_exists = registry_exists
+        self.registry_valid = registry_valid
+        self.registry_readable = registry_readable
+        self.error = error or status
+        super().__init__(self.error)
+
+    def to_payload(self, *, action: str = "artifact_registry") -> dict[str, Any]:
+        return {
+            "ok": False,
+            "action": action,
+            "status": self.status,
+            "registry_source": "project_registry",
+            "registry_file": str(self.path),
+            "registry_exists": self.registry_exists,
+            "registry_valid": self.registry_valid,
+            "registry_readable": self.registry_readable,
+            "fallback_used": False,
+            "error": self.error,
+        }
+
+
 class ArtifactRegistry:
     def __init__(self, profile_dir: str | Path) -> None:
         base = Path(profile_dir).expanduser()
@@ -424,35 +443,139 @@ class ArtifactRegistry:
         self.path = base / ARTIFACT_REGISTRY_NAME
         self.artifact_dir = base / ARTIFACT_DIR_NAME
 
-    def load(self) -> dict[str, Any]:
+    def inspect(self) -> dict[str, Any]:
         if not self.path.exists():
-            return {"schema_version": 1, "artifacts": []}
+            return {
+                "ok": False,
+                "status": "artifact_registry_missing",
+                "registry_file": str(self.path),
+                "registry_exists": False,
+                "registry_valid": False,
+                "registry_readable": False,
+                "payload": None,
+                "error": f"artifact registry does not exist: {self.path}",
+            }
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"schema_version": 1, "artifacts": []}
-        if not isinstance(payload, dict):
-            return {"schema_version": 1, "artifacts": []}
-        artifacts = payload.get("artifacts")
-        if not isinstance(artifacts, list):
-            payload["artifacts"] = []
-        payload.setdefault("schema_version", 1)
+            raw = self.path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {
+                "ok": False,
+                "status": "artifact_registry_unreadable",
+                "registry_file": str(self.path),
+                "registry_exists": True,
+                "registry_valid": False,
+                "registry_readable": False,
+                "payload": None,
+                "error": f"artifact registry is unreadable: {exc}",
+            }
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            return {
+                "ok": False,
+                "status": "artifact_registry_invalid",
+                "registry_file": str(self.path),
+                "registry_exists": True,
+                "registry_valid": False,
+                "registry_readable": True,
+                "payload": None,
+                "error": f"artifact registry contains invalid JSON: {exc}",
+            }
+        if not isinstance(payload, dict) or int(payload.get("schema_version") or 0) != 1 or not isinstance(payload.get("artifacts"), list):
+            return {
+                "ok": False,
+                "status": "artifact_registry_invalid",
+                "registry_file": str(self.path),
+                "registry_exists": True,
+                "registry_valid": False,
+                "registry_readable": True,
+                "payload": None,
+                "error": "artifact registry must be a schema_version=1 JSON object with an artifacts array",
+            }
+        for index, item in enumerate(payload["artifacts"]):
+            error = self._record_validation_error(item)
+            if error:
+                return {
+                    "ok": False,
+                    "status": "artifact_registry_invalid",
+                    "registry_file": str(self.path),
+                    "registry_exists": True,
+                    "registry_valid": False,
+                    "registry_readable": True,
+                    "payload": None,
+                    "error": f"artifact registry record {index} is invalid: {error}",
+                }
+        return {
+            "ok": True,
+            "status": "artifact_registry_empty" if not payload["artifacts"] else "artifact_registry_loaded",
+            "registry_file": str(self.path),
+            "registry_exists": True,
+            "registry_valid": True,
+            "registry_readable": True,
+            "payload": payload,
+            "error": None,
+        }
+
+    def initialize(self) -> dict[str, Any]:
+        if self.path.exists():
+            state = self.inspect()
+            if not state["ok"]:
+                raise ArtifactRegistryStateError(
+                    state["status"],
+                    self.path,
+                    registry_exists=bool(state["registry_exists"]),
+                    registry_valid=bool(state["registry_valid"]),
+                    registry_readable=bool(state["registry_readable"]),
+                    error=str(state.get("error") or state["status"]),
+                )
+            return dict(state["payload"])
+        payload = {"schema_version": 1, "artifacts": []}
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return payload
+
+    def load(self) -> dict[str, Any]:
+        state = self.inspect()
+        if not state["ok"]:
+            raise ArtifactRegistryStateError(
+                state["status"],
+                self.path,
+                registry_exists=bool(state["registry_exists"]),
+                registry_valid=bool(state["registry_valid"]),
+                registry_readable=bool(state["registry_readable"]),
+                error=str(state.get("error") or state["status"]),
+            )
+        return dict(state["payload"])
 
     def list(self) -> list[dict[str, Any]]:
         artifacts = self.load().get("artifacts")
         return [item for item in artifacts if isinstance(item, dict)] if isinstance(artifacts, list) else []
 
     @staticmethod
+    def _record_validation_error(record: Any) -> str | None:
+        if not isinstance(record, dict):
+            return "record must be a JSON object"
+        repo_id = record.get("repo_id")
+        if not isinstance(repo_id, str) or not repo_id.strip():
+            return "repo_id is required"
+        normalized_repo_id = normalize_repo_id(repo_id)
+        if normalized_repo_id != repo_id:
+            return "repo_id must already be normalized"
+        filename = record.get("filename")
+        parsed = parse_canonical_artifact_filename(filename if isinstance(filename, str) else None)
+        if parsed is None:
+            return "filename must use canonical <repo_id>_v<version>.zip grammar"
+        if parsed["repo_id"] != repo_id:
+            return "filename repo_id does not match record repo_id"
+        version = canonical_version_tag(record.get("version") if isinstance(record.get("version"), str) else None)
+        if version != parsed["version"]:
+            return "record version does not match canonical filename version"
+        return None
+
+    @staticmethod
     def _record_repo_id(record: dict[str, Any]) -> str | None:
-        repo_id = normalize_repo_id(record.get("repo_id") if isinstance(record.get("repo_id"), str) else None)
-        if repo_id:
-            return repo_id
-        inferred = infer_repo_id_from_artifact_filename(record.get("filename") if isinstance(record.get("filename"), str) else None)
-        if inferred:
-            return inferred
-        repo_path = record.get("repo_path") if isinstance(record.get("repo_path"), str) else None
-        return normalize_repo_id(repo_path) if repo_path else None
+        repo_id = record.get("repo_id")
+        return repo_id if isinstance(repo_id, str) and repo_id else None
 
     def repo_ids(self) -> list[str]:
         ids = {repo_id for item in self.list() if (repo_id := self._record_repo_id(item))}
@@ -462,6 +585,9 @@ class ArtifactRegistry:
         payload = self.load()
         artifacts = [item for item in payload.get("artifacts", []) if isinstance(item, dict)]
         record_payload = record.to_dict()
+        record_error = self._record_validation_error(record_payload)
+        if record_error:
+            raise ValueError(f"artifact record is invalid: {record_error}")
         artifacts = [item for item in artifacts if item.get("path") != record.path]
         artifacts.append(record_payload)
         artifacts.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)

@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-  "active_candidate_version": "v0.1.103.10.104",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+  "active_candidate_version": "v0.1.103.10.105",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+  "active_slice": "v0.1.103.10.105 — fail-closed project registry clean break",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -228,16 +228,23 @@
       "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
       "status": "candidate",
       "created_at": "2026-07-14T12:10:00Z"
+    },
+    {
+      "version": "v0.1.103.10.105",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:34:56Z"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-14T12:10:00Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-  "next_normal_slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
-  "next_normal_version": "v0.1.103.10.104",
+  "last_updated": "2026-07-14T12:34:56Z",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+  "next_normal_slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+  "next_normal_version": "v0.1.103.10.105",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -602,6 +609,14 @@
       "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
       "status": "candidate",
       "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
+    },
+    {
+      "version": "v0.1.103.10.105",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "status": "candidate",
+      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
     }
   ],
   "release_mode": "repair",
@@ -706,6 +721,12 @@
       "kind": "repair",
       "status": "candidate",
       "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
+    },
+    {
+      "version": "v0.1.103.10.105",
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -730,13 +751,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
       "release_mode": "repair",
-      "scope": "after exact backend presence is stable, perform one bounded active-Library UI recovery cycle: clear and reapply the exact search, then at most one controlled reload and exact-search reapplication; exact row binding and the v0.1.103.10.103 confirmation/mutation proof remain mandatory",
-      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "scope": "remove repo-local artifact-registry fallback and legacy registry import; require explicit repository identity, configured project membership, canonical repo-root agreement, and an existing valid project registry for all artifact reads and mutations; classify missing, invalid, unreadable, unresolved, and ambiguous state explicitly and fail closed without migration or reconciliation",
+      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-      "version": "v0.1.103.10.104"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "version": "v0.1.103.10.105"
     },
     {
       "release_mode": "normal",
@@ -780,7 +801,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.104",
+  "updated_for": "v0.1.103.10.105",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -830,6 +851,13 @@
       "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
       "status": "candidate",
       "created_at": "2026-07-14T12:10:00Z"
+    },
+    {
+      "version": "v0.1.103.10.105",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "status": "candidate",
+      "created_at": "2026-07-14T12:34:56Z"
     }
   ]
 }

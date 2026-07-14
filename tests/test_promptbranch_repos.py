@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry
-from promptbranch_cli import _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload, build_backend
+from promptbranch_cli import ProjectRegistryResolutionError, _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload, build_backend, make_parser
 from promptbranch_project import load_repo_identity, project_registry_dir, write_repo_identity, join_local_repo
 from promptbranch_state import ConversationStateStore
 
@@ -31,12 +31,13 @@ def _join_repo(tmp_path: Path, repo_id: str, role: str = "member") -> Path:
 
 def _add_current(project_dir: Path, repo_id: str, version: str) -> None:
     registry = ArtifactRegistry(project_dir)
-    filename = f"{repo_id}_{version}.zip"
+    normalized_version = version if version.startswith("v") else f"v{version}"
+    filename = f"{repo_id}_{normalized_version}.zip"
     registry.add(ArtifactRecord(
         path=str(project_dir / filename),
         filename=filename,
         kind="adopted_release",
-        version=version,
+        version=normalized_version,
         repo_path=None,
         repo_id=repo_id,
         sha256="a" * 64,
@@ -49,9 +50,9 @@ def _add_current(project_dir: Path, repo_id: str, version: str) -> None:
     ConversationStateStore(str(project_dir)).remember_artifact(
         project_url=PROJECT_URL,
         artifact_ref=filename,
-        artifact_version=version,
+        artifact_version=normalized_version,
         source_ref=filename,
-        source_version=version,
+        source_version=normalized_version,
         repo_id=repo_id,
     )
 
@@ -155,8 +156,8 @@ def test_repo_list_uses_project_registry_from_any_joined_repo(monkeypatch, tmp_p
     assert payload["project_id"] == "kubernetes"
     assert payload["registry_file"] == str(project_dir / "promptbranch_artifacts.json")
     by_repo = {item["repo_id"]: item for item in payload["repos"]}
-    assert by_repo["my_awx"]["current_artifact"] == "my_awx_0.0.200.zip"
-    assert by_repo["platform-gitops"]["current_artifact"] == "platform-gitops_0.0.3.zip"
+    assert by_repo["my_awx"]["current_artifact"] == "my_awx_v0.0.200.zip"
+    assert by_repo["platform-gitops"]["current_artifact"] == "platform-gitops_v0.0.3.zip"
 
 
 def test_artifact_current_all_works_from_any_joined_repo(monkeypatch, tmp_path: Path) -> None:
@@ -180,8 +181,8 @@ def test_artifact_current_all_works_from_any_joined_repo(monkeypatch, tmp_path: 
     assert payload["scope"]["kind"] == "project"
     assert payload["scope"]["project_id"] == "kubernetes"
     assert payload["repo_count"] == 2
-    assert payload["repos"]["my_awx"]["state"]["artifact_ref"] == "my_awx_0.0.200.zip"
-    assert payload["repos"]["my_gitlab"]["state"]["artifact_ref"] == "my_gitlab_0.0.14.zip"
+    assert payload["repos"]["my_awx"]["state"]["artifact_ref"] == "my_awx_v0.0.200.zip"
+    assert payload["repos"]["my_gitlab"]["state"]["artifact_ref"] == "my_gitlab_v0.0.14.zip"
 
 
 def test_repo_doctor_detects_missing_current(monkeypatch, tmp_path: Path) -> None:
@@ -216,8 +217,8 @@ def test_missing_repo_lookup_still_fails_closed(monkeypatch, tmp_path: Path) -> 
 
     assert payload["ok"] is False
     assert payload["status"] == "repo_current_not_found"
-    assert payload["state"] is None
-    assert payload["registry_current"] is None
+    assert payload["repos"]["does-not-exist"]["state"] is None
+    assert payload["repos"]["does-not-exist"]["registry_current"] is None
 
 
 def test_default_resolved_profile_dir_does_not_disable_project_registry(monkeypatch, tmp_path: Path) -> None:
@@ -232,7 +233,7 @@ def test_default_resolved_profile_dir_does_not_disable_project_registry(monkeypa
     assert registry.path == project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
 
 
-def test_explicit_profile_dir_still_overrides_project_registry(monkeypatch, tmp_path: Path) -> None:
+def test_explicit_profile_dir_cannot_override_project_registry(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
     repo = _join_repo(tmp_path, "my_awx", "consumer")
@@ -241,7 +242,8 @@ def test_explicit_profile_dir_still_overrides_project_registry(monkeypatch, tmp_
 
     registry = _artifact_registry_from_args(argparse.Namespace(profile_dir=str(explicit_profile), _profile_dir_explicit=True))
 
-    assert registry.path == explicit_profile / "promptbranch_artifacts.json"
+    assert registry.path == project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
+    assert not (explicit_profile / "promptbranch_artifacts.json").exists()
 
 
 def test_artifact_current_all_uses_configured_repos_when_project_registry_empty(monkeypatch, tmp_path: Path) -> None:
@@ -311,7 +313,7 @@ def test_joined_project_artifact_current_repo_filter_keeps_repo_loop_shape(monke
     assert payload["scope"]["repo_filter"] == "platform-gitops"
     assert payload["repo_count"] == 1
     assert list(payload["repos"]) == ["platform-gitops"]
-    assert payload["repos"]["platform-gitops"]["state"]["artifact_ref"] == "platform-gitops_0.0.3.zip"
+    assert payload["repos"]["platform-gitops"]["state"]["artifact_ref"] == "platform-gitops_v0.0.3.zip"
 
 
 def test_project_status_uses_same_repo_loop_management_payload(monkeypatch, tmp_path: Path) -> None:
@@ -332,3 +334,160 @@ def test_project_status_uses_same_repo_loop_management_payload(monkeypatch, tmp_
     assert identity_payload["ok"] is True
     assert repo_payload["repo_count"] == 2
     assert {item["repo_id"] for item in repo_payload["repos"]} == {"my_awx", "platform-gitops"}
+
+
+def test_artifact_registry_resolution_requires_identity_manifest(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = tmp_path / "unjoined"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+
+    try:
+        _artifact_registry_from_args(argparse.Namespace(profile_dir=str(repo / ".pb_profile"), _profile_dir_explicit=False))
+    except ProjectRegistryResolutionError as exc:
+        payload = exc.payload
+    else:
+        raise AssertionError("project registry resolution should fail")
+
+    assert payload["status"] == "project_scope_unresolved"
+    assert payload["registry_source"] == "unresolved"
+    assert payload["fallback_used"] is False
+    assert payload["missing_repo_count"] is None
+    assert not (repo / ".pb_profile" / "promptbranch_artifacts.json").exists()
+
+
+def test_artifact_registry_resolution_rejects_missing_project_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    registry_file = project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
+    registry_file.unlink()
+    monkeypatch.chdir(repo)
+
+    try:
+        _artifact_registry_from_args(argparse.Namespace(profile_dir=str(repo / ".pb_profile"), _profile_dir_explicit=False))
+    except ProjectRegistryResolutionError as exc:
+        payload = exc.payload
+    else:
+        raise AssertionError("missing registry should fail")
+
+    assert payload["status"] == "artifact_registry_missing"
+    assert payload["registry_source"] == "project_registry"
+    assert payload["registry_exists"] is False
+    assert payload["registry_valid"] is False
+    assert payload["project_id"] == "kubernetes"
+    assert payload["repo_id"] == "my_awx"
+    assert payload["fallback_used"] is False
+
+
+def test_artifact_registry_resolution_rejects_invalid_project_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    registry_file = project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
+    registry_file.write_text("{invalid", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    try:
+        _artifact_registry_from_args(argparse.Namespace(profile_dir=None, _profile_dir_explicit=False))
+    except ProjectRegistryResolutionError as exc:
+        payload = exc.payload
+    else:
+        raise AssertionError("invalid registry should fail")
+
+    assert payload["status"] == "artifact_registry_invalid"
+    assert payload["registry_exists"] is True
+    assert payload["registry_valid"] is False
+    assert payload["registry_readable"] is True
+
+
+
+def test_artifact_registry_resolution_rejects_unreadable_project_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    registry_file = project_registry_dir("kubernetes") / "promptbranch_artifacts.json"
+    original_read_text = Path.read_text
+
+    def unreadable(self: Path, *args, **kwargs):
+        if self == registry_file:
+            raise PermissionError("denied for test")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+    monkeypatch.chdir(repo)
+
+    try:
+        _artifact_registry_from_args(argparse.Namespace(profile_dir=None, _profile_dir_explicit=False))
+    except ProjectRegistryResolutionError as exc:
+        payload = exc.payload
+    else:
+        raise AssertionError("unreadable registry should fail")
+
+    assert payload["status"] == "artifact_registry_unreadable"
+    assert payload["registry_exists"] is True
+    assert payload["registry_valid"] is False
+    assert payload["registry_readable"] is False
+
+
+def test_artifact_registry_resolution_rejects_repo_local_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    legacy = repo / ".pb_profile" / "promptbranch_artifacts.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"schema_version": 1, "artifacts": []}), encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    try:
+        _artifact_registry_from_args(argparse.Namespace(profile_dir=None, _profile_dir_explicit=False))
+    except ProjectRegistryResolutionError as exc:
+        payload = exc.payload
+    else:
+        raise AssertionError("obsolete repo-local registry should fail")
+
+    assert payload["status"] == "legacy_repo_local_registry_detected"
+    assert payload["fallback_used"] is False
+    assert payload["missing_repo_count"] is None
+
+def test_artifact_current_missing_registry_is_not_empty_success(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    project_dir = project_registry_dir("kubernetes")
+    (project_dir / "promptbranch_artifacts.json").unlink()
+    monkeypatch.chdir(repo)
+
+    payload = _artifact_current_payload(None, ArtifactRegistry(project_dir), all_repos=True, state_store=ConversationStateStore(str(project_dir)))
+
+    assert payload["ok"] is False
+    assert payload["status"] == "artifact_registry_missing"
+    assert payload["repo_count"] is None
+    assert payload["missing_repo_count"] is None
+    assert payload["registry_exists"] is False
+
+
+def test_repo_doctor_reports_legacy_repo_local_registry(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "config"))
+    repo = _join_repo(tmp_path, "my_awx", "consumer")
+    _add_current(project_registry_dir("kubernetes"), "my_awx", "0.0.200")
+    legacy = repo / ".pb_profile" / "promptbranch_artifacts.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"schema_version": 1, "artifacts": []}), encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    payload = _repo_doctor_payload(argparse.Namespace(profile_dir=None))
+
+    assert payload["ok"] is False
+    checks = {item["id"]: item for item in payload["checks"]}
+    assert checks["legacy_repo_local_registries_absent"]["status"] == "failed"
+    assert checks["legacy_repo_local_registries_absent"]["details"]["legacy_registry_repos"] == ["my_awx"]
+
+
+def test_legacy_registry_import_command_is_removed() -> None:
+    parser = make_parser()
+    project_parser = next(action for action in parser._actions if getattr(action, "dest", None) == "command").choices["project"]
+    project_commands = next(action for action in project_parser._actions if getattr(action, "dest", None) == "project_command").choices
+    assert "import-current-registry" not in project_commands

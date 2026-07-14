@@ -1093,3 +1093,6 @@ The diagnostic Library delete helper now waits for asynchronous confirmation sur
 
 This candidate adds one diagnostic-only bounded Library UI recovery cycle after exact backend inventory presence is stable. It first clears and reapplies the exact filename search, then may perform one controlled reload and reapply the search. It does not change Project Source processing, visible-Library processing, deletion confirmation, backend protocol discovery, Recently deleted, hard-delete, canonical reupload, `pbsa`, or adoption behavior.
 
+## Clean-break state note — v0.1.103.10.105
+
+There is intentionally no backward-compatible registry migration. Start with a new Promptbranch project dataset, join every repository explicitly with `pb project join`, and allow that command to initialize the project-scoped `promptbranch_artifacts.json`. Remove or archive obsolete repository-local `.pb_profile/promptbranch_artifacts.json` files before artifact operations. Old registry records, noncanonical artifact names, missing explicit `repo_id`, invalid JSON, unreadable state, and unresolved project membership fail closed. No current/adopted state is inferred or reconciled automatically.
