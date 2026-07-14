@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-  "active_candidate_version": "v0.1.103.10.108",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+  "active_candidate_version": "v0.1.103.10.109",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.108 \u2014 enforce one Project Source per canonical/indexed family",
+  "active_slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -251,9 +251,9 @@
       "created_at": "2026-07-14T15:50:00Z"
     },
     {
-      "version": "v0.1.103.10.108",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-      "slice": "v0.1.103.10.108 \u2014 enforce one Project Source per canonical/indexed family",
+      "version": "v0.1.103.10.109",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+      "slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
       "status": "candidate",
       "created_at": "2026-07-14T16:45:00Z"
     }
@@ -263,9 +263,9 @@
   "last_completed_repair": "v0.1.103.10.68 \u2014 completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
   "last_updated": "2026-07-14T14:20:00Z",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-  "next_normal_slice": "v0.1.103.10.108 \u2014 enforce one Project Source per canonical/indexed family",
-  "next_normal_version": "v0.1.103.10.108",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+  "next_normal_slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
+  "next_normal_version": "v0.1.103.10.109",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -770,7 +770,7 @@
       "summary": "Uses one escaped canonical/indexed Project Source filename-family matcher, captures the highest pre-upload suffix as diagnostic evidence, uploads once, verifies the exact processing-stream assigned filename immediately, skips canonical-name persistence retries after assigned identity is known, and preserves malformed or duplicate exact-card fail-closed behavior."
     },
     {
-      "version": "v0.1.103.10.108",
+      "version": "v0.1.103.10.109",
       "kind": "repair",
       "status": "candidate",
       "summary": "After the current upload is proven by processing-stream file/libfile identity and exact assigned-card read-back, removes every other visible canonical/indexed family member by exact Project Source identity. Success now requires an authoritative final Project Sources surface containing exactly one family member: the newly assigned source. Cleanup failure or residual family members remain release-blocking."
@@ -798,13 +798,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
       "release_mode": "repair",
       "scope": "after proving the current upload and exact assigned Project Source card, remove every other visible canonical/indexed filename-family member by exact identity and return success only when the authoritative final surface contains exactly one family member: the newly assigned source",
-      "slice": "v0.1.103.10.108 \u2014 enforce one Project Source per canonical/indexed family",
+      "slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-      "version": "v0.1.103.10.108"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+      "version": "v0.1.103.10.109"
     },
     {
       "release_mode": "normal",
@@ -848,7 +848,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.108",
+  "updated_for": "v0.1.103.10.109",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -921,9 +921,9 @@
       "created_at": "2026-07-14T15:50:00Z"
     },
     {
-      "version": "v0.1.103.10.108",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip",
-      "slice": "v0.1.103.10.108 \u2014 enforce one Project Source per canonical/indexed family",
+      "version": "v0.1.103.10.109",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+      "slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
       "status": "candidate",
       "created_at": "2026-07-14T16:45:00Z"
     }

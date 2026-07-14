@@ -1855,6 +1855,8 @@ async def add_project_source(
     display_name: Optional[str] = Form(default=None, alias="name"),
     keep_open: bool = Form(False),
     overwrite_existing: bool = Form(True),
+    protected_release_version: Optional[str] = Form(default=None),
+    protected_release_filename: Optional[str] = Form(default=None),
     profile_lock_wait_seconds: Optional[float] = Form(default=None),
     allow_project_source_mutation: bool = Form(False),
     project_url: Optional[str] = Form(default=None),
@@ -1887,6 +1889,10 @@ async def add_project_source(
             "keep_open": keep_open,
             "overwrite_existing": overwrite_existing,
         }
+        if protected_release_version is not None:
+            call_kwargs["protected_release_version"] = protected_release_version
+        if protected_release_filename is not None:
+            call_kwargs["protected_release_filename"] = protected_release_filename
         if profile_lock_wait_seconds is not None:
             call_kwargs["profile_lock_wait_seconds"] = profile_lock_wait_seconds
         result = await _service_for(project_url).add_project_source(**call_kwargs)

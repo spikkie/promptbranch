@@ -1929,6 +1929,8 @@ def test_select_project_source_capacity_prune_candidate_chooses_lowest_same_fami
     candidate = browser_client._select_project_source_capacity_prune_candidate(
         requested_filename="chatgpt_claudecode_workflow_v0.0.277.zip",
         source_cards=sources,
+        protected_release_version="v0.0.276.18",
+        protected_release_filename="chatgpt_claudecode_workflow_v0.0.276.18.zip",
     )
 
     assert candidate is not None
@@ -1958,48 +1960,7 @@ def test_select_project_source_capacity_prune_candidate_requires_source_limit(
     )
 
 
-def test_select_project_source_capacity_prune_candidates_enforce_five_per_release_family(
-    browser_client: ChatGPTBrowserClient,
-) -> None:
-    sources = [
-        {
-            "title": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip",
-            "identity": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip Document",
-            "text": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip\nDocument",
-            "subtitle": "Document",
-        }
-        for version in range(90, 95)
-    ]
-    sources.extend(
-        [
-            {
-                "title": "docs-project-mvp.md",
-                "identity": "docs-project-mvp.md Document",
-                "text": "docs-project-mvp.md\nDocument",
-                "subtitle": "Document",
-            },
-            {
-                "title": "ib_forex_trading.0.248.21.zip",
-                "identity": "ib_forex_trading.0.248.21.zip Document",
-                "text": "ib_forex_trading.0.248.21.zip\nDocument",
-                "subtitle": "Document",
-            },
-        ]
-    )
-
-    candidates = browser_client._select_project_source_capacity_prune_candidates(
-        requested_filename="chatgpt_claudecode_workflow-2_v0.1.95.zip",
-        source_cards=sources,
-        source_limit=25,
-        retention_limit=5,
-    )
-
-    assert [item["filename"] for item in candidates] == ["chatgpt_claudecode_workflow-2_v0.1.90.zip"]
-    assert candidates[0]["reason"] == "release_source_retention_limit"
-    assert candidates[0]["same_family_source_count"] == 5
-
-
-def test_select_project_source_capacity_prune_candidates_prune_multiple_to_restore_retention(
+def test_select_project_source_capacity_prune_candidates_do_not_apply_retention_below_capacity(
     browser_client: ChatGPTBrowserClient,
 ) -> None:
     sources = [
@@ -2019,12 +1980,111 @@ def test_select_project_source_capacity_prune_candidates_prune_multiple_to_resto
         retention_limit=5,
     )
 
-    assert [item["filename"] for item in candidates] == [
-        "chatgpt_claudecode_workflow-2_v0.1.88.zip",
-        "chatgpt_claudecode_workflow-2_v0.1.89.zip",
-        "chatgpt_claudecode_workflow-2_v0.1.90.zip",
+    assert candidates == []
+
+
+def test_select_project_source_capacity_prune_candidates_select_exactly_one_at_capacity(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {
+            "title": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip",
+            "identity": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip Document",
+            "text": f"chatgpt_claudecode_workflow-2_v0.1.{version}.zip\nDocument",
+            "subtitle": "Document",
+        }
+        for version in range(88, 95)
     ]
-    assert {item["reason"] for item in candidates} == {"release_source_retention_limit"}
+    while len(sources) < 25:
+        index = len(sources)
+        sources.append({
+            "title": f"docs-{index}.md",
+            "identity": f"docs-{index}.md Document",
+            "text": f"docs-{index}.md\nDocument",
+            "subtitle": "Document",
+        })
+
+    candidates = browser_client._select_project_source_capacity_prune_candidates(
+        requested_filename="chatgpt_claudecode_workflow-2_v0.1.95.zip",
+        source_cards=sources,
+        source_limit=25,
+        retention_limit=5,
+        protected_release_version="v0.1.94",
+        protected_release_filename="chatgpt_claudecode_workflow-2_v0.1.94.zip",
+    )
+
+    assert [item["filename"] for item in candidates] == [
+        "chatgpt_claudecode_workflow-2_v0.1.88.zip"
+    ]
+    assert candidates[0]["reason"] == "project_source_total_limit"
+    assert candidates[0]["capacity_before"] == 25
+
+
+def test_capacity_prune_requires_accepted_current_identity(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {
+            "title": f"chatgpt_claudecode_workflow-2_v0.1.103.10.{version}.zip",
+            "identity": f"chatgpt_claudecode_workflow-2_v0.1.103.10.{version}.zip Zip Archive",
+            "text": f"chatgpt_claudecode_workflow-2_v0.1.103.10.{version}.zip\nZip Archive",
+            "subtitle": "Zip Archive",
+        }
+        for version in range(55, 80)
+    ]
+
+    candidate = browser_client._select_project_source_capacity_prune_candidate(
+        requested_filename="chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+        source_cards=sources,
+        source_limit=25,
+    )
+
+    assert candidate is None
+
+
+def test_capacity_prune_recognizes_indexed_long_versions_and_protects_current(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    sources = [
+        {
+            "title": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
+            "identity": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip Zip Archive",
+            "text": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip\nZip Archive",
+            "subtitle": "Zip Archive",
+        },
+        {
+            "title": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
+            "identity": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip Zip Archive",
+            "text": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip\nZip Archive",
+            "subtitle": "Zip Archive",
+        },
+        {
+            "title": "chatgpt_claudecode_workflow-2_v0.1.103.10.106(1).zip",
+            "identity": "chatgpt_claudecode_workflow-2_v0.1.103.10.106(1).zip Zip Archive",
+            "text": "chatgpt_claudecode_workflow-2_v0.1.103.10.106(1).zip\nZip Archive",
+            "subtitle": "Zip Archive",
+        },
+    ]
+    while len(sources) < 25:
+        index = len(sources)
+        sources.append({
+            "title": f"docs-{index}.md",
+            "identity": f"docs-{index}.md Document",
+            "text": f"docs-{index}.md\nDocument",
+            "subtitle": "Document",
+        })
+
+    candidate = browser_client._select_project_source_capacity_prune_candidate(
+        requested_filename="chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+        source_cards=sources,
+        source_limit=25,
+        protected_release_version="v0.1.103.10.68",
+        protected_release_filename="chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
+    )
+
+    assert candidate is not None
+    assert candidate["filename"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip"
+    assert candidate["normalized_version"] == "v0.1.103.10.55"
 
 
 def test_add_project_source_operation_prunes_lowest_same_family_release_at_source_limit(
@@ -2089,6 +2149,12 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
 
     async def fake_add_file(*_args, **_kwargs) -> None:
         call_order.append("add_file")
+        after_prune_sources.append({
+            "title": release_zip.name,
+            "identity": f"{release_zip.name} Document",
+            "text": f"{release_zip.name}\nDocument",
+            "subtitle": "Document",
+        })
 
     async def fake_wait_for_source_presence(*_args, **_kwargs):
         call_order.append("presence")
@@ -2131,7 +2197,7 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
     browser_client._wait_for_project_source_save_request_quiet = fake_wait_for_save_quiet  # type: ignore[method-assign]
     browser_client._verify_project_source_persistence = fake_verify_persistence  # type: ignore[method-assign]
     browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
-    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True}  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {"installed": True, "started": 1, "finished": 1, "saw_relevant": True, "saw_commit": True, "inflight": set()}  # type: ignore[method-assign]
     browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
     result = asyncio.run(
@@ -2143,6 +2209,8 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
             file_path=str(release_zip),
             display_name=None,
             keep_open=False,
+            protected_release_version="v0.0.276.18",
+            protected_release_filename="chatgpt_claudecode_workflow_v0.0.276.18.zip",
         )
     )
 
@@ -2157,9 +2225,14 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
     assert result["capacity_pruned"] is True
     assert result["removed_existing"] is True
     assert result["capacity_prune_result"]["source_name"] == "chatgpt_claudecode_workflow_v0.0.275.zip"
+    assert result["capacity_limit"] == 25
+    assert result["capacity_before"] == 25
+    assert result["capacity_after_prune"] == 24
+    assert result["capacity_after_upload"] == 25
+    assert result["upload_started"] is True
 
 
-def test_add_project_source_operation_prunes_old_generated_release_zips_to_keep_last_five(
+def test_add_project_source_operation_does_not_prune_release_zips_below_capacity(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
 ) -> None:
@@ -2274,22 +2347,76 @@ def test_add_project_source_operation_prunes_old_generated_release_zips_to_keep_
         )
     )
 
-    assert call_order[:3] == [
-        "remove:chatgpt_claudecode_workflow-2_v0.1.88.zip",
-        "remove:chatgpt_claudecode_workflow-2_v0.1.89.zip",
-        "remove:chatgpt_claudecode_workflow-2_v0.1.90.zip",
-    ]
-    assert call_order[3:] == ["add_file", "settle", "save_quiet", "verify"]
+    assert call_order == ["add_file", "settle", "save_quiet", "verify"]
     assert "docs-project-mvp.md" in {source["title"] for source in current_sources}
     assert "ib_forex_trading.0.248.21.zip" in {source["title"] for source in current_sources}
     assert result["ok"] is True
-    assert result["capacity_pruned"] is True
-    assert result["capacity_prune_result"]["prune_count"] == 3
-    assert [item["source_name"] for item in result["capacity_prune_result"]["prune_results"]] == [
-        "chatgpt_claudecode_workflow-2_v0.1.88.zip",
-        "chatgpt_claudecode_workflow-2_v0.1.89.zip",
-        "chatgpt_claudecode_workflow-2_v0.1.90.zip",
+    assert result["capacity_pruned"] is False
+    assert result["capacity_before"] == len(current_sources)
+
+
+def test_add_project_source_operation_returns_source_capacity_reached_without_upload_when_no_safe_candidate(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    page = object()
+    release_zip = tmp_path / "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip"
+    release_zip.write_text("fake zip fixture", encoding="utf-8")
+    sources = [
+        {
+            "title": f"unrelated-{index}.md",
+            "identity": f"unrelated-{index}.md Document",
+            "text": f"unrelated-{index}.md\nDocument",
+            "subtitle": "Document",
+        }
+        for index in range(25)
     ]
+    upload_calls: list[str] = []
+
+    async def fake_ensure_logged_in(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_goto(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_open_sources_tab(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return list(sources)
+
+    async def fake_add_file(*_args, **_kwargs) -> None:
+        upload_calls.append("upload")
+
+    async def fake_safe_page_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_ensure_logged_in  # type: ignore[method-assign]
+    browser_client._goto = fake_goto  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_open_sources_tab  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_add_file  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_page_url  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(release_zip),
+            display_name=None,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "source_capacity_reached"
+    assert result["capacity_limit"] == 25
+    assert result["capacity_before"] == 25
+    assert result["capacity_pruned"] is False
+    assert result["upload_started"] is False
+    assert upload_calls == []
 
 
 def test_file_source_commit_stale_inflight_extends_persistence_readback(browser_client: ChatGPTBrowserClient) -> None:
@@ -3920,12 +4047,14 @@ def test_capacity_prune_stops_without_loose_retry_when_exact_remove_reports_iden
             file_path=str(release_zip),
             display_name=None,
             keep_open=False,
+            protected_release_version="v0.0.276.18",
+            protected_release_filename="chatgpt_claudecode_workflow_v0.0.276.18.zip",
         )
     )
 
     assert remove_calls == [True]
     assert result["ok"] is False
-    assert result["status"] == "source_limit_prune_remove_failed"
+    assert result["status"] == "source_capacity_prune_remove_failed"
     assert result["operator_review_required"] is True
     assert result["capacity_prune_retry_suppressed"] is True
     assert result["capacity_prune_remove_drift_detected"] is True

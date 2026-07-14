@@ -2840,6 +2840,8 @@ class ChatGPTBrowserClient:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         transaction_mode: str = "current",
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         normalized_transaction_mode = str(transaction_mode or "current").strip().lower()
         if normalized_transaction_mode not in {"current", "legacy_10_75"}:
@@ -2859,6 +2861,8 @@ class ChatGPTBrowserClient:
             display_name=display_name,
             keep_open=keep_open,
             transaction_mode=normalized_transaction_mode,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
         )
         held_result = await self._try_add_project_source_with_held_auth_ready_session(
             source_kind=source_kind,
@@ -2868,6 +2872,8 @@ class ChatGPTBrowserClient:
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
             transaction_mode=normalized_transaction_mode,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
         )
         if held_result is not None:
             return held_result
@@ -2880,6 +2886,8 @@ class ChatGPTBrowserClient:
             display_name=display_name,
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
             respect_history_rate_limit_cooldown=False,
         )
 
@@ -2893,6 +2901,8 @@ class ChatGPTBrowserClient:
         keep_open: bool,
         overwrite_existing: bool,
         transaction_mode: str,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any] | None:
         session_key, session, match_mode = await self._compatible_held_auth_readiness_session()
         if session is None or session_key is None:
@@ -2991,6 +3001,8 @@ class ChatGPTBrowserClient:
                 display_name=display_name,
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
+                protected_release_version=protected_release_version,
+                protected_release_filename=protected_release_filename,
             )
             if isinstance(result, dict):
                 result.setdefault("held_session_reused", True)
@@ -12307,6 +12319,8 @@ class ChatGPTBrowserClient:
         display_name: Optional[str],
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
@@ -13098,6 +13112,42 @@ class ChatGPTBrowserClient:
                 display_name=display_name,
             )
         success_save_summary = self._project_source_save_watch_summary(save_request_watch)
+        if normalized_kind == "file" and capacity_prune_result is not None:
+            capacity_after_upload = len(success_sources)
+            upload_started = bool(
+                int(success_save_summary.get("started") or 0) > 0
+                or int(success_save_summary.get("processing_stream_started") or 0) > 0
+                or (isinstance(processing_stream_result, dict) and processing_stream_result.get("status") == "project_source_processing_stream_completed")
+            )
+            if capacity_after_upload != capacity_limit:
+                return {
+                    "ok": False,
+                    "action": "add",
+                    "status": "source_capacity_final_count_not_verified",
+                    "project_url": project_home_url,
+                    "source_kind": normalized_kind,
+                    "requested_filename": canonical_display_name or requested_match,
+                    "assigned_filename": backend_assigned_name,
+                    "persistence_verified": True,
+                    "project_source_mutated": True,
+                    "release_blocking": True,
+                    "operator_review_required": True,
+                    "capacity_limit": capacity_limit,
+                    "capacity_before": capacity_before,
+                    "capacity_pruned": True,
+                    "capacity_pruned_source": capacity_pruned_source,
+                    "capacity_after_prune": capacity_after_prune,
+                    "capacity_after_upload": capacity_after_upload,
+                    "upload_started": upload_started,
+                    "capacity_prune_result": capacity_prune_result,
+                    "current_source_count": capacity_after_upload,
+                    "current_source_identities": [
+                        self._preferred_source_card_identity(source) or source.get("text")
+                        for source in success_sources
+                    ],
+                    "current_url": await self._safe_page_url(page),
+                }
+
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
             persistence_verified=True,
@@ -13196,6 +13246,8 @@ class ChatGPTBrowserClient:
         display_name: Optional[str],
         keep_open: bool = False,
         overwrite_existing: bool = True,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         project_home_url = self._project_home_url()
@@ -13248,6 +13300,11 @@ class ChatGPTBrowserClient:
         overwritten_existing = False
         overwrite_remove_result: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
+        capacity_limit = 25
+        capacity_before = len(before_sources)
+        capacity_after_prune: Optional[int] = None
+        capacity_after_upload: Optional[int] = None
+        capacity_pruned_source: Optional[str] = None
         library_reconciliation_preflight: Optional[dict[str, Any]] = None
         library_reconciliation_result: Optional[dict[str, Any]] = (
             {"ok": True, "status": "library_reconciliation_test_double_noop"}
@@ -13559,140 +13616,132 @@ class ChatGPTBrowserClient:
 
             if not duplicate_detected:
                 release_source_limit = 25
-                release_source_retention_limit = 5
                 requested_release_source = self._parse_release_source_filename(canonical_display_name or file_path)
-                prune_candidates = self._select_project_source_capacity_prune_candidates(
-                    requested_filename=canonical_display_name or file_path,
-                    source_cards=before_sources,
-                    source_limit=release_source_limit,
-                    retention_limit=release_source_retention_limit,
-                )
-                capacity_prune_results: list[dict[str, Any]] = []
-                for prune_candidate in prune_candidates:
-                    prune_source_name = prune_candidate.get("source_name") or prune_candidate.get("filename")
-                    self._log(
-                        "project-source-add",
-                        "project source generated release retention reached; pruning oldest same-family release source before upload",
-                        project_url=project_home_url,
-                        current_source_count=len(before_sources),
+                capacity_before = len(before_sources)
+                if requested_release_source is not None and capacity_before >= release_source_limit:
+                    prune_candidate = self._select_project_source_capacity_prune_candidate(
+                        requested_filename=canonical_display_name or file_path,
+                        source_cards=before_sources,
                         source_limit=release_source_limit,
-                        release_source_retention_limit=release_source_retention_limit,
-                        same_family_source_count=prune_candidate.get("same_family_source_count"),
-                        requested_source=canonical_display_name,
-                        prune_reason=prune_candidate.get("reason"),
-                        prune_source_name=prune_source_name,
-                        prune_source_version=prune_candidate.get("normalized_version"),
-                        prune_source_filename=prune_candidate.get("filename"),
+                        protected_release_version=protected_release_version,
+                        protected_release_filename=protected_release_filename,
                     )
-                    try:
-                        capacity_prune_result = await self._remove_project_source_operation(
-                            context=context,
-                            page=page,
-                            source_name=str(prune_source_name),
-                            exact=True,
-                            keep_open=False,
-                        )
-                    except ResponseTimeoutError as exc:
-                        if self._project_source_remove_identity_drift_detected(exc):
-                            current_sources = await self._snapshot_project_source_cards(page)
-                            return {
-                                "ok": False,
-                                "action": "add",
-                                "status": "source_limit_prune_remove_failed",
-                                "project_url": project_home_url,
-                                "source_kind": normalized_kind,
-                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                                "source_match_candidates": source_match_candidates,
-                                "persistence_verified": False,
-                                "already_exists": False,
-                                "added": False,
-                                "overwritten": False,
-                                "removed_existing": False,
-                                "capacity_prune_source_name": prune_source_name,
-                                "capacity_prune_source_filename": prune_candidate.get("filename"),
-                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
-                                "capacity_prune_remove_error": str(exc),
-                                "capacity_prune_remove_initial_error": str(exc),
-                                "capacity_prune_identity_verified": False,
-                                "capacity_prune_retry_suppressed": True,
-                                "capacity_prune_remove_drift_detected": True,
-                                "capacity_prune_reason": prune_candidate.get("reason"),
-                                "operator_review_required": True,
-                                "current_source_count": len(current_sources),
-                                "source_limit": release_source_limit,
-                                "release_source_retention_limit": release_source_retention_limit,
-                                "current_url": await self._safe_page_url(page),
-                            }
+                    if prune_candidate is None:
                         self._log(
                             "project-source-add",
-                            "exact capacity prune remove failed; retrying with title-anchored source lookup",
+                            "project source capacity reached with no safe obsolete release source",
                             project_url=project_home_url,
-                            source_name=prune_source_name,
-                            error=str(exc),
+                            capacity_limit=release_source_limit,
+                            capacity_before=capacity_before,
+                            requested_source=canonical_display_name,
+                            protected_release_version=protected_release_version,
+                            protected_release_filename=protected_release_filename,
                         )
-                        await self._open_project_sources_tab(page)
-                        try:
-                            capacity_prune_result = await self._remove_project_source_operation(
-                                context=context,
-                                page=page,
-                                source_name=str(prune_source_name),
-                                exact=False,
-                                keep_open=False,
-                            )
-                        except ResponseTimeoutError as retry_exc:
-                            current_sources = await self._snapshot_project_source_cards(page)
-                            return {
-                                "ok": False,
-                                "action": "add",
-                                "status": "source_limit_prune_remove_failed",
-                                "project_url": project_home_url,
-                                "source_kind": normalized_kind,
-                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                                "source_match_candidates": source_match_candidates,
-                                "persistence_verified": False,
-                                "already_exists": False,
-                                "added": False,
-                                "overwritten": False,
-                                "removed_existing": False,
-                                "capacity_prune_source_name": prune_source_name,
-                                "capacity_prune_source_filename": prune_candidate.get("filename"),
-                                "capacity_prune_source_version": prune_candidate.get("normalized_version"),
-                                "capacity_prune_remove_error": str(retry_exc),
-                                "capacity_prune_remove_initial_error": str(exc),
-                                "capacity_prune_reason": prune_candidate.get("reason"),
-                                "operator_review_required": True,
-                                "current_source_count": len(current_sources),
-                                "source_limit": release_source_limit,
-                                "release_source_retention_limit": release_source_retention_limit,
-                                "current_url": await self._safe_page_url(page),
-                            }
-                    if not (isinstance(capacity_prune_result, dict) and capacity_prune_result.get("ok")):
-                        current_sources = await self._snapshot_project_source_cards(page)
                         return {
                             "ok": False,
                             "action": "add",
-                            "status": "source_limit_prune_not_verified",
+                            "status": "source_capacity_reached",
                             "project_url": project_home_url,
                             "source_kind": normalized_kind,
                             "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
                             "source_match_candidates": source_match_candidates,
                             "persistence_verified": False,
+                            "project_source_mutated": False,
+                            "release_blocking": True,
                             "already_exists": False,
                             "added": False,
                             "overwritten": False,
                             "removed_existing": False,
-                            "capacity_prune_source_name": prune_source_name,
-                            "capacity_prune_source_filename": prune_candidate.get("filename"),
-                            "capacity_prune_source_version": prune_candidate.get("normalized_version"),
-                            "capacity_prune_remove_result": capacity_prune_result,
-                            "capacity_prune_reason": prune_candidate.get("reason"),
+                            "capacity_limit": release_source_limit,
+                            "capacity_before": capacity_before,
+                            "capacity_pruned": False,
+                            "capacity_pruned_source": None,
+                            "capacity_after_prune": capacity_before,
+                            "upload_started": False,
+                            "protected_release_version": protected_release_version,
+                            "protected_release_filename": protected_release_filename,
                             "operator_review_required": True,
-                            "current_source_count": len(current_sources),
-                            "source_limit": release_source_limit,
-                            "release_source_retention_limit": release_source_retention_limit,
+                            "current_source_count": capacity_before,
+                            "current_source_identities": [
+                                self._preferred_source_card_identity(source) or source.get("text")
+                                for source in before_sources
+                            ],
                             "current_url": await self._safe_page_url(page),
                         }
-                    capacity_prune_results.append(dict(capacity_prune_result))
+
+                    prune_source_name = str(prune_candidate.get("source_name") or prune_candidate.get("filename") or "")
+                    prune_source_filename = str(prune_candidate.get("filename") or prune_source_name)
+                    self._log(
+                        "project-source-add",
+                        "project source capacity reached; pruning exactly one obsolete release source before upload",
+                        project_url=project_home_url,
+                        capacity_limit=release_source_limit,
+                        capacity_before=capacity_before,
+                        requested_source=canonical_display_name,
+                        prune_source_name=prune_source_name,
+                        prune_source_filename=prune_source_filename,
+                        prune_source_version=prune_candidate.get("normalized_version"),
+                        protected_release_version=protected_release_version,
+                        protected_release_filename=protected_release_filename,
+                    )
+                    try:
+                        remove_result = await self._remove_project_source_operation(
+                            context=context,
+                            page=page,
+                            source_name=prune_source_name,
+                            exact=True,
+                            keep_open=False,
+                        )
+                    except ResponseTimeoutError as exc:
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_capacity_prune_remove_failed",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "project_source_mutated": False,
+                            "release_blocking": True,
+                            "capacity_limit": release_source_limit,
+                            "capacity_before": capacity_before,
+                            "capacity_pruned": False,
+                            "capacity_pruned_source": prune_source_filename,
+                            "capacity_after_prune": capacity_before,
+                            "upload_started": False,
+                            "capacity_prune_remove_error": str(exc),
+                            "capacity_prune_retry_suppressed": True,
+                            "capacity_prune_remove_drift_detected": self._project_source_remove_identity_drift_detected(exc),
+                            "capacity_prune_identity_verified": False,
+                            "operator_review_required": True,
+                            "current_source_count": capacity_before,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    if not (isinstance(remove_result, dict) and remove_result.get("ok")):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_capacity_prune_not_verified",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "persistence_verified": False,
+                            "project_source_mutated": bool(isinstance(remove_result, dict) and remove_result.get("removed_via_ui")),
+                            "release_blocking": True,
+                            "capacity_limit": release_source_limit,
+                            "capacity_before": capacity_before,
+                            "capacity_pruned": False,
+                            "capacity_pruned_source": prune_source_filename,
+                            "capacity_after_prune": capacity_before,
+                            "upload_started": False,
+                            "capacity_prune_remove_result": remove_result,
+                            "operator_review_required": True,
+                            "current_source_count": capacity_before,
+                            "current_url": await self._safe_page_url(page),
+                        }
+
                     await self._open_project_sources_tab(page)
                     source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
                         page,
@@ -13703,7 +13752,7 @@ class ChatGPTBrowserClient:
                         return {
                             "ok": False,
                             "action": "add",
-                            "status": "source_preflight_not_authoritative",
+                            "status": "source_capacity_prune_not_authoritative",
                             "project_url": project_home_url,
                             "source_kind": normalized_kind,
                             "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
@@ -13711,78 +13760,61 @@ class ChatGPTBrowserClient:
                             "persistence_verified": False,
                             "project_source_mutated": True,
                             "release_blocking": True,
-                            "source_surface_not_ready": True,
-                            "already_exists": False,
-                            "added": False,
-                            "overwritten": False,
-                            "removed_existing": False,
+                            "capacity_limit": release_source_limit,
+                            "capacity_before": capacity_before,
                             "capacity_pruned": True,
-                            "operator_review_required": True,
+                            "capacity_pruned_source": prune_source_filename,
+                            "capacity_after_prune": None,
+                            "upload_started": False,
                             "source_surface_preflight": source_surface_preflight,
-                            "capacity_prune_results": capacity_prune_results,
-                            "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
-                            "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
+                            "operator_review_required": True,
                             "current_url": await self._safe_page_url(page),
                         }
                     before_sources = list(source_surface_preflight.get("sources") or [])
-                if capacity_prune_results:
-                    if len(before_sources) >= release_source_limit:
-                        current_sources = await self._snapshot_project_source_cards(page)
+                    capacity_after_prune = len(before_sources)
+                    residual_pruned_sources = []
+                    for source in before_sources:
+                        parsed = self._parse_release_source_card(source)
+                        if parsed is not None and str(parsed.get("filename") or "").casefold() == prune_source_filename.casefold():
+                            residual_pruned_sources.append(source)
+                    if capacity_after_prune != capacity_before - 1 or capacity_after_prune >= release_source_limit or residual_pruned_sources:
                         return {
                             "ok": False,
                             "action": "add",
-                            "status": "source_limit_prune_insufficient_capacity",
+                            "status": "source_capacity_prune_not_verified",
                             "project_url": project_home_url,
                             "source_kind": normalized_kind,
                             "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
                             "source_match_candidates": source_match_candidates,
                             "persistence_verified": False,
-                            "already_exists": False,
-                            "added": False,
-                            "overwritten": False,
-                            "removed_existing": False,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "capacity_limit": release_source_limit,
+                            "capacity_before": capacity_before,
                             "capacity_pruned": True,
-                            "capacity_prune_results": capacity_prune_results,
-                            "capacity_prune_count": len(capacity_prune_results),
+                            "capacity_pruned_source": prune_source_filename,
+                            "capacity_after_prune": capacity_after_prune,
+                            "upload_started": False,
+                            "capacity_prune_remove_result": remove_result,
+                            "residual_pruned_source_count": len(residual_pruned_sources),
                             "operator_review_required": True,
-                            "current_source_count": len(current_sources),
-                            "source_limit": release_source_limit,
-                            "release_source_retention_limit": release_source_retention_limit,
+                            "current_source_count": capacity_after_prune,
                             "current_url": await self._safe_page_url(page),
                         }
-                    capacity_prune_result = capacity_prune_results[-1]
-                    capacity_prune_result = dict(capacity_prune_result)
-                    capacity_prune_result["prune_results"] = capacity_prune_results
-                    capacity_prune_result["prune_count"] = len(capacity_prune_results)
-                    capacity_prune_result["release_source_retention_limit"] = release_source_retention_limit
-                elif requested_release_source is not None and len(before_sources) >= release_source_limit:
-                    self._log(
-                        "project-source-add",
-                        "project source limit reached but no same-family release source was available for pruning",
-                        project_url=project_home_url,
-                        current_source_count=len(before_sources),
-                        source_limit=release_source_limit,
-                        release_source_retention_limit=release_source_retention_limit,
-                        requested_source=canonical_display_name,
-                    )
-                    return {
-                        "ok": False,
-                        "action": "add",
-                        "status": "source_limit_no_matching_release_prune_candidate",
-                        "project_url": project_home_url,
-                        "source_kind": normalized_kind,
-                        "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                        "source_match_candidates": source_match_candidates,
-                        "persistence_verified": False,
-                        "already_exists": False,
-                        "added": False,
-                        "overwritten": False,
-                        "removed_existing": False,
-                        "operator_review_required": True,
-                        "current_source_count": len(before_sources),
-                        "source_limit": release_source_limit,
-                        "release_source_retention_limit": release_source_retention_limit,
-                        "current_url": await self._safe_page_url(page),
+                    capacity_pruned_source = prune_source_filename
+                    capacity_prune_result = {
+                        "ok": True,
+                        "status": "source_capacity_pruned",
+                        "source_name": prune_source_name,
+                        "filename": prune_source_filename,
+                        "normalized_version": prune_candidate.get("normalized_version"),
+                        "removed_via_ui": True,
+                        "capacity_limit": release_source_limit,
+                        "capacity_before": capacity_before,
+                        "capacity_after_prune": capacity_after_prune,
+                        "protected_release_version": protected_release_version,
+                        "protected_release_filename": protected_release_filename,
+                        "remove_result": remove_result,
                     }
 
         if normalized_kind == "text" and not duplicate_detected:
@@ -14672,6 +14704,69 @@ class ChatGPTBrowserClient:
                     ],
                     "remove_results": [],
                 }
+
+            if capacity_prune_result is not None:
+                final_capacity_surface = await self._wait_for_authoritative_project_sources_surface(
+                    page,
+                    project_url=project_home_url,
+                    label="project-source-add-post-capacity-upload-preflight",
+                )
+                if not final_capacity_surface.get("ok"):
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_capacity_final_count_not_authoritative",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match": self._preferred_source_card_identity(persisted_source) or persisted_match,
+                        "source_match_requested": requested_match,
+                        "source_match_candidates": persistence_candidates,
+                        "persistence_verified": True,
+                        "project_source_mutated": True,
+                        "release_blocking": True,
+                        "operator_review_required": True,
+                        "capacity_limit": capacity_limit,
+                        "capacity_before": capacity_before,
+                        "capacity_pruned": True,
+                        "capacity_pruned_source": capacity_pruned_source,
+                        "capacity_after_prune": capacity_after_prune,
+                        "upload_started": True,
+                        "capacity_after_upload": None,
+                        "capacity_prune_result": capacity_prune_result,
+                        "source_surface_preflight": final_capacity_surface,
+                        "current_url": await self._safe_page_url(page),
+                    }
+                final_capacity_sources = list(final_capacity_surface.get("sources") or [])
+                capacity_after_upload = len(final_capacity_sources)
+                if capacity_after_upload != capacity_limit:
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_capacity_final_count_not_verified",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "source_match": self._preferred_source_card_identity(persisted_source) or persisted_match,
+                        "source_match_requested": requested_match,
+                        "source_match_candidates": persistence_candidates,
+                        "persistence_verified": True,
+                        "project_source_mutated": True,
+                        "release_blocking": True,
+                        "operator_review_required": True,
+                        "capacity_limit": capacity_limit,
+                        "capacity_before": capacity_before,
+                        "capacity_pruned": True,
+                        "capacity_pruned_source": capacity_pruned_source,
+                        "capacity_after_prune": capacity_after_prune,
+                        "upload_started": True,
+                        "capacity_after_upload": capacity_after_upload,
+                        "capacity_prune_result": capacity_prune_result,
+                        "current_source_count": capacity_after_upload,
+                        "current_source_identities": [
+                            self._preferred_source_card_identity(source) or source.get("text")
+                            for source in final_capacity_sources[:10]
+                        ],
+                        "current_url": await self._safe_page_url(page),
+                    }
         success_transaction = self._project_source_mutation_transaction_status(
             save_summary=success_save_summary,
             persistence_verified=True,
@@ -14714,6 +14809,23 @@ class ChatGPTBrowserClient:
             "processing_stream": processing_stream_result,
             "post_commit_recovery": post_commit_recovery,
             "persistence_recovered_after_commit": bool(post_commit_recovery),
+            "capacity_limit": capacity_limit,
+            "capacity_before": capacity_before,
+            "capacity_pruned": bool(capacity_prune_result),
+            "capacity_pruned_source": capacity_pruned_source,
+            "capacity_after_prune": capacity_after_prune,
+            "upload_started": bool(
+                int(success_save_summary.get("started") or 0) > 0
+                or int(success_save_summary.get("processing_stream_started") or 0) > 0
+                or (isinstance(processing_stream_result, dict) and processing_stream_result.get("status") == "project_source_processing_stream_completed")
+            ),
+            "capacity_after_upload": (
+                capacity_after_upload
+                if capacity_prune_result is not None
+                else (len(success_sources) if normalized_kind == "file" else None)
+            ),
+            "protected_release_version": protected_release_version,
+            "protected_release_filename": protected_release_filename,
             "already_exists": bool(
                 duplicate_detected
                 or overwritten_existing
@@ -14728,7 +14840,6 @@ class ChatGPTBrowserClient:
                 removed_existing_via_ui
                 or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
             ),
-            "capacity_pruned": bool(capacity_prune_result and capacity_prune_result.get("removed_via_ui")),
             "current_url": await self._safe_page_url(page),
         }
         if normalized_kind == "file":
@@ -24065,20 +24176,19 @@ class ChatGPTBrowserClient:
         return None
 
     def _parse_release_source_filename(self, value: Optional[str]) -> Optional[dict[str, Any]]:
-        """Return release-family metadata for versioned ZIP source names.
+        """Return release-family metadata for canonical or backend-indexed ZIP names.
 
-        ChatGPT's rendered source cards may include extra metadata, for example
-        "chatgpt_claudecode_workflow_v0.0.276.18.zip Document".  The selector
-        must therefore parse a versioned ZIP filename from a larger rendered
-        string instead of requiring the card text to be the bare filename.
+        ChatGPT may render a release source as ``artifact_v1.2.3.zip`` or as
+        ``artifact_v1.2.3(14).zip`` and append UI metadata after the filename.
+        The family identity is the canonical filename without the backend index.
         """
         normalized = self._normalize_source_match_text(value)
         if not normalized:
             return None
         pattern = re.compile(
             r"(?P<filename>[A-Za-z0-9][A-Za-z0-9_.-]*?"
-            r"(?P<version>v?\d+(?:\.\d+){2,3})"
-            r"[A-Za-z0-9_.-]*?\.zip)",
+            r"(?P<version>v?\d+(?:\.\d+){2,})"
+            r"(?P<index_suffix>\((?P<assigned_index>\d+)\))?\.zip)",
             re.IGNORECASE,
         )
         match = pattern.search(normalized)
@@ -24090,23 +24200,26 @@ class ChatGPTBrowserClient:
         if version_match is None:
             return None
         numeric_parts = tuple(int(part) for part in version.lower().lstrip("v").split("."))
-        comparable_version = numeric_parts + (0,) * max(0, 4 - len(numeric_parts))
+        comparable_version = numeric_parts
         prefix = filename[: version_match.start()]
-        suffix = filename[version_match.end() :]
-        if not prefix or suffix.lower() != ".zip":
-            # Keep the automatic capacity prune narrowly scoped to canonical
-            # release ZIPs.  Files such as report_v1.2.3.final.zip are not safe
-            # to delete automatically because the suffix changes the family
-            # semantics.
+        suffix_after_version = filename[version_match.end() :]
+        suffix_match = re.fullmatch(r"(?:\((?P<index>\d+)\))?\.zip", suffix_after_version, flags=re.IGNORECASE)
+        if not prefix or suffix_match is None:
             return None
+        assigned_index_raw = suffix_match.group("index")
+        assigned_index = int(assigned_index_raw) if assigned_index_raw is not None else None
+        canonical_filename = f"{prefix}{version}.zip"
+        normalized_version = version if version.lower().startswith("v") else f"v{version}"
         return {
             "filename": filename,
+            "canonical_filename": canonical_filename,
             "version": version,
-            "normalized_version": version if version.startswith("v") else f"v{version}",
+            "normalized_version": normalized_version,
             "version_tuple": comparable_version,
-            "family_key": (prefix.lower(), suffix.lower()),
+            "assigned_index": assigned_index,
+            "family_key": (prefix.lower(), ".zip"),
             "prefix": prefix,
-            "suffix": suffix,
+            "suffix": ".zip",
         }
 
     def _parse_release_source_card(self, card: Optional[dict[str, str]]) -> Optional[dict[str, Any]]:
@@ -24283,66 +24396,78 @@ class ChatGPTBrowserClient:
         source_cards: list[dict[str, str]],
         source_limit: int = 25,
         retention_limit: int = 5,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Select old generated release ZIP sources safe to prune before upload.
+        """Select exactly one obsolete release source when the project is full.
 
-        ChatGPT Projects currently cap the complete Sources surface at 25
-        resources. Promptbranch may attach generated release ZIPs for multiple
-        repositories to the same Project, so the safe automatic policy is:
-
-        * only consider canonical versioned ZIP release sources in the requested
-          repo/family;
-        * keep at most ``retention_limit`` generated release ZIPs for that
-          repo/family after the new upload; and
-        * when the global source limit is already reached, prune only from that
-          same generated ZIP family instead of touching docs or project sources.
+        Capacity pruning is not a retention policy.  It executes only when the
+        authoritative Project Sources surface is at or above ``source_limit``.
+        The requested candidate and the accepted/current release identity, when
+        supplied, are excluded.  No docs or unrelated repository artifacts are
+        eligible.
         """
+        effective_source_limit = max(1, int(source_limit or 25))
+        if len(source_cards) < effective_source_limit:
+            return []
+
         requested = self._parse_release_source_filename(requested_filename)
         if requested is None:
             return []
 
+        def normalize_version(value: Optional[str]) -> Optional[str]:
+            parsed = self._parse_release_source_filename(value)
+            if parsed is not None:
+                return str(parsed.get("normalized_version") or "").lower() or None
+            normalized = self._normalize_source_match_text(value).lower().lstrip("v")
+            if not normalized:
+                return None
+            return f"v{normalized}"
+
+        protected_version = normalize_version(protected_release_version)
+        protected_filename = Path(str(protected_release_filename)).name.casefold() if protected_release_filename else None
+        if not protected_version and not protected_filename:
+            # Capacity pruning is destructive.  Without an authoritative
+            # accepted/current identity no release source can be proven stale.
+            return []
+        requested_version = str(requested.get("normalized_version") or "").casefold()
+        requested_canonical = str(requested.get("canonical_filename") or requested.get("filename") or "").casefold()
+
         candidates: list[dict[str, Any]] = []
         for card in source_cards:
             parsed = self._parse_release_source_card(card)
-            if parsed is None:
-                continue
-            if parsed.get("family_key") != requested.get("family_key"):
+            if parsed is None or parsed.get("family_key") != requested.get("family_key"):
                 continue
             parsed = dict(parsed)
+            observed_filename = str(parsed.get("filename") or "")
+            canonical_filename = str(parsed.get("canonical_filename") or observed_filename)
+            normalized_version = str(parsed.get("normalized_version") or "").casefold()
+            if normalized_version == requested_version or canonical_filename.casefold() == requested_canonical:
+                continue
+            if protected_version and normalized_version == protected_version.casefold():
+                continue
+            if protected_filename and (observed_filename.casefold() == protected_filename or canonical_filename.casefold() == protected_filename):
+                continue
             parsed["source_name"] = (
                 self._normalize_source_match_text(card.get("title"))
                 or self._preferred_source_card_identity(card)
-                or parsed.get("filename")
+                or observed_filename
             )
+            parsed["source_limit"] = effective_source_limit
+            parsed["capacity_before"] = len(source_cards)
+            parsed["reason"] = "project_source_total_limit"
+            parsed["protected_release_version"] = protected_release_version
+            parsed["protected_release_filename"] = protected_release_filename
             candidates.append(parsed)
 
-        if not candidates:
-            return []
-
-        effective_source_limit = max(1, int(source_limit or 25))
-        effective_retention_limit = max(1, int(retention_limit or 5))
-        target_existing_for_retention = max(0, effective_retention_limit - 1)
-        target_existing_for_capacity = max(0, effective_source_limit - 1)
-        retention_excess = max(0, len(candidates) - target_existing_for_retention)
-        capacity_excess = max(0, len(source_cards) - target_existing_for_capacity)
-        prune_count = max(retention_excess, capacity_excess)
-        if prune_count <= 0:
-            return []
-
-        candidates.sort(key=lambda item: (item.get("version_tuple") or (), str(item.get("filename") or "")))
-        selected = candidates[: min(prune_count, len(candidates))]
-        reason = (
-            "release_source_retention_limit"
-            if retention_excess >= capacity_excess and retention_excess > 0
-            else "project_source_total_limit"
+        candidates.sort(
+            key=lambda item: (
+                item.get("version_tuple") or (),
+                item.get("assigned_index") if item.get("assigned_index") is not None else -1,
+                str(item.get("filename") or ""),
+            )
         )
-        for item in selected:
-            item["source_limit"] = effective_source_limit
-            item["release_source_retention_limit"] = effective_retention_limit
-            item["same_family_source_count"] = len(candidates)
-            item["prune_count"] = len(selected)
-            item["reason"] = reason
-        return selected
+        return candidates[:1]
 
     def _select_project_source_capacity_prune_candidate(
         self,
@@ -24350,12 +24475,15 @@ class ChatGPTBrowserClient:
         requested_filename: Optional[str],
         source_cards: list[dict[str, str]],
         source_limit: int = 25,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         candidates = self._select_project_source_capacity_prune_candidates(
             requested_filename=requested_filename,
             source_cards=source_cards,
             source_limit=source_limit,
-            retention_limit=5,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
         )
         return candidates[0] if candidates else None
 

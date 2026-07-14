@@ -1160,6 +1160,8 @@ class DirectBackend:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         profile_lock_wait_seconds: float | None = None,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         effective_project_url = self._effective_project_home_url()
         original_project_url = self._service.settings.project_url
@@ -1173,6 +1175,8 @@ class DirectBackend:
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
                 profile_lock_wait_seconds=profile_lock_wait_seconds,
+                protected_release_version=protected_release_version,
+                protected_release_filename=protected_release_filename,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -1504,6 +1508,8 @@ class ServiceBackend:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         profile_lock_wait_seconds: float | None = None,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         return await self._call(
             self._client.add_project_source,
@@ -1515,6 +1521,8 @@ class ServiceBackend:
             overwrite_existing=overwrite_existing,
             project_url=self._effective_project_home_url(),
             profile_lock_wait_seconds=profile_lock_wait_seconds,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
         )
 
     async def remove_project_source(
@@ -5604,16 +5612,41 @@ async def cmd_project_source_add(backend: CommandBackend, args: argparse.Namespa
 
     overwrite_existing = not getattr(args, "no_overwrite", False)
     profile_lock_wait_seconds = _profile_wait_timeout_from_args(args)
+    protected_release_version: Optional[str] = None
+    protected_release_filename: Optional[str] = None
+    if source_kind == "file":
+        try:
+            registry = _artifact_registry_from_args(args)
+            repo_id = normalize_repo_id(getattr(registry, "repo_id", None))
+            current = registry.current(repo_id=repo_id) if repo_id else registry.current()
+            if isinstance(current, dict):
+                protected_release_version = str(current.get("version") or "").strip() or None
+                protected_release_filename = Path(str(current.get("filename") or "")).name or None
+        except Exception:
+            protected_release_version = None
+            protected_release_filename = None
+        if not protected_release_version or not protected_release_filename:
+            repo_context_raw = getattr(args, "repo_path", None)
+            repo_context = Path(str(repo_context_raw)).expanduser().resolve() if repo_context_raw else Path.cwd().resolve()
+            control_version, control_filename = _accepted_current_release_identity_from_project_control(repo_context)
+            protected_release_version = protected_release_version or control_version
+            protected_release_filename = protected_release_filename or control_filename
+    source_add_kwargs: dict[str, Any] = {
+        "source_kind": source_kind,
+        "value": value,
+        "file_path": file_path,
+        "display_name": display_name,
+        "keep_open": args.keep_open,
+        "overwrite_existing": overwrite_existing,
+        "profile_lock_wait_seconds": profile_lock_wait_seconds,
+    }
+    if protected_release_version:
+        source_add_kwargs["protected_release_version"] = protected_release_version
+    if protected_release_filename:
+        source_add_kwargs["protected_release_filename"] = protected_release_filename
+
     try:
-        result = await backend.add_project_source(
-            source_kind=source_kind,
-            value=value,
-            file_path=file_path,
-            display_name=display_name,
-            keep_open=args.keep_open,
-            overwrite_existing=overwrite_existing,
-            profile_lock_wait_seconds=profile_lock_wait_seconds,
-        )
+        result = await backend.add_project_source(**source_add_kwargs)
     except Exception as exc:
         service_payload = _service_exception_payload(exc, args)
         if service_payload and service_payload.get("status") == "browser_profile_busy":
@@ -8831,6 +8864,34 @@ async def cmd_task(backend: CommandBackend, args: argparse.Namespace) -> int:
             return await cmd_task_answer_parse(backend, args)
         raise RuntimeError(f"Unknown task answer command: {args.task_answer_command}")
     raise RuntimeError(f"Unknown task command: {args.task_command}")
+
+
+def _accepted_current_release_identity_from_project_control(
+    repo_context: Path | None = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve the accepted/current release identity from the nearest control surface.
+
+    Artifact registry state remains preferred.  This read-only fallback exists so
+    release-control can protect the accepted baseline even when a freshly joined
+    project registry has not yet adopted a record.
+    """
+    start = (repo_context or Path.cwd()).expanduser().resolve()
+    search_roots = [start, *start.parents]
+    for root in search_roots:
+        plan_state = root / "docs" / "project" / "plan-state.json"
+        if not plan_state.is_file():
+            continue
+        try:
+            payload = json.loads(plan_state.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        version = str(payload.get("accepted_current_version") or "").strip() or None
+        artifact = Path(str(payload.get("accepted_current_artifact") or "")).name or None
+        if version or artifact:
+            return version, artifact
+    return None, None
 
 
 def _artifact_registry_from_args(args: argparse.Namespace) -> ArtifactRegistry:

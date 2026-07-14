@@ -497,6 +497,8 @@ class ChatGPTServiceClient:
         profile_lock_wait_seconds: Optional[float] = None,
         request_timeout_seconds: Optional[float] = None,
         allow_project_source_mutation: bool = True,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         normalized_display_name = Path(display_name).name if display_name else None
         data = {
@@ -515,6 +517,10 @@ class ChatGPTServiceClient:
             data["project_url"] = project_url
         if profile_lock_wait_seconds is not None:
             data["profile_lock_wait_seconds"] = str(float(profile_lock_wait_seconds))
+        if protected_release_version:
+            data["protected_release_version"] = str(protected_release_version)
+        if protected_release_filename:
+            data["protected_release_filename"] = Path(str(protected_release_filename)).name
 
         request_timeout = self._timeout
         if request_timeout_seconds is not None:

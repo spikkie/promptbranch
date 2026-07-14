@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip
-active candidate version: v0.1.103.10.108
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.108.zip
-next normal slice: v0.1.103.10.108 — enforce one Project Source per canonical/indexed family
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip
+active candidate version: v0.1.103.10.109
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip
+next normal slice: v0.1.103.10.109 — deterministic capacity pruning before Project Source upload
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -802,4 +802,4 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 
 | v0.1.103.10.103 | repair | Bounded unique Library delete-confirmation proof | candidate | focused confirmation-delay/direct-mutation, Library diagnostic, Project Source, control-surface, version, syntax, packaging and clean-extraction validation; live diagnostic pending | no normal slice advanced | pending |
 
-| v0.1.103.10.108 | repair | Singleton canonical/indexed Project Source family replacement | candidate | focused source-family replacement, cleanup-failure, control-surface, version, syntax, packaging and clean-extraction validation; live validation pending | no normal slice advanced | pending |
+| v0.1.103.10.109 | repair | Deterministic capacity pruning before Project Source upload | candidate | focused 25→24→25 capacity transaction, indexed long-version parsing, protected-current selection, no-safe-candidate failure, control-surface, version, syntax, packaging and clean-extraction validation; live validation pending | no normal slice advanced | pending |

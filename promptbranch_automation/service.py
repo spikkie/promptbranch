@@ -1225,6 +1225,8 @@ class ChatGPTAutomationService:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         profile_lock_wait_seconds: float | None = None,
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         async with self._lock.operation("add_project_source", wait_timeout_seconds=profile_lock_wait_seconds):
             logger.info("Adding ChatGPT project source")
@@ -1242,6 +1244,8 @@ class ChatGPTAutomationService:
                 display_name=display_name,
                 keep_open=keep_open,
                 overwrite_existing=overwrite_existing,
+                protected_release_version=protected_release_version,
+                protected_release_filename=protected_release_filename,
             )
 
             if isinstance(result, dict) and result.get("ok") and result.get("persistence_verified"):

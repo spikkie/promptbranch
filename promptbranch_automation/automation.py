@@ -564,6 +564,8 @@ class ChatGPTAutomation:
         keep_open: bool = False,
         overwrite_existing: bool = True,
         transaction_mode: str = "current",
+        protected_release_version: Optional[str] = None,
+        protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
         return await self.client.add_project_source(
             source_kind=source_kind,
@@ -573,6 +575,8 @@ class ChatGPTAutomation:
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
             transaction_mode=transaction_mode,
+            protected_release_version=protected_release_version,
+            protected_release_filename=protected_release_filename,
         )
 
     async def run_library_backend_protocol_reupload_diagnostic(
