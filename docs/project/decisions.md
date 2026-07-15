@@ -909,3 +909,13 @@ Read-only source-sync validation may report a missing project artifact registry 
 - Read-only smoke may accept `project_scope_unresolved` or `artifact_registry_missing` only when every mutation flag is false.
 - Lifecycle planning may describe an uninitialized authority surface, but execution remains blocked.
 - Artifact adoption and registry mutation still require valid initialized project-scoped authority.
+
+
+## v0.1.103.10.112: overwrite authority is the changed upload identity, never a predicted suffix or rediscovered old singleton
+
+- The full integration fixture rewrites the file with deterministic replacement content and requires a different SHA-256 before requesting overwrite.
+- A backend-assigned `<stem>(index).<ext>` name is a normal member of the canonical file family. The exact `process_upload_stream` result is authoritative; visible suffix maxima do not predict the next index.
+- Upload-new/verify/delete-old may delete only Project Source identities frozen before upload. A concurrently appearing family member is not deleted and makes final singleton verification fail closed.
+- Old-source deletion is prohibited until the new upload has a completed processing stream, an exact assigned filename in the requested family, a `processed_file_id`, and a `library_metadata_object_id`.
+- An unchanged/no-network second upload cannot return replacement success; it reports a structured release-blocking failure.
+- `full_direct` and `full_localhost` both remain mandatory before adoption.

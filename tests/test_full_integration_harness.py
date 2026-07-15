@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from typing import Any
 
 import pytest
@@ -19,6 +20,7 @@ from promptbranch_full_integration_test import (
     IntegrationAssertionError,
     make_parser,
     resolve_step_selection,
+    _write_changed_file_source_replacement,
 )
 
 
@@ -763,3 +765,21 @@ def test_full_integration_cleanup_evidence_has_no_stale_ephemeral_policy_label()
     stale_policy = "_".join(["same", "run", "ephemeral", "cleanup"])
     assert stale_policy not in source
     assert "no_project_delete_until_secure_protocol" in source
+
+
+def test_changed_content_overwrite_fixture_changes_sha256(tmp_path: Path) -> None:
+    path = tmp_path / "source.txt"
+    initial_content = "generation=initial\n"
+    path.write_text(initial_content, encoding="utf-8")
+    initial_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    replacement_sha256 = _write_changed_file_source_replacement(
+        path,
+        run_id="unit-run",
+        initial_file_content=initial_content,
+        initial_file_sha256=initial_sha256,
+    )
+
+    assert replacement_sha256 != initial_sha256
+    assert replacement_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert "proof=changed-content-indexed-family-overwrite" in path.read_text(encoding="utf-8")

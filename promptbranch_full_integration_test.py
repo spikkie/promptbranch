@@ -1588,6 +1588,28 @@ def _require(condition: bool, message: str) -> None:
 
 
 
+
+
+def _write_changed_file_source_replacement(
+    file_source_path: Path,
+    *,
+    run_id: str,
+    initial_file_content: str,
+    initial_file_sha256: str,
+) -> str:
+    replacement_file_content = (
+        initial_file_content
+        + f"generation=replacement;run_id={run_id};proof=changed-content-indexed-family-overwrite\n"
+    )
+    file_source_path.write_text(replacement_file_content, encoding="utf-8")
+    replacement_file_sha256 = hashlib.sha256(file_source_path.read_bytes()).hexdigest()
+    if replacement_file_sha256 == initial_file_sha256:
+        raise IntegrationAssertionError(
+            "file overwrite fixture did not change bytes: "
+            f"initial_sha256={initial_file_sha256} replacement_sha256={replacement_file_sha256}"
+        )
+    return replacement_file_sha256
+
 def _generated_run_id() -> str:
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
 
@@ -2044,10 +2066,14 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
 
     temp_dir = Path(tempfile.mkdtemp(prefix="chatgpt-itest-"))
     file_source_path = temp_dir / f"itest-file-{run_id}.txt"
-    file_source_path.write_text(
-        "integration-file-source\nThis file is uploaded as a project source during the end-to-end test.\n",
-        encoding="utf-8",
+    initial_file_content = (
+        "integration-file-source\n"
+        "This file is uploaded as a project source during the end-to-end test.\n"
+        f"generation=initial;run_id={run_id}\n"
     )
+    file_source_path.write_text(initial_file_content, encoding="utf-8")
+    initial_file_sha256 = hashlib.sha256(file_source_path.read_bytes()).hexdigest()
+    replacement_file_sha256: Optional[str] = None
 
     link_source_name = f"itest-link-{run_id}"
     link_source_match = link_source_name
@@ -2074,6 +2100,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "artifacts": {
             "temp_dir": str(temp_dir),
             "file_source_path": str(file_source_path),
+            "initial_file_sha256": initial_file_sha256,
+            "replacement_file_sha256": replacement_file_sha256,
             "link_source_name": link_source_name,
             "text_source_name": text_source_name,
         },
@@ -2326,6 +2354,13 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             file_source_match = str(file_add.get("source_match") or file_source_match)
 
         if should_run("project_source_overwrite_file"):
+            replacement_file_sha256 = _write_changed_file_source_replacement(
+                file_source_path,
+                run_id=run_id,
+                initial_file_content=initial_file_content,
+                initial_file_sha256=initial_file_sha256,
+            )
+            summary["artifacts"]["replacement_file_sha256"] = replacement_file_sha256
             file_overwrite = await _run_step(
                 steps,
                 "project_source_overwrite_file",
@@ -2340,8 +2375,18 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             _require(file_overwrite.get("ok") is True, f"file source overwrite failed: {file_overwrite}")
             _require(file_overwrite.get("already_exists") is True, f"file source overwrite did not detect an existing source: {file_overwrite}")
             _require(file_overwrite.get("overwritten") is True, f"file source overwrite did not report overwritten=true: {file_overwrite}")
-            _require(file_overwrite.get("removed_existing") is True, f"file source overwrite did not verify removal before re-upload: {file_overwrite}")
+            _require(file_overwrite.get("removed_existing") is True, f"file source overwrite did not verify removal after the new assigned source: {file_overwrite}")
             _require(file_overwrite.get("persistence_verified") is True, f"file source overwrite did not verify persistence: {file_overwrite}")
+            _require(file_overwrite.get("upload_started") is True, f"file source overwrite did not start a new upload: {file_overwrite}")
+            _require(
+                file_overwrite.get("processing_stream", {}).get("status") == "project_source_processing_stream_completed",
+                f"file source overwrite did not complete the processing stream: {file_overwrite}",
+            )
+            _require(bool(file_overwrite.get("processed_file_id")), f"file source overwrite did not capture processed_file_id: {file_overwrite}")
+            _require(bool(file_overwrite.get("library_metadata_object_id")), f"file source overwrite did not capture library_metadata_object_id: {file_overwrite}")
+            _require(file_overwrite.get("replacement_backing_identity_verified") is True, f"file source overwrite did not verify the new backing identity: {file_overwrite}")
+            _require(file_overwrite.get("local_sha256") == replacement_file_sha256, f"file source overwrite did not report replacement bytes: {file_overwrite}")
+            _require(file_overwrite.get("final_family_source_count") == 1, f"file source overwrite did not end as a singleton family: {file_overwrite}")
             overwrite_remove_result = file_overwrite.get("overwrite_remove_result")
             if isinstance(overwrite_remove_result, dict):
                 remove_results.append(overwrite_remove_result)

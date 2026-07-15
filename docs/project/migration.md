@@ -1119,3 +1119,8 @@ An absent project artifact registry is now a valid read-only planning observatio
 ## Full-suite alignment note — v0.1.103.10.111
 
 No state migration is required. Existing project-scoped registries remain authoritative. Test fixtures and operator-created datasets that perform artifact mutation must initialize the project registry explicitly. Read-only commands may report unresolved project scope or a missing registry without creating state. Existing file sources are never removed before the newly uploaded assigned family member is verified when Replace is unavailable.
+
+
+## Changed-content indexed-family overwrite migration — v0.1.103.10.112
+
+`v0.1.103.10.111` remains not adopted after both full transports proved that an unchanged second file could be suppressed by ChatGPT and then misclassified as overwrite success by rediscovering the old singleton. `v0.1.103.10.112` changes the release fixture bytes, records both hashes, treats the processing-stream assigned canonical/indexed name as authoritative, and requires both backing identities before any old-source deletion. Existing canonical/indexed family matching remains compatible; no artifact-registry migration or legacy fallback is introduced.

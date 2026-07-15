@@ -3794,10 +3794,10 @@ def test_add_file_source_operation_increments_existing_indexed_family_once(brows
     assert result["requested_filename"] == "release.zip"
     assert result["assigned_filename"] == "release(15).zip"
     assert result["previous_max_assigned_index"] == 14
-    assert result["expected_next_assigned_index"] == 15
+    assert result["expected_next_assigned_index"] is None
     assert result["assigned_index"] == 15
     assert result["assigned_index_delta"] == 1
-    assert result["assigned_index_is_expected_next"] is True
+    assert result["assigned_index_is_expected_next"] is None
     assert result["pre_upload_family_source_identities"] == ["release(14).zip Document"]
     assert result["canonical_persistence_retry_skipped"] is True
 
@@ -4253,7 +4253,7 @@ def test_add_file_source_delayed_surface_loading_captures_previous_index_and_upl
     assert result["ok"] is True
     assert result["previous_max_assigned_index"] == 4
     assert result["assigned_index"] == 5
-    assert result["assigned_index_is_expected_next"] is True
+    assert result["assigned_index_is_expected_next"] is None
 
 def test_source_add_accepts_correlated_indexed_assigned_filename(
     browser_client: ChatGPTBrowserClient,
@@ -6245,3 +6245,210 @@ def test_add_file_source_no_overwrite_blocks_existing_indexed_family_before_uplo
     assert result["project_source_mutated"] is False
     assert result["pre_upload_family_source_count"] == 1
     assert result["previous_max_assigned_index"] == 16
+
+
+def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    class Context:
+        def on(self, *_args, **_kwargs) -> None:
+            return None
+
+    page = object()
+    old_card = {"identity": "release.zip Document", "title": "release.zip", "text": "release.zip Document"}
+    calls = {"upload": 0, "remove": 0}
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_authority(*_args, **_kwargs):
+        return {
+            "ok": True,
+            "status": "authoritative",
+            "sources": [old_card],
+            "source_card_count": 1,
+            "source_identities": [old_card["identity"]],
+            "empty_state_visible": False,
+        }
+
+    async def fake_replace(*_args, **_kwargs):
+        return {
+            "ok": False,
+            "status": "project_source_replace_not_supported",
+            "project_source_mutated": False,
+            "replace_capability": "replace_action_not_exposed",
+            "visible_source_actions": ["Download", "Delete"],
+        }
+
+    async def fake_upload(*_args, **_kwargs) -> None:
+        calls["upload"] += 1
+
+    async def fake_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"saw_commit": False, "started": 0, "finished": 0, "failed": 0, "inflight": 0}
+
+    async def fake_processing(*_args, **_kwargs):
+        return {"ok": True, "status": "processing_stream_not_observed"}
+
+    async def fake_remove(*_args, **_kwargs):
+        calls["remove"] += 1
+        raise AssertionError("old source must not be deleted without a verified new upload")
+
+    async def fake_safe_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authority  # type: ignore[method-assign]
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {
+        "installed": True,
+        "source_kind": "file",
+        "started": 0,
+        "finished": 0,
+        "failed": 0,
+        "saw_relevant": False,
+        "saw_commit": False,
+        "inflight": set(),
+        "backing_file_ids": [],
+        "backend_assigned_names": [],
+    }  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"changed replacement bytes")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=Context(),
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+        )
+    )
+
+    assert calls == {"upload": 1, "remove": 0}
+    assert result["ok"] is False
+    assert result["status"] == "source_overwrite_upload_not_started"
+    assert result["replacement_mode"] == "upload_new_verify_delete_old"
+    assert result["upload_started"] is False
+    assert result["overwritten"] is False
+    assert result["removed_existing"] is False
+    assert result["replacement_backing_identity_verified"] is False
+
+
+def test_add_file_source_replace_fallback_fails_closed_without_both_backing_ids(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    class Context:
+        def on(self, *_args, **_kwargs) -> None:
+            return None
+
+    page = object()
+    old_card = {"identity": "release.zip Document", "title": "release.zip", "text": "release.zip Document"}
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_authority(*_args, **_kwargs):
+        return {"ok": True, "sources": [old_card], "source_card_count": 1, "source_identities": [old_card["identity"]], "empty_state_visible": False}
+
+    async def fake_replace(*_args, **_kwargs):
+        return {"ok": False, "status": "project_source_replace_not_supported", "project_source_mutated": False}
+
+    async def fake_processing(*_args, **_kwargs):
+        return {
+            "status": "project_source_processing_stream_completed",
+            "assigned_filename": "release(9).zip",
+            "processed_file_id": "file_000000001234567890abcdef12345678",
+            "library_metadata_object_id": None,
+        }
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {"saw_commit": True, "started": 2, "finished": 2, "failed": 0, "inflight": 0}
+
+    async def fake_safe_url(*_args, **_kwargs) -> str:
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authority  # type: ignore[method-assign]
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: {
+        "installed": True, "source_kind": "file", "started": 2, "finished": 2, "failed": 0,
+        "saw_relevant": True, "saw_commit": True, "inflight": set(), "backing_file_ids": [],
+        "backend_assigned_names": ["release(9).zip"],
+    }  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"changed replacement bytes")
+    result = asyncio.run(browser_client._add_project_source_operation(context=Context(), page=page, source_kind="file", value=None, file_path=str(file_path), display_name=str(file_path)))
+
+    assert result["ok"] is False
+    assert result["status"] == "source_overwrite_backing_identity_missing"
+    assert result["upload_started"] is True
+    assert result["removed_existing"] is False
+
+
+def test_family_replacement_never_deletes_concurrent_unobserved_family_member(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+    old_card = {"identity": "release.zip Document", "title": "release.zip", "text": "release.zip Document"}
+    new_card = {"identity": "release(7).zip Document", "title": "release(7).zip", "text": "release(7).zip Document"}
+    concurrent_card = {"identity": "release(8).zip Document", "title": "release(8).zip", "text": "release(8).zip Document"}
+    visible = [old_card, new_card, concurrent_card]
+    removed: list[str] = []
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_remove(*_args, **kwargs):
+        target = kwargs["source_name"]
+        removed.append(target)
+        visible[:] = [item for item in visible if item["title"] != target]
+        return {"ok": True, "removed_via_ui": True, "source_match": target}
+
+    async def fake_authority(*_args, **_kwargs):
+        return {"ok": True, "sources": list(visible), "source_card_count": len(visible), "source_identities": [item["identity"] for item in visible]}
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authority  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._replace_previous_file_source_family_members(
+            context=object(),
+            page=page,
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            canonical_name="release.zip",
+            assigned_filename="release(7).zip",
+            previous_family_sources=[old_card],
+        )
+    )
+
+    assert removed == ["release.zip"]
+    assert concurrent_card in visible
+    assert result["ok"] is False
+    assert result["status"] == "source_family_replacement_not_verified"
+    assert result["residual_previous_source_identities"] == [concurrent_card["identity"]]

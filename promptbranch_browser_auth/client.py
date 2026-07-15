@@ -7392,7 +7392,11 @@ class ChatGPTBrowserClient:
             "exact_canonical_sources": exact,
             "indexed_sources": indexed,
             "previous_max_assigned_index": previous_max,
-            "expected_next_assigned_index": previous_max + 1 if previous_max is not None else None,
+            # ChatGPT assigns suffix indexes from the account-wide Library namespace,
+            # including objects that are not visible on the current Project Sources
+            # surface.  Retain the previous visible maximum as diagnostics only; never
+            # predict or require the next assigned index.
+            "expected_next_assigned_index": None,
             "source_family_regex": pattern.pattern if pattern is not None else None,
             "source_family_identities": [
                 self._preferred_source_card_identity(item) or item.get("text")
@@ -7408,15 +7412,17 @@ class ChatGPTBrowserClient:
         project_url: str,
         canonical_name: str,
         assigned_filename: str,
-        family_sources: list[dict[str, Any]],
+        previous_family_sources: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Remove every older Project Source in one canonical/indexed family.
+        """Remove only Project Source family members observed before this upload.
 
         The current upload is already proven by the processing-stream identities and
-        exact assigned-card verification before this method is called.  We therefore
-        keep only ``assigned_filename`` and remove every other visible member of the
-        same filename family.  Success requires an authoritative final surface with
-        exactly one family member: the assigned source from this upload.
+        exact assigned-card verification before this method is called.  Destructive
+        scope is frozen to ``previous_family_sources`` captured before upload: a
+        concurrently created family member is never selected for deletion.  Success
+        still requires an authoritative final surface with exactly one family member,
+        the exact assigned source from this upload; any concurrent extra member causes
+        a fail-closed verification result.
         """
         canonical = self._file_source_family_filename(canonical_name)
         assigned = self._file_source_family_filename(assigned_filename)
@@ -7435,7 +7441,7 @@ class ChatGPTBrowserClient:
 
         removal_targets: list[str] = []
         seen: set[str] = set()
-        for source in family_sources or []:
+        for source in previous_family_sources or []:
             details = source.get("_promptbranch_file_family_match") if isinstance(source, dict) else None
             observed = self._file_source_family_filename(
                 (details or {}).get("observed_filename")
@@ -7526,6 +7532,10 @@ class ChatGPTBrowserClient:
             "performed": bool(removal_targets),
             "verified": verified,
             "removal_targets": removal_targets,
+            "previous_family_source_identities": [
+                self._preferred_source_card_identity(source) or source.get("text")
+                for source in previous_family_sources or []
+            ],
             "removed_source_count": sum(1 for item in remove_results if item.get("ok")),
             "remove_results": remove_results,
             "final_surface": final_surface,
@@ -13301,6 +13311,8 @@ class ChatGPTBrowserClient:
         overwritten_existing = False
         overwrite_remove_result: Optional[dict[str, Any]] = None
         in_place_replace_attempt: Optional[dict[str, Any]] = None
+        upload_new_family_replacement_required = False
+        replacement_previous_family_sources: list[dict[str, Any]] = []
         capacity_prune_result: Optional[dict[str, Any]] = None
         capacity_limit = 25
         capacity_before = len(before_sources)
@@ -13458,6 +13470,11 @@ class ChatGPTBrowserClient:
                             replace_capability=in_place_replace_attempt.get("replace_capability"),
                             visible_source_actions=in_place_replace_attempt.get("visible_source_actions"),
                         )
+                        upload_new_family_replacement_required = True
+                        replacement_previous_family_sources = [
+                            dict(source)
+                            for source in list(initial_family_diagnostics.get("family_sources") or [])
+                        ]
                         matched_source = None
                         duplicate_detected = False
                         duplicate_notice = None
@@ -14044,6 +14061,81 @@ class ChatGPTBrowserClient:
                     source_kind=normalized_kind,
                     expected_filename=canonical_display_name if normalized_kind == "file" else display_name,
                 )
+                if normalized_kind == "file" and upload_new_family_replacement_required:
+                    replacement_save_summary = self._project_source_save_watch_summary(save_request_watch)
+                    replacement_stream = processing_stream_result if isinstance(processing_stream_result, dict) else {}
+                    replacement_upload_started = bool(
+                        int(replacement_save_summary.get("started") or 0) > 0
+                        or int(replacement_save_summary.get("processing_stream_started") or 0) > 0
+                    )
+                    replacement_stream_completed = (
+                        replacement_stream.get("status") == "project_source_processing_stream_completed"
+                    )
+                    replacement_assigned_filename = self._file_source_family_filename(
+                        replacement_stream.get("assigned_filename") or replacement_stream.get("library_file_name")
+                    )
+                    replacement_processed_file_id = self._library_file_record_id(
+                        replacement_stream.get("processed_file_id")
+                    )
+                    replacement_library_object_id = self._library_file_record_id(
+                        replacement_stream.get("library_metadata_object_id")
+                    )
+                    replacement_canonical_name = canonical_display_name or (
+                        source_match_candidates[0] if source_match_candidates else ""
+                    )
+                    replacement_identity_is_new = not bool(
+                        replacement_processed_file_id
+                        and replacement_processed_file_id in set(family_source_backing_file_ids)
+                    )
+                    replacement_failure_status = None
+                    if not replacement_upload_started or not bool(replacement_save_summary.get("saw_commit")):
+                        replacement_failure_status = "source_overwrite_upload_not_started"
+                    elif not replacement_stream_completed:
+                        replacement_failure_status = "source_overwrite_processing_stream_not_completed"
+                    elif not replacement_assigned_filename or not self._file_source_family_member(
+                        replacement_assigned_filename,
+                        replacement_canonical_name,
+                    ):
+                        replacement_failure_status = "source_overwrite_assigned_filename_not_verified"
+                    elif not replacement_processed_file_id or not replacement_library_object_id:
+                        replacement_failure_status = "source_overwrite_backing_identity_missing"
+                    elif not replacement_identity_is_new:
+                        replacement_failure_status = "source_overwrite_backing_identity_not_new"
+                    if replacement_failure_status:
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": replacement_failure_status,
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": replacement_canonical_name,
+                            "source_match_candidates": source_match_candidates,
+                            "requested_filename": replacement_canonical_name,
+                            "assigned_filename": replacement_assigned_filename,
+                            "processed_file_id": replacement_processed_file_id,
+                            "library_metadata_object_id": replacement_library_object_id,
+                            "persistence_verified": False,
+                            "project_source_mutated": bool(replacement_save_summary.get("saw_commit")),
+                            "release_blocking": True,
+                            "operator_review_required": False,
+                            "already_exists": True,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "replacement_mode": "upload_new_verify_delete_old",
+                            "in_place_replace_attempt": in_place_replace_attempt,
+                            "upload_started": replacement_upload_started,
+                            "processing_stream": processing_stream_result,
+                            "save_request_summary": replacement_save_summary,
+                            "save_request_quiet": save_request_quiet_result,
+                            "replacement_backing_identity_verified": False,
+                            "pre_upload_family_source_count": len(replacement_previous_family_sources),
+                            "pre_upload_family_source_identities": [
+                                self._preferred_source_card_identity(source) or source.get("text")
+                                for source in replacement_previous_family_sources
+                            ],
+                            "current_url": await self._safe_page_url(page),
+                        }
                 if normalized_kind == "file" and bool(
                     self._project_source_save_watch_summary(save_request_watch).get("saw_commit")
                 ):
@@ -14648,9 +14740,39 @@ class ChatGPTBrowserClient:
                         project_url=project_home_url,
                         canonical_name=canonical_display_name or requested_match or "",
                         assigned_filename=verified_assigned_filename,
-                        family_sources=success_family_sources,
+                        previous_family_sources=(
+                            replacement_previous_family_sources
+                            if upload_new_family_replacement_required
+                            else list(initial_family_diagnostics.get("family_sources") or [])
+                        ),
                     )
                     family_source_remove_results.extend(list(family_replacement_result.get("remove_results") or []))
+                    if (
+                        upload_new_family_replacement_required
+                        and replacement_previous_family_sources
+                        and not family_replacement_result.get("performed")
+                    ):
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_family_previous_member_remove_not_performed",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "requested_filename": canonical_display_name or requested_match,
+                            "assigned_filename": verified_assigned_filename,
+                            "persistence_verified": True,
+                            "project_source_mutated": True,
+                            "release_blocking": True,
+                            "operator_review_required": True,
+                            "replacement_mode": "upload_new_verify_delete_old",
+                            "replacement_backing_identity_verified": True,
+                            "family_replacement_required": True,
+                            "family_replacement_performed": False,
+                            "family_replacement_verified": False,
+                            "family_replacement": family_replacement_result,
+                            "family_source_remove_results": family_source_remove_results,
+                            "current_url": await self._safe_page_url(page),
+                        }
                     if not family_replacement_result.get("ok"):
                         return {
                             "ok": False,
@@ -14739,6 +14861,46 @@ class ChatGPTBrowserClient:
                     ],
                     "remove_results": [],
                 }
+                if upload_new_family_replacement_required and replacement_previous_family_sources:
+                    return {
+                        "ok": False,
+                        "action": "add",
+                        "status": "source_family_previous_member_identity_not_distinguishable",
+                        "project_url": project_home_url,
+                        "source_kind": normalized_kind,
+                        "requested_filename": canonical_display_name or requested_match,
+                        "assigned_filename": verified_assigned_filename,
+                        "processed_file_id": self._library_file_record_id(
+                            (processing_stream_result or {}).get("processed_file_id")
+                            if isinstance(processing_stream_result, dict)
+                            else None
+                        ),
+                        "library_metadata_object_id": self._library_file_record_id(
+                            (processing_stream_result or {}).get("library_metadata_object_id")
+                            if isinstance(processing_stream_result, dict)
+                            else None
+                        ),
+                        "persistence_verified": True,
+                        "project_source_mutated": True,
+                        "release_blocking": True,
+                        "operator_review_required": True,
+                        "replacement_mode": "upload_new_verify_delete_old",
+                        "replacement_backing_identity_verified": True,
+                        "already_exists": True,
+                        "added": False,
+                        "overwritten": False,
+                        "removed_existing": False,
+                        "family_replacement_required": True,
+                        "family_replacement_performed": False,
+                        "family_replacement_verified": False,
+                        "family_replacement": family_replacement_result,
+                        "pre_upload_family_source_count": len(replacement_previous_family_sources),
+                        "pre_upload_family_source_identities": [
+                            self._preferred_source_card_identity(source) or source.get("text")
+                            for source in replacement_previous_family_sources
+                        ],
+                        "current_url": await self._safe_page_url(page),
+                    }
 
             if capacity_prune_result is not None:
                 final_capacity_surface = await self._wait_for_authoritative_project_sources_surface(
@@ -14816,7 +14978,11 @@ class ChatGPTBrowserClient:
             "action": "add",
             "status": (
                 "source_replaced"
-                if normalized_kind == "file" and isinstance(family_replacement_result, dict) and family_replacement_result.get("performed")
+                if normalized_kind == "file"
+                and upload_new_family_replacement_required
+                and isinstance(family_replacement_result, dict)
+                and family_replacement_result.get("performed")
+                and family_replacement_result.get("verified")
                 else "source_added"
             ),
             "project_url": project_home_url,
@@ -14866,14 +15032,24 @@ class ChatGPTBrowserClient:
                 or overwritten_existing
                 or (normalized_kind == "file" and initial_family_diagnostics.get("family_sources"))
             ),
-            "added": not duplicate_detected,
+            "added": bool(not duplicate_detected and not upload_new_family_replacement_required),
             "overwritten": bool(
                 overwritten_existing
-                or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
+                or (
+                    upload_new_family_replacement_required
+                    and isinstance(family_replacement_result, dict)
+                    and family_replacement_result.get("performed")
+                    and family_replacement_result.get("verified")
+                )
             ),
             "removed_existing": bool(
                 removed_existing_via_ui
-                or (isinstance(family_replacement_result, dict) and family_replacement_result.get("performed"))
+                or (
+                    upload_new_family_replacement_required
+                    and isinstance(family_replacement_result, dict)
+                    and family_replacement_result.get("performed")
+                    and family_replacement_result.get("verified")
+                )
             ),
             "current_url": await self._safe_page_url(page),
         }
@@ -14920,6 +15096,10 @@ class ChatGPTBrowserClient:
                 "backend_assigned_name": backend_assigned_name,
                 "processed_file_id": processed_file_id,
                 "library_metadata_object_id": library_metadata_object_id,
+                "replacement_backing_identity_verified": bool(
+                    not upload_new_family_replacement_required
+                    or (processed_file_id and library_metadata_object_id)
+                ),
                 "local_sha256": local_identity.get("sha256"),
                 "local_size_bytes": local_identity.get("size_bytes"),
                 "source_family_regex": initial_family_diagnostics.get("source_family_regex"),
@@ -14933,11 +15113,10 @@ class ChatGPTBrowserClient:
                     if assigned_index is not None and previous_max_assigned_index is not None
                     else None
                 ),
-                "assigned_index_is_expected_next": (
-                    assigned_index == expected_next_assigned_index
-                    if assigned_index is not None and expected_next_assigned_index is not None
-                    else None
-                ),
+                # Account-wide Library state can consume invisible suffix indexes.
+                # The exact backend-assigned filename is authoritative; no contiguous
+                # next-index prediction participates in acceptance.
+                "assigned_index_is_expected_next": None,
                 "assigned_source_verification": assigned_source_verification,
                 "canonical_persistence_retry_skipped": bool(
                     isinstance(assigned_source_verification, dict)

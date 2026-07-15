@@ -141,3 +141,13 @@ Keep the repair limited to source-sync planning, terminal test-suite JSON, struc
 ### v0.1.103.10.111 repair-only full-suite registry and overwrite alignment
 
 This repair aligns the complete deterministic validation suite with project-scoped registry authority. When ChatGPT exposes no in-place Replace action for an existing file source, Promptbranch uploads once, verifies the exact backend-assigned canonical/indexed family member, and only then removes prior family members. Read-only smoke accepts structured uninitialized project/registry states only when mutation flags remain false. Lifecycle `--plan` stays available while exposing execution blockers. No normal scope advances.
+
+
+### v0.1.103.10.112 repair-only changed-content indexed-family overwrite proof
+
+- Rewrite the integration file before overwrite and require distinct initial/replacement SHA-256 values.
+- Accept the exact backend-assigned canonical or indexed filename; never predict the suffix index.
+- Require completed processing plus processed-file and Library object identities before deleting old sources.
+- Delete only family identities observed before upload and require the assigned source as the final singleton.
+- Fail closed on no upload, missing identity, concurrent family drift, or residual old members.
+- Require both `full_direct` and `full_localhost`; do not advance the normal slice.
