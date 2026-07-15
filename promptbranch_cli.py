@@ -8228,9 +8228,40 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'package_zip': getattr(args, 'package_zip', None),
         'rate_limit_safe': getattr(args, 'rate_limit_safe', None),
     }
-    summary = await run_test_suite_async(**payload)
-    if args.json or True:
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    try:
+        summary = await run_test_suite_async(**payload)
+    except Exception as exc:
+        profile = str(payload.get("profile") or "browser")
+        summary = {
+            "ok": False,
+            "action": "test_suite",
+            "profile": profile,
+            "version": f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION),
+            "status": "pre_suite_failure",
+            "failure_count": 1,
+            "failed_steps": [
+                {
+                    "section": profile,
+                    "scope": "pre_suite",
+                    "name": "test_suite_dispatch",
+                    "status": "pre_suite_failure",
+                    "diagnostic": str(exc),
+                    "error_type": type(exc).__name__,
+                }
+            ],
+            "pre_suite_failure": {
+                "status": "pre_suite_failure",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+            "rate_limit_telemetry": {},
+            "safety": {
+                "write_tools_blocked": True,
+                "model_has_execution_authority": False,
+                "source_or_artifact_mutation_allowed": False,
+            },
+        }
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if summary.get('ok') else 1
 
 

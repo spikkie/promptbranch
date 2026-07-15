@@ -427,3 +427,56 @@ def test_artifact_registry_rejects_noncanonical_record_on_load(tmp_path: Path) -
     assert state["status"] == "artifact_registry_invalid"
     assert "canonical <repo_id>_v<version>.zip" in state["error"]
 
+
+
+def test_artifact_mutation_remains_blocked_when_registry_missing(tmp_path: Path) -> None:
+    import pytest
+    from promptbranch_artifacts import ArtifactRegistryStateError
+
+    registry = ArtifactRegistry(tmp_path / ".pb_profile")
+    record = ArtifactRecord(
+        path=str(tmp_path / "repo_v1.0.0.zip"),
+        filename="repo_v1.0.0.zip",
+        kind="release",
+        version="v1.0.0",
+        repo_path=str(tmp_path),
+        repo_id="repo",
+        sha256="0" * 64,
+        size_bytes=1,
+        file_count=1,
+        created_at="2026-07-15T00:00:00Z",
+        source_ref="repo_v1.0.0.zip",
+    )
+
+    with pytest.raises(ArtifactRegistryStateError) as exc_info:
+        registry.add(record)
+
+    assert exc_info.value.status == "artifact_registry_missing"
+    assert not registry.path.exists()
+
+
+def test_artifact_mutation_remains_blocked_when_registry_invalid(tmp_path: Path) -> None:
+    import pytest
+    from promptbranch_artifacts import ArtifactRegistryStateError
+
+    registry = ArtifactRegistry(tmp_path / ".pb_profile")
+    registry.profile_dir.mkdir(parents=True)
+    registry.path.write_text("{broken", encoding="utf-8")
+    record = ArtifactRecord(
+        path=str(tmp_path / "repo_v1.0.0.zip"),
+        filename="repo_v1.0.0.zip",
+        kind="release",
+        version="v1.0.0",
+        repo_path=str(tmp_path),
+        repo_id="repo",
+        sha256="0" * 64,
+        size_bytes=1,
+        file_count=1,
+        created_at="2026-07-15T00:00:00Z",
+        source_ref="repo_v1.0.0.zip",
+    )
+
+    with pytest.raises(ArtifactRegistryStateError) as exc_info:
+        registry.add(record)
+
+    assert exc_info.value.status == "artifact_registry_invalid"

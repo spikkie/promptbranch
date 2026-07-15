@@ -1110,3 +1110,8 @@ No command or state migration is required. Existing indexed Project Sources rema
 ## Project Source capacity note — v0.1.103.10.109
 
 No state migration is required. A future successful default `pb src add` removes older canonical/indexed Project Source siblings after the new assigned source is verified. `--no-overwrite` refuses an existing indexed family rather than creating another sibling.
+
+
+## Test validation registry note — v0.1.103.10.110
+
+An absent project artifact registry is now a valid read-only planning observation. Operators must not create a repo-local compatibility registry to satisfy tests. Mutating artifact commands still require the authoritative project-scoped registry to exist and validate.

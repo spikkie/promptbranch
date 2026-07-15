@@ -896,3 +896,8 @@ A pre-existing indexed Project Source such as `(14)` is pre-upload family eviden
 ## v0.1.103.10.109: capacity pruning is one-slot, exact, and fail-closed
 
 A successful file-source add is now a replacement transaction, not merely proof that the new assigned card exists. After the assigned source is proven, every other visible member of the same escaped filename family is removed by exact identity. Success requires an authoritative final surface with exactly one family member, the source assigned to the current upload.
+
+
+## v0.1.103.10.110: uninitialized registry is observable in read-only plans, never implicit mutation authority
+
+Read-only source-sync validation may report a missing project artifact registry as an uninitialized state. It must not initialize, repair, or infer artifact authority. Invalid or unreadable registries and every artifact mutation remain fail-closed. Test commands must retain a complete terminal JSON envelope even when a preflight step fails.

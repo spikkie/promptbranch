@@ -14363,3 +14363,108 @@ def test_parser_exposes_release_live_continuous_help() -> None:
     assert args.test_command == "release-live-continuous"
     assert args.project_name == "itest-release-live-continuous"
     assert args.warmup_conversation_url == "https://chatgpt.com/g/g-p-demo/c/warmup"
+
+
+def test_test_report_summarizes_structured_pre_suite_failure(capsys, tmp_path) -> None:
+    log_path = tmp_path / "pb_test.full.log"
+    failure = {
+        "ok": False,
+        "action": "artifact_registry",
+        "status": "artifact_registry_missing",
+        "registry_file": str(tmp_path / ".pb_profile" / "promptbranch_artifacts.json"),
+        "error": "artifact registry does not exist",
+        "command": "test",
+    }
+    log_path.write_text(json.dumps(failure, indent=2) + "\n", encoding="utf-8")
+
+    rc = main(["test", "report", str(log_path), "--json"])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "test_report"
+    assert payload["status"] == "test_command_failed_before_suite"
+    assert payload["failure"]["status"] == "artifact_registry_missing"
+
+
+def test_test_agent_dispatch_exception_still_emits_complete_suite_json(monkeypatch, capsys) -> None:
+    async def fail_suite(**kwargs):
+        raise RuntimeError("pre-suite boom")
+
+    monkeypatch.setattr("promptbranch_cli.run_test_suite_async", fail_suite)
+
+    rc = main(["test", "agent", "--json"])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "test_suite"
+    assert payload["profile"] == "agent"
+    assert payload["status"] == "pre_suite_failure"
+    assert payload["failure_count"] == 1
+    assert payload["failed_steps"][0]["scope"] == "pre_suite"
+
+
+def test_artifact_adopt_remains_blocked_when_registry_missing(monkeypatch, tmp_path) -> None:
+    from promptbranch_artifacts import ArtifactRegistryStateError
+
+    registry = ArtifactRegistry(tmp_path / ".pb_profile")
+    monkeypatch.setattr("promptbranch_cli._artifact_registry_from_args", lambda args: registry)
+    args = argparse.Namespace(
+        artifact="repo_v1.0.0.zip",
+        json=True,
+        profile_dir=str(tmp_path / ".pb_profile"),
+        local_only=True,
+        from_project_source=False,
+        local_path=str(tmp_path / "repo_v1.0.0.zip"),
+        keep_open=False,
+        repo="repo",
+    )
+
+    with pytest.raises(ArtifactRegistryStateError) as exc_info:
+        asyncio.run(cmd_artifact_adopt(None, args))
+
+    assert exc_info.value.status == "artifact_registry_missing"
+    assert not registry.path.exists()
+
+
+@pytest.mark.parametrize("service_base_url", ["http://localhost:8000", "http://127.0.0.1:8000"])
+def test_full_test_transport_emits_complete_suite_json_for_missing_registry_safe_path(monkeypatch, capsys, service_base_url) -> None:
+    async def fake_suite(**kwargs):
+        assert kwargs["profile"] == "full"
+        assert kwargs["service_base_url"] == service_base_url
+        return {
+            "ok": True,
+            "action": "test_suite",
+            "profile": "full",
+            "version": "v0.1.103.10.110",
+            "browser": {"ok": True, "action": "test_suite", "profile": "browser", "steps": []},
+            "agent": {
+                "ok": True,
+                "action": "test_suite",
+                "profile": "agent",
+                "steps": [
+                    {
+                        "name": "src_sync_dry_run_plan",
+                        "ok": True,
+                        "payload": {"status": "planned", "registry_status": "missing", "mutating_actions_executed": False},
+                    },
+                    {
+                        "name": "src_sync_upload_preflight_plan",
+                        "ok": True,
+                        "payload": {"status": "upload_confirmation_required", "registry_status": "missing", "project_source_mutated": False},
+                    },
+                ],
+            },
+            "failure_count": 0,
+            "failed_steps": [],
+        }
+
+    monkeypatch.setattr("promptbranch_cli.run_test_suite_async", fake_suite)
+
+    rc = main(["--service-base-url", service_base_url, "test", "full", "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "test_suite"
+    assert payload["profile"] == "full"
+    assert payload["failure_count"] == 0
+    assert payload["agent"]["steps"][0]["payload"]["registry_status"] == "missing"

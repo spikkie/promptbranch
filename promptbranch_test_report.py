@@ -52,6 +52,24 @@ def extract_test_suite_payload(text: str) -> tuple[dict[str, Any] | None, dict[s
     }
 
 
+
+
+def extract_structured_pre_suite_failure(text: str) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    objects = _decode_json_objects(text)
+    failures: list[tuple[int, int, dict[str, Any]]] = []
+    for start, end, obj in objects:
+        if not isinstance(obj, dict) or _looks_like_test_suite(obj):
+            continue
+        if obj.get("ok") is False and (obj.get("status") or obj.get("error")):
+            failures.append((start, end, obj))
+    if not failures:
+        return None, {"json_object_count": len(objects), "selected": None}
+    start, end, payload = failures[-1]
+    return payload, {
+        "json_object_count": len(objects),
+        "selected": {"start_offset": start, "end_offset": end},
+    }
+
 def _step_count(section: dict[str, Any] | None) -> int:
     if not isinstance(section, dict):
         return 0
@@ -630,6 +648,16 @@ def build_test_report(log_path: str | Path, *, service_log: str | Path | None = 
 
     payload, extraction = extract_test_suite_payload(text)
     if payload is None:
+        failure, failure_extraction = extract_structured_pre_suite_failure(text)
+        if failure is not None:
+            return {
+                "ok": False,
+                "action": "test_report",
+                "status": "test_command_failed_before_suite",
+                "log_path": str(path),
+                "source": {"bytes": len(text.encode("utf-8", errors="replace")), **failure_extraction},
+                "failure": failure,
+            }
         return {
             "ok": False,
             "action": "test_report",
@@ -658,6 +686,12 @@ def render_test_report_text(report: dict[str, Any]) -> str:
         f"status={report.get('status')}",
         f"log_path={report.get('log_path')}",
     ]
+    failure = report.get("failure") if isinstance(report.get("failure"), dict) else None
+    if failure:
+        lines.append(f"failure.action={failure.get('action')}")
+        lines.append(f"failure.status={failure.get('status')}")
+        if failure.get("error"):
+            lines.append(f"failure.error={failure.get('error')}")
     suite = report.get("suite") if isinstance(report.get("suite"), dict) else {}
     if suite:
         lines.extend([

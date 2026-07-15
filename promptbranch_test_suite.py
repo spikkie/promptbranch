@@ -31,7 +31,7 @@ from promptbranch_mcp import (
     skill_show,
     skill_validate,
 )
-from promptbranch_artifacts import ArtifactRegistry, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations, sha256_file, verify_zip_artifact
+from promptbranch_artifacts import ArtifactRegistry, ArtifactRegistryStateError, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations, sha256_file, verify_zip_artifact
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 from promptbranch_ask_protocol import BEGIN_REPLY_MARKER, END_REPLY_MARKER, classify_artifact_candidates, parse_promptbranch_reply
 
@@ -1195,8 +1195,19 @@ def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Pa
             project_url=None,
             upload_requested=False,
         )
+    except ArtifactRegistryStateError as exc:
+        return {
+            "ok": False,
+            "action": "src_sync_dry_run",
+            "status": "preflight_failed",
+            "registry_status": exc.status,
+            "artifact_registry": exc.to_payload(action="artifact_registry"),
+            "error": str(exc),
+            "repo_path": str(root),
+            "mutating_actions_executed": False,
+        }
     except ValueError as exc:
-        return {"ok": False, "action": "src_sync_dry_run", "status": "plan_failed", "error": str(exc), "repo_path": str(root)}
+        return {"ok": False, "action": "src_sync_dry_run", "status": "plan_failed", "error": str(exc), "repo_path": str(root), "mutating_actions_executed": False}
     preflight = plan["preflight"]
     return {
         "ok": True,
@@ -1206,6 +1217,7 @@ def _src_sync_dry_run_plan(*, repo_path: str | Path = ".", profile_dir: str | Pa
         "mutating_actions_executed": False,
         "artifact": {**plan, "would_upload_source": False},
         "included_count": len(included),
+        "registry_status": preflight["before_snapshot"]["artifact_registry"].get("registry_status"),
         "before_snapshot": preflight["before_snapshot"],
         "collateral_checks": preflight["collateral_checks"],
         "transaction_id": preflight["transaction_id"],
@@ -1235,8 +1247,20 @@ def _src_sync_upload_preflight_plan(*, repo_path: str | Path = ".", profile_dir:
             project_url=project_url,
             upload_requested=True,
         )
+    except ArtifactRegistryStateError as exc:
+        return {
+            "ok": False,
+            "action": "src_sync_upload_preflight",
+            "status": "preflight_failed",
+            "registry_status": exc.status,
+            "artifact_registry": exc.to_payload(action="artifact_registry"),
+            "error": str(exc),
+            "repo_path": str(root),
+            "mutating_actions_executed": False,
+            "project_source_mutated": False,
+        }
     except ValueError as exc:
-        return {"ok": False, "action": "src_sync_upload_preflight", "status": "plan_failed", "error": str(exc), "repo_path": str(root)}
+        return {"ok": False, "action": "src_sync_upload_preflight", "status": "plan_failed", "error": str(exc), "repo_path": str(root), "mutating_actions_executed": False, "project_source_mutated": False}
     preflight = plan["preflight"]
     transaction_id = preflight["transaction_id"]
     return {
@@ -1248,6 +1272,7 @@ def _src_sync_upload_preflight_plan(*, repo_path: str | Path = ".", profile_dir:
         "project_source_mutated": False,
         "artifact": {**plan, "would_upload_source": True},
         "included_count": len(included),
+        "registry_status": preflight["before_snapshot"]["artifact_registry"].get("registry_status"),
         "transaction_id": transaction_id,
         "confirmation": {
             "required": True,

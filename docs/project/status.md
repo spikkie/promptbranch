@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip
-active candidate version: v0.1.103.10.109
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip
-next normal slice: v0.1.103.10.109 — deterministic capacity pruning before Project Source upload
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip
+active candidate version: v0.1.103.10.110
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip
+next normal slice: v0.1.103.10.110 — missing-registry-safe read-only validation
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip
-release status: v0.1.103.10.109 is a deterministic Project Source capacity-pruning repair candidate; canonical release pbsa and adoption remain prohibited pending live validation
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip
+release status: v0.1.103.10.110 is a missing-registry-safe read-only validation repair candidate; canonical release pbsa and adoption remain prohibited pending strict validation
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Install v0.1.103.10.109. A future explicitly authorized release source add should prune exactly one safe obsolete same-repository release at the 25-file boundary, prove 25→24, upload once, verify the assigned source, and prove the final count returns to 25. Do not adopt Promptbranch without strict validation.
+Install v0.1.103.10.110. Verify `pb test agent` and both full-test transports with an intentionally missing project registry. Read-only source-sync plans must report `registry_status=missing` without creating state; artifact mutations must remain fail-closed. Do not adopt Promptbranch without strict validation.
 ```
 
 Operator promotion command after candidate ZIP creation:

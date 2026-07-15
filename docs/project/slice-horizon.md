@@ -132,3 +132,8 @@ Uses one escaped canonical/indexed filename-family matcher across preflight and 
 ### v0.1.103.10.109 repair-only deterministic Project Source capacity pruning
 
 Upload and verify the new assigned Project Source first, remove all older exact family members, and return success only when the authoritative final surface contains exactly one family member.
+
+
+### v0.1.103.10.110 repair-only missing-registry-safe read-only validation
+
+Keep the repair limited to source-sync planning, terminal test-suite JSON, structured pre-suite reporting, and fail-closed mutation authority. No live-browser response-causality or profile-lease repair is included.

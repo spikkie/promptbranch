@@ -802,14 +802,46 @@ def build_source_sync_preflight(
     registry_filename_collision = False
     if profile_dir is not None:
         registry = ArtifactRegistry(profile_dir)
-        current = registry.current()
-        artifacts = registry.list()
-        registry_payload = {
-            "path": str(registry.path),
-            "exists": registry.path.exists(),
-            "current": current,
-            "artifact_count": len(artifacts),
-        }
+        registry_state = registry.inspect()
+        if registry_state.get("status") == "artifact_registry_missing":
+            artifacts: list[dict[str, Any]] = []
+            current = None
+            registry_payload = {
+                "path": str(registry.path),
+                "exists": False,
+                "status": "artifact_registry_missing",
+                "registry_status": "missing",
+                "registry_valid": False,
+                "registry_readable": False,
+                "current": None,
+                "artifact_count": 0,
+                "error": registry_state.get("error"),
+            }
+        elif not bool(registry_state.get("ok")):
+            raise ArtifactRegistryStateError(
+                str(registry_state.get("status") or "artifact_registry_invalid"),
+                registry.path,
+                registry_exists=bool(registry_state.get("registry_exists")),
+                registry_valid=bool(registry_state.get("registry_valid")),
+                registry_readable=bool(registry_state.get("registry_readable")),
+                error=str(registry_state.get("error") or registry_state.get("status") or "artifact registry preflight failed"),
+            )
+        else:
+            payload = registry_state.get("payload") if isinstance(registry_state.get("payload"), dict) else {}
+            artifacts = [item for item in payload.get("artifacts", []) if isinstance(item, dict)]
+            repo_ids = {str(item.get("repo_id")) for item in artifacts if item.get("repo_id")}
+            current = artifacts[0] if artifacts and len(repo_ids) <= 1 else None
+            registry_payload = {
+                "path": str(registry.path),
+                "exists": True,
+                "status": registry_state.get("status"),
+                "registry_status": "loaded" if artifacts else "empty",
+                "registry_valid": True,
+                "registry_readable": True,
+                "current": current,
+                "artifact_count": len(artifacts),
+                "error": None,
+            }
         registry_path_collision = any(str(item.get("path") or "") == str(out_path) for item in artifacts)
         registry_filename_collision = any(str(item.get("filename") or "") == str(out_path.name) for item in artifacts)
     version = plan.get("version")

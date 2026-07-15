@@ -957,3 +957,30 @@ def test_agent_run_repo_inspection_builds_structured_report(monkeypatch, tmp_pat
     assert report["git"]["dirty"] is True
     assert "promptbranch_mcp.py" in report["diff_stat"]
     assert report["mutation_performed"] is False
+
+
+def test_agent_inspect_reports_missing_registry_without_creating_it(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+
+    payload = inspect_local_context(repo_path=tmp_path, profile_dir=profile, max_files=5)
+
+    assert payload["ok"] is True
+    assert payload["status"] == "inspected"
+    assert payload["artifact_registry"]["registry_status"] == "missing"
+    assert payload["artifact_registry"]["count"] == 0
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_agent_inspect_invalid_registry_is_structured_failure(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+    profile.mkdir()
+    (profile / "promptbranch_artifacts.json").write_text("{broken", encoding="utf-8")
+
+    payload = inspect_local_context(repo_path=tmp_path, profile_dir=profile, max_files=5)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "artifact_registry_invalid"
+    assert payload["artifact_registry"]["registry_status"] == "artifact_registry_invalid"
+    assert payload["artifact_registry"]["count"] is None

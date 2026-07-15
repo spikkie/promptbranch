@@ -577,10 +577,57 @@ def inspect_local_context(
     resolved_profile = resolve_profile_dir(str(profile_dir) if profile_dir else None)
     store_snapshot = state_snapshot or ConversationStateStore(str(resolved_profile)).snapshot(None)
     registry = ArtifactRegistry(resolved_profile)
+    registry_state = registry.inspect()
+    if registry_state.get("status") == "artifact_registry_missing":
+        registry_payload = {
+            "path": str(registry.path),
+            "artifact_dir": str(registry.artifact_dir),
+            "status": "artifact_registry_missing",
+            "registry_status": "missing",
+            "exists": False,
+            "valid": False,
+            "readable": False,
+            "count": 0,
+            "current": None,
+            "error": registry_state.get("error"),
+        }
+        registry_read_ok = True
+    elif bool(registry_state.get("ok")):
+        registry_data = registry_state.get("payload") if isinstance(registry_state.get("payload"), dict) else {}
+        registry_artifacts = [item for item in registry_data.get("artifacts", []) if isinstance(item, dict)]
+        repo_ids = {str(item.get("repo_id")) for item in registry_artifacts if item.get("repo_id")}
+        registry_payload = {
+            "path": str(registry.path),
+            "artifact_dir": str(registry.artifact_dir),
+            "status": registry_state.get("status"),
+            "registry_status": "loaded" if registry_artifacts else "empty",
+            "exists": True,
+            "valid": True,
+            "readable": True,
+            "count": len(registry_artifacts),
+            "current": registry_artifacts[0] if registry_artifacts and len(repo_ids) <= 1 else None,
+            "error": None,
+        }
+        registry_read_ok = True
+    else:
+        registry_payload = {
+            "path": str(registry.path),
+            "artifact_dir": str(registry.artifact_dir),
+            "status": registry_state.get("status"),
+            "registry_status": registry_state.get("status"),
+            "exists": bool(registry_state.get("registry_exists")),
+            "valid": bool(registry_state.get("registry_valid")),
+            "readable": bool(registry_state.get("registry_readable")),
+            "count": None,
+            "current": None,
+            "error": registry_state.get("error"),
+        }
+        registry_read_ok = False
     file_count, file_sample, file_errors = _safe_file_sample(root, max_files=max_files)
     manifest = mcp_tool_manifest(include_controlled_processes=False)
     payload = {
-        "ok": True,
+        "ok": registry_read_ok,
+        "status": "inspected" if registry_read_ok else str(registry_state.get("status") or "artifact_registry_invalid"),
         "action": "agent_inspect",
         "mode": "read_only",
         "repo": {
@@ -595,12 +642,7 @@ def inspect_local_context(
         },
         "git": _git_snapshot(root) if root.is_dir() else {"is_repo": False, "errors": ["repo path is not a directory"]},
         "state": store_snapshot,
-        "artifact_registry": {
-            "path": str(registry.path),
-            "artifact_dir": str(registry.artifact_dir),
-            "count": len(registry.list()),
-            "current": registry.current(),
-        },
+        "artifact_registry": registry_payload,
         "mcp": {
             "schema_version": MCP_SCHEMA_VERSION,
             "default_mode": "read_only",

@@ -877,3 +877,105 @@ def test_release_validation_nodeid_progress_records_ambient_profile_lock(monkeyp
     assert snapshot["lock_file_exists"] is True
     assert snapshot["last_operation"] == "add_project_source"
     assert snapshot["last_pid"] == "123"
+
+
+def test_src_sync_dry_run_missing_registry_is_read_only_planned(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+
+    result = suite._src_sync_dry_run_plan(repo_path=tmp_path, profile_dir=profile)
+
+    assert result["ok"] is True
+    assert result["status"] == "planned"
+    assert result["registry_status"] == "missing"
+    registry = result["before_snapshot"]["artifact_registry"]
+    assert registry["status"] == "artifact_registry_missing"
+    assert registry["artifact_count"] == 0
+    assert result["mutating_actions_executed"] is False
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_src_sync_upload_preflight_missing_registry_requires_confirmation_without_mutation(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+
+    result = suite._src_sync_upload_preflight_plan(repo_path=tmp_path, profile_dir=profile)
+
+    assert result["ok"] is True
+    assert result["status"] == "upload_confirmation_required"
+    assert result["registry_status"] == "missing"
+    assert result["mutating_actions_executed"] is False
+    assert result["project_source_mutated"] is False
+    assert result["confirmation"]["required"] is True
+    assert not (profile / "promptbranch_artifacts.json").exists()
+
+
+def test_src_sync_preflight_invalid_registry_is_structured_failed_step(tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+    profile.mkdir()
+    (profile / "promptbranch_artifacts.json").write_text("{broken", encoding="utf-8")
+
+    dry_run = suite._src_sync_dry_run_plan(repo_path=tmp_path, profile_dir=profile)
+    upload = suite._src_sync_upload_preflight_plan(repo_path=tmp_path, profile_dir=profile)
+
+    assert dry_run["ok"] is False
+    assert dry_run["status"] == "preflight_failed"
+    assert dry_run["registry_status"] == "artifact_registry_invalid"
+    assert dry_run["mutating_actions_executed"] is False
+    assert upload["ok"] is False
+    assert upload["status"] == "preflight_failed"
+    assert upload["registry_status"] == "artifact_registry_invalid"
+    assert upload["project_source_mutated"] is False
+
+
+def test_agent_profile_with_missing_registry_completes_suite_json(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    monkeypatch.setattr(suite, "mcp_host_smoke", lambda **kwargs: _ok("mcp_host_smoke"))
+    monkeypatch.setattr(suite, "mcp_tool_call_via_stdio", lambda *args, **kwargs: _ok("mcp_tool_call"))
+    monkeypatch.setattr(suite, "agent_run", lambda *args, **kwargs: _ok("agent_run"))
+    monkeypatch.setattr(suite, "skill_list", lambda **kwargs: _ok("skill_list"))
+    monkeypatch.setattr(suite, "skill_show", lambda *args, **kwargs: _ok("skill_show"))
+    monkeypatch.setattr(suite, "skill_validate", lambda *args, **kwargs: _ok("skill_validate"))
+    monkeypatch.setattr(suite, "agent_tool_call", lambda *args, **kwargs: _ok("agent_tool_call"))
+    monkeypatch.setattr(suite, "agent_summarize_log", lambda *args, **kwargs: _ok("agent_summarize_log"))
+    monkeypatch.setattr(suite, "source_version_consistency", lambda **kwargs: _ok("version_consistency"))
+    monkeypatch.setattr(suite, "_package_import_metadata", lambda *args, **kwargs: _ok("package_import_metadata"))
+    monkeypatch.setattr(suite, "package_import_smoke", lambda **kwargs: _ok("package_import_smoke"))
+    monkeypatch.setattr(suite, "artifact_roundtrip_smoke", lambda **kwargs: _ok("artifact_roundtrip"))
+    monkeypatch.setattr(suite, "run_release_validation_groups", lambda **kwargs: _release_groups_ok())
+    monkeypatch.setattr(suite, "_package_hygiene", lambda *args, **kwargs: _ok("package_hygiene"))
+
+    result = suite._run_agent_profile_sync(repo_path=tmp_path, profile_dir=tmp_path / ".pb_profile")
+
+    assert result["action"] == "test_suite"
+    assert result["profile"] == "agent"
+    dry_run = next(step for step in result["steps"] if step["name"] == "src_sync_dry_run_plan")
+    upload = next(step for step in result["steps"] if step["name"] == "src_sync_upload_preflight_plan")
+    assert dry_run["payload"]["registry_status"] == "missing"
+    assert upload["payload"]["registry_status"] == "missing"
+
+
+def test_full_profile_with_missing_registry_emits_complete_suite(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
+    browser = {"ok": True, "action": "test_suite", "profile": "browser", "steps": []}
+    agent = {"ok": True, "action": "test_suite", "profile": "agent", "steps": [], "safety": {"write_tools_blocked": True}}
+
+    async def fake_run_integration(args):
+        return browser
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+    monkeypatch.setattr(suite, "_run_agent_profile_sync", lambda **kwargs: agent)
+
+    result = asyncio.run(suite.run_test_suite_async(profile="full", path=tmp_path, profile_dir=tmp_path / ".pb_profile"))
+
+    assert result["action"] == "test_suite"
+    assert result["profile"] == "full"
+    assert result["browser"] is browser
+    assert result["agent"] is agent
+    assert "failure_count" in result
+    assert "failed_steps" in result
