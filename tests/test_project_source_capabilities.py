@@ -3647,7 +3647,7 @@ def test_same_name_file_overwrite_uses_in_place_replace_without_library_prefligh
     assert calls == {"replace": 1, "library": 0, "remove": 0, "upload": 0}
 
 
-def test_existing_source_replace_capability_failure_is_non_destructive(
+def test_existing_source_replace_operation_failure_is_non_destructive(
     browser_client: ChatGPTBrowserClient,
     tmp_path: Path,
 ) -> None:
@@ -3678,7 +3678,7 @@ def test_existing_source_replace_capability_failure_is_non_destructive(
         return {
             "ok": False,
             "action": "add",
-            "status": "project_source_replace_not_supported",
+            "status": "project_source_replace_failed",
             "persistence_verified": False,
             "project_source_mutated": False,
             "release_blocking": True,
@@ -3721,7 +3721,7 @@ def test_existing_source_replace_capability_failure_is_non_destructive(
     )
 
     assert result["ok"] is False
-    assert result["status"] == "project_source_replace_not_supported"
+    assert result["status"] == "project_source_replace_failed"
     assert result["project_source_mutated"] is False
     assert calls == {"library": 0, "remove": 0, "upload": 0}
 
@@ -5958,9 +5958,9 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
 
     page = object()
     older_card = {
-        "identity": "release(15).zip File contents may not be accessible",
-        "title": "release(15).zip",
-        "text": "release(15).zip File contents may not be accessible",
+        "identity": "release.zip File contents may not be accessible",
+        "title": "release.zip",
+        "text": "release.zip File contents may not be accessible",
     }
     old_card = {
         "identity": "release(16).zip File contents may not be accessible",
@@ -5973,7 +5973,7 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
         "text": "release(17).zip File contents may not be accessible",
     }
     visible_sources = [older_card, old_card, new_card]
-    calls = {"uploads": 0, "removes": [], "generic_verify": 0}
+    calls = {"replace": 0, "uploads": 0, "removes": [], "generic_verify": 0}
     processed_file_id = "file_000000001234567890abcdef12345678"
     library_object_id = "libfile_1234567890abcdef1234567890abcdef"
 
@@ -5993,6 +5993,21 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
             "source_card_count": len(sources),
             "source_identities": [item["identity"] for item in sources],
             "empty_state_visible": False,
+        }
+
+
+    async def fake_replace(*_args, **_kwargs):
+        calls["replace"] += 1
+        return {
+            "ok": False,
+            "action": "add",
+            "status": "project_source_replace_not_supported",
+            "persistence_verified": False,
+            "project_source_mutated": False,
+            "release_blocking": True,
+            "operator_review_required": True,
+            "replace_capability": "unavailable",
+            "visible_source_actions": ["Download", "Delete"],
         }
 
     async def fake_upload(*_args, **_kwargs) -> None:
@@ -6043,6 +6058,7 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
     browser_client._goto = fake_noop  # type: ignore[method-assign]
     browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
     browser_client._wait_for_authoritative_project_sources_surface = fake_authority  # type: ignore[method-assign]
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
     browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
     browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
     browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
@@ -6079,9 +6095,11 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
         )
     )
 
-    assert calls == {"uploads": 1, "removes": ["release(15).zip", "release(16).zip"], "generic_verify": 0}
+    assert calls == {"replace": 1, "uploads": 1, "removes": ["release.zip", "release(16).zip"], "generic_verify": 0}
     assert result["ok"] is True
     assert result["status"] == "source_replaced"
+    assert result["replacement_mode"] == "upload_new_verify_delete_old"
+    assert result["in_place_replace_attempt"]["status"] == "project_source_replace_not_supported"
     assert result["requested_filename"] == "release.zip"
     assert result["assigned_filename"] == "release(17).zip"
     assert result["previous_max_assigned_index"] == 16

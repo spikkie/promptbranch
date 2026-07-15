@@ -12345,6 +12345,7 @@ class ChatGPTBrowserClient:
         duplicate_detected = False
         overwritten_existing = False
         overwrite_remove_result: Optional[dict[str, Any]] = None
+        in_place_replace_attempt: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
 
         if normalized_kind == "file":
@@ -13299,6 +13300,7 @@ class ChatGPTBrowserClient:
         duplicate_detected = False
         overwritten_existing = False
         overwrite_remove_result: Optional[dict[str, Any]] = None
+        in_place_replace_attempt: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
         capacity_limit = 25
         capacity_before = len(before_sources)
@@ -13425,7 +13427,7 @@ class ChatGPTBrowserClient:
                     if live_replace_capable:
                         if not file_path:
                             raise ValueError("file_path is required when source_kind='file'")
-                        return await self._replace_project_file_source_operation(
+                        in_place_replace_attempt = await self._replace_project_file_source_operation(
                             context=context,
                             page=page,
                             project_url=project_home_url,
@@ -13434,102 +13436,128 @@ class ChatGPTBrowserClient:
                             canonical_name=canonical_display_name or source_match_candidates[0],
                             file_path=file_path,
                         )
+                        if in_place_replace_attempt.get("ok"):
+                            return in_place_replace_attempt
+                        if not (
+                            in_place_replace_attempt.get("status") == "project_source_replace_not_supported"
+                            and not bool(in_place_replace_attempt.get("project_source_mutated"))
+                        ):
+                            return in_place_replace_attempt
 
-                    # Unit/replay test doubles do not expose a real source-card action
-                    # surface. Preserve the historical remove-and-upload simulation for
-                    # those bounded tests only; live browser operations never take this
-                    # branch.
-                    library_cleanup_required = True
-                    library_cleanup_trigger = "test_double_legacy_overwrite"
-                    overwrite_source_name = (
-                        self._normalize_source_match_text(existing_source.get("title"))
-                        or canonical_display_name
-                        or self._preferred_source_card_identity(existing_source)
-                        or source_match_candidates[0]
-                    )
-                    self._log(
-                        "project-source-add",
-                        "test-double overwrite fallback removing existing source before simulated upload",
-                        project_url=project_home_url,
-                        source_name=overwrite_source_name,
-                        requested_name=canonical_display_name,
-                    )
-                    try:
-                        overwrite_remove_result = await self._remove_project_source_operation(
-                            context=context,
-                            page=page,
-                            source_name=overwrite_source_name,
-                            exact=True,
-                            keep_open=False,
+                        # ChatGPT commonly exposes Download/Delete but no in-place Replace.
+                        # Keep the existing source in place, upload the new backing file once,
+                        # verify the exact backend-assigned card, and then remove every prior
+                        # member of the canonical/indexed family.  This is the same safe
+                        # upload-new/verify/delete-old transaction used for ZIP releases, and
+                        # applies to every file extension.
+                        self._log(
+                            "project-source-add",
+                            "in-place replace unavailable; continuing with verified family replacement",
+                            project_url=project_home_url,
+                            requested_name=canonical_display_name,
+                            replace_capability=in_place_replace_attempt.get("replace_capability"),
+                            visible_source_actions=in_place_replace_attempt.get("visible_source_actions"),
                         )
-                    except ResponseTimeoutError as exc:
-                        await self._open_project_sources_tab(page)
+                        matched_source = None
+                        duplicate_detected = False
+                        duplicate_notice = None
+
+                    else:
+                        # Unit/replay test doubles do not expose a real source-card action
+                        # surface. Preserve the historical remove-and-upload simulation for
+                        # those bounded tests only; live browser operations never take this
+                        # branch.
+                        library_cleanup_required = True
+                        library_cleanup_trigger = "test_double_legacy_overwrite"
+                        overwrite_source_name = (
+                            self._normalize_source_match_text(existing_source.get("title"))
+                            or canonical_display_name
+                            or self._preferred_source_card_identity(existing_source)
+                            or source_match_candidates[0]
+                        )
+                        self._log(
+                            "project-source-add",
+                            "test-double overwrite fallback removing existing source before simulated upload",
+                            project_url=project_home_url,
+                            source_name=overwrite_source_name,
+                            requested_name=canonical_display_name,
+                        )
                         try:
                             overwrite_remove_result = await self._remove_project_source_operation(
                                 context=context,
                                 page=page,
                                 source_name=overwrite_source_name,
-                                exact=False,
+                                exact=True,
                                 keep_open=False,
                             )
-                        except ResponseTimeoutError as retry_exc:
-                            current_sources = await self._snapshot_project_source_cards(page)
+                        except ResponseTimeoutError as exc:
+                            await self._open_project_sources_tab(page)
+                            try:
+                                overwrite_remove_result = await self._remove_project_source_operation(
+                                    context=context,
+                                    page=page,
+                                    source_name=overwrite_source_name,
+                                    exact=False,
+                                    keep_open=False,
+                                )
+                            except ResponseTimeoutError as retry_exc:
+                                current_sources = await self._snapshot_project_source_cards(page)
+                                return {
+                                    "ok": False,
+                                    "action": "add",
+                                    "status": "overwrite_remove_failed",
+                                    "project_url": project_home_url,
+                                    "source_kind": normalized_kind,
+                                    "source_match": self._preferred_source_card_identity(existing_source) or overwrite_source_name,
+                                    "source_match_requested": source_match_candidates[0] if source_match_candidates else overwrite_source_name,
+                                    "source_match_candidates": source_match_candidates,
+                                    "persistence_verified": False,
+                                    "already_exists": True,
+                                    "added": False,
+                                    "overwritten": False,
+                                    "removed_existing": False,
+                                    "overwrite_source_name": overwrite_source_name,
+                                    "overwrite_remove_error": str(retry_exc),
+                                    "overwrite_remove_initial_error": str(exc),
+                                    "operator_review_required": True,
+                                    "current_source_count": len(current_sources),
+                                    "current_url": await self._safe_page_url(page),
+                                }
+                        await self._open_project_sources_tab(page)
+                        source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
+                            page,
+                            project_url=project_home_url,
+                            label="project-source-add-post-overwrite-remove-preflight",
+                        )
+                        if not source_surface_preflight.get("ok"):
                             return {
                                 "ok": False,
                                 "action": "add",
-                                "status": "overwrite_remove_failed",
+                                "status": "source_preflight_not_authoritative",
                                 "project_url": project_home_url,
                                 "source_kind": normalized_kind,
-                                "source_match": self._preferred_source_card_identity(existing_source) or overwrite_source_name,
-                                "source_match_requested": source_match_candidates[0] if source_match_candidates else overwrite_source_name,
+                                "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
                                 "source_match_candidates": source_match_candidates,
                                 "persistence_verified": False,
+                                "project_source_mutated": True,
+                                "release_blocking": True,
+                                "source_surface_not_ready": True,
                                 "already_exists": True,
                                 "added": False,
-                                "overwritten": False,
-                                "removed_existing": False,
-                                "overwrite_source_name": overwrite_source_name,
-                                "overwrite_remove_error": str(retry_exc),
-                                "overwrite_remove_initial_error": str(exc),
+                                "overwritten": True,
+                                "removed_existing": True,
                                 "operator_review_required": True,
-                                "current_source_count": len(current_sources),
+                                "source_surface_preflight": source_surface_preflight,
+                                "overwrite_remove_result": overwrite_remove_result,
+                                "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
+                                "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
                                 "current_url": await self._safe_page_url(page),
                             }
-                    await self._open_project_sources_tab(page)
-                    source_surface_preflight = await self._wait_for_authoritative_project_sources_surface(
-                        page,
-                        project_url=project_home_url,
-                        label="project-source-add-post-overwrite-remove-preflight",
-                    )
-                    if not source_surface_preflight.get("ok"):
-                        return {
-                            "ok": False,
-                            "action": "add",
-                            "status": "source_preflight_not_authoritative",
-                            "project_url": project_home_url,
-                            "source_kind": normalized_kind,
-                            "source_match_requested": source_match_candidates[0] if source_match_candidates else canonical_display_name,
-                            "source_match_candidates": source_match_candidates,
-                            "persistence_verified": False,
-                            "project_source_mutated": True,
-                            "release_blocking": True,
-                            "source_surface_not_ready": True,
-                            "already_exists": True,
-                            "added": False,
-                            "overwritten": True,
-                            "removed_existing": True,
-                            "operator_review_required": True,
-                            "source_surface_preflight": source_surface_preflight,
-                            "overwrite_remove_result": overwrite_remove_result,
-                            "current_source_count": int(source_surface_preflight.get("source_card_count") or 0),
-                            "current_source_identities": list(source_surface_preflight.get("source_identities") or []),
-                            "current_url": await self._safe_page_url(page),
-                        }
-                    before_sources = list(source_surface_preflight.get("sources") or [])
-                    matched_source = None
-                    duplicate_detected = False
-                    duplicate_notice = None
-                    overwritten_existing = True
+                        before_sources = list(source_surface_preflight.get("sources") or [])
+                        matched_source = None
+                        duplicate_detected = False
+                        duplicate_notice = None
+                        overwritten_existing = True
 
             if overwrite_existing and library_cleanup_required:
                 library_reconciliation_result = await self._reconcile_library_file_family(
@@ -13558,7 +13586,14 @@ class ChatGPTBrowserClient:
                         "library_reconciliation_preflight": library_reconciliation_preflight,
                         "library_reconciliation": library_reconciliation_result,
                         "library_cleanup_trigger": library_cleanup_trigger,
-                        "family_source_remove_results": family_source_remove_results,
+                        "in_place_replace_attempt": in_place_replace_attempt,
+                "replacement_mode": (
+                    "upload_new_verify_delete_old"
+                    if isinstance(in_place_replace_attempt, dict)
+                    and in_place_replace_attempt.get("status") == "project_source_replace_not_supported"
+                    else "in_place_ui" if isinstance(in_place_replace_attempt, dict) else None
+                ),
+                "family_source_remove_results": family_source_remove_results,
                         "overwrite_remove_result": overwrite_remove_result,
                         "current_url": await self._safe_page_url(page),
                     }
@@ -14922,6 +14957,13 @@ class ChatGPTBrowserClient:
                 ],
                 "library_reconciliation_preflight": library_reconciliation_preflight,
                 "library_reconciliation": library_reconciliation_result,
+                "in_place_replace_attempt": in_place_replace_attempt,
+                "replacement_mode": (
+                    "upload_new_verify_delete_old"
+                    if isinstance(in_place_replace_attempt, dict)
+                    and in_place_replace_attempt.get("status") == "project_source_replace_not_supported"
+                    else "in_place_ui" if isinstance(in_place_replace_attempt, dict) else None
+                ),
                 "family_source_remove_results": family_source_remove_results,
                 "family_replacement_required": bool(
                     isinstance(family_replacement_result, dict)

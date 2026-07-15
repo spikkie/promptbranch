@@ -1115,3 +1115,7 @@ No state migration is required. A future successful default `pb src add` removes
 ## Test validation registry note — v0.1.103.10.110
 
 An absent project artifact registry is now a valid read-only planning observation. Operators must not create a repo-local compatibility registry to satisfy tests. Mutating artifact commands still require the authoritative project-scoped registry to exist and validate.
+
+## Full-suite alignment note — v0.1.103.10.111
+
+No state migration is required. Existing project-scoped registries remain authoritative. Test fixtures and operator-created datasets that perform artifact mutation must initialize the project registry explicitly. Read-only commands may report unresolved project scope or a missing registry without creating state. Existing file sources are never removed before the newly uploaded assigned family member is verified when Replace is unavailable.

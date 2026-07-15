@@ -137,3 +137,7 @@ Upload and verify the new assigned Project Source first, remove all older exact 
 ### v0.1.103.10.110 repair-only missing-registry-safe read-only validation
 
 Keep the repair limited to source-sync planning, terminal test-suite JSON, structured pre-suite reporting, and fail-closed mutation authority. No live-browser response-causality or profile-lease repair is included.
+
+### v0.1.103.10.111 repair-only full-suite registry and overwrite alignment
+
+This repair aligns the complete deterministic validation suite with project-scoped registry authority. When ChatGPT exposes no in-place Replace action for an existing file source, Promptbranch uploads once, verifies the exact backend-assigned canonical/indexed family member, and only then removes prior family members. Read-only smoke accepts structured uninitialized project/registry states only when mutation flags remain false. Lifecycle `--plan` stays available while exposing execution blockers. No normal scope advances.

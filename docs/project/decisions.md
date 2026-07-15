@@ -901,3 +901,11 @@ A successful file-source add is now a replacement transaction, not merely proof 
 ## v0.1.103.10.110: uninitialized registry is observable in read-only plans, never implicit mutation authority
 
 Read-only source-sync validation may report a missing project artifact registry as an uninitialized state. It must not initialize, repair, or infer artifact authority. Invalid or unreadable registries and every artifact mutation remain fail-closed. Test commands must retain a complete terminal JSON envelope even when a preflight step fails.
+
+## v0.1.103.10.111: unavailable Replace uses the verified family transaction; read-only uninitialized state is not mutation authority
+
+- A missing in-place Replace action is a capability result, not permission to delete the existing source first.
+- Generic file replacement follows upload-new, exact assigned-name verification, exact old-family removal, and singleton verification.
+- Read-only smoke may accept `project_scope_unresolved` or `artifact_registry_missing` only when every mutation flag is false.
+- Lifecycle planning may describe an uninitialized authority surface, but execution remains blocked.
+- Artifact adoption and registry mutation still require valid initialized project-scoped authority.

@@ -7988,19 +7988,27 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
             "kind": "promptbranch_cli",
             "command": [sys.executable, promptbranch_cmd, "artifact", "current", "--json"],
             "description": "Verify artifact current-state inspection remains read-only and JSON-producing.",
+            "accepted_readonly_json_statuses": [
+                "project_scope_unresolved",
+                "artifact_registry_missing",
+            ],
         },
         {
             "name": "release_status_guide_plain_readonly",
             "kind": "promptbranch_cli",
-            "command": [sys.executable, promptbranch_cmd, "release", "status-guide", "--version", version, "--target-version", version],
-            "description": "Verify the non-JSON release status guide emits operator handoff fields without mutation.",
+            "command": [sys.executable, promptbranch_cmd, "release", "status-guide", "--version", version, "--target-version", version, "--json"],
+            "description": "Verify release status guidance remains read-only, JSON-producing, and safe when project or registry authority is uninitialized.",
             "required_stdout_contains": [
-                "status=release_status_guidance_available",
-                "next_development_artifact=",
-                "next_development_status_guide_after_build=",
-                "next_development_checkpoint_after_build=",
-                "full_test_countdown_active=",
-                "blocker_codes=",
+                '"status": "release_status_guidance_available"',
+                '"next_development_artifact"',
+                '"next_development_status_guide_after_build"',
+                '"next_development_checkpoint_after_build"',
+                '"full_test_countdown_active"',
+                '"blocker_codes"',
+            ],
+            "accepted_readonly_json_statuses": [
+                "project_scope_unresolved",
+                "artifact_registry_missing",
             ],
         },
     ]
@@ -8080,11 +8088,39 @@ def _run_bounded_smoke_subprocess(
         required_stdout = [str(item) for item in (spec.get("required_stdout_contains") or [])]
         missing_stdout = [item for item in required_stdout if item not in stdout_text]
         stdout_contract_ok = not missing_stdout
-        step_ok = returncode == 0 and stdout_contract_ok
+        accepted_readonly_statuses = {
+            str(item) for item in (spec.get("accepted_readonly_json_statuses") or []) if str(item)
+        }
+        structured_payload = None
+        structured_readonly_status_accepted = False
+        if accepted_readonly_statuses and stdout_text.strip():
+            try:
+                candidate_payload = json.loads(stdout_text)
+            except json.JSONDecodeError:
+                candidate_payload = None
+            if isinstance(candidate_payload, dict):
+                structured_payload = candidate_payload
+                candidate_status = str(candidate_payload.get("status") or "")
+                mutation_flags = [
+                    candidate_payload.get("mutating_actions_executed"),
+                    candidate_payload.get("project_source_mutated"),
+                    candidate_payload.get("artifact_registry_updated"),
+                    candidate_payload.get("adoption_performed"),
+                ]
+                structured_readonly_status_accepted = bool(
+                    candidate_status in accepted_readonly_statuses
+                    and not any(value is True for value in mutation_flags)
+                )
+        step_ok = bool((returncode == 0 and stdout_contract_ok) or structured_readonly_status_accepted)
         return {
             "name": name,
             "ok": step_ok,
-            "status": "passed" if step_ok else ("smoke_stdout_contract_failed" if returncode == 0 else "failed"),
+            "status": (
+                "passed_structured_readonly_uninitialized"
+                if structured_readonly_status_accepted
+                else "passed" if step_ok
+                else ("smoke_stdout_contract_failed" if returncode == 0 else "failed")
+            ),
             "kind": spec.get("kind"),
             "description": spec.get("description"),
             "command": command,
@@ -8097,6 +8133,9 @@ def _run_bounded_smoke_subprocess(
             "required_stdout_contains": required_stdout,
             "missing_stdout_contains": missing_stdout,
             "stdout_contract_ok": stdout_contract_ok,
+            "accepted_readonly_json_statuses": sorted(accepted_readonly_statuses),
+            "structured_readonly_status_accepted": structured_readonly_status_accepted,
+            "structured_payload_status": structured_payload.get("status") if isinstance(structured_payload, dict) else None,
             "stdout_log_path": str(stdout_log),
             "stderr_log_path": str(stderr_log),
             "stdout_tail": _tail_text_file(stdout_log),
@@ -10008,6 +10047,7 @@ def _artifact_current_selected_sections(
     repo_id: str | None = None,
     filename: str | None = None,
     version: str | None = None,
+    allow_legacy_single_payload: bool = True,
 ) -> dict[str, Any]:
     """Return common sections from the mandatory project repo-loop payload."""
 
@@ -10017,6 +10057,14 @@ def _artifact_current_selected_sections(
         filename=filename,
         version=version,
     )
+    repo_loop_entry_present = isinstance(selected_current, dict) and bool(selected_current)
+    legacy_single_payload_used = False
+    if not repo_loop_entry_present and allow_legacy_single_payload and any(
+        isinstance(current_payload.get(key), dict)
+        for key in ("state", "registry_current", "baseline_roles", "runtime", "consistency")
+    ):
+        selected_current = current_payload
+        legacy_single_payload_used = True
     if not isinstance(selected_current, dict):
         selected_current = {}
     state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
@@ -10032,7 +10080,8 @@ def _artifact_current_selected_sections(
         "baseline_roles": baseline_roles,
         "runtime": runtime,
         "consistency": consistency,
-        "repo_loop_entry_present": bool(selected_current),
+        "repo_loop_entry_present": repo_loop_entry_present,
+        "legacy_single_payload_used": legacy_single_payload_used,
     }
 
 
@@ -12949,8 +12998,27 @@ def _release_current_reconciliation_payload(
     """
 
     repo = repo_root or Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
-    registry = _artifact_registry_from_args(args)
-    current_payload = _artifact_current_payload(backend, registry)
+    try:
+        registry = _artifact_registry_from_args(args)
+    except ProjectRegistryResolutionError as exc:
+        current_payload = {
+            "ok": False,
+            "action": "project_registry_resolution",
+            "status": getattr(exc, "status", "project_scope_unresolved"),
+            "scope": {"kind": "unresolved"},
+            "registry_source": "unresolved",
+            "registry_file": None,
+            "registry_exists": False,
+            "registry_valid": False,
+            "registry_readable": False,
+            "project_id": None,
+            "repo_id": None,
+            "resolution_method": "identity_manifest",
+            "fallback_used": False,
+            "error": str(exc),
+        }
+    else:
+        current_payload = _artifact_current_payload(backend, registry)
     artifact = artifact_payload or _release_doctor_artifact_summary(getattr(args, "artifact", None), repo_root=repo)
     requested_version = _candidate_version_normalized(getattr(args, "version", None))
     target_version = _candidate_version_normalized(getattr(args, "target_version", None))
@@ -13132,8 +13200,41 @@ def _release_install_baseline_comparison(
     development without requiring a browser or service backend.
     """
 
-    registry = _artifact_registry_from_args(args)
-    current = registry.current()
+    registry = None
+    registry_resolution_error: ProjectRegistryResolutionError | None = None
+    try:
+        registry = _artifact_registry_from_args(args)
+    except ProjectRegistryResolutionError as exc:
+        registry_resolution_error = exc
+    registry_state = (
+        registry.inspect()
+        if registry is not None
+        else {
+            "ok": False,
+            "status": getattr(registry_resolution_error, "status", "project_scope_unresolved"),
+            "registry_file": None,
+            "registry_exists": False,
+            "registry_valid": False,
+            "registry_readable": False,
+            "error": str(registry_resolution_error or "project scope unresolved"),
+        }
+    )
+    registry_status = str(registry_state.get("status") or "artifact_registry_unknown")
+    registry_blockers: list[dict[str, Any]] = []
+    if registry is not None and registry_state.get("ok"):
+        current = registry.current()
+    elif registry_status in {"artifact_registry_missing", "project_scope_unresolved"}:
+        current = None
+    else:
+        current = None
+        registry_blockers.append({
+            "code": "release_install_registry_invalid",
+            "severity": "blocked",
+            "message": "Artifact registry is invalid or unreadable; authority-dependent lifecycle execution must remain blocked.",
+            "registry_status": registry_status,
+            "registry_file": str(registry.path) if registry is not None else None,
+            "error": registry_state.get("error"),
+        })
     current_version = _candidate_version_normalized((current or {}).get("version")) if current else None
     current_ref = (current or {}).get("filename") if current else None
     artifact_version = _candidate_version_normalized(artifact_version)
@@ -13162,7 +13263,14 @@ def _release_install_baseline_comparison(
         "schema_version": 1,
         "read_only": True,
         "repo_path": str(repo_root),
-        "registry_file": str(registry.path),
+        "registry_file": str(registry.path) if registry is not None else None,
+        "registry_status": (
+            "missing" if registry_status == "artifact_registry_missing"
+            else "project_scope_unresolved" if registry_status == "project_scope_unresolved"
+            else registry_status
+        ),
+        "registry_exists": bool(registry_state.get("registry_exists")),
+        "registry_valid": bool(registry_state.get("registry_valid")),
         "current_ref": current_ref,
         "current_version": current_version,
         "current_kind": (current or {}).get("kind") if current else None,
@@ -13175,6 +13283,8 @@ def _release_install_baseline_comparison(
         "candidate_is_older_than_current": relation == "left_newer",
         "warning_codes": [item["code"] for item in warnings],
         "warnings": warnings,
+        "blocker_codes": [item["code"] for item in registry_blockers],
+        "blockers": registry_blockers,
     }
 
 
@@ -14766,6 +14876,7 @@ def _release_install_plan_payload(args: argparse.Namespace) -> dict[str, Any]:
     target_plan = _release_install_target_plan(repo_root=repo_root, install_entries=install_entries, preserve_paths=preserve_paths)
     baseline_comparison = _release_install_baseline_comparison(args=args, artifact_version=artifact_version, repo_root=repo_root)
     warnings.extend(baseline_comparison.get("warnings") or [])
+    blockers.extend(baseline_comparison.get("blockers") or [])
     if preserved_conflicts:
         block(
             "release_install_artifact_contains_preserved_path",
@@ -16699,19 +16810,41 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
     for item in current_reconciliation.get("warnings") or []:
         if isinstance(item, dict) and item.get("code") not in {w.get("code") for w in warnings}:
             warnings.append(item)
-    current_reconciliation_blocks_lifecycle = bool(
-        current_reconciliation.get("has_stale_baseline")
-        or current_reconciliation.get("status") == "reconciliation_incomplete"
+    reconciliation_status = str(current_reconciliation.get("status") or "")
+    reconciliation_uninitialized = bool(
+        current_reconciliation.get("missing_current")
+        or ((current_reconciliation.get("artifact_current") or {}).get("status") in {
+            "project_scope_unresolved",
+            "artifact_registry_missing",
+        })
     )
-    if current_reconciliation_blocks_lifecycle:
-        block(
-            "release_current_reconciliation_required",
-            "Artifact registry/adoption current state must be reconciled before release lifecycle execution can route from this artifact.",
-            reconcile_status=current_reconciliation.get("status"),
-            artifact_version=current_reconciliation.get("artifact_version"),
-            current_versions=current_reconciliation.get("current_versions"),
-            recommended_command=(current_reconciliation.get("recommended_commands") or {}).get("adopt_current_artifact"),
-        )
+    reconciliation_stale_or_incomplete = bool(
+        current_reconciliation.get("has_stale_baseline")
+        or (reconciliation_status == "reconciliation_incomplete" and not reconciliation_uninitialized)
+    )
+    current_reconciliation_blocks_execution = bool(
+        reconciliation_uninitialized or reconciliation_stale_or_incomplete
+    )
+    lifecycle_execution_blockers: list[dict[str, Any]] = []
+    if current_reconciliation_blocks_execution:
+        reconciliation_blocker = {
+            "code": "release_current_reconciliation_required",
+            "severity": "blocked",
+            "message": "Artifact registry/adoption current state must be reconciled before release lifecycle execution can route from this artifact.",
+            "reconcile_status": current_reconciliation.get("status"),
+            "artifact_version": current_reconciliation.get("artifact_version"),
+            "current_versions": current_reconciliation.get("current_versions"),
+            "recommended_command": (current_reconciliation.get("recommended_commands") or {}).get("adopt_current_artifact"),
+        }
+        lifecycle_execution_blockers.append(reconciliation_blocker)
+        if plan_only and reconciliation_uninitialized:
+            warnings.append({
+                **reconciliation_blocker,
+                "severity": "warning",
+                "message": "Read-only lifecycle plan is available, but execution remains blocked until artifact/project identity is initialized or reconciled.",
+            })
+        else:
+            blockers.append(reconciliation_blocker)
 
     phase_plan = [
         {"phase": "doctor", "command": "pb release doctor --artifact {artifact} --version {version} --target-version {target_version} --json", "will_execute_in_plan": False, "will_execute": not plan_only},
@@ -16767,8 +16900,11 @@ async def cmd_release_lifecycle(backend: Any, args: argparse.Namespace) -> int:
             "install_plan": install_plan_payload.get("install_plan"),
             "install_target_plan": install_plan_payload.get("install_target_plan"),
             "baseline_comparison": install_plan_payload.get("baseline_comparison"),
+            "execution_blockers": lifecycle_execution_blockers,
+            "execution_blocker_codes": [item.get("code") for item in lifecycle_execution_blockers],
+            "execution_ready": not lifecycle_execution_blockers,
             "current_reconciliation_status": current_reconciliation.get("status"),
-            "current_reconciliation_required": bool(current_reconciliation_blocks_lifecycle),
+            "current_reconciliation_required": bool(current_reconciliation_blocks_execution),
             "would_mutate": False,
             "mutating_actions_executed": False,
         },
@@ -19853,9 +19989,16 @@ def _candidate_run_mvp_completion_report(
         elif lifecycle.get("candidate_verified") and not lifecycle.get("candidate_test_passed"):
             verified_pending.append(item)
 
-    artifact_current = inventory.get("artifact_current") if isinstance(inventory.get("artifact_current"), dict) else {}
-    consistency = artifact_current.get("consistency") if isinstance(artifact_current.get("consistency"), dict) else {}
     selected_accepted = accepted_matches[0] if accepted_matches else None
+    artifact_current = inventory.get("artifact_current") if isinstance(inventory.get("artifact_current"), dict) else {}
+    repo_identity = load_repo_identity(repo_root)
+    selected_current = _artifact_current_selected_sections(
+        artifact_current,
+        repo_id=repo_identity.repo_id if repo_identity is not None else None,
+        filename=selected_accepted.get("artifact_ref") if isinstance(selected_accepted, dict) else requested_artifact,
+        version=selected_accepted.get("artifact_version") if isinstance(selected_accepted, dict) else requested_version,
+    )
+    consistency = selected_current.get("consistency") if isinstance(selected_current.get("consistency"), dict) else {}
     checks = {
         "candidate_scope_resolved": bool(candidates) if (requested_artifact or requested_version) else True,
         "accepted_candidate_present": selected_accepted is not None,

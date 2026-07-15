@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip
-active candidate version: v0.1.103.10.110
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip
-next normal slice: v0.1.103.10.110 — missing-registry-safe read-only validation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip
+active candidate version: v0.1.103.10.111
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip
+next normal slice: v0.1.103.10.111 — full-suite registry and overwrite alignment
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
