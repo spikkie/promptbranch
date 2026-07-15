@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
@@ -5974,6 +5975,7 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
     }
     visible_sources = [older_card, old_card, new_card]
     calls = {"replace": 0, "uploads": 0, "removes": [], "generic_verify": 0}
+    uploaded_paths: list[str] = []
     processed_file_id = "file_000000001234567890abcdef12345678"
     library_object_id = "libfile_1234567890abcdef1234567890abcdef"
 
@@ -6010,8 +6012,12 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
             "visible_source_actions": ["Download", "Delete"],
         }
 
-    async def fake_upload(*_args, **_kwargs) -> None:
+    async def fake_upload(*_args, **kwargs) -> None:
         calls["uploads"] += 1
+        upload_path = Path(str(kwargs["file_path"]))
+        assert upload_path.is_file()
+        assert upload_path.read_bytes() == b"zip"
+        uploaded_paths.append(str(upload_path))
 
     async def fake_settle(*_args, **_kwargs):
         return {"settled": True}
@@ -6096,9 +6102,22 @@ def test_add_file_source_replaces_previous_indexed_family_member_after_new_assig
     )
 
     assert calls == {"replace": 1, "uploads": 1, "removes": ["release.zip", "release(16).zip"], "generic_verify": 0}
+    assert len(uploaded_paths) == 1
+    staged_upload_path = Path(uploaded_paths[0])
+    assert staged_upload_path != file_path
+    assert re.fullmatch(r"release\(\d+\)\.zip", staged_upload_path.name)
+    assert not staged_upload_path.exists()
     assert result["ok"] is True
     assert result["status"] == "source_replaced"
     assert result["replacement_mode"] == "upload_new_verify_delete_old"
+    assert result["replacement_staged_upload"] is True
+    assert result["replacement_staged_family_member"] is True
+    assert result["replacement_index_prediction_used"] is False
+    assert result["replacement_staged_filename"] == staged_upload_path.name
+    assert result["replacement_staging_token"].isdigit()
+    assert result["replacement_upload_staging"]["strategy"] == "collision_free_indexed_family_member"
+    assert result["replacement_upload_staging"]["canonical_filename"] == "release.zip"
+    assert result["replacement_upload_staging"]["cleaned_up"] is True
     assert result["in_place_replace_attempt"]["status"] == "project_source_replace_not_supported"
     assert result["requested_filename"] == "release.zip"
     assert result["assigned_filename"] == "release(17).zip"
@@ -6258,6 +6277,7 @@ def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
     page = object()
     old_card = {"identity": "release.zip Document", "title": "release.zip", "text": "release.zip Document"}
     calls = {"upload": 0, "remove": 0}
+    uploaded_paths: list[str] = []
 
     async def fake_noop(*_args, **_kwargs) -> None:
         return None
@@ -6281,8 +6301,12 @@ def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
             "visible_source_actions": ["Download", "Delete"],
         }
 
-    async def fake_upload(*_args, **_kwargs) -> None:
+    async def fake_upload(*_args, **kwargs) -> None:
         calls["upload"] += 1
+        upload_path = Path(str(kwargs["file_path"]))
+        assert upload_path.is_file()
+        assert re.fullmatch(r"release\(\d+\)\.zip", upload_path.name)
+        uploaded_paths.append(str(upload_path))
 
     async def fake_settle(*_args, **_kwargs):
         return {"settled": True}
@@ -6339,9 +6363,15 @@ def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
     )
 
     assert calls == {"upload": 1, "remove": 0}
+    assert len(uploaded_paths) == 1
+    assert not Path(uploaded_paths[0]).exists()
     assert result["ok"] is False
     assert result["status"] == "source_overwrite_upload_not_started"
     assert result["replacement_mode"] == "upload_new_verify_delete_old"
+    assert result["replacement_staged_upload"] is True
+    assert result["replacement_staged_family_member"] is True
+    assert result["replacement_index_prediction_used"] is False
+    assert result["replacement_upload_staging"]["cleaned_up"] is True
     assert result["upload_started"] is False
     assert result["overwritten"] is False
     assert result["removed_existing"] is False

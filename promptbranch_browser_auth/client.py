@@ -7340,6 +7340,96 @@ class ChatGPTBrowserClient:
     def _file_source_family_member(self, candidate: Optional[str], canonical_name: Optional[str]) -> bool:
         return self._file_source_family_match_details(candidate, canonical_name) is not None
 
+    def _stage_collision_free_indexed_replacement_file(
+        self,
+        *,
+        file_path: str,
+        canonical_name: str,
+    ) -> dict[str, Any]:
+        """Copy replacement bytes to a unique numeric member of the canonical family.
+
+        ChatGPT can suppress a second file-input selection when the local basename is
+        unchanged, even when the bytes changed.  The staged basename is therefore a
+        collision-resistant ``name(<digits>).ext`` family member.  The numeric token is
+        a local transaction identifier only; it never predicts or constrains the
+        backend-assigned Library index.
+        """
+        source_path = Path(str(file_path or ""))
+        if not source_path.is_file():
+            raise FileNotFoundError(file_path)
+        canonical_filename = Path(self._file_source_family_filename(canonical_name)).name
+        if not canonical_filename:
+            raise ValueError("canonical_name is required for replacement staging")
+        canonical_path = Path(canonical_filename)
+        suffix = canonical_path.suffix
+        stem = canonical_filename[:-len(suffix)] if suffix else canonical_filename
+        local_identity = self._local_file_artifact_identity(str(source_path))
+        if not local_identity.get("ok") or not local_identity.get("sha256"):
+            raise RuntimeError("replacement source identity could not be calculated")
+        seed = (
+            f"{time.time_ns()}:{os.getpid()}:{id(self)}:"
+            f"{source_path.resolve()}:{local_identity.get('sha256')}:{local_identity.get('size_bytes')}"
+        )
+        token_value = max(1, int.from_bytes(hashlib.sha256(seed.encode("utf-8")).digest()[:8], "big"))
+        token = str(token_value)
+        staging_dir = Path(tempfile.mkdtemp(prefix="promptbranch-source-replacement-"))
+        staged_filename = f"{stem}({token}){suffix}"
+        staged_path = staging_dir / staged_filename
+        shutil.copy2(source_path, staged_path)
+        staged_identity = self._local_file_artifact_identity(str(staged_path))
+        family_details = self._file_source_family_match_details(staged_filename, canonical_filename)
+        if not family_details or family_details.get("assigned_index") != token_value:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise RuntimeError("replacement staging filename is outside the canonical family")
+        if (
+            staged_identity.get("sha256") != local_identity.get("sha256")
+            or staged_identity.get("size_bytes") != local_identity.get("size_bytes")
+        ):
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise RuntimeError("replacement staging copy identity mismatch")
+        return {
+            "strategy": "collision_free_indexed_family_member",
+            "canonical_filename": canonical_filename,
+            "staged_filename": staged_filename,
+            "staging_token": token,
+            "family_member_verified": True,
+            "backend_index_prediction_used": False,
+            "sha256": staged_identity.get("sha256"),
+            "size_bytes": staged_identity.get("size_bytes"),
+            "file_path": str(staged_path),
+            "staging_dir": str(staging_dir),
+            "cleaned_up": False,
+        }
+
+    def _cleanup_collision_free_indexed_replacement_file(
+        self,
+        staging: Optional[dict[str, Any]],
+    ) -> None:
+        if not isinstance(staging, dict):
+            return
+        staging_dir = Path(str(staging.get("staging_dir") or ""))
+        if str(staging_dir) and staging_dir.name.startswith("promptbranch-source-replacement-"):
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        staging["cleaned_up"] = not staging_dir.exists()
+
+    def _collision_free_indexed_replacement_evidence(
+        self,
+        staging: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if not isinstance(staging, dict):
+            return None
+        return {
+            "strategy": staging.get("strategy"),
+            "canonical_filename": staging.get("canonical_filename"),
+            "staged_filename": staging.get("staged_filename"),
+            "staging_token": staging.get("staging_token"),
+            "family_member_verified": bool(staging.get("family_member_verified")),
+            "backend_index_prediction_used": bool(staging.get("backend_index_prediction_used")),
+            "sha256": staging.get("sha256"),
+            "size_bytes": staging.get("size_bytes"),
+            "cleaned_up": bool(staging.get("cleaned_up")),
+        }
+
     def _file_source_assigned_index(self, candidate: Optional[str], canonical_name: Optional[str]) -> Optional[int]:
         details = self._file_source_family_match_details(candidate, canonical_name)
         if not details:
@@ -13313,6 +13403,7 @@ class ChatGPTBrowserClient:
         in_place_replace_attempt: Optional[dict[str, Any]] = None
         upload_new_family_replacement_required = False
         replacement_previous_family_sources: list[dict[str, Any]] = []
+        replacement_upload_staging: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
         capacity_limit = 25
         capacity_before = len(before_sources)
@@ -13985,8 +14076,54 @@ class ChatGPTBrowserClient:
                     raise ValueError("file_path is required when source_kind='file'")
                 if not os.path.exists(file_path):
                     raise FileNotFoundError(file_path)
+                upload_file_path = file_path
+                if upload_new_family_replacement_required:
+                    try:
+                        replacement_upload_staging = self._stage_collision_free_indexed_replacement_file(
+                            file_path=file_path,
+                            canonical_name=canonical_display_name or (
+                                source_match_candidates[0] if source_match_candidates else Path(file_path).name
+                            ),
+                        )
+                    except Exception as exc:
+                        return {
+                            "ok": False,
+                            "action": "add",
+                            "status": "source_overwrite_staging_failed",
+                            "project_url": project_home_url,
+                            "source_kind": normalized_kind,
+                            "source_match_requested": canonical_display_name,
+                            "source_match_candidates": source_match_candidates,
+                            "requested_filename": canonical_display_name,
+                            "persistence_verified": False,
+                            "project_source_mutated": False,
+                            "release_blocking": True,
+                            "operator_review_required": False,
+                            "already_exists": True,
+                            "added": False,
+                            "overwritten": False,
+                            "removed_existing": False,
+                            "replacement_mode": "upload_new_verify_delete_old",
+                            "replacement_staging_error": repr(exc),
+                            "in_place_replace_attempt": in_place_replace_attempt,
+                            "upload_started": False,
+                            "replacement_backing_identity_verified": False,
+                            "current_url": await self._safe_page_url(page),
+                        }
+                    upload_file_path = str(replacement_upload_staging.get("file_path") or file_path)
+                    self._log(
+                        "project-source-add",
+                        "staged changed replacement bytes under collision-free indexed family filename",
+                        project_url=project_home_url,
+                        requested_filename=canonical_display_name,
+                        replacement_staging=self._collision_free_indexed_replacement_evidence(
+                            replacement_upload_staging
+                        ),
+                    )
                 if not duplicate_detected:
-                    await self._add_project_file_source(page, file_path=file_path)
+                    await self._add_project_file_source(page, file_path=upload_file_path)
+                    if replacement_upload_staging is not None:
+                        self._cleanup_collision_free_indexed_replacement_file(replacement_upload_staging)
             else:
                 if not value:
                     raise ValueError(f"value is required when source_kind={normalized_kind!r}")
@@ -14123,6 +14260,16 @@ class ChatGPTBrowserClient:
                             "overwritten": False,
                             "removed_existing": False,
                             "replacement_mode": "upload_new_verify_delete_old",
+                            "replacement_staged_upload": bool(replacement_upload_staging),
+                            "replacement_staged_filename": (replacement_upload_staging or {}).get("staged_filename"),
+                            "replacement_staging_token": (replacement_upload_staging or {}).get("staging_token"),
+                            "replacement_staged_family_member": bool(
+                                (replacement_upload_staging or {}).get("family_member_verified")
+                            ),
+                            "replacement_index_prediction_used": False,
+                            "replacement_upload_staging": self._collision_free_indexed_replacement_evidence(
+                                replacement_upload_staging
+                            ),
                             "in_place_replace_attempt": in_place_replace_attempt,
                             "upload_started": replacement_upload_started,
                             "processing_stream": processing_stream_result,
@@ -14310,6 +14457,8 @@ class ChatGPTBrowserClient:
             else:
                 raise
         finally:
+            if replacement_upload_staging is not None:
+                self._cleanup_collision_free_indexed_replacement_file(replacement_upload_staging)
             if not proceed_to_persistence_verification:
                 dispose_save_request_watch_once()
 
@@ -15142,6 +15291,16 @@ class ChatGPTBrowserClient:
                     if isinstance(in_place_replace_attempt, dict)
                     and in_place_replace_attempt.get("status") == "project_source_replace_not_supported"
                     else "in_place_ui" if isinstance(in_place_replace_attempt, dict) else None
+                ),
+                "replacement_staged_upload": bool(replacement_upload_staging),
+                "replacement_staged_filename": (replacement_upload_staging or {}).get("staged_filename"),
+                "replacement_staging_token": (replacement_upload_staging or {}).get("staging_token"),
+                "replacement_staged_family_member": bool(
+                    (replacement_upload_staging or {}).get("family_member_verified")
+                ),
+                "replacement_index_prediction_used": False,
+                "replacement_upload_staging": self._collision_free_indexed_replacement_evidence(
+                    replacement_upload_staging
                 ),
                 "family_source_remove_results": family_source_remove_results,
                 "family_replacement_required": bool(

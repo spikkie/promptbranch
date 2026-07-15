@@ -2386,6 +2386,21 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             _require(bool(file_overwrite.get("library_metadata_object_id")), f"file source overwrite did not capture library_metadata_object_id: {file_overwrite}")
             _require(file_overwrite.get("replacement_backing_identity_verified") is True, f"file source overwrite did not verify the new backing identity: {file_overwrite}")
             _require(file_overwrite.get("local_sha256") == replacement_file_sha256, f"file source overwrite did not report replacement bytes: {file_overwrite}")
+            _require(file_overwrite.get("replacement_staged_upload") is True, f"file source overwrite did not use collision-free indexed staging: {file_overwrite}")
+            _require(file_overwrite.get("replacement_staged_family_member") is True, f"replacement staging filename was outside the canonical family: {file_overwrite}")
+            _require(file_overwrite.get("replacement_index_prediction_used") is False, f"replacement staging incorrectly predicted a backend index: {file_overwrite}")
+            staged_filename = str(file_overwrite.get("replacement_staged_filename") or "")
+            canonical_filename = file_source_path.name
+            canonical_suffix = file_source_path.suffix
+            canonical_stem = canonical_filename[:-len(canonical_suffix)] if canonical_suffix else canonical_filename
+            _require(
+                re.fullmatch(rf"{re.escape(canonical_stem)}\(\d+\){re.escape(canonical_suffix)}", staged_filename) is not None,
+                f"replacement staging filename was not a numeric canonical-family member: {file_overwrite}",
+            )
+            _require(
+                file_overwrite.get("replacement_upload_staging", {}).get("cleaned_up") is True,
+                f"replacement staging file was not cleaned up: {file_overwrite}",
+            )
             _require(file_overwrite.get("final_family_source_count") == 1, f"file source overwrite did not end as a singleton family: {file_overwrite}")
             overwrite_remove_result = file_overwrite.get("overwrite_remove_result")
             if isinstance(overwrite_remove_result, dict):

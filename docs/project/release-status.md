@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip
-active candidate version: v0.1.103.10.112
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip
-next normal slice: v0.1.103.10.112 — changed-content indexed-family overwrite proof
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip
+active candidate version: v0.1.103.10.113
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip
+next normal slice: v0.1.103.10.113 — collision-free indexed replacement upload
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -807,4 +807,5 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 | v0.1.103.10.110 | repair | Missing-registry-safe read-only validation | candidate | missing registry is reported by read-only source-sync plans; invalid registries and artifact mutations remain blocked; agent/full tests emit terminal JSON; test report summarizes pre-suite failures | no normal slice advanced | pending |
 
 | v0.1.103.10.111 | repair | Full-suite registry and overwrite alignment | repair_required | 7/9 release gates passed; full_direct and full_localhost failed because unchanged overwrite bytes produced no new upload and the old singleton was accepted as persistence proof | DOD-280 remains in_progress; no normal slice advanced | rejected/not adopted |
-| v0.1.103.10.112 | repair | Changed-content indexed-family overwrite proof | candidate | changed replacement bytes and distinct hashes; exact processing-stream assigned filename; new file/libfile identities before deletion; deletion frozen to pre-upload identities; final assigned singleton required in both transports | DOD-281 focused candidate; no normal slice advanced | pending |
+| v0.1.103.10.112 | repair | Changed-content indexed-family overwrite proof | repair_required | changed bytes were proven, but selecting the same local basename emitted no second upload request; fail-closed `source_overwrite_upload_not_started` was correct | DOD-281 remains in_progress; no normal slice advanced | rejected/not adopted |
+| v0.1.103.10.113 | repair | Collision-free indexed replacement upload | candidate | stage changed bytes as `<stem>(<numeric transaction token>).<ext>` inside the canonical family; exact processing-stream identity remains authoritative; delete only pre-upload family members; require final assigned singleton in both transports | DOD-282 focused candidate; no normal slice advanced | pending |

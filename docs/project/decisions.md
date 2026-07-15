@@ -919,3 +919,12 @@ Read-only source-sync validation may report a missing project artifact registry 
 - Old-source deletion is prohibited until the new upload has a completed processing stream, an exact assigned filename in the requested family, a `processed_file_id`, and a `library_metadata_object_id`.
 - An unchanged/no-network second upload cannot return replacement success; it reports a structured release-blocking failure.
 - `full_direct` and `full_localhost` both remain mandatory before adoption.
+
+## v0.1.103.10.113: replacement staging changes the browser-selected basename, not the canonical identity
+
+- When in-place Replace is unavailable, changed bytes are copied to a temporary collision-free numeric family member such as `name(8472193501).ext` before browser file selection.
+- The staging token is a local transaction identifier only. It never predicts, reserves, or validates the backend-assigned Library index.
+- The canonical requested identity remains `name.ext`; `process_upload_stream` remains the sole authority for the actual assigned canonical/indexed filename and backing IDs.
+- The staged copy must be byte-identical to the requested replacement, match the canonical family regex, and be removed after browser selection.
+- No old Project Source may be deleted until the newly assigned source has completed processing, both backing identities are present, and exact assigned-card read-back succeeds.
+- `full_direct` and `full_localhost` remain mandatory before adoption.

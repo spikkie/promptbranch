@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-  "active_candidate_version": "v0.1.103.10.112",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+  "active_candidate_version": "v0.1.103.10.113",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+  "active_slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -276,18 +276,26 @@
       "version": "v0.1.103.10.112",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
       "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+      "status": "repair_required",
+      "created_at": "2026-07-15T18:30:00+02:00",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.113",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
       "status": "candidate",
-      "created_at": "2026-07-15T18:30:00+02:00"
+      "created_at": "2026-07-15T20:45:00+00:00"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-15T18:30:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-  "next_normal_slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
-  "next_normal_version": "v0.1.103.10.112",
+  "last_updated": "2026-07-15T20:45:00+00:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+  "next_normal_slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+  "next_normal_version": "v0.1.103.10.113",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -691,8 +699,17 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
       "kind": "repair",
       "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+      "status": "repair_required",
+      "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed.",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.113",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
       "status": "candidate",
-      "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed."
+      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption."
     }
   ],
   "release_mode": "repair",
@@ -838,8 +855,15 @@
     {
       "version": "v0.1.103.10.112",
       "kind": "repair",
+      "status": "repair_required",
+      "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed.",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.113",
+      "kind": "repair",
       "status": "candidate",
-      "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed."
+      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -864,13 +888,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
       "release_mode": "repair",
-      "scope": "prove changed-content file replacement using the exact backend-assigned canonical/indexed identity; require new upload and backing identities before deleting only pre-upload family members; fail closed on no-upload or ambiguous final family state",
-      "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+      "scope": "stage changed replacement bytes under a collision-free numeric canonical-family member, capture exact processing-stream identity, delete only pre-upload members, require final assigned singleton in both full transports",
+      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-      "version": "v0.1.103.10.112"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "version": "v0.1.103.10.113"
     },
     {
       "release_mode": "normal",
@@ -914,7 +938,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.112",
+  "updated_for": "v0.1.103.10.113",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -1012,8 +1036,16 @@
       "version": "v0.1.103.10.112",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
       "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+      "status": "repair_required",
+      "created_at": "2026-07-15T18:30:00+02:00",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.113",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
       "status": "candidate",
-      "created_at": "2026-07-15T18:30:00+02:00"
+      "created_at": "2026-07-15T20:45:00+00:00"
     }
   ]
 }

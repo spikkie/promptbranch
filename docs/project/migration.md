@@ -1124,3 +1124,7 @@ No state migration is required. Existing project-scoped registries remain author
 ## Changed-content indexed-family overwrite migration — v0.1.103.10.112
 
 `v0.1.103.10.111` remains not adopted after both full transports proved that an unchanged second file could be suppressed by ChatGPT and then misclassified as overwrite success by rediscovering the old singleton. `v0.1.103.10.112` changes the release fixture bytes, records both hashes, treats the processing-stream assigned canonical/indexed name as authoritative, and requires both backing identities before any old-source deletion. Existing canonical/indexed family matching remains compatible; no artifact-registry migration or legacy fallback is introduced.
+
+## Collision-free indexed replacement staging — v0.1.103.10.113
+
+`v0.1.103.10.112` remains not adopted after both full transports proved that changed bytes selected under the same local basename can still produce no browser upload transaction. `v0.1.103.10.113` introduces no state migration and no filename rename of the canonical artifact. During upload-new replacement only, Promptbranch creates a temporary numeric canonical-family member, selects that staged file once, and removes the temporary local copy after browser selection. The staging token is never backend-index authority. Existing processing-stream assignment, backing-identity, pre-upload deletion-scope, and final-singleton gates remain unchanged and fail closed.

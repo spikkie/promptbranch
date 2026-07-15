@@ -151,3 +151,13 @@ This repair aligns the complete deterministic validation suite with project-scop
 - Delete only family identities observed before upload and require the assigned source as the final singleton.
 - Fail closed on no upload, missing identity, concurrent family drift, or residual old members.
 - Require both `full_direct` and `full_localhost`; do not advance the normal slice.
+
+### v0.1.103.10.113 repair-only collision-free indexed replacement upload
+
+- Preserve changed-content SHA-256 proof from `v0.1.103.10.112`.
+- Stage replacement bytes under a collision-free numeric member of the canonical filename family before browser selection.
+- Treat the staging token as local transaction evidence only; never predict or require a backend suffix.
+- Capture the actual assigned filename and both backing identities from `process_upload_stream`.
+- Delete only pre-upload Project Source identities after exact new-source verification.
+- Require the newly assigned source as the final singleton and require both `full_direct` and `full_localhost`.
+- Do not advance the normal slice.

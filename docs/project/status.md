@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip
-active candidate version: v0.1.103.10.112
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip
-next normal slice: v0.1.103.10.112 — changed-content indexed-family overwrite proof
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip
+active candidate version: v0.1.103.10.113
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip
+next normal slice: v0.1.103.10.113 — collision-free indexed replacement upload
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip
-release status: v0.1.103.10.111 failed full_direct and full_localhost on unchanged-content overwrite proof; v0.1.103.10.112 is the changed-content indexed-family repair candidate; canonical release pbsa and adoption remain prohibited pending strict validation
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip
+release status: v0.1.103.10.112 failed full_direct and full_localhost because changed bytes selected under the same local basename emitted no second upload request; fail-closed classification worked and adoption was refused; v0.1.103.10.113 stages replacement bytes under a collision-free numeric canonical-family member; canonical release pbsa and adoption remain prohibited pending strict validation
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Install v0.1.103.10.112. Verify both full-test transports. The overwrite fixture must change bytes and prove distinct SHA-256 values; the runtime must capture the exact processing-stream assigned canonical/indexed filename and both backing identities before deleting only pre-upload family members. No-upload, missing-identity, concurrent-family, or non-singleton outcomes remain release-blocking. Do not adopt Promptbranch without strict validation.
+Install v0.1.103.10.113. Verify both full-test transports. When in-place Replace is unavailable, the runtime must stage changed bytes under a collision-free numeric member of the canonical filename family, submit that staged path exactly once, capture the exact processing-stream assigned filename and both backing identities, then delete only pre-upload family members and prove the assigned source is the final singleton. The staging token is not backend-index prediction. Do not adopt Promptbranch without strict validation.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.102 correction-plan generation candidate build
+v0.1.103.10.113 collision-free indexed replacement upload candidate build
 ```
 
 
