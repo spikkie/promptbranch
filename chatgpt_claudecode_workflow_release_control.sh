@@ -203,7 +203,7 @@ Version precedence:
 Automatic ZIP import:
   By default this script installs ${project_name}_VERSION.zip from --downloads-dir
   into the repository before commit/package. This is an overwrite import, not a
-  merge. It preserves .git/, .env, .generated/, .pb_profile/, .pb_profile_local_debug/, .pb_profile_local_debug_pools/, profile/, and debug_artifacts/.
+  merge. It preserves .git/, .env, .generated/, .promptbranch-repo.json, .pb_profile/, .pb_profile_local_debug/, .pb_profile_local_debug_pools/, profile/, and debug_artifacts/.
   It requires candidate ZIP control files (.gitignore and .not_to_zip) and
   refuses to stage local secrets or generated artifacts.
 
@@ -683,6 +683,9 @@ fi
 if [[ ${adopt_after_validation} -eq 1 && ${run_failing_tests} -eq 1 ]]; then
   fail "--adopt-after-validation cannot be combined with --run-failing-tests"
 fi
+if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 && ${skip_source_add} -eq 1 ]]; then
+  fail "--adopt-after-validation requires the current run's authoritative Project Source upload; do not combine it with --skip-source-add"
+fi
 case "${run_external_live_tests}" in
   0|1) ;;
   *) fail "PROMPTBRANCH_RUN_EXTERNAL_LIVE_TESTS/--run-external-live-tests must resolve to 0 or 1; got ${run_external_live_tests}" ;;
@@ -739,6 +742,10 @@ fi
 # PROMPTBRANCH_ARTIFACT_PROJECT_NAME remains an explicit release-line override;
 # otherwise the repository basename is authoritative.
 artifact_project_name="${PROMPTBRANCH_ARTIFACT_PROJECT_NAME:-${repo_basename}}"
+# Repository identity is an explicit release-control input derived from the
+# repository itself, never from the artifact filename selected for adoption.
+release_repo_id="${PROMPTBRANCH_RELEASE_REPO_ID:-${repo_basename}}"
+release_project_id_override="${PROMPTBRANCH_RELEASE_PROJECT_ID:-}"
 artifact_zip="${artifact_project_name}_${ver}.zip"
 canonical_artifact_zip="${repo_root}/${artifact_zip}"
 if [[ ${install_from_zip} -eq 0 ]]; then
@@ -809,6 +816,9 @@ visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundt
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
 import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
 artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
+project_source_add_log="${release_log_dir}/pb_src_add.release_artifact.${ver}.json"
+adoption_source_evidence_json="${release_log_dir}/pb_src_add.release_artifact.${ver}.evidence.json"
+project_join_json="${release_log_dir}/pb_project_join.release_identity.${ver}.json"
 validation_evidence_dir="${release_log_dir}/validation_evidence"
 full_direct_validation_evidence_json="${validation_evidence_dir}/full_direct.${ver}.json"
 live_profile_seed_dir="${PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR:-./.pb_profile_local_debug}"
@@ -868,7 +878,7 @@ release_import_plan_json() {
   local zip_path="$1"
   local expected_version="$2"
   local repo_path="$3"
-  local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"
+  local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"
   python3 - "$zip_path" "$expected_version" "$repo_path" "$preserved_csv" <<'INNERPY'
 import json
 import sys
@@ -881,7 +891,7 @@ repo_path = Path(sys.argv[3]).expanduser().resolve()
 preserved_paths = sys.argv[4].split(",")
 script_name = "chatgpt_claudecode_workflow_release_control.sh"
 required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]
-protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]
+protected_zip_roots = [".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]
 payload = {
     "ok": False,
     "action": "release_zip_import_plan",
@@ -985,7 +995,7 @@ from pathlib import Path
 
 zip_path = Path(sys.argv[1]).expanduser().resolve()
 repo_path = Path(sys.argv[2]).expanduser().resolve()
-protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}
+protected_roots = {".git", ".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}
 missing = []
 checked = 0
 with zipfile.ZipFile(zip_path) as archive:
@@ -1036,7 +1046,7 @@ assert_release_staging_safe() {
   while IFS=$'\t' read -r status path rest; do
     [[ -n "${status}" && -n "${path}" ]] || continue
     case "${path}" in
-      .env|.env.*|.generated|.generated/*|.pb_profile|.pb_profile/*|.pb_profile_local_debug|.pb_profile_local_debug/*|.pb_profile_local_debug_pools|.pb_profile_local_debug_pools/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
+      .env|.env.*|.generated|.generated/*|.promptbranch-repo.json|.pb_profile|.pb_profile/*|.pb_profile_local_debug|.pb_profile_local_debug/*|.pb_profile_local_debug_pools|.pb_profile_local_debug_pools/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
         bad+=("${status}${IFS}${path}")
         ;;
     esac
@@ -1585,6 +1595,7 @@ printf 'test_cleanup:   unique_project_delete_frozen_retained\n'
 printf 'adopt_current:  %s\n' "${adopt_current}"
 printf 'adopt_if_green: %s\n' "${adopt_if_green}"
 printf 'adopt_after_validation: %s\n' "${adopt_after_validation}"
+printf 'release_repo_id: %s\n' "${release_repo_id}"
 printf 'zip_import:     %s\n' "$((1 - skip_zip_import))"
 printf 'import_plan:    %s\n' "${import_plan}"
 printf '\n'
@@ -1616,9 +1627,9 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   echo
   echo "== Install ZIP into working tree =="
   normalize_generated_ownership "pre-import"
-  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name ".pb_profile_local_debug"     ! -name ".pb_profile_local_debug_pools"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
+  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".promptbranch-repo.json"     ! -name ".pb_profile"     ! -name ".pb_profile_local_debug"     ! -name ".pb_profile_local_debug_pools"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='.pb_profile_local_debug/'     --exclude='.pb_profile_local_debug_pools/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.promptbranch-repo.json'     --exclude='.pb_profile/'     --exclude='.pb_profile_local_debug/'     --exclude='.pb_profile_local_debug_pools/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
@@ -2297,17 +2308,166 @@ ensure_service_before_source_add() {
   return 1
 }
 
-# Add release ZIP to ChatGPT Project Sources.
-# The CLI flag and PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD are both honored so
-# Stage-0 candidate delegation cannot accidentally re-enable Project Source
-# mutation after the operator explicitly selected --skip-source-add.
+release_control_capture_source_evidence_and_join_identity() {
+  local source_log="$1"
+  local evidence_out="$2"
+  local join_out="$3"
+  local identity_tsv
+  local project_id
+  local project_home_url
+  local assigned_filename
+  local processed_file_id
+  local library_metadata_object_id
+
+  identity_tsv="$(python3 - "${source_log}" "${canonical_artifact_zip}" "${release_repo_id}" "${release_project_id_override}" "${evidence_out}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+from urllib.parse import urlparse
+import json
+import re
+import sys
+
+source_path = Path(sys.argv[1])
+canonical_path = Path(sys.argv[2])
+release_repo_id = sys.argv[3].strip()
+project_id_override = sys.argv[4].strip()
+evidence_out = Path(sys.argv[5])
+raw = source_path.read_text(encoding="utf-8", errors="replace")
+decoder = json.JSONDecoder()
+objects = []
+for index, char in enumerate(raw):
+    if char != "{":
+        continue
+    try:
+        value, _end = decoder.raw_decode(raw[index:])
+    except Exception:
+        continue
+    if isinstance(value, dict):
+        objects.append(value)
+candidates = [
+    value for value in objects
+    if value.get("ok") is True
+    and value.get("action") == "add"
+    and value.get("persistence_verified") is True
+]
+if not candidates:
+    raise SystemExit("Project Source add did not return authoritative persistent JSON evidence")
+value = candidates[-1]
+canonical = canonical_path.name
+requested = Path(str(value.get("requested_filename") or value.get("source_match_requested") or "")).name
+assigned = Path(str(value.get("assigned_filename") or value.get("backend_assigned_name") or "")).name
+processed = str(value.get("processed_file_id") or "").strip()
+library_id = str(value.get("library_metadata_object_id") or "").strip()
+project_url = str(value.get("project_url") or "").strip()
+parts = [part for part in urlparse(project_url).path.split("/") if part]
+project_home_url = f"https://chatgpt.com/g/{parts[1]}/project" if len(parts) >= 2 and parts[0] == "g" else ""
+url_project_id = parts[1] if len(parts) >= 2 and parts[0] == "g" else ""
+if project_id_override and project_id_override != url_project_id:
+    raise SystemExit(
+        f"explicit release project id {project_id_override!r} does not match source-add project URL id {url_project_id!r}"
+    )
+project_id = project_id_override or url_project_id
+checks = {
+    "requested_filename_exact": requested == canonical,
+    "assigned_filename_present": bool(assigned),
+    "processed_file_id_present": processed.startswith("file_"),
+    "library_metadata_object_id_present": library_id.startswith("libfile_"),
+    "project_home_url_present": bool(project_home_url),
+    "project_id_present": bool(project_id),
+    "release_repo_id_present": bool(release_repo_id),
+    "replacement_backing_identity_verified": value.get("replacement_backing_identity_verified") is True,
+    "family_replacement_verified": value.get("family_replacement_verified") is True,
+    "final_family_singleton": int(value.get("final_family_source_count") or 0) == 1,
+}
+if not all(checks.values()):
+    raise SystemExit("Project Source evidence failed authoritative identity checks: " + json.dumps(checks, sort_keys=True))
+evidence = {
+    "schema": "promptbranch.release_control.project_source_adoption_evidence",
+    "schema_version": "1.0",
+    "ok": True,
+    "status": "source_evidence_verified",
+    "action": "add",
+    "repo_id": release_repo_id,
+    "project_id": project_id,
+    "project_url": project_home_url,
+    "requested_filename": requested,
+    "assigned_filename": assigned,
+    "processed_file_id": processed,
+    "library_metadata_object_id": library_id,
+    "persistence_verified": True,
+    "replacement_backing_identity_verified": True,
+    "family_replacement_verified": True,
+    "final_family_source_count": 1,
+    "checks": checks,
+    "source_add_log": str(source_path),
+    "raw_evidence": value,
+}
+evidence_out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print("\t".join([project_id, project_home_url, assigned, processed, library_id]))
+INNERPY
+)" || return $?
+  IFS=$'\t' read -r project_id project_home_url assigned_filename processed_file_id library_metadata_object_id <<<"${identity_tsv}"
+
+  echo "== Adoption identity preflight =="
+  echo "release_repo_id: ${release_repo_id}"
+  echo "project_id: ${project_id}"
+  echo "project_home_url: ${project_home_url}"
+  echo "assigned_source_filename: ${assigned_filename}"
+  echo "processed_file_id: ${processed_file_id}"
+  echo "library_metadata_object_id: ${library_metadata_object_id}"
+  echo "+ pb project join --project-id ${project_id} --project-home-url ${project_home_url} --repo-id ${release_repo_id} --artifact-pattern ${artifact_project_name}_<version>.zip --role release_authority --repo-root ${repo_root} --json"
+  pb project join \
+    --project-id "${project_id}" \
+    --project-home-url "${project_home_url}" \
+    --repo-id "${release_repo_id}" \
+    --artifact-pattern "${artifact_project_name}_<version>.zip" \
+    --role release_authority \
+    --repo-root "${repo_root}" \
+    --json | tee "${join_out}"
+
+  python3 - "${join_out}" "${repo_root}/.promptbranch-repo.json" "${project_id}" "${project_home_url}" "${release_repo_id}" <<'INNERPY_JOIN'
+from pathlib import Path
+import json
+import sys
+join_path, identity_path, project_id, project_home_url, repo_id = sys.argv[1:]
+raw = Path(join_path).read_text(encoding="utf-8", errors="replace")
+idx = raw.find("{")
+if idx < 0:
+    raise SystemExit("pb project join output did not contain JSON")
+payload = json.loads(raw[idx:])
+if payload.get("ok") is not True:
+    raise SystemExit("pb project join did not return ok:true")
+identity_file = Path(identity_path)
+if not identity_file.is_file():
+    raise SystemExit("pb project join did not create .promptbranch-repo.json")
+identity = json.loads(identity_file.read_text(encoding="utf-8"))
+checks = {
+    "project_id": identity.get("project_id") == project_id,
+    "project_home_url": identity.get("project_home_url") == project_home_url,
+    "repo_id": identity.get("repo_id") == repo_id,
+}
+if not all(checks.values()):
+    raise SystemExit("joined identity mismatch: " + json.dumps({"checks": checks, "identity": identity}, sort_keys=True))
+INNERPY_JOIN
+}
+
+# Add release ZIP to ChatGPT Project Sources. The exact backend-assigned source
+# identity is captured before tests and bound to the later adoption transaction.
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
   ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
   pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
   [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before Project Source add: ${canonical_artifact_zip}"
   echo "candidate_transport_zip: ${candidate_transport_zip}"
   echo "canonical_artifact_zip: ${canonical_artifact_zip}"
-  promptbranch src add "${canonical_artifact_zip}"
+  echo "+ promptbranch src add ${canonical_artifact_zip} --json"
+  promptbranch src add "${canonical_artifact_zip}" --json | tee "${project_source_add_log}"
+  if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
+    release_control_capture_source_evidence_and_join_identity \
+      "${project_source_add_log}" \
+      "${adoption_source_evidence_json}" \
+      "${project_join_json}" \
+      || fail "authoritative adoption identity preflight failed before validation"
+  fi
 else
   if [[ ${auth_only_validation} -eq 1 ]]; then
     echo "Source add skipped: --auth-only-validation"
@@ -2892,17 +3052,30 @@ INNERPY_LOCAL_SRC
     echo "+ pb src list --json"
     pb src list --json | tee "${src_list_json}"
     json_file_is_ok_true "${src_list_json}"
-    verify_source_list_mentions_artifact "${src_list_json}"
 
-    echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --json"
-    pb artifact adopt "${artifact_zip}" --from-project-source --local-path "${local_zip}" --json | tee "${adopt_json}"
+    if [[ ${adopt_after_validation} -eq 1 ]]; then
+      [[ -f "${adoption_source_evidence_json}" ]] || fail "authoritative Project Source adoption evidence missing: ${adoption_source_evidence_json}"
+      [[ -f "${repo_root}/.promptbranch-repo.json" ]] || fail "joined repository identity missing before adoption: ${repo_root}/.promptbranch-repo.json"
+      echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --repo ${release_repo_id} --source-evidence-json ${adoption_source_evidence_json} --json"
+      pb artifact adopt "${artifact_zip}" \
+        --from-project-source \
+        --local-path "${local_zip}" \
+        --repo "${release_repo_id}" \
+        --source-evidence-json "${adoption_source_evidence_json}" \
+        --json | tee "${adopt_json}"
+    else
+      echo "+ pb artifact adopt ${artifact_zip} --from-project-source --local-path ${local_zip} --json"
+      pb artifact adopt "${artifact_zip}" --from-project-source --local-path "${local_zip}" --json | tee "${adopt_json}"
+    fi
   fi
-  python3 - "${adopt_json}" "${auth_only_validation}" <<'INNERPY'
+  python3 - "${adopt_json}" "${auth_only_validation}" "${adoption_source_evidence_json}" "${adopt_after_validation}" <<'INNERPY'
 import json
 import sys
 from pathlib import Path
 path = Path(sys.argv[1])
 auth_only = sys.argv[2] == "1"
+evidence_path = Path(sys.argv[3])
+evidence_bound = sys.argv[4] == "1"
 raw = path.read_text(encoding="utf-8", errors="replace")
 idx = raw.find("{")
 if idx < 0:
@@ -2916,6 +3089,8 @@ if payload.get("status") != expected_status:
 required_true = ["artifact_registry_updated", "state_artifact_updated", "state_source_updated"]
 if not auth_only:
     required_true.insert(0, "source_verified")
+if evidence_bound:
+    required_true.insert(1, "source_evidence_verified")
 for key in required_true:
     if payload.get(key) is not True:
         raise SystemExit(f"artifact adopt field {key} is not true")
@@ -2925,6 +3100,18 @@ if payload.get("project_source_mutated") is not False:
     raise SystemExit("artifact adopt unexpectedly mutated Project Sources")
 if auth_only and payload.get("adoption_mode") != "local_only":
     raise SystemExit(f"auth-only adoption_mode is not local_only: {payload.get('adoption_mode')!r}")
+if evidence_bound:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    exact = {
+        "requested_source_ref": evidence.get("requested_filename"),
+        "assigned_source_ref": evidence.get("assigned_filename"),
+        "processed_file_id": evidence.get("processed_file_id"),
+        "library_metadata_object_id": evidence.get("library_metadata_object_id"),
+        "repo_id": evidence.get("repo_id"),
+    }
+    mismatches = {key: {"expected": expected, "actual": payload.get(key)} for key, expected in exact.items() if payload.get(key) != expected}
+    if mismatches:
+        raise SystemExit("artifact adopt did not preserve exact source identity evidence: " + json.dumps(mismatches, sort_keys=True))
 INNERPY
 
   echo "+ pb artifact current --json"
@@ -3643,70 +3830,61 @@ run_all_log_has_rate_limit_evidence() {
 from __future__ import annotations
 from pathlib import Path
 import json
-import re
 import sys
 
-path = Path(sys.argv[1])
-raw_text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-# Selector probe diagnostics may contain literal modal text inside selectors even
-# when the modal is absent, e.g. selector='[role="dialog"]:has-text("Too many requests")'
-# visible=False.  Those lines are diagnostic probes, not rate-limit evidence.
-text = "\n".join(
-    line for line in raw_text.splitlines()
-    if not ("[selector] selector probe" in line and "visible=False" in line)
-)
-
-# Strict evidence only. Do not match generic diagnostic prose such as
-# literal status=429 evidence remains retryable unless recovered in-place.
-# "No ChatGPT rate-limit evidence observed" or variable names by themselves.
-strict_patterns = [
-    r"Too many requests",
-    r"temporarily limited access",
-    r"protect your data",
-    r"\bstatus\s*[=:]\s*429\b",
-    r'"status"\s*:\s*429\b',
-    r"HTTP\s+429\b",
-    r"backend-api/[^\s'\"]+.*\b429\b",
-    r"conversation history rate limit noted",
-    r"backend-api guardrail noted",
-    r'"rate_limit_modal_detected"\s*:\s*true',
-    r'"conversation_history_429_seen"\s*:\s*true',
-    r'"backend_api_guardrail_seen"\s*:\s*true',
-    r'"status"\s*:\s*"rate_limited_failed"',
-]
-if any(re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL) for pattern in strict_patterns):
-    raise SystemExit(0)
-
-# Structured fallback: if a Promptbranch JSON object contains service_rate_limit_events
-# with entries, treat it as retryable backpressure. Empty arrays are not evidence.
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
 decoder = json.JSONDecoder()
-for idx, char in enumerate(text):
+objects: list[dict] = []
+for index, char in enumerate(text):
     if char != "{":
         continue
     try:
-        value, _end = decoder.raw_decode(text[idx:])
+        value, _end = decoder.raw_decode(text[index:])
     except Exception:
         continue
-    if not isinstance(value, dict):
-        continue
-    events = value.get("service_rate_limit_events")
-    if isinstance(events, list) and events:
-        raise SystemExit(0)
-    summary = value.get("rate_limit_summary")
-    if isinstance(summary, dict):
-        if summary.get("conversation_history_429_seen") is True:
-            raise SystemExit(0)
-        if summary.get("rate_limit_modal_detected") is True:
-            raise SystemExit(0)
-        if summary.get("backend_api_guardrail_seen") is True:
-            raise SystemExit(0)
-        nested_events = summary.get("service_rate_limit_events")
-        if isinstance(nested_events, list) and nested_events:
-            raise SystemExit(0)
-raise SystemExit(1)
+    if isinstance(value, dict):
+        objects.append(value)
+
+RATE_LIMIT_STATUSES = {"rate_limited", "rate_limited_failed", "rate_limited_contaminated"}
+RATE_LIMIT_KINDS = {"rate_limit", "rate_limit_modal", "conversation_history_429", "http_429", "backend_429"}
+HTTP_STATUS_KEYS = {"http_status", "status_code", "response_status", "backend_status", "conversation_history_status"}
+
+
+def positive_event(event: object) -> bool:
+    if not isinstance(event, dict):
+        return False
+    if str(event.get("kind") or "").lower() in RATE_LIMIT_KINDS:
+        return True
+    if str(event.get("status") or "").lower() in RATE_LIMIT_STATUSES:
+        return True
+    for key in HTTP_STATUS_KEYS | {"status"}:
+        value = event.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value == 429:
+            return True
+    return False
+
+
+def has_evidence(value: object) -> bool:
+    if isinstance(value, dict):
+        if str(value.get("status") or "").lower() in RATE_LIMIT_STATUSES:
+            return True
+        if value.get("rate_limit_modal_detected") is True or value.get("conversation_history_429_seen") is True:
+            return True
+        events = value.get("service_rate_limit_events")
+        if isinstance(events, list) and any(positive_event(event) for event in events):
+            return True
+        for key in HTTP_STATUS_KEYS:
+            item = value.get(key)
+            if isinstance(item, int) and not isinstance(item, bool) and item == 429:
+                return True
+        return any(has_evidence(item) for item in value.values())
+    if isinstance(value, list):
+        return any(has_evidence(item) for item in value)
+    return False
+
+raise SystemExit(0 if any(has_evidence(value) for value in objects) else 1)
 INNERPY
 }
-
 
 
 run_all_log_has_live_bootstrap_guardrail() {
@@ -4728,32 +4906,38 @@ def telemetry_event_kinds(payload: dict) -> list[str]:
     return kinds
 
 def payload_has_rate_limit_evidence(payload: dict, raw: str) -> bool:
-    if payload.get("status") in {"rate_limited_failed", "rate_limited_contaminated", "verified_with_recovered_rate_limit"}:
-        return True
-    for key in ("rate_limit_telemetry", "rate_limit_summary"):
-        value = payload.get(key)
+    # Retry classification is structured-only. Prose, selector text, passive
+    # telemetry field names, and recovered-rate-limit summaries are not evidence.
+    rate_limit_statuses = {"rate_limited", "rate_limited_failed", "rate_limited_contaminated"}
+    rate_limit_kinds = {"rate_limit", "rate_limit_modal", "conversation_history_429", "http_429", "backend_429"}
+    status_keys = {"http_status", "status_code", "response_status", "backend_status", "conversation_history_status"}
+
+    def positive_event(event: object) -> bool:
+        if not isinstance(event, dict):
+            return False
+        if str(event.get("kind") or "").lower() in rate_limit_kinds:
+            return True
+        if str(event.get("status") or "").lower() in rate_limit_statuses:
+            return True
+        return any(isinstance(event.get(key), int) and not isinstance(event.get(key), bool) and event.get(key) == 429 for key in status_keys | {"status"})
+
+    def inspect(value: object) -> bool:
         if isinstance(value, dict):
-            if value.get("rate_limit_modal_detected") is True:
+            if str(value.get("status") or "").lower() in rate_limit_statuses:
                 return True
-            if value.get("conversation_history_429_seen") is True:
-                return True
-            if value.get("backend_api_guardrail_seen") is True:
+            if value.get("rate_limit_modal_detected") is True or value.get("conversation_history_429_seen") is True:
                 return True
             events = value.get("service_rate_limit_events")
-            if isinstance(events, list) and events:
+            if isinstance(events, list) and any(positive_event(event) for event in events):
                 return True
-    lowered = raw.lower()
-    return (
-        "too many requests" in lowered
-        or "temporarily limited access" in lowered
-        or "status=429" in lowered
-        or '"status": 429' in lowered
-        or '"status":429' in lowered
-        or '"rate_limit_modal_detected": true' in lowered
-        or '"rate_limit_modal_detected":true' in lowered
-        or '"conversation_history_429_seen": true' in lowered
-        or '"conversation_history_429_seen":true' in lowered
-    )
+            if any(isinstance(value.get(key), int) and not isinstance(value.get(key), bool) and value.get(key) == 429 for key in status_keys):
+                return True
+            return any(inspect(item) for item in value.values())
+        if isinstance(value, list):
+            return any(inspect(item) for item in value)
+        return False
+
+    return inspect(payload)
 
 def payload_has_browser_read_timeout(payload: dict, raw: str) -> bool:
     combined = (payload_text(payload) + "\n" + raw).lower()

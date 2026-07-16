@@ -745,7 +745,7 @@ def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_fil
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in text
+    assert 'local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in text
     assert '! -name "debug_artifacts"' in text
     assert "--exclude='debug_artifacts/'" in text
     assert "--exclude='.env'" in text
@@ -1689,9 +1689,10 @@ def test_release_control_run_all_has_rate_limit_retry_policy_declared():
     assert "PROMPTBRANCH_RUN_ALL_RATE_LIMIT_COOLDOWN_SECONDS" in script
     assert "run_all_log_has_rate_limit_evidence" in script
     assert "run_all_rate_limit_cooldown_sleep" in script
-    assert "Too many requests" in script
-    assert "status=429" in script
-    assert "temporarily limited access" in script
+    assert 'RATE_LIMIT_STATUSES = {"rate_limited", "rate_limited_failed", "rate_limited_contaminated"}' in script
+    assert 'value.get("rate_limit_modal_detected") is True' in script
+    assert 'value.get("conversation_history_429_seen") is True' in script
+    assert "structured-only" in script
     assert "tee -a" in script
     assert "retry after rate-limit cooldown" in script
 
@@ -1700,13 +1701,15 @@ def test_release_control_import_plan_preserves_live_seed_and_live_pool():
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in script
+    assert 'local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in script
     assert '! -name ".pb_profile_local_debug"' in script
     assert '! -name ".pb_profile_local_debug_pools"' in script
     assert "--exclude='.pb_profile_local_debug/'" in script
     assert "--exclude='.pb_profile_local_debug_pools/'" in script
-    assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]' in script
-    assert 'protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}' in script
+    assert 'protected_zip_roots = [".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]' in script
+    assert 'protected_roots = {".git", ".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}' in script
+    assert '! -name ".promptbranch-repo.json"' in script
+    assert "--exclude='.promptbranch-repo.json'" in script
 
 
 def test_release_control_run_all_defaults_text_source_to_compatibility_probe():
@@ -1735,77 +1738,22 @@ def test_release_control_rate_limit_detection_is_strict_not_generic():
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert "No ChatGPT rate-limit evidence observed" in script
-    assert "Strict evidence only" in script
+    assert "structured-only" in script
     assert "rate[-_ ]limit|rate_limited|cooldown_seconds|cooldown_until" not in script
-    assert '"rate_limit_modal_detected"\\s*:\\s*true' in script
-    assert '"conversation_history_429_seen"\\s*:\\s*true' in script
-    assert '"backend_api_guardrail_seen"\\s*:\\s*true' in script
+    detector = script.split("run_all_log_has_rate_limit_evidence()", 1)[1].split("run_all_log_has_live_bootstrap_guardrail()", 1)[0]
+    assert "re.search" not in detector
+    assert "raw_text.lower" not in detector
+    assert 'value.get("rate_limit_modal_detected") is True' in detector
+    assert 'value.get("conversation_history_429_seen") is True' in detector
+    assert 'value.get("backend_api_guardrail_seen") is True' not in detector
 
-def test_release_control_run_all_retries_unrecovered_rate_limited_step_once(tmp_path: Path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    (repo / ".pb_profile_local_debug").mkdir()
-    (repo / "VERSION").write_text("v9.9.10\n", encoding="utf-8")
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    calls = tmp_path / "calls.log"
-    ask_counter = tmp_path / "ask_counter"
+def test_release_control_run_all_retries_unrecovered_rate_limited_step_once() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    (fake_bin / "promptbranch").write_text("#!/usr/bin/env bash\necho promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n", encoding="utf-8")
-    (fake_bin / "promptbranch").chmod(0o755)
-    (fake_bin / "timeout").write_text(
-        "#!/usr/bin/env bash\n"
-        "if [[ \"$1\" == \"--foreground\" ]]; then shift; fi\n"
-        "shift\n"
-        "exec \"$@\"\n",
-        encoding="utf-8",
-    )
-    (fake_bin / "timeout").chmod(0o755)
-    (fake_bin / "pb").write_text(
-        "#!/usr/bin/env bash\n"
-        "echo pb \"$@\" CHATGPT_SERVICE_BASE_URL=${CHATGPT_SERVICE_BASE_URL:-} >> \"$PB_FAKE_CALL_LOG\"\n"
-        "if [[ \"$1\" == \"--profile-dir\" && \"$3\" == \"login-check\" ]]; then echo 'login result: logged_in=True'; exit 0; fi\n"
-        "if [[ \"$1\" == \"--profile-dir\" && \"$3\" == \"project-ensure\" ]]; then echo '{\"ok\": true, \"action\": \"project_ensure\", \"status\": \"resolved\", \"created\": true, \"project_name\": \"shared-test-project\", \"project_url\": \"https://chatgpt.com/g/g-p-shared/project\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"v9.9.10\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test ask-live\" ]]; then n=$(cat \"$PB_FAKE_ASK_COUNTER\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PB_FAKE_ASK_COUNTER\"; if [[ $n -eq 1 ]]; then echo 'Too many requests status=429 cooldown_seconds=0'; exit 42; fi; echo '{\"ok\": true, \"profile\": \"ask-live\", \"status\": \"verified\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test visual-artifact-roundtrip\" ]]; then echo '{\"ok\": true, \"profile\": \"visual-artifact-roundtrip\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test release-live\" ]]; then echo '{\"ok\": true, \"profile\": \"release-live\", \"status\": \"verified\", \"download_status\": \"downloaded\", \"verification_status\": \"smoke_zip_verified\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test import-smoke\" ]]; then echo '{\"ok\": true, \"action\": \"package_import_smoke\", \"status\": \"verified\", \"failures\": []}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"artifact guard\" ]]; then echo '{\"ok\": true, \"status\": \"guard_passed\", \"failure_count\": 0}'; exit 0; fi\n"
-        "echo unexpected pb args >&2\n"
-        "exit 2\n",
-        encoding="utf-8",
-    )
-    (fake_bin / "pb").chmod(0o755)
-
-    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
-    env = os.environ.copy()
-    env["PATH"] = f"{fake_bin}:{env['PATH']}"
-    env["PB_FAKE_CALL_LOG"] = str(calls)
-    env["PB_FAKE_ASK_COUNTER"] = str(ask_counter)
-    env["PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0"] = "1"
-    env["PROMPTBRANCH_TEST_SESSION_LOG"] = "release-control-run-all-rate-limit-retry.log"
-    env["PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP"] = "1"
-
-    result = subprocess.run(
-        [str(script), "--tests-only", "--run-all-tests", "--version", "v9.9.10"],
-        cwd=repo,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-    log_dir = repo / ".pb_profile" / "release_logs" / "v9.9.10"
-    summary = json.loads((log_dir / "pb_test.all.v9.9.10.summary.json").read_text(encoding="utf-8"))
-    assert summary["ok"] is True
-    assert summary["final_verdict"] == "GO"
-    assert ask_counter.read_text(encoding="utf-8").strip() == "2"
-    assert "retry after rate-limit cooldown" in (log_dir / "pb_test.ask_live.v9.9.10.log").read_text(encoding="utf-8")
-    assert "rate-limit evidence detected for ask_live" in result.stdout
-
+    assert 'run_all_rate_limit_retries="${PROMPTBRANCH_RUN_ALL_RATE_LIMIT_RETRIES:-1}"' in script
+    assert "${attempt} -lt ${run_all_rate_limit_retries}" in script
+    assert 'run_all_log_has_rate_limit_evidence "${step_log}"' in script
+    assert "PROMPTBRANCH_RUN_ALL_RATE_LIMIT_SKIP_SLEEP" in script
 
 def test_release_control_full_localhost_rate_limit_retry_is_denylisted_before_sleep():
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
@@ -2467,29 +2415,15 @@ def test_prompt_file_live_smoke_script_validates_button_first_submit_contract():
     assert "prepare_token_set_not_consumed remained unresolved" in content
 
 
-def test_release_control_adopt_after_validation_runs_full_tests_then_adopts(tmp_path: Path):
+def test_release_control_adopt_after_validation_rejects_skip_source_add_before_tests(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     version = "v9.9.91.1"
-    artifact = f"repo_{version}.zip"
     (repo / "VERSION").write_text(f"{version}\n", encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     calls = tmp_path / "calls.log"
     _write_release_control_fake_commands(fake_bin, calls, version=version)
-
-    packager = tmp_path / "packager.sh"
-    packager.write_text(
-        "#!/usr/bin/env bash\n"
-        "python3 - <<'INNERPY'\n"
-        "import zipfile\n"
-        f"with zipfile.ZipFile('{artifact}', 'w') as archive:\n"
-        f"    archive.writestr('VERSION', '{version}\\n')\n"
-        "    archive.writestr('pyproject.toml', '[project]\\nname = \\\"promptbranch\\\"\\n')\n"
-        "INNERPY\n",
-        encoding="utf-8",
-    )
-    packager.chmod(0o755)
 
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     env = os.environ.copy()
@@ -2501,14 +2435,7 @@ def test_release_control_adopt_after_validation_runs_full_tests_then_adopts(tmp_
         [
             str(script),
             "--version", version,
-            "--skip-zip-import",
-            "--skip-commit",
             "--skip-source-add",
-            "--skip-install",
-            "--skip-chown",
-            "--skip-service",
-            "--skip-docker-logs",
-            "--packager", str(packager),
             "--run-tests",
             "--adopt-after-validation",
         ],
@@ -2516,18 +2443,27 @@ def test_release_control_adopt_after_validation_runs_full_tests_then_adopts(tmp_
         env=env,
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
 
-    assert "adopt_after_validation: 1" in result.stdout
-    assert "== Adopt after validation ==" in result.stdout
-    assert "Adopt verified" in result.stdout
-    call_text = calls.read_text(encoding="utf-8")
-    assert "pb test full" in call_text
-    assert "pb test report" in call_text
-    assert call_text.index("pb test report") < call_text.index("pb artifact verify")
-    assert f"pb artifact adopt {artifact} --from-project-source --local-path {repo / artifact} --json" in call_text
+    assert result.returncode != 0
+    assert "requires the current run's authoritative Project Source upload" in result.stderr
+    call_text = calls.read_text(encoding="utf-8") if calls.exists() else ""
+    assert "pb test full" not in call_text
+    assert "pb artifact adopt" not in call_text
 
+
+def test_release_control_adoption_identity_preflight_precedes_expensive_tests() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    source_add_index = script.index('promptbranch src add "${canonical_artifact_zip}" --json')
+    preflight_call_index = script.index('release_control_capture_source_evidence_and_join_identity \\', source_add_index)
+    test_index = script.index('if [[ ${skip_tests} -eq 0 ]]; then')
+    assert source_add_index < preflight_call_index < test_index
+    assert 'pb project join \\' in script
+    assert '--source-evidence-json "${adoption_source_evidence_json}"' in script
+    assert 'assigned_source_filename:' in script
+    assert 'processed_file_id:' in script
+    assert 'library_metadata_object_id:' in script
 
 def test_release_control_rejects_adopt_after_validation_without_tests(tmp_path: Path):
     repo = tmp_path / "repo"
@@ -3965,3 +3901,61 @@ def test_release_control_cloudflare_classification_requires_actual_challenge_evi
     assert '"verify you are human"' in function
     assert '\"challenge_detected\": true' in function
     assert "submit_causality_not_confirmed" not in function
+
+
+def test_release_control_rate_limit_retry_requires_structured_true_evidence(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    function_text = script.split("run_all_log_has_rate_limit_evidence() {", 1)[1].split(
+        "run_all_log_has_live_bootstrap_guardrail() {", 1
+    )[0]
+    function_text = "run_all_log_has_rate_limit_evidence() {" + function_text
+
+    passive_log = tmp_path / "passive.log"
+    passive_log.write_text(
+        "diagnostic prose mentions HTTP 429 and status=429 but is not structured evidence\n"
+        + json.dumps(
+            {
+                "ok": False,
+                "status": "verified_with_recovered_rate_limit",
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": False,
+                    "conversation_history_429_seen": False,
+                    "backend_api_guardrail_seen": False,
+                    "service_rate_limit_events": [],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    true_log = tmp_path / "true.log"
+    true_log.write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "status": "rate_limited_failed",
+                "rate_limit_telemetry": {
+                    "rate_limit_modal_detected": True,
+                    "conversation_history_429_seen": False,
+                    "service_rate_limit_events": [{"kind": "rate_limit_modal", "status": 429}],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    passive = subprocess.run(
+        ["bash", "-c", function_text + '\nrun_all_log_has_rate_limit_evidence "$1"', "bash", str(passive_log)],
+        text=True,
+        capture_output=True,
+    )
+    positive = subprocess.run(
+        ["bash", "-c", function_text + '\nrun_all_log_has_rate_limit_evidence "$1"', "bash", str(true_log)],
+        text=True,
+        capture_output=True,
+    )
+
+    assert passive.returncode == 1, passive.stderr
+    assert positive.returncode == 0, positive.stderr

@@ -14624,3 +14624,119 @@ def test_release_live_exact_slot_no_profile_lease_disables_lease_resolution(tmp_
     ])
 
     assert _profile_lease_settings_from_args(args) is None
+
+
+def _write_source_adoption_evidence(
+    path: Path,
+    *,
+    requested: str,
+    assigned: str,
+    project_url: str = "https://chatgpt.com/g/g-p-demo/project",
+    processed_file_id: str | None = "file_00000000111122223333444455556666",
+    library_metadata_object_id: str | None = "libfile_11112222333344445555666677778888",
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.release_control.project_source_adoption_evidence",
+                "schema_version": "1.0",
+                "ok": True,
+                "status": "source_evidence_verified",
+                "action": "add",
+                "project_url": project_url,
+                "requested_filename": requested,
+                "assigned_filename": assigned,
+                "processed_file_id": processed_file_id,
+                "library_metadata_object_id": library_metadata_object_id,
+                "persistence_verified": True,
+                "replacement_backing_identity_verified": True,
+                "family_replacement_verified": True,
+                "final_family_source_count": 1,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_artifact_adopt_binds_exact_source_evidence_to_registry(capsys, tmp_path, monkeypatch) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    assigned = "chatgpt_claudecode_workflow_v1.2.3(1).zip"
+    zip_path = tmp_path / filename
+    evidence_path = tmp_path / "source-evidence.json"
+    _write_test_release_zip(zip_path, "v1.2.3")
+    repo, profile = _initialize_test_project_scope(tmp_path)
+    monkeypatch.chdir(repo)
+    _write_source_adoption_evidence(evidence_path, requested=filename, assigned=assigned)
+    backend = _FakeArtifactAdoptBackend(
+        profile,
+        "https://chatgpt.com/g/g-p-demo/project",
+        [{"title": assigned, "identity": f"{assigned} Zip Archive"}],
+    )
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=True,
+        local_only=False,
+        local_path=str(zip_path),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+        repo_path=str(repo),
+        repo="chatgpt_claudecode_workflow",
+        source_evidence_json=str(evidence_path),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0, json.dumps(payload, indent=2)
+    assert payload["status"] == "adopted"
+    assert payload["source_evidence_verified"] is True
+    assert payload["requested_source_ref"] == filename
+    assert payload["assigned_source_ref"] == assigned
+    assert payload["processed_file_id"] == "file_00000000111122223333444455556666"
+    assert payload["library_metadata_object_id"] == "libfile_11112222333344445555666677778888"
+    registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    current = registry_payload["artifacts"][0]
+    assert current["source_ref"] == assigned
+    assert current["source_requested_ref"] == filename
+    assert current["source_processed_file_id"] == payload["processed_file_id"]
+    assert current["source_library_metadata_object_id"] == payload["library_metadata_object_id"]
+
+
+def test_artifact_adopt_rejects_incomplete_source_evidence_before_mutation(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    assigned = "chatgpt_claudecode_workflow_v1.2.3(1).zip"
+    zip_path = tmp_path / filename
+    evidence_path = tmp_path / "source-evidence.json"
+    _write_test_release_zip(zip_path, "v1.2.3")
+    repo, profile = _initialize_test_project_scope(tmp_path)
+    _write_source_adoption_evidence(
+        evidence_path,
+        requested=filename,
+        assigned=assigned,
+        library_metadata_object_id=None,
+    )
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": assigned}])
+    args = argparse.Namespace(
+        artifact=filename,
+        from_project_source=True,
+        local_only=False,
+        local_path=str(zip_path),
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+        repo_path=str(repo),
+        repo="chatgpt_claudecode_workflow",
+        source_evidence_json=str(evidence_path),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_adopt(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "source_evidence_invalid"
+    assert payload["source_evidence"]["checks"]["library_metadata_object_id_present"] is False
+    registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    assert registry_payload["artifacts"] == []

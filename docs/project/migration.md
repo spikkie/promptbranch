@@ -1133,3 +1133,7 @@ No state migration is required. Existing project-scoped registries remain author
 
 No state migration is introduced. Existing pool roots remain valid inputs to `--profile-lease`, while already-resolved `.../slots/slot-N` paths are treated as exact profiles and are never nested into another pool. Release validation passes one exact slot to both external-live commands without `--profile-lease`. Submit evidence accepts the current ChatGPT flow and a valid new post-submit reply envelope; Cloudflare classification remains fail-closed to explicit challenge evidence. Localhost full validation is executed independently. Accepted/current remains `v0.1.103.10.68` until strict release validation and adoption succeed.
 
+
+## Adoption identity and response-completion repair — v0.1.103.10.115
+
+`v0.1.103.10.115` supersedes the unadopted `v0.1.103.10.114` candidate. It preserves the live-proven indexed overwrite, continuous profile, current submit-flow, independent localhost, and visual-artifact repairs. It adds a pre-validation `pb project join` transaction derived from the exact Project Source upload result, transports the assigned filename plus processed-file and Library metadata IDs into adoption, records those identities in the artifact registry, accepts causally proven same-count virtualized assistant responses after bounded stable idle completion, and removes raw-text `429` retry detection. No accepted/current baseline is advanced by the candidate build.

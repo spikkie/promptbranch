@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.68
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
 last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip
-active candidate version: v0.1.103.10.114
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip
-next normal slice: v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+active candidate version: v0.1.103.10.115
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+next normal slice: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip
-release status: v0.1.103.10.113 live-proved collision-free indexed replacement in full_direct and passed the localhost gate, but overall validation returned LIVE_BLOCKED after visual_artifact_roundtrip falsely rejected the current ChatGPT submit flow; adoption was refused; v0.1.103.10.114 repairs continuous physical-profile resolution, causal-submit recognition, early valid-envelope acceptance, and independent localhost execution
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+release status: v0.1.103.10.114 passed all nine validation gates, including independently executed full_direct/full_localhost and external visual/release-live checks, but adoption failed closed because authoritative repository/project identity was absent; its first malformed visual reply also exposed same-count virtualized assistant-turn completion waiting; v0.1.103.10.115 repairs adoption identity preflight, exact backing-identity transport, parse-independent stable completion, and structured-only rate-limit retries
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Install v0.1.103.10.114. Verify full_direct and an independently executed full_localhost. External visual-artifact and release-live validation must use one exact resolved physical profile slot without nested pooling. Treat POST /backend-api/f/conversation, a Sentinel prepare/finalize pair, or post-click IS_STREAMING as current submit-flow evidence; a structurally valid reply envelope from a new assistant turn may complete response correlation early. Classify Cloudflare only from actual challenge evidence. Do not adopt Promptbranch without strict validation.
+Install v0.1.103.10.115. With --adopt-after-validation, require the current run to upload the canonical Project Source, capture its exact backend-assigned filename plus processed-file and Library metadata IDs, and initialize repository/project identity through pb project join before validation. Return a causally proven new assistant response after bounded stable idle completion before parsing its envelope. Retry rate limits only from structured true telemetry. Require full_direct, independently executed full_localhost, all external-live gates, Artifact Guardian, and exact evidence-bound adoption before advancing accepted/current.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.103.10.114 continuous live-profile resolution and causal-submit evidence candidate build
+v0.1.103.10.115 adoption identity preflight and parse-independent response completion candidate build
 ```
 
 

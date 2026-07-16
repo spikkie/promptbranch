@@ -11441,16 +11441,34 @@ class ChatGPTBrowserClient:
 
         return None, None, 0, probes
 
-    def _assistant_response_changed(self, response_context: Optional[dict[str, Any]], *, count: int, text: str) -> bool:
-        if not text.strip():
+    def _assistant_response_changed(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        count: int,
+        text: str,
+        observed_running_state: bool = False,
+    ) -> bool:
+        candidate = text.strip()
+        if not candidate:
             return False
         if response_context is None:
             return True
         baseline_count = int(response_context.get("assistant_count") or 0)
-        baseline_text = (response_context.get("assistant_text") or "").strip()
         if count > baseline_count:
+            response_context["post_submit_turn_evidence_mode"] = "assistant_count_advanced"
             return True
-        if text != baseline_text:
+        baseline_text = str(response_context.get("assistant_text") or "").strip()
+        same_count_confirmed_replacement = bool(
+            count == baseline_count
+            and response_context.get("submit_confirmed") is True
+            and observed_running_state
+            and candidate != baseline_text
+        )
+        if same_count_confirmed_replacement:
+            response_context["post_submit_turn_evidence_mode"] = (
+                "same_count_replacement_after_confirmed_submit_and_running"
+            )
             return True
         return False
 
@@ -11512,7 +11530,12 @@ class ChatGPTBrowserClient:
             elif idle_now:
                 observed_idle_after_running = True
 
-            has_response = self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text)
+            has_response = self._assistant_response_changed(
+                response_context,
+                count=assistant_count,
+                text=assistant_text,
+                observed_running_state=observed_running_state,
+            )
             candidate_text = assistant_text.strip()
             if has_response and candidate_text:
                 if first_response_seen_at is None:

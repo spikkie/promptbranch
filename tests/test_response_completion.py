@@ -798,3 +798,61 @@ def test_post_submit_valid_reply_envelope_overrides_missing_request_marker(tmp_p
         True,
         "post_submit_turn_valid_reply_envelope",
     )
+
+
+def test_same_count_assistant_replacement_is_fresh_only_after_confirmed_submit_and_running(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 3,
+        "assistant_text": "previous answer",
+        "submit_confirmed": True,
+    }
+
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="new generated answer",
+        observed_running_state=True,
+    ) is True
+    assert context["post_submit_turn_evidence_mode"] == "same_count_replacement_after_confirmed_submit_and_running"
+
+
+def test_same_count_assistant_replacement_fails_closed_without_causal_run_evidence(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 3,
+        "assistant_text": "previous answer",
+        "submit_confirmed": True,
+    }
+
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="different text",
+        observed_running_state=False,
+    ) is False
+    context["submit_confirmed"] = False
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="different text",
+        observed_running_state=True,
+    ) is False
+
+
+def test_legacy_browser_client_uses_same_bounded_same_count_response_contract() -> None:
+    from chatgpt_browser_auth.client import ChatGPTBrowserClient as LegacyChatGPTBrowserClient
+
+    context = {
+        "assistant_count": 2,
+        "assistant_text": "previous answer",
+        "submit_confirmed": True,
+    }
+    assert LegacyChatGPTBrowserClient._assistant_response_changed(
+        object(),
+        context,
+        count=2,
+        text="replacement answer",
+        observed_running_state=True,
+    ) is True
+    assert context["post_submit_turn_evidence_mode"] == "same_count_replacement_after_confirmed_submit_and_running"

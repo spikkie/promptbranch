@@ -31854,18 +31854,47 @@ class ChatGPTBrowserClient:
         )
         return None, None, 0, probes
 
-    def _assistant_response_changed(self, response_context: Optional[dict[str, Any]], *, count: int, text: str) -> bool:
-        if not text.strip():
+    def _assistant_response_changed(
+        self,
+        response_context: Optional[dict[str, Any]],
+        *,
+        count: int,
+        text: str,
+        observed_running_state: bool = False,
+    ) -> bool:
+        candidate = text.strip()
+        if not candidate:
             return False
         if response_context is None:
             return True
         baseline_count = int(response_context.get("assistant_count") or 0)
-        # v0.0.278.60: plain-text answers must be bound to the current
-        # submitted prompt by a post-submit assistant turn.  A same-count text
-        # mutation can be a stale/previous turn finishing after an unconfirmed
-        # submit, which caused `pb ask 'print echo 1'` to return an unrelated
-        # old JSON sentinel.  Fail closed unless a new assistant turn appears.
-        return count > baseline_count
+        if count > baseline_count:
+            response_context["post_submit_turn_evidence_mode"] = "assistant_count_advanced"
+            return True
+
+        # ChatGPT can virtualize or recycle the newest assistant container.  In
+        # that UI shape the visible assistant count stays equal to the pre-submit
+        # baseline even though a confirmed submission entered generation and the
+        # latest assistant text was replaced.  Accept that replacement only when
+        # submit causality was already confirmed and a running state was observed.
+        # The completion loop still requires the replacement to settle and the
+        # browser/composer to become idle before it can be returned.
+        baseline_text = str(response_context.get("assistant_text") or "").strip()
+        same_count_confirmed_replacement = bool(
+            count == baseline_count
+            and response_context.get("submit_confirmed") is True
+            and observed_running_state
+            and candidate != baseline_text
+        )
+        if same_count_confirmed_replacement:
+            response_context["post_submit_turn_evidence_mode"] = (
+                "same_count_replacement_after_confirmed_submit_and_running"
+            )
+            return True
+
+        # Without both confirmed submit causality and an observed generation
+        # transition, a same-count mutation may be a stale previous turn.
+        return False
 
     async def _wait_and_get_response(
         self,
@@ -31936,7 +31965,12 @@ class ChatGPTBrowserClient:
             elif idle_now:
                 observed_idle_after_running = True
 
-            has_response = self._assistant_response_changed(response_context, count=assistant_count, text=assistant_text)
+            has_response = self._assistant_response_changed(
+                response_context,
+                count=assistant_count,
+                text=assistant_text,
+                observed_running_state=observed_running_state,
+            )
             candidate_text = assistant_text.strip()
             if has_response and candidate_text:
                 if first_response_seen_at is None:

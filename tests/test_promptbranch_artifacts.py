@@ -480,3 +480,32 @@ def test_artifact_mutation_remains_blocked_when_registry_invalid(tmp_path: Path)
         registry.add(record)
 
     assert exc_info.value.status == "artifact_registry_invalid"
+
+
+def test_artifact_registry_rejects_partial_project_source_identity_evidence(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.initialize()
+    record = ArtifactRecord(
+        path=str(tmp_path / "demo_v1.2.3.zip"),
+        filename="demo_v1.2.3.zip",
+        kind="adopted_release",
+        version="v1.2.3",
+        repo_path=None,
+        repo_id="demo",
+        sha256="a" * 64,
+        size_bytes=1,
+        file_count=1,
+        created_at="2026-07-16T00:00:00Z",
+        source_ref="demo_v1.2.3(1).zip",
+        project_url="https://chatgpt.com/g/g-p-demo/project",
+        source_requested_ref="demo_v1.2.3.zip",
+        source_processed_file_id="file_123",
+        source_library_metadata_object_id=None,
+    )
+
+    try:
+        registry.add(record)
+    except ValueError as exc:
+        assert "source_library_metadata_object_id" in str(exc)
+    else:
+        raise AssertionError("partial Project Source identity evidence should be rejected")

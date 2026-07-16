@@ -9986,6 +9986,100 @@ def _resolve_adopt_local_zip(artifact_name: str, *, local_path: str | None, regi
     return None
 
 
+def _json_objects_from_text(raw: str) -> list[dict[str, Any]]:
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    for index, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(raw[index:])
+        except Exception:
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+    return objects
+
+
+def _load_project_source_adoption_evidence(path_value: str | Path) -> dict[str, Any]:
+    path = Path(path_value).expanduser()
+    if not path.is_file():
+        return {
+            "ok": False,
+            "status": "source_evidence_not_found",
+            "source_evidence_path": str(path),
+            "error": "Project Source adoption evidence file does not exist.",
+        }
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    candidates = [
+        value for value in _json_objects_from_text(raw)
+        if str(value.get("action") or "") == "add"
+        and value.get("ok") is True
+        and value.get("persistence_verified") is True
+    ]
+    if not candidates:
+        return {
+            "ok": False,
+            "status": "source_evidence_invalid",
+            "source_evidence_path": str(path),
+            "error": "Evidence does not contain a successful persistent Project Source add result.",
+        }
+    value = candidates[-1]
+    requested = Path(str(value.get("requested_filename") or value.get("source_match_requested") or "")).name
+    assigned = Path(str(value.get("assigned_filename") or value.get("backend_assigned_name") or "")).name
+    processed = str(value.get("processed_file_id") or "").strip()
+    library_id = str(value.get("library_metadata_object_id") or "").strip()
+    project_url = str(value.get("project_url") or "").strip()
+    required_checks = {
+        "requested_filename_present": bool(requested),
+        "assigned_filename_present": bool(assigned),
+        "processed_file_id_present": processed.startswith("file_"),
+        "library_metadata_object_id_present": library_id.startswith("libfile_"),
+        "project_url_present": project_url.startswith("https://chatgpt.com/g/"),
+        "replacement_backing_identity_verified": value.get("replacement_backing_identity_verified") is True,
+        "family_replacement_verified": value.get("family_replacement_verified") is True,
+        "final_family_singleton": int(value.get("final_family_source_count") or 0) == 1,
+    }
+    ok = all(required_checks.values())
+    return {
+        "ok": ok,
+        "status": "source_evidence_verified" if ok else "source_evidence_invalid",
+        "source_evidence_path": str(path),
+        "requested_filename": requested or None,
+        "assigned_filename": assigned or None,
+        "processed_file_id": processed or None,
+        "library_metadata_object_id": library_id or None,
+        "project_url": project_url or None,
+        "checks": required_checks,
+        "raw_evidence": value,
+        "error": None if ok else "Project Source evidence is missing authoritative identity or singleton-correlation fields.",
+    }
+
+
+def _project_sources_matching_exact_assigned_filename(result: Any, assigned_filename: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    sources, payload = _project_source_list_payload(result)
+    target = Path(str(assigned_filename or "")).name.casefold()
+    matched: list[dict[str, Any]] = []
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        candidates: set[str] = set()
+        for value in _source_identity_values(item):
+            for token in re.findall(r"[^\s]+(?:\.zip|\.txt|\.pdf|\.docx|\.xlsx|\.pptx)", value, flags=re.IGNORECASE):
+                candidates.add(Path(token.rstrip(".,;:")).name.casefold())
+        for key in ("assigned_filename", "filename", "name", "title"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                candidates.add(Path(value.strip()).name.casefold())
+        if target and target in candidates:
+            matched.append({**item, "assigned_filename": assigned_filename, "filename_match_kind": "exact_assigned_filename"})
+    payload["matching_expected_count"] = len(matched)
+    payload["matching_expected"] = matched[:5]
+    payload["matching_assigned_filenames"] = [assigned_filename for _ in matched]
+    payload["matching_kinds"] = ["exact_assigned_filename" for _ in matched]
+    return matched, payload
+
+
 def _project_sources_matching_filename(result: Any, filename: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     sources, payload = _project_source_list_payload(result)
     matched: list[dict[str, Any]] = []
@@ -20567,7 +20661,13 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
     matched_source: dict[str, Any] | None = None
     if getattr(args, "from_project_source", False):
         source_result = await backend.list_project_sources(keep_open=getattr(args, "keep_open", False))
-        matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
+        if source_evidence is not None:
+            matched_sources, source_payload = _project_sources_matching_exact_assigned_filename(
+                source_result,
+                str(source_evidence.get("assigned_filename") or ""),
+            )
+        else:
+            matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
         if not bool(source_payload.get("ok")):
             return emit({**payload, "ok": False, "status": "source_list_unavailable", "candidate_test_gate": test_gate, "zip": zip_check, "source_list": source_payload, "error": "could not verify Project Sources"}, 1)
         if len(matched_sources) != 1:
@@ -20737,6 +20837,34 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         payload = {**base_payload, "status": "workspace_not_selected", "artifact_version": filename_version, "source_version": filename_version, "error": "select a workspace before adopting a Project Source artifact"}
         return emit(payload, 2)
 
+    source_evidence_path = str(getattr(args, "source_evidence_json", "") or "").strip()
+    source_evidence: dict[str, Any] | None = None
+    if source_evidence_path:
+        if not from_project_source:
+            payload = {**base_payload, "status": "source_evidence_mode_invalid", "artifact_version": filename_version, "source_version": filename_version, "error": "--source-evidence-json requires --from-project-source"}
+            return emit(payload, 2)
+        source_evidence = _load_project_source_adoption_evidence(source_evidence_path)
+        if source_evidence.get("ok") is not True:
+            payload = {**base_payload, "status": str(source_evidence.get("status") or "source_evidence_invalid"), "artifact_version": filename_version, "source_version": filename_version, "source_evidence": source_evidence, "error": source_evidence.get("error") or "Project Source adoption evidence is invalid"}
+            return emit(payload, 1)
+        if identity is None:
+            payload = {**base_payload, "status": "project_scope_unresolved", "artifact_version": filename_version, "source_version": filename_version, "source_evidence": source_evidence, "error": ".promptbranch-repo.json is required for evidence-bound Project Source adoption; initialize through pb project join"}
+            return emit(payload, 1)
+        identity_repo_id = normalize_repo_id(identity.repo_id)
+        if not identity_repo_id or identity_repo_id != repo_id:
+            payload = {**base_payload, "status": "repo_identity_mismatch", "artifact_version": filename_version, "source_version": filename_version, "source_evidence": source_evidence, "identity": identity.to_dict(), "error": f"joined repository identity {identity_repo_id!r} does not match adoption repo {repo_id!r}"}
+            return emit(payload, 1)
+        evidence_requested = Path(str(source_evidence.get("requested_filename") or "")).name
+        if evidence_requested != filename:
+            payload = {**base_payload, "status": "source_evidence_artifact_mismatch", "artifact_version": filename_version, "source_version": filename_version, "source_evidence": source_evidence, "error": f"source evidence requested filename {evidence_requested!r} does not match artifact {filename!r}"}
+            return emit(payload, 1)
+        evidence_project_url = project_home_url_from_url(str(source_evidence.get("project_url") or ""))
+        selected_project_url = project_home_url_from_url(project_url)
+        identity_project_url = project_home_url_from_url(identity.project_home_url)
+        if not evidence_project_url or not selected_project_url or not identity_project_url or len({evidence_project_url, selected_project_url, identity_project_url}) != 1:
+            payload = {**base_payload, "status": "source_evidence_project_mismatch", "artifact_version": filename_version, "source_version": filename_version, "source_evidence": source_evidence, "identity": identity.to_dict(), "selected_project_url": selected_project_url, "error": "source evidence, selected workspace, and joined project identity must resolve to the same project home URL"}
+            return emit(payload, 1)
+
     matched_sources: list[dict[str, Any]] = []
     source_payload: dict[str, Any] = {"ok": True, "status": "local_only", "sources": [], "matching_expected_count": 0}
     if from_project_source:
@@ -20760,7 +20888,13 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
                 }
                 return emit(payload, 75)
             raise
-        matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
+        if source_evidence is not None:
+            matched_sources, source_payload = _project_sources_matching_exact_assigned_filename(
+                source_result,
+                str(source_evidence.get("assigned_filename") or ""),
+            )
+        else:
+            matched_sources, source_payload = _project_sources_matching_filename(source_result, filename)
         if not bool(source_payload.get("ok")):
             payload = {**base_payload, "status": "source_list_unavailable", "artifact_version": filename_version, "source_version": filename_version, "source_list": source_payload, "error": "could not verify Project Sources"}
             return emit(payload, 1)
@@ -20773,15 +20907,18 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
                 "source_list": source_payload,
                 "source_verified": False,
                 "matching_expected_count": len(matched_sources),
-                "error": f"expected exactly one matching Project Source named {filename}, found {len(matched_sources)}",
+                "error": f"expected exactly one matching Project Source named {str((source_evidence or {}).get('assigned_filename') or filename)}, found {len(matched_sources)}",
+                "source_evidence": source_evidence,
             }
             return emit(payload, 1)
 
     matched_source_ref = (
-        str((matched_sources[0] if matched_sources else {}).get("assigned_filename") or filename)
+        str((source_evidence or {}).get("assigned_filename") or (matched_sources[0] if matched_sources else {}).get("assigned_filename") or filename)
         if from_project_source
         else filename
     )
+    source_processed_file_id = str((source_evidence or {}).get("processed_file_id") or "").strip() or None
+    source_library_metadata_object_id = str((source_evidence or {}).get("library_metadata_object_id") or "").strip() or None
     local_zip = _resolve_adopt_local_zip(filename if not Path(requested).is_file() else requested, local_path=getattr(args, "local_path", None), registry=registry)
     if local_zip is None:
         attempted_local_path = getattr(args, "local_path", None)
@@ -20852,6 +20989,9 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         created_at=utc_now(),
         source_ref=matched_source_ref,
         project_url=project_url,
+        source_requested_ref=filename if source_evidence is not None else None,
+        source_processed_file_id=source_processed_file_id,
+        source_library_metadata_object_id=source_library_metadata_object_id,
     )
     artifact_payload = registry.add(record)
     _artifact_state_store(registry).remember_artifact(
@@ -20880,6 +21020,11 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "state_artifact_updated": _state_artifact_summary(after_state).get("artifact_ref") == filename and _state_artifact_summary(after_state).get("artifact_version") == filename_version,
         "state_source_updated": _state_artifact_summary(after_state).get("source_ref") == matched_source_ref and _state_artifact_summary(after_state).get("source_version") == filename_version,
         "project_source_mutated": False,
+        "source_evidence_verified": source_evidence is None or (
+            bool(source_processed_file_id)
+            and bool(source_library_metadata_object_id)
+            and matched_source_ref == str(source_evidence.get("assigned_filename") or "")
+        ),
     }
     ok = all(value for key, value in checks.items() if key not in {"project_source_mutated", "source_verified"})
     payload = {
@@ -20891,6 +21036,10 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         "source_ref": matched_source_ref,
         "requested_source_ref": filename,
         "assigned_source_ref": matched_source_ref,
+        "processed_file_id": source_processed_file_id,
+        "library_metadata_object_id": source_library_metadata_object_id,
+        "source_evidence_verified": bool(source_evidence is not None and checks["source_evidence_verified"]),
+        "source_evidence": source_evidence,
         "source_version": filename_version,
         "source_verified": bool(from_project_source and len(matched_sources) == 1),
         "source_verification": source_verification,
@@ -24251,6 +24400,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_adopt.add_argument("--local-only", action="store_true", help="Verify/register a canonical local ZIP as the current repo artifact without Project Source verification.")
     artifact_adopt.add_argument("--local-path", help="Explicit local ZIP path to verify/register when the positional artifact is only a filename.")
     artifact_adopt.add_argument("--repo", help="Portable repo id for the artifact current-state scope. Defaults to the artifact filename prefix.")
+    artifact_adopt.add_argument("--source-evidence-json", help="Authoritative JSON/log evidence from the exact Project Source upload. Requires joined project/repo identity and exact assigned-source correlation.")
     artifact_adopt.add_argument("--keep-open", action="store_true")
     artifact_adopt.add_argument("--json", action="store_true")
 

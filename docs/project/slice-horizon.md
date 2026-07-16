@@ -170,3 +170,7 @@ This repair aligns the complete deterministic validation suite with project-scop
 - **Out of scope:** indexed-overwrite redesign, Project deletion, artifact adoption without GO, normal `v0.1.104` scope.
 - **Promotion:** require `full_direct`, independently executed `full_localhost`, visual-artifact roundtrip, release-live, import smoke, and Artifact Guardian to pass before adoption.
 
+
+### v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
+
+Repair-only scope: capture the exact successful release Project Source upload, join repository/project identity through the supported command contract before validation, bind adoption to the assigned filename and both backing IDs, accept causally proven same-count assistant-turn replacement after bounded stable idle completion, and classify rate-limit retry evidence only from structured true telemetry. This repair does not advance normal scope or accepted/current state.

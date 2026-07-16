@@ -397,6 +397,9 @@ class ArtifactRecord:
     source_ref: str | None = None
     project_url: str | None = None
     repo_id: str | None = None
+    source_requested_ref: str | None = None
+    source_processed_file_id: str | None = None
+    source_library_metadata_object_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -570,6 +573,29 @@ class ArtifactRegistry:
         version = canonical_version_tag(record.get("version") if isinstance(record.get("version"), str) else None)
         if version != parsed["version"]:
             return "record version does not match canonical filename version"
+
+        evidence_fields = {
+            "source_requested_ref": record.get("source_requested_ref"),
+            "source_processed_file_id": record.get("source_processed_file_id"),
+            "source_library_metadata_object_id": record.get("source_library_metadata_object_id"),
+        }
+        evidence_present = any(value not in (None, "") for value in evidence_fields.values())
+        if evidence_present:
+            requested_ref = evidence_fields["source_requested_ref"]
+            processed_file_id = evidence_fields["source_processed_file_id"]
+            library_metadata_object_id = evidence_fields["source_library_metadata_object_id"]
+            if not isinstance(requested_ref, str) or Path(requested_ref).name != filename:
+                return "source_requested_ref must equal the canonical artifact filename when source evidence is present"
+            if not isinstance(processed_file_id, str) or not processed_file_id.startswith("file_"):
+                return "source_processed_file_id must be a file_ identity when source evidence is present"
+            if not isinstance(library_metadata_object_id, str) or not library_metadata_object_id.startswith("libfile_"):
+                return "source_library_metadata_object_id must be a libfile_ identity when source evidence is present"
+            source_ref = record.get("source_ref")
+            if not isinstance(source_ref, str) or not source_ref.strip():
+                return "source_ref is required when source evidence is present"
+            project_url = record.get("project_url")
+            if not isinstance(project_url, str) or not project_url.startswith("https://chatgpt.com/g/"):
+                return "project_url must identify a ChatGPT project when source evidence is present"
         return None
 
     @staticmethod
