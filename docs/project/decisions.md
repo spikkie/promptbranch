@@ -942,3 +942,7 @@ Read-only source-sync validation may report a missing project artifact registry 
 ## v0.1.103.10.115: adoption is bound to joined identity and exact upload evidence
 
 Release-control adoption must not reconstruct authority from a canonical filename. When `--adopt-after-validation` is requested, the same run must upload the Project Source, capture the backend-assigned filename and both backing identities, and invoke `pb project join` with the explicit release repository identity and source-add project URL before validation. The later artifact-adopt mutation must consume that evidence and fail closed on any identity mismatch. Response completion is a collection concern independent of envelope parsing, and rate-limit retry classification is structured-only.
+
+## v0.1.103.10.116: post-adoption verification distinguishes artifact and assigned-source identity
+
+`v0.1.103.10.115` is accepted/current because its validation and evidence-bound adoption completed successfully. The post-adoption verifier must not collapse the canonical release artifact filename and the backend-assigned Project Source filename into one identity. `state.artifact_ref` and `registry_current.filename` remain canonical; `state.source_ref` must equal the exact assigned filename captured before validation. Both backing IDs and all existing version/consistency invariants remain mandatory. No adoption mutation is repeated by this repair.

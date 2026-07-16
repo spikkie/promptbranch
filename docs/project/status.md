@@ -3,14 +3,14 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-accepted/current version: v0.1.103.10.68
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+accepted/current version: v0.1.103.10.115
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-active candidate version: v0.1.103.10.115
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-next normal slice: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
+last completed repair: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+active candidate version: v0.1.103.10.116
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+next normal slice: v0.1.103.10.116 — assigned-source-aware post-adoption verification
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 
@@ -29,9 +29,9 @@ scope advance allowed: false
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-release status: v0.1.103.10.114 passed all nine validation gates, including independently executed full_direct/full_localhost and external visual/release-live checks, but adoption failed closed because authoritative repository/project identity was absent; its first malformed visual reply also exposed same-count virtualized assistant-turn completion waiting; v0.1.103.10.115 repairs adoption identity preflight, exact backing-identity transport, parse-independent stable completion, and structured-only rate-limit retries
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+release status: v0.1.103.10.115 passed all nine validation gates and completed authoritative evidence-bound adoption; the final release-control check then falsely rejected the correct indexed state.source_ref after adoption had already succeeded; v0.1.103.10.116 repairs only assigned-source-aware post-adoption verification
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Install v0.1.103.10.115. With --adopt-after-validation, require the current run to upload the canonical Project Source, capture its exact backend-assigned filename plus processed-file and Library metadata IDs, and initialize repository/project identity through pb project join before validation. Return a causally proven new assistant response after bounded stable idle completion before parsing its envelope. Retry rate limits only from structured true telemetry. Require full_direct, independently executed full_localhost, all external-live gates, Artifact Guardian, and exact evidence-bound adoption before advancing accepted/current.
+Install v0.1.103.10.116 and validate that final post-adoption verification treats the canonical artifact filename and exact backend-assigned Project Source filename as distinct authoritative identities. Require exact processed-file and Library metadata ID correlation, all four version matches, and all three consistency booleans before emitting release_adopted_and_verified. Do not change or repeat the already accepted v0.1.103.10.115 adoption behavior.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.103.10.115 adoption identity preflight and parse-independent response completion candidate build
+v0.1.103.10.116 assigned-source-aware post-adoption verification candidate build
 ```
 
 

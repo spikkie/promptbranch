@@ -3,14 +3,14 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip
-accepted/current version: v0.1.103.10.68
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
+accepted/current version: v0.1.103.10.115
 last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.103.10.68 — completed release-live-continuous sentinel success
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-active candidate version: v0.1.103.10.115
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-next normal slice: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
+last completed repair: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
+active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+active candidate version: v0.1.103.10.116
+next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+next normal slice: v0.1.103.10.116 — assigned-source-aware post-adoption verification
 next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
 ```
 

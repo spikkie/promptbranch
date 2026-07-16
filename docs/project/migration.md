@@ -1137,3 +1137,7 @@ No state migration is introduced. Existing pool roots remain valid inputs to `--
 ## Adoption identity and response-completion repair — v0.1.103.10.115
 
 `v0.1.103.10.115` supersedes the unadopted `v0.1.103.10.114` candidate. It preserves the live-proven indexed overwrite, continuous profile, current submit-flow, independent localhost, and visual-artifact repairs. It adds a pre-validation `pb project join` transaction derived from the exact Project Source upload result, transports the assigned filename plus processed-file and Library metadata IDs into adoption, records those identities in the artifact registry, accepts causally proven same-count virtualized assistant responses after bounded stable idle completion, and removes raw-text `429` retry detection. No accepted/current baseline is advanced by the candidate build.
+
+## Assigned-source-aware post-adoption verification — v0.1.103.10.116
+
+`v0.1.103.10.116` uses accepted/current `v0.1.103.10.115` as its baseline. It replaces only the final verifier that previously compared all refs to the canonical ZIP. The new verifier accepts the authoritative split between canonical artifact identity and indexed assigned-source identity, verifies the stored processed-file and Library metadata IDs, and emits a structured `release_adopted_and_verified` result after complete alignment. No registry migration, Project Source mutation, profile migration, or response-completion change is introduced.

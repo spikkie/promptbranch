@@ -2763,56 +2763,21 @@ if len(matches) != 1:
 
 verify_current_matches_version() {
   local current_json="$1"
-  python3 - "$current_json" "${ver}" "${artifact_zip}" <<'INNERPY'
-import json
-import sys
-from pathlib import Path
-path = Path(sys.argv[1])
-expected_version = sys.argv[2]
-expected_artifact = sys.argv[3]
-raw = path.read_text(encoding="utf-8", errors="replace")
-idx = raw.find("{")
-if idx < 0:
-    raise SystemExit(f"invalid artifact current JSON in {path}: no JSON object found")
-payload = json.loads(raw[idx:])
-if payload.get("ok") is not True:
-    raise SystemExit("artifact current did not return ok:true")
-def artifact_current_entries(payload):
-    repos = payload.get("repos")
-    if isinstance(repos, dict):
-        for repo_id in sorted(repos):
-            repo_payload = repos.get(repo_id)
-            if isinstance(repo_payload, dict):
-                yield repo_id, repo_payload
-        return
-    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
-        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
-        yield scope.get("repo_id"), payload
+  local source_evidence_json="${2:-}"
+  local verifier="${repo_root}/scripts/verify-release-adoption-current.py"
+  local release_script_dir
+  release_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ ! -f "${verifier}" && -f "${release_script_dir}/scripts/verify-release-adoption-current.py" ]]; then
+    verifier="${release_script_dir}/scripts/verify-release-adoption-current.py"
+  fi
+  local cmd=(python3 "${verifier}" "${current_json}" "${ver}" "${artifact_zip}")
 
-expected_artifact_name = Path(expected_artifact).name
-failures = []
-for repo_id, repo_payload in artifact_current_entries(payload):
-    runtime = repo_payload.get("runtime") or {}
-    state = repo_payload.get("state") or {}
-    registry = repo_payload.get("registry_current") or {}
-    consistency = repo_payload.get("consistency") or {}
-    values = {
-        "runtime.version": runtime.get("version"),
-        "state.artifact_version": state.get("artifact_version"),
-        "state.source_version": state.get("source_version"),
-        "registry_current.version": registry.get("version"),
-    }
-    refs = {
-        "state.artifact_ref": Path(str(state.get("artifact_ref") or "")).name,
-        "state.source_ref": Path(str(state.get("source_ref") or "")).name,
-        "registry_current.filename": Path(str(registry.get("filename") or "")).name,
-    }
-    consistency_ok = all(consistency.get(key) is True for key in ("registry_current_matches_state_artifact", "state_source_matches_state_artifact", "code_version_matches_state_source"))
-    if all(value == expected_version for value in values.values()) and all(value == expected_artifact_name for value in refs.values()) and consistency_ok:
-        raise SystemExit(0)
-    failures.append({"repo_id": repo_id, "values": values, "refs": refs, "consistency": consistency})
-raise SystemExit(f"no artifact current repo entry matched expected version/artifact: expected_version={expected_version}, expected_artifact={expected_artifact_name}, checked={failures!r}")
-INNERPY
+  [[ -f "${verifier}" ]] || fail "post-adoption verifier missing: ${verifier}"
+  if [[ -n "${source_evidence_json}" ]]; then
+    cmd+=(--source-evidence-json "${source_evidence_json}")
+  fi
+  echo "+ ${cmd[*]}"
+  "${cmd[@]}"
 }
 
 verify_all_tests_summary_green() {
@@ -3116,8 +3081,11 @@ INNERPY
 
   echo "+ pb artifact current --json"
   pb artifact current --json | tee "${current_json}"
-  verify_current_matches_version "${current_json}"
-  echo "Adopt verified: ${artifact_zip}"
+  if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
+    verify_current_matches_version "${current_json}" "${adoption_source_evidence_json}"
+  else
+    verify_current_matches_version "${current_json}"
+  fi
 }
 
 start_test_session_log() {

@@ -174,3 +174,7 @@ This repair aligns the complete deterministic validation suite with project-scop
 ### v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
 
 Repair-only scope: capture the exact successful release Project Source upload, join repository/project identity through the supported command contract before validation, bind adoption to the assigned filename and both backing IDs, accept causally proven same-count assistant-turn replacement after bounded stable idle completion, and classify rate-limit retry evidence only from structured true telemetry. This repair does not advance normal scope or accepted/current state.
+
+### v0.1.103.10.116 — assigned-source-aware post-adoption verification
+
+Repair-only scope: keep accepted/current `v0.1.103.10.115`; distinguish canonical artifact refs from exact assigned Project Source refs in final verification; require exact backing IDs, four matching versions, and three true consistency booleans; emit `release_adopted_and_verified` only after success. No normal-slice scope advancement.

@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
-  "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-  "active_candidate_version": "v0.1.103.10.115",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
+  "accepted_current_version": "v0.1.103.10.115",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+  "active_candidate_version": "v0.1.103.10.116",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion",
+  "active_slice": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,301 +17,434 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
+  "candidate_history": [
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.98.zip",
+      "created_at": "2026-07-14T08:10:00Z",
+      "slice": "v0.1.103.10.98 \u2014 await processing completion before Project Source persistence verification",
+      "status": "candidate",
+      "version": "v0.1.103.10.98"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.99.zip",
+      "created_at": "2026-07-14T09:00:00Z",
+      "slice": "v0.1.103.10.99 \u2014 enforce processing-stream completion in the real diagnostic upload path",
+      "status": "candidate",
+      "version": "v0.1.103.10.99"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
+      "created_at": "2026-07-14T10:45:00Z",
+      "slice": "v0.1.103.10.100 \u2014 make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "status": "candidate",
+      "version": "v0.1.103.10.100"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
+      "created_at": "2026-07-14T12:30:00Z",
+      "slice": "v0.1.103.10.101 \u2014 add dedicated visible Library processing-stream identity capture",
+      "status": "candidate",
+      "version": "v0.1.103.10.101"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
+      "created_at": "2026-07-14T11:15:00Z",
+      "slice": "v0.1.103.10.102 \u2014 bind delete discovery to immutable request phases and a sequence boundary",
+      "status": "candidate",
+      "version": "v0.1.103.10.102"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
+      "created_at": "2026-07-14T11:35:00Z",
+      "slice": "v0.1.103.10.103 \u2014 await and prove the Library deletion confirmation boundary",
+      "status": "candidate",
+      "version": "v0.1.103.10.103"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
+      "created_at": "2026-07-14T12:10:00Z",
+      "slice": "v0.1.103.10.104 \u2014 recover the Library UI after authoritative backend presence",
+      "status": "candidate",
+      "version": "v0.1.103.10.104"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
+      "created_at": "2026-07-14T12:34:56Z",
+      "slice": "v0.1.103.10.105 \u2014 fail-closed project registry clean break",
+      "status": "candidate",
+      "version": "v0.1.103.10.105"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
+      "created_at": "2026-07-14T14:20:00Z",
+      "slice": "v0.1.103.10.106 \u2014 correlate backend-assigned indexed Project Source identities",
+      "status": "candidate",
+      "version": "v0.1.103.10.106"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
+      "created_at": "2026-07-14T15:50:00Z",
+      "slice": "v0.1.103.10.107 \u2014 verify exact assigned Project Source without canonical retries",
+      "status": "candidate",
+      "version": "v0.1.103.10.107"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
+      "created_at": "2026-07-14T16:45:00Z",
+      "slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
+      "status": "candidate",
+      "version": "v0.1.103.10.109"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip",
+      "created_at": "2026-07-15T09:00:00+02:00",
+      "slice": "v0.1.103.10.110 \u2014 missing-registry-safe read-only validation",
+      "status": "candidate",
+      "version": "v0.1.103.10.110"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip",
+      "created_at": "2026-07-15T16:30:00+02:00",
+      "slice": "v0.1.103.10.111 \u2014 full-suite registry and overwrite alignment",
+      "status": "repair_required",
+      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success",
+      "version": "v0.1.103.10.111"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
+      "created_at": "2026-07-15T18:30:00+02:00",
+      "slice": "v0.1.103.10.112 \u2014 changed-content indexed-family overwrite proof",
+      "status": "repair_required",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused",
+      "version": "v0.1.103.10.112"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "created_at": "2026-07-15T20:45:00+00:00",
+      "slice": "v0.1.103.10.113 \u2014 collision-free indexed replacement upload",
+      "status": "repair_required",
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused",
+      "version": "v0.1.103.10.113"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "created_at": "2026-07-16T12:00:00+02:00",
+      "slice": "v0.1.103.10.114 \u2014 continuous live-profile resolution and causal-submit evidence",
+      "status": "repair_required",
+      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay.",
+      "version": "v0.1.103.10.114"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
+      "created_at": "2026-07-16T15:30:00+02:00",
+      "slice": "v0.1.103.10.115 \u2014 adoption identity preflight and parse-independent response completion",
+      "status": "candidate",
+      "version": "v0.1.103.10.115"
+    }
+  ],
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
       "created_at": "2026-07-04T11:36:31.662943Z",
-      "slice": "v0.1.103.10.48 — classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
+      "slice": "v0.1.103.10.48 \u2014 classify backend-api 403 guardrail as terminal browser challenge across release validation paths",
       "status": "candidate",
       "version": "v0.1.103.10.48"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.49.zip",
       "created_at": "2026-07-04T12:15:00Z",
-      "slice": "v0.1.103.10.49 — run all release-live setup and ask steps in the same explicit live slot profile",
+      "slice": "v0.1.103.10.49 \u2014 run all release-live setup and ask steps in the same explicit live slot profile",
       "status": "candidate",
       "version": "v0.1.103.10.49"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.55.zip",
       "created_at": "2026-07-05T01:35:00Z",
-      "slice": "v0.1.103.10.55 — release-live bootstrap and ask use one continuous browser session",
+      "slice": "v0.1.103.10.55 \u2014 release-live bootstrap and ask use one continuous browser session",
       "status": "candidate",
       "version": "v0.1.103.10.55"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip",
       "created_at": "2026-07-05T02:00:00Z",
-      "slice": "v0.1.103.10.56 — wire release-live-continuous into real CLI test dispatch",
+      "slice": "v0.1.103.10.56 \u2014 wire release-live-continuous into real CLI test dispatch",
       "status": "candidate",
       "version": "v0.1.103.10.56"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip",
       "created_at": "2026-07-05T14:20:00Z",
-      "slice": "v0.1.103.10.59 — release-live-continuous warms up on trusted conversation URL, not chatgpt.com root",
+      "slice": "v0.1.103.10.59 \u2014 release-live-continuous warms up on trusted conversation URL, not chatgpt.com root",
       "status": "candidate",
       "version": "v0.1.103.10.59"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.62.zip",
       "created_at": "2026-07-05T20:00:00Z",
-      "slice": "v0.1.103.10.62 — split external ChatGPT live probes from mandatory product release validation",
+      "slice": "v0.1.103.10.62 \u2014 split external ChatGPT live probes from mandatory product release validation",
       "status": "candidate",
       "version": "v0.1.103.10.62"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
       "created_at": "2026-07-06T15:10:00Z",
-      "slice": "v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok",
+      "slice": "v0.1.103.10.68 \u2014 release-live-continuous marks completed bootstrap/ask sentinel run as ok",
       "status": "candidate",
       "version": "v0.1.103.10.68"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
       "created_at": "2026-07-06T17:30:00Z",
-      "slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
+      "slice": "v0.1.103.10.69 \u2014 add install.sh strict all-all release gate",
       "status": "candidate",
       "version": "v0.1.103.10.69"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.70.zip",
       "created_at": "2026-07-07T13:50:00Z",
-      "slice": "v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked",
+      "slice": "v0.1.103.10.70 \u2014 classify release-live-continuous bootstrap guardrail as external live blocked",
       "status": "candidate",
       "version": "v0.1.103.10.70"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.71.zip",
       "created_at": "2026-07-08T01:07:00Z",
-      "slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+      "slice": "v0.1.103.10.71 \u2014 final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
       "status": "candidate",
       "version": "v0.1.103.10.71"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.73.zip",
       "created_at": "2026-07-08T12:00:00Z",
-      "slice": "v0.1.103.10.73 — make version_surface tests derive expected version from release metadata",
+      "slice": "v0.1.103.10.73 \u2014 make version_surface tests derive expected version from release metadata",
       "status": "candidate",
       "version": "v0.1.103.10.73"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
       "created_at": "2026-07-12T20:15:00Z",
-      "slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
+      "slice": "v0.1.103.10.83 \u2014 make Library reconciliation authoritative and capture live upload file identities",
       "status": "candidate",
       "version": "v0.1.103.10.83"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip",
       "created_at": "2026-07-12T22:30:00Z",
-      "slice": "v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity",
+      "slice": "v0.1.103.10.84 \u2014 restore normal file add and replace existing Project Sources by identity",
       "status": "candidate",
       "version": "v0.1.103.10.84"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.85.zip",
       "created_at": "2026-07-13T09:00:00Z",
-      "slice": "v0.1.103.10.85 — compare legacy 10.75 and current Project Source transactions side by side",
+      "slice": "v0.1.103.10.85 \u2014 compare legacy 10.75 and current Project Source transactions side by side",
       "status": "candidate",
       "version": "v0.1.103.10.85"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.86.zip",
       "created_at": "2026-07-13T12:20:00Z",
-      "slice": "v0.1.103.10.86 — make diagnostic runner import repository modules reliably",
+      "slice": "v0.1.103.10.86 \u2014 make diagnostic runner import repository modules reliably",
       "status": "candidate",
       "version": "v0.1.103.10.86"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.87.zip",
       "created_at": "2026-07-13T12:30:00Z",
-      "slice": "v0.1.103.10.87 — make diagnostic runner load the standard service bearer token",
+      "slice": "v0.1.103.10.87 \u2014 make diagnostic runner load the standard service bearer token",
       "status": "candidate",
       "version": "v0.1.103.10.87"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.89.zip",
       "created_at": "2026-07-13T13:00:00Z",
-      "slice": "v0.1.103.10.89 — delete the exact backing Library object before canonical reupload",
+      "slice": "v0.1.103.10.89 \u2014 delete the exact backing Library object before canonical reupload",
       "status": "candidate",
       "version": "v0.1.103.10.89"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.90.zip",
       "created_at": "2026-07-13T15:30:00Z",
-      "slice": "v0.1.103.10.90 — discover and use the exact backing-file backend deletion protocol",
+      "slice": "v0.1.103.10.90 \u2014 discover and use the exact backing-file backend deletion protocol",
       "status": "candidate",
       "version": "v0.1.103.10.90"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.91.zip",
       "created_at": "2026-07-13T15:01:59Z",
-      "slice": "v0.1.103.10.91 — make Library protocol discovery ID-driven and export a complete sanitized trace",
+      "slice": "v0.1.103.10.91 \u2014 make Library protocol discovery ID-driven and export a complete sanitized trace",
       "status": "candidate",
       "version": "v0.1.103.10.91"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip",
       "created_at": "2026-07-13T17:45:00Z",
-      "slice": "v0.1.103.10.92 — replay Library protocols with private in-memory authentication",
+      "slice": "v0.1.103.10.92 \u2014 replay Library protocols with private in-memory authentication",
       "status": "candidate",
       "version": "v0.1.103.10.92"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip",
       "created_at": "2026-07-13T16:34:57Z",
-      "slice": "v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card",
+      "slice": "v0.1.103.10.93 \u2014 reconstruct exact Library filenames and bind one backend-proven UI card",
       "status": "candidate",
       "version": "v0.1.103.10.93"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
       "created_at": "2026-07-13T18:55:00Z",
-      "slice": "v0.1.103.10.94 — bind Library filenames only to actionable file rows",
+      "slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
       "status": "candidate",
       "version": "v0.1.103.10.94"
     },
     {
-      "version": "v0.1.103.10.95",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
-      "slice": "v0.1.103.10.95 — separate Library filename-leaf row discovery from hover-activated menu binding",
+      "created_at": "2026-07-13T19:55:00Z",
+      "slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
       "status": "candidate",
-      "created_at": "2026-07-13T19:55:00Z"
+      "version": "v0.1.103.10.95"
     },
     {
-      "version": "v0.1.103.10.96",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
-      "slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
+      "created_at": "2026-07-13T20:30:00Z",
+      "slice": "v0.1.103.10.96 \u2014 prove soft deletion and discover Recently deleted inventory",
       "status": "candidate",
-      "created_at": "2026-07-13T20:30:00Z"
+      "version": "v0.1.103.10.96"
     },
     {
-      "version": "v0.1.103.10.97",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.97.zip",
-      "slice": "v0.1.103.10.97 — handle long-lived Project Source processing streams separately from save quietness",
+      "created_at": "2026-07-13T21:45:00Z",
+      "slice": "v0.1.103.10.97 \u2014 handle long-lived Project Source processing streams separately from save quietness",
       "status": "candidate",
-      "created_at": "2026-07-13T21:45:00Z"
+      "version": "v0.1.103.10.97"
     },
     {
-      "version": "v0.1.103.10.100",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
-      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "created_at": "2026-07-14T10:45:00Z",
+      "slice": "v0.1.103.10.100 \u2014 make Fetch/XHR protocol-watch settlement bounded and stream-safe",
       "status": "candidate",
-      "created_at": "2026-07-14T10:45:00Z"
+      "version": "v0.1.103.10.100"
     },
     {
-      "version": "v0.1.103.10.101",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
-      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
+      "created_at": "2026-07-14T12:30:00Z",
+      "slice": "v0.1.103.10.101 \u2014 add dedicated visible Library processing-stream identity capture",
       "status": "candidate",
-      "created_at": "2026-07-14T12:30:00Z"
+      "version": "v0.1.103.10.101"
     },
     {
-      "version": "v0.1.103.10.102",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
-      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
+      "created_at": "2026-07-14T11:15:00Z",
+      "slice": "v0.1.103.10.102 \u2014 bind delete discovery to immutable request phases and a sequence boundary",
       "status": "candidate",
-      "created_at": "2026-07-14T11:15:00Z"
+      "version": "v0.1.103.10.102"
     },
     {
-      "version": "v0.1.103.10.103",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
-      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
+      "created_at": "2026-07-14T11:35:00Z",
+      "slice": "v0.1.103.10.103 \u2014 await and prove the Library deletion confirmation boundary",
       "status": "candidate",
-      "created_at": "2026-07-14T11:35:00Z"
+      "version": "v0.1.103.10.103"
     },
     {
-      "version": "v0.1.103.10.104",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "created_at": "2026-07-14T12:10:00Z",
+      "slice": "v0.1.103.10.104 \u2014 recover the Library UI after authoritative backend presence",
       "status": "candidate",
-      "created_at": "2026-07-14T12:10:00Z"
+      "version": "v0.1.103.10.104"
     },
     {
-      "version": "v0.1.103.10.105",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "created_at": "2026-07-14T12:34:56Z",
+      "slice": "v0.1.103.10.105 \u2014 fail-closed project registry clean break",
       "status": "candidate",
-      "created_at": "2026-07-14T12:34:56Z"
+      "version": "v0.1.103.10.105"
     },
     {
-      "version": "v0.1.103.10.106",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "created_at": "2026-07-14T14:20:00Z",
+      "slice": "v0.1.103.10.106 \u2014 correlate backend-assigned indexed Project Source identities",
       "status": "candidate",
-      "created_at": "2026-07-14T14:20:00Z"
+      "version": "v0.1.103.10.106"
     },
     {
-      "version": "v0.1.103.10.107",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
-      "slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
+      "created_at": "2026-07-14T15:50:00Z",
+      "slice": "v0.1.103.10.107 \u2014 verify exact assigned Project Source without canonical retries",
       "status": "candidate",
-      "created_at": "2026-07-14T15:50:00Z"
+      "version": "v0.1.103.10.107"
     },
     {
-      "version": "v0.1.103.10.109",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
-      "slice": "v0.1.103.10.109 — deterministic capacity pruning before Project Source upload",
+      "created_at": "2026-07-14T16:45:00Z",
+      "slice": "v0.1.103.10.109 \u2014 deterministic capacity pruning before Project Source upload",
       "status": "candidate",
-      "created_at": "2026-07-14T16:45:00Z"
+      "version": "v0.1.103.10.109"
     },
     {
-      "version": "v0.1.103.10.110",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip",
-      "slice": "v0.1.103.10.110 — missing-registry-safe read-only validation",
+      "created_at": "2026-07-15T09:00:00+02:00",
+      "slice": "v0.1.103.10.110 \u2014 missing-registry-safe read-only validation",
       "status": "candidate",
-      "created_at": "2026-07-15T09:00:00+02:00"
+      "version": "v0.1.103.10.110"
     },
     {
-      "version": "v0.1.103.10.111",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip",
-      "slice": "v0.1.103.10.111 — full-suite registry and overwrite alignment",
-      "status": "repair_required",
       "created_at": "2026-07-15T16:30:00+02:00",
-      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success"
+      "slice": "v0.1.103.10.111 \u2014 full-suite registry and overwrite alignment",
+      "status": "repair_required",
+      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success",
+      "version": "v0.1.103.10.111"
     },
     {
-      "version": "v0.1.103.10.112",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-      "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
-      "status": "repair_required",
       "created_at": "2026-07-15T18:30:00+02:00",
-      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+      "slice": "v0.1.103.10.112 \u2014 changed-content indexed-family overwrite proof",
+      "status": "repair_required",
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused",
+      "version": "v0.1.103.10.112"
     },
     {
-      "version": "v0.1.103.10.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
-      "status": "repair_required",
       "created_at": "2026-07-15T20:45:00+00:00",
-      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
-    },
-    {
-      "version": "v0.1.103.10.114",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
-      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
+      "slice": "v0.1.103.10.113 \u2014 collision-free indexed replacement upload",
       "status": "repair_required",
-      "created_at": "2026-07-16T12:00:00+02:00",
-      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay."
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused",
+      "version": "v0.1.103.10.113"
     },
     {
-      "version": "v0.1.103.10.115",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "created_at": "2026-07-16T12:00:00+02:00",
+      "slice": "v0.1.103.10.114 \u2014 continuous live-profile resolution and causal-submit evidence",
+      "status": "repair_required",
+      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay.",
+      "version": "v0.1.103.10.114"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-      "slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion",
+      "created_at": "2026-07-16T15:30:00+02:00",
+      "slice": "v0.1.103.10.115 \u2014 adoption identity preflight and parse-independent response completion",
+      "status": "accepted_current",
+      "validation": "All nine release gates passed; authoritative project/repo identity was joined before validation; exact assigned-source and backing IDs were preserved through adoption; artifact current confirmed v0.1.103.10.115. The legacy final verifier then produced a false negative by comparing state.source_ref with the canonical artifact filename.",
+      "version": "v0.1.103.10.115"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+      "created_at": "2026-07-16T19:00:00+02:00",
+      "slice": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
       "status": "candidate",
-      "created_at": "2026-07-16T15:30:00+02:00"
+      "version": "v0.1.103.10.116"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
-  "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
-  "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-16T15:30:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-  "next_normal_slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion",
-  "next_normal_version": "v0.1.103.10.115",
+  "last_completed_repair": "v0.1.103.10.115 \u2014 adoption identity preflight and parse-independent response completion",
+  "last_completed_repair_version": "v0.1.103.10.115",
+  "last_updated": "2026-07-16T19:00:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+  "next_normal_slice": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
+  "next_normal_version": "v0.1.103.10.116",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -330,7 +463,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.73.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.73 — make version_surface tests derive expected version from release metadata",
+      "slice": "v0.1.103.10.73 \u2014 make version_surface tests derive expected version from release metadata",
       "status": "candidate",
       "summary": "Updates control-surface active candidate metadata to v0.1.103.10.72 and tightens all-tests verdict aggregation so live guardrail cascades produce LIVE_BLOCKED only when product validation is otherwise clean; product failures keep final verdict FIX.",
       "version": "v0.1.103.10.73"
@@ -338,7 +471,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.69.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.69 — add install.sh strict all-all release gate",
+      "slice": "v0.1.103.10.69 \u2014 add install.sh strict all-all release gate",
       "status": "candidate",
       "summary": "Adds repo-root install.sh as a parameterized one-command strict all-all release gate: install the candidate ZIP, run product validation, run explicit external-live validation, require live validation, adopt only on GO, and emit pb artifact current --all --json evidence.",
       "version": "v0.1.103.10.69"
@@ -346,7 +479,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.65.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.65 — release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
+      "slice": "v0.1.103.10.65 \u2014 release-live-continuous direct conversation mode navigates to trusted conversation before held-page send guard",
       "status": "candidate",
       "summary": "In trusted conversation direct mode, explicitly navigate to the supplied /g/.../c/... warmup conversation URL and verify composer/login/challenge/scope readiness before invoking the held-page send guard, preventing about:blank from being evaluated as the send surface.",
       "version": "v0.1.103.10.65"
@@ -354,7 +487,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.64.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.64 — release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
+      "slice": "v0.1.103.10.64 \u2014 release-live-continuous uses explicit trusted conversation URL directly and skips root project discovery",
       "status": "candidate",
       "summary": "When release-live-continuous is given a trusted project conversation warmup URL, it derives project identity from that URL and skips root project discovery so it does not navigate away to chatgpt.com before bootstrap/ask.",
       "version": "v0.1.103.10.64"
@@ -362,7 +495,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.63.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.63 — classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED",
+      "slice": "v0.1.103.10.63 \u2014 classify release-live-continuous first-ask Cloudflare challenge as LIVE_BLOCKED",
       "status": "candidate",
       "summary": "Classifies explicit external-live release-live-continuous first-ask Cloudflare/docker_live_profile_challenged cascades as LIVE_BLOCKED instead of product FIX, preserving product validation as GO and avoiding browser workaround changes.",
       "version": "v0.1.103.10.63"
@@ -375,7 +508,7 @@
     },
     {
       "kind": "repair",
-      "slice": "v0.1.103.10.59 — extract live preflight warmup URL from login-check url field",
+      "slice": "v0.1.103.10.59 \u2014 extract live preflight warmup URL from login-check url field",
       "status": "candidate",
       "summary": "Use the live preflight validated conversation URL as release-live-continuous warmup target instead of bare chatgpt.com root.",
       "version": "v0.1.103.10.59"
@@ -521,7 +654,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.22.zip",
       "scope": "Add Docker shared-memory sizing for Chrome service and visible bootstrap paths after exit_code=132 no-space-on-device crash.",
-      "slice": "v0.1.103.10.22 — Docker Chrome shm sizing for visible browser validation",
+      "slice": "v0.1.103.10.22 \u2014 Docker Chrome shm sizing for visible browser validation",
       "status": "candidate",
       "version": "v0.1.103.10.22"
     },
@@ -529,14 +662,14 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.53.zip",
       "release_mode": "repair",
       "scope": "backend-api 403 guardrail during auth bootstrap is release-blocking; release-control stops before Project Source add/full validation and clears the held auth browser owner without resetting all profiles",
-      "slice": "v0.1.103.10.53 — release-live bootstrap 429/guardrail is terminal before ask_live",
+      "slice": "v0.1.103.10.53 \u2014 release-live bootstrap 429/guardrail is terminal before ask_live",
       "status": "candidate_built",
       "version": "v0.1.103.10.53"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.79.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names",
+      "slice": "v0.1.103.10.79 \u2014 require stable Project Sources preflight and fail fast on backend-assigned suffix names",
       "status": "candidate",
       "summary": "Requires stable authoritative Project Sources preflight, treats zero cards without explicit empty state as not ready, detects backend-assigned suffix names immediately after commit, rolls them back before persistence retries, and returns structured source-add timeout diagnostics.",
       "version": "v0.1.103.10.79"
@@ -544,7 +677,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.82.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.82 — restore pbsa same-name overwrite by reconciling ChatGPT Library backing files",
+      "slice": "v0.1.103.10.82 \u2014 restore pbsa same-name overwrite by reconciling ChatGPT Library backing files",
       "status": "candidate",
       "summary": "Reconciles exact ChatGPT Library backing-file IDs and Recently deleted entries before same-name Project Source re-upload, preserving canonical naming and failing closed on ambiguous cross-project ownership.",
       "version": "v0.1.103.10.82"
@@ -552,7 +685,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.83.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.83 — make Library reconciliation authoritative and capture live upload file identities",
+      "slice": "v0.1.103.10.83 \u2014 make Library reconciliation authoritative and capture live upload file identities",
       "status": "candidate",
       "summary": "Requires stable authoritative Library and Recently deleted surfaces, captures backing file identities from live upload response bodies/streams/headers, and fails closed when exact suffix backing identity is unavailable.",
       "version": "v0.1.103.10.83"
@@ -560,7 +693,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity",
+      "slice": "v0.1.103.10.84 \u2014 restore normal file add and replace existing Project Sources by identity",
       "status": "candidate",
       "summary": "Restores ordinary fresh file adds without Library preflight, attempts exact-source in-place replacement when the live source menu exposes it, and invokes Library cleanup only after visible or backend-proven suffix collisions.",
       "version": "v0.1.103.10.84"
@@ -568,7 +701,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.91.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.91 — make Library protocol discovery ID-driven and export a complete sanitized trace",
+      "slice": "v0.1.103.10.91 \u2014 make Library protocol discovery ID-driven and export a complete sanitized trace",
       "status": "candidate",
       "summary": "Separates upload identity capture, backend exact-ID visibility, and UI selectability; accepts files/library/nodes discovery even from an empty search response; exports a complete sanitized trace; and remains fail closed before deletion/reupload.",
       "version": "v0.1.103.10.91"
@@ -576,7 +709,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.92.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.92 — replay Library protocols with private in-memory authentication",
+      "slice": "v0.1.103.10.92 \u2014 replay Library protocols with private in-memory authentication",
       "status": "candidate",
       "summary": "Retains authenticated Library protocol headers only in memory, replays the exact files/library/nodes request with private authentication, counts the captured exact-ID 200 response as observation one, fails immediately on 401/403, and keeps all serialized protocol evidence sanitized and all deletion/reupload gates fail closed.",
       "version": "v0.1.103.10.92"
@@ -584,7 +717,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.93.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card",
+      "slice": "v0.1.103.10.93 \u2014 reconstruct exact Library filenames and bind one backend-proven UI card",
       "status": "candidate",
       "summary": "Reconstructs exact canonical Library filenames from contiguous rendered fragments, requires one exact UI card with zero suffix siblings, binds it to the unique backend-proven libfile identity, and keeps soft delete, permanent delete, canonical reupload, release-source upload, and adoption fail closed when binding is missing or ambiguous.",
       "version": "v0.1.103.10.93"
@@ -592,158 +725,167 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.94.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.94 — bind Library filenames only to actionable file rows",
+      "slice": "v0.1.103.10.94 \u2014 bind Library filenames only to actionable file rows",
       "status": "candidate",
       "summary": "Filters Library DOM candidates to leaf-like file rows with local filename and metadata evidence, requires one unique row-owned action menu, binds deletion to that row only, and keeps all backend deletion, canonical reupload, release-source upload, and adoption gates fail closed on ambiguity.",
       "version": "v0.1.103.10.94"
     },
     {
-      "version": "v0.1.103.10.95",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.95.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.95 — separate Library filename-leaf row discovery from hover-activated menu binding",
+      "slice": "v0.1.103.10.95 \u2014 separate Library filename-leaf row discovery from hover-activated menu binding",
       "status": "candidate",
-      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed."
+      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed.",
+      "version": "v0.1.103.10.95"
     },
     {
-      "version": "v0.1.103.10.96",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.96.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.96 — prove soft deletion and discover Recently deleted inventory",
+      "slice": "v0.1.103.10.96 \u2014 prove soft deletion and discover Recently deleted inventory",
       "status": "candidate",
-      "summary": "Requires one successful exact-ID soft-delete mutation, stable authenticated active-inventory absence or trashed proof, active Recently deleted navigation, and stable exact deleted-inventory presence before permanent deletion; release pbsa and adoption remain blocked."
+      "summary": "Requires one successful exact-ID soft-delete mutation, stable authenticated active-inventory absence or trashed proof, active Recently deleted navigation, and stable exact deleted-inventory presence before permanent deletion; release pbsa and adoption remain blocked.",
+      "version": "v0.1.103.10.96"
     },
     {
-      "version": "v0.1.103.10.97",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.97.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.97 — handle long-lived Project Source processing streams separately from save quietness",
+      "slice": "v0.1.103.10.97 \u2014 handle long-lived Project Source processing streams separately from save quietness",
       "status": "candidate",
-      "summary": "Separates ordinary save quietness from the long-lived processing stream, requires terminal exact file/libfile/filename identity, and exposes explicit diagnostic exception reasons."
+      "summary": "Separates ordinary save quietness from the long-lived processing stream, requires terminal exact file/libfile/filename identity, and exposes explicit diagnostic exception reasons.",
+      "version": "v0.1.103.10.97"
     },
     {
-      "version": "v0.1.103.10.98",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.98.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.98 — await processing completion before Project Source persistence verification",
+      "slice": "v0.1.103.10.98 \u2014 await processing completion before Project Source persistence verification",
       "status": "candidate",
-      "summary": "Orders terminal processing proof before rendered Project Source persistence in the normal add path, retains request listeners through terminal handling, and captures SSE only after request completion."
+      "summary": "Orders terminal processing proof before rendered Project Source persistence in the normal add path, retains request listeners through terminal handling, and captures SSE only after request completion.",
+      "version": "v0.1.103.10.98"
     },
     {
-      "version": "v0.1.103.10.99",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.99.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.99 — enforce processing-stream completion in the real diagnostic upload path",
+      "slice": "v0.1.103.10.99 \u2014 enforce processing-stream completion in the real diagnostic upload path",
       "status": "candidate",
-      "summary": "Applies processing-before-persistence ordering to the legacy diagnostic-only upload path actually used by the backend-protocol diagnostic, adds a pending-stream/non-null-result invariant at the caller boundary, and preserves all deletion and release gates."
+      "summary": "Applies processing-before-persistence ordering to the legacy diagnostic-only upload path actually used by the backend-protocol diagnostic, adds a pending-stream/non-null-result invariant at the caller boundary, and preserves all deletion and release gates.",
+      "version": "v0.1.103.10.99"
     },
     {
-      "version": "v0.1.103.10.100",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
+      "slice": "v0.1.103.10.100 \u2014 make Fetch/XHR protocol-watch settlement bounded and stream-safe",
       "status": "candidate",
-      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics."
+      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics.",
+      "version": "v0.1.103.10.100"
     },
     {
-      "version": "v0.1.103.10.101",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
+      "slice": "v0.1.103.10.101 \u2014 add dedicated visible Library processing-stream identity capture",
       "status": "candidate",
-      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics."
+      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics.",
+      "version": "v0.1.103.10.101"
     },
     {
-      "version": "v0.1.103.10.102",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
+      "slice": "v0.1.103.10.102 \u2014 bind delete discovery to immutable request phases and a sequence boundary",
       "status": "candidate",
-      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements."
+      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements.",
+      "version": "v0.1.103.10.102"
     },
     {
-      "version": "v0.1.103.10.103",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
+      "slice": "v0.1.103.10.103 \u2014 await and prove the Library deletion confirmation boundary",
       "status": "candidate",
-      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists."
+      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists.",
+      "version": "v0.1.103.10.103"
     },
     {
-      "version": "v0.1.103.10.104",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
+      "slice": "v0.1.103.10.104 \u2014 recover the Library UI after authoritative backend presence",
       "status": "candidate",
-      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
+      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged.",
+      "version": "v0.1.103.10.104"
     },
     {
-      "version": "v0.1.103.10.105",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
+      "slice": "v0.1.103.10.105 \u2014 fail-closed project registry clean break",
       "status": "candidate",
-      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
+      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them.",
+      "version": "v0.1.103.10.105"
     },
     {
-      "version": "v0.1.103.10.106",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
+      "slice": "v0.1.103.10.106 \u2014 correlate backend-assigned indexed Project Source identities",
       "status": "candidate",
-      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata."
+      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata.",
+      "version": "v0.1.103.10.106"
     },
     {
-      "version": "v0.1.103.10.110",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.110 — missing-registry-safe read-only validation",
+      "slice": "v0.1.103.10.110 \u2014 missing-registry-safe read-only validation",
       "status": "candidate",
-      "summary": "Allows read-only source-sync planning to report an uninitialized project artifact registry without creating state, keeps invalid registries and artifact mutations fail-closed, guarantees terminal test-suite JSON for agent/full commands, and teaches test report to summarize structured pre-suite failures."
+      "summary": "Allows read-only source-sync planning to report an uninitialized project artifact registry without creating state, keeps invalid registries and artifact mutations fail-closed, guarantees terminal test-suite JSON for agent/full commands, and teaches test report to summarize structured pre-suite failures.",
+      "version": "v0.1.103.10.110"
     },
     {
-      "version": "v0.1.103.10.111",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.111 — full-suite registry and overwrite alignment",
+      "slice": "v0.1.103.10.111 \u2014 full-suite registry and overwrite alignment",
       "status": "repair_required",
       "summary": "Aligns full-suite behavior with project-scoped registry semantics, uses upload-new/verify/delete-old for any file family when in-place Replace is unavailable, accepts only structured non-mutating uninitialized smoke states, and keeps lifecycle plans available while reporting execution blockers.",
-      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success"
+      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success",
+      "version": "v0.1.103.10.111"
     },
     {
-      "version": "v0.1.103.10.112",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
+      "slice": "v0.1.103.10.112 \u2014 changed-content indexed-family overwrite proof",
       "status": "repair_required",
       "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed.",
-      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused",
+      "version": "v0.1.103.10.112"
     },
     {
-      "version": "v0.1.103.10.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
       "kind": "repair",
-      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+      "slice": "v0.1.103.10.113 \u2014 collision-free indexed replacement upload",
       "status": "repair_required",
       "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption.",
-      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused",
+      "version": "v0.1.103.10.113"
     },
     {
-      "version": "v0.1.103.10.114",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
       "kind": "repair",
+      "slice": "v0.1.103.10.114 \u2014 continuous live-profile resolution and causal-submit evidence",
       "status": "repair_required",
       "summary": "Uses one exact resolved physical browser-profile slot across visual-artifact and release-live validation, prevents nested profile pooling, recognizes current ChatGPT submit-flow evidence, accepts a structurally valid new post-submit reply envelope without waiting through the long fallback, classifies Cloudflare only from actual challenge evidence, and requires full_localhost to execute independently rather than reuse direct browser evidence.",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
-      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
-      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay."
+      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay.",
+      "version": "v0.1.103.10.114"
     },
     {
-      "version": "v0.1.103.10.115",
-      "kind": "repair",
-      "status": "candidate",
-      "summary": "Establishes joined repository/project identity from the exact release-control Project Source upload before validation, carries the backend-assigned filename plus processed-file and Library metadata IDs into evidence-bound adoption, accepts causally proven same-count assistant-turn replacement after stable idle completion, and restricts rate-limit retries to structured true telemetry.",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-      "slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion"
+      "kind": "repair",
+      "slice": "v0.1.103.10.115 \u2014 adoption identity preflight and parse-independent response completion",
+      "status": "accepted_current",
+      "summary": "Establishes joined repository/project identity from the exact release-control Project Source upload before validation, carries the backend-assigned filename plus processed-file and Library metadata IDs into evidence-bound adoption, accepts causally proven same-count assistant-turn replacement after stable idle completion, and restricts rate-limit retries to structured true telemetry.",
+      "validation": "All nine release gates passed; authoritative project/repo identity was joined before validation; exact assigned-source and backing IDs were preserved through adoption; artifact current confirmed v0.1.103.10.115. The legacy final verifier then produced a false negative by comparing state.source_ref with the canonical artifact filename.",
+      "version": "v0.1.103.10.115"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+      "kind": "repair",
+      "slice": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
+      "status": "candidate",
+      "summary": "Makes final current-state verification distinguish the canonical artifact filename from the exact backend-assigned Project Source filename, verifies both immutable backing IDs, retains all version and consistency checks, and emits release_adopted_and_verified only after complete alignment.",
+      "version": "v0.1.103.10.116"
     }
   ],
   "release_mode": "repair",
@@ -767,7 +909,7 @@
       "version": "v0.1.103.10.68"
     },
     {
-      "slice": "v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
+      "slice": "v0.1.103.10.71 \u2014 final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED",
       "summary": "Normalizes mixed live_project_ensure logs containing terminal live_bootstrap_guardrail evidence before final product/live verdict aggregation, preserving failed live steps and adoption refusal.",
       "version": "v0.1.103.10.71"
     },
@@ -814,104 +956,111 @@
       "version": "v0.1.103.10.94"
     },
     {
-      "version": "v0.1.103.10.95",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed."
+      "summary": "Separates exact filename-leaf row discovery from hover-only menu discovery, deduplicates repeated backend inventory observations by libfile identity, classifies non-authoritative Library surfaces precisely, bounds identical UI probes, and keeps all delete, canonical reupload, release-source upload, and adoption gates fail closed.",
+      "version": "v0.1.103.10.95"
     },
     {
-      "version": "v0.1.103.10.100",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics."
+      "summary": "Bounds all diagnostic Fetch/XHR response-capture settlement, skips generic body reads for streaming responses, cancels or detaches unresolved capture tasks with sanitized URL/phase/method/content-type diagnostics, and guarantees a structured fetch_xhr_protocol_watch_settle_timeout result without changing Project Source processing or deletion semantics.",
+      "version": "v0.1.103.10.100"
     },
     {
-      "version": "v0.1.103.10.101",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics."
+      "summary": "Adds a dedicated bounded processing-stream watcher around the disposable visible-Library upload, derives exact file/libfile/filename mutation identity only from its terminal events, keeps generic Fetch/XHR tracing stream-safe and non-authoritative, and preserves Project Source processing plus deletion semantics.",
+      "version": "v0.1.103.10.101"
     },
     {
-      "version": "v0.1.103.10.102",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements."
+      "summary": "Freezes an authoritative request-sequence boundary immediately before the row-scoped visible-Library Delete click, snapshots request phase immutably at request start, discovers successful exact-ID mutations after that boundary regardless of delayed response phase, reports sanitized mutation candidates when identity is missing, reconciles upload status after terminal/backend/UI proof, and deduplicates unchanged trace settlements.",
+      "version": "v0.1.103.10.102"
     },
     {
-      "version": "v0.1.103.10.103",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists."
+      "summary": "Waits a bounded period for one unique destructive confirmation inside a visible dialog, alertdialog, or native dialog; never reports delete_triggered from the menu action alone; permits a no-confirmation flow only when the existing post-boundary exact-ID mutation protocol proves a direct backend delete; and returns soft_delete_confirmation_or_direct_mutation_not_observed when neither proof exists.",
+      "version": "v0.1.103.10.103"
     },
     {
-      "version": "v0.1.103.10.104",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged."
+      "summary": "Runs exactly one bounded Library UI recovery cycle after exact backend presence is stable: clear and reapply the exact filename search, poll again, perform at most one controlled reload if still non-authoritative, reapply the exact search after reload, and fail closed with detailed route/UI evidence if the exact row remains unavailable. The v0.1.103.10.103 delete-confirmation and all downstream protocol gates remain unchanged.",
+      "version": "v0.1.103.10.104"
     },
     {
-      "version": "v0.1.103.10.105",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them."
+      "summary": "Removes repo-local artifact-registry fallback and the legacy registry-import command. Artifact state now requires a joined repository identity, configured project membership, matching canonical repo_root, and a valid project-scoped registry. Missing, invalid, unreadable, or unresolved state fails closed with explicit diagnostics; pb repo doctor flags stray repo-local registries instead of reconciling them.",
+      "version": "v0.1.103.10.105"
     },
     {
-      "version": "v0.1.103.10.106",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata."
+      "summary": "Accepts a backend-assigned numeric-suffix Project Source filename only when it is uniquely correlated to the current canonical upload through processing-stream file/libfile identities and exact assigned-card read-back. Returns requested and assigned filenames separately, reuses one existing correlated indexed source without uploading another copy, blocks ambiguous families, and allows artifact adoption to retain the assigned Project Source name as metadata.",
+      "version": "v0.1.103.10.106"
     },
     {
-      "version": "v0.1.103.10.107",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Uses one escaped canonical/indexed Project Source filename-family matcher, captures the highest pre-upload suffix as diagnostic evidence, uploads once, verifies the exact processing-stream assigned filename immediately, skips canonical-name persistence retries after assigned identity is known, and preserves malformed or duplicate exact-card fail-closed behavior."
+      "summary": "Uses one escaped canonical/indexed Project Source filename-family matcher, captures the highest pre-upload suffix as diagnostic evidence, uploads once, verifies the exact processing-stream assigned filename immediately, skips canonical-name persistence retries after assigned identity is known, and preserves malformed or duplicate exact-card fail-closed behavior.",
+      "version": "v0.1.103.10.107"
     },
     {
-      "version": "v0.1.103.10.109",
       "kind": "repair",
       "status": "candidate",
-      "summary": "After the current upload is proven by processing-stream file/libfile identity and exact assigned-card read-back, removes every other visible canonical/indexed family member by exact Project Source identity. Success now requires an authoritative final Project Sources surface containing exactly one family member: the newly assigned source. Cleanup failure or residual family members remain release-blocking."
+      "summary": "After the current upload is proven by processing-stream file/libfile identity and exact assigned-card read-back, removes every other visible canonical/indexed family member by exact Project Source identity. Success now requires an authoritative final Project Sources surface containing exactly one family member: the newly assigned source. Cleanup failure or residual family members remain release-blocking.",
+      "version": "v0.1.103.10.109"
     },
     {
-      "version": "v0.1.103.10.110",
       "kind": "repair",
       "status": "candidate",
-      "summary": "Allows read-only source-sync planning to report an uninitialized project artifact registry without creating state, keeps invalid registries and artifact mutations fail-closed, guarantees terminal test-suite JSON for agent/full commands, and teaches test report to summarize structured pre-suite failures."
+      "summary": "Allows read-only source-sync planning to report an uninitialized project artifact registry without creating state, keeps invalid registries and artifact mutations fail-closed, guarantees terminal test-suite JSON for agent/full commands, and teaches test report to summarize structured pre-suite failures.",
+      "version": "v0.1.103.10.110"
     },
     {
-      "version": "v0.1.103.10.111",
       "kind": "repair",
       "status": "repair_required",
       "summary": "Aligns full-suite behavior with project-scoped registry semantics, uses upload-new/verify/delete-old for any file family when in-place Replace is unavailable, accepts only structured non-mutating uninitialized smoke states, and keeps lifecycle plans available while reporting execution blockers.",
-      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success"
+      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success",
+      "version": "v0.1.103.10.111"
     },
     {
-      "version": "v0.1.103.10.112",
       "kind": "repair",
       "status": "repair_required",
       "summary": "Changes the live overwrite fixture bytes before the second upload, requires distinct initial and replacement SHA-256 values, accepts the exact backend-assigned canonical or indexed filename without predicting an index, requires a completed processing stream plus processed-file and Library object identities before deleting old sources, freezes deletion scope to pre-upload Project Source identities, and fails closed when no new upload or backing identity is observed.",
-      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
+      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused",
+      "version": "v0.1.103.10.112"
     },
     {
-      "version": "v0.1.103.10.113",
       "kind": "repair",
       "status": "repair_required",
       "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption.",
-      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused",
+      "version": "v0.1.103.10.113"
     },
     {
-      "version": "v0.1.103.10.114",
       "kind": "repair",
       "status": "repair_required",
       "summary": "Uses one exact resolved physical browser-profile slot across visual-artifact and release-live validation, prevents nested profile pooling, recognizes current ChatGPT submit-flow evidence, accepts a structurally valid new post-submit reply envelope without waiting through the long fallback, classifies Cloudflare only from actual challenge evidence, and requires full_localhost to execute independently rather than reuse direct browser evidence.",
-      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay."
+      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay.",
+      "version": "v0.1.103.10.114"
     },
     {
-      "version": "v0.1.103.10.115",
+      "kind": "repair",
+      "status": "accepted_current",
+      "summary": "Establishes joined repository/project identity from the exact release-control Project Source upload before validation, carries the backend-assigned filename plus processed-file and Library metadata IDs into evidence-bound adoption, accepts causally proven same-count assistant-turn replacement after stable idle completion, and restricts rate-limit retries to structured true telemetry.",
+      "validation": "All nine release gates passed; authoritative project/repo identity was joined before validation; exact assigned-source and backing IDs were preserved through adoption; artifact current confirmed v0.1.103.10.115. The legacy final verifier then produced a false negative by comparing state.source_ref with the canonical artifact filename.",
+      "version": "v0.1.103.10.115"
+    },
+    {
       "kind": "repair",
       "status": "candidate",
-      "summary": "Establishes joined repository/project identity from the exact release-control Project Source upload before validation, carries the backend-assigned filename plus processed-file and Library metadata IDs into evidence-bound adoption, accepts causally proven same-count assistant-turn replacement after stable idle completion, and restricts rate-limit retries to structured true telemetry."
+      "summary": "Makes final current-state verification distinguish the canonical artifact filename from the exact backend-assigned Project Source filename, verifies both immutable backing IDs, retains all version and consistency checks, and emits release_adopted_and_verified only after complete alignment.",
+      "version": "v0.1.103.10.116"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -936,13 +1085,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
       "release_mode": "repair",
-      "scope": "join authoritative repository/project identity from the exact source-upload result before validation; carry exact assigned-source/backing IDs into adoption; complete stable idle assistant responses before parsing; retry rate limits only from structured true telemetry",
-      "slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion",
+      "scope": "verify canonical artifact identity, exact assigned Project Source identity, both backing IDs, four version fields, and three consistency booleans before final release success",
+      "slice": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-      "version": "v0.1.103.10.115"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
+      "version": "v0.1.103.10.116"
     },
     {
       "release_mode": "normal",
@@ -986,130 +1135,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.115",
-  "candidate_history": [
-    {
-      "version": "v0.1.103.10.98",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.98.zip",
-      "slice": "v0.1.103.10.98 — await processing completion before Project Source persistence verification",
-      "status": "candidate",
-      "created_at": "2026-07-14T08:10:00Z"
-    },
-    {
-      "version": "v0.1.103.10.99",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.99.zip",
-      "slice": "v0.1.103.10.99 — enforce processing-stream completion in the real diagnostic upload path",
-      "status": "candidate",
-      "created_at": "2026-07-14T09:00:00Z"
-    },
-    {
-      "version": "v0.1.103.10.100",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.100.zip",
-      "slice": "v0.1.103.10.100 — make Fetch/XHR protocol-watch settlement bounded and stream-safe",
-      "status": "candidate",
-      "created_at": "2026-07-14T10:45:00Z"
-    },
-    {
-      "version": "v0.1.103.10.101",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.101.zip",
-      "slice": "v0.1.103.10.101 — add dedicated visible Library processing-stream identity capture",
-      "status": "candidate",
-      "created_at": "2026-07-14T12:30:00Z"
-    },
-    {
-      "version": "v0.1.103.10.102",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.102.zip",
-      "slice": "v0.1.103.10.102 — bind delete discovery to immutable request phases and a sequence boundary",
-      "status": "candidate",
-      "created_at": "2026-07-14T11:15:00Z"
-    },
-    {
-      "version": "v0.1.103.10.103",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.103.zip",
-      "slice": "v0.1.103.10.103 — await and prove the Library deletion confirmation boundary",
-      "status": "candidate",
-      "created_at": "2026-07-14T11:35:00Z"
-    },
-    {
-      "version": "v0.1.103.10.104",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.104.zip",
-      "slice": "v0.1.103.10.104 — recover the Library UI after authoritative backend presence",
-      "status": "candidate",
-      "created_at": "2026-07-14T12:10:00Z"
-    },
-    {
-      "version": "v0.1.103.10.105",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.105.zip",
-      "slice": "v0.1.103.10.105 — fail-closed project registry clean break",
-      "status": "candidate",
-      "created_at": "2026-07-14T12:34:56Z"
-    },
-    {
-      "version": "v0.1.103.10.106",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.106.zip",
-      "slice": "v0.1.103.10.106 — correlate backend-assigned indexed Project Source identities",
-      "status": "candidate",
-      "created_at": "2026-07-14T14:20:00Z"
-    },
-    {
-      "version": "v0.1.103.10.107",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.107.zip",
-      "slice": "v0.1.103.10.107 — verify exact assigned Project Source without canonical retries",
-      "status": "candidate",
-      "created_at": "2026-07-14T15:50:00Z"
-    },
-    {
-      "version": "v0.1.103.10.109",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.109.zip",
-      "slice": "v0.1.103.10.109 — deterministic capacity pruning before Project Source upload",
-      "status": "candidate",
-      "created_at": "2026-07-14T16:45:00Z"
-    },
-    {
-      "version": "v0.1.103.10.110",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.110.zip",
-      "slice": "v0.1.103.10.110 — missing-registry-safe read-only validation",
-      "status": "candidate",
-      "created_at": "2026-07-15T09:00:00+02:00"
-    },
-    {
-      "version": "v0.1.103.10.111",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.111.zip",
-      "slice": "v0.1.103.10.111 — full-suite registry and overwrite alignment",
-      "status": "repair_required",
-      "created_at": "2026-07-15T16:30:00+02:00",
-      "validation": "full_direct and full_localhost failed because unchanged overwrite bytes produced no upload transaction and the old singleton was misclassified as replacement success"
-    },
-    {
-      "version": "v0.1.103.10.112",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.112.zip",
-      "slice": "v0.1.103.10.112 — changed-content indexed-family overwrite proof",
-      "status": "repair_required",
-      "created_at": "2026-07-15T18:30:00+02:00",
-      "validation": "full_direct and full_localhost failed because changed bytes selected under the same local basename produced no second upload request; the new fail-closed source_overwrite_upload_not_started result was correct and adoption was refused"
-    },
-    {
-      "version": "v0.1.103.10.113",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
-      "status": "repair_required",
-      "created_at": "2026-07-15T20:45:00+00:00",
-      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
-    },
-    {
-      "version": "v0.1.103.10.114",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
-      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
-      "status": "repair_required",
-      "created_at": "2026-07-16T12:00:00+02:00",
-      "validation": "All nine release gates passed, including independent full_direct/full_localhost, continuous-profile reuse, current submit-flow causality, visual-artifact roundtrip and release-live; adoption then failed closed because repository/project identity was unresolved. The first malformed visual reply also exposed a same-count virtualized assistant-turn completion delay."
-    },
-    {
-      "version": "v0.1.103.10.115",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip",
-      "slice": "v0.1.103.10.115 — adoption identity preflight and parse-independent response completion",
-      "status": "candidate",
-      "created_at": "2026-07-16T15:30:00+02:00"
-    }
-  ]
+  "updated_for": "v0.1.103.10.116"
 }

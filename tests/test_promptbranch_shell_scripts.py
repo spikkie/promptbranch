@@ -312,7 +312,7 @@ def test_release_control_adopt_current_verifies_and_adopts_without_running_tests
     )
 
     assert "adopt_current:  1" in result.stdout
-    assert "Adopt verified" in result.stdout
+    assert "release_adopted_and_verified" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
     assert "pb artifact verify" in call_text
     assert "pb src list --json" in call_text
@@ -1470,10 +1470,9 @@ def test_gitignore_allows_intentional_release_harness_and_metadata() -> None:
 def test_release_control_current_semantic_check_uses_repo_loop_entries() -> None:
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
-    assert "def artifact_current_entries(payload):" in text
-    assert 'repos = payload.get("repos")' in text
-    assert 'for repo_id in sorted(repos):' in text
-    assert "no artifact current repo entry matched expected version/artifact" in text
+    assert 'scripts/verify-release-adoption-current.py' in text
+    assert 'verify_current_matches_version "${current_json}" "${adoption_source_evidence_json}"' in text
+    assert 'verify_current_matches_version "${current_json}"' in text
 
 
 def test_post_release_validation_current_semantic_check_uses_repo_loop_entries() -> None:
