@@ -161,3 +161,12 @@ This repair aligns the complete deterministic validation suite with project-scop
 - Delete only pre-upload Project Source identities after exact new-source verification.
 - Require the newly assigned source as the final singleton and require both `full_direct` and `full_localhost`.
 - Do not advance the normal slice.
+
+### v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence
+
+- **Type:** repair-only.
+- **Baseline:** `v0.1.103.10.113`, which live-proved indexed-family overwrite but was not adopted.
+- **Scope:** exact resolved-slot reuse across external-live steps; no nested profile pooling; current ChatGPT submit-flow causality; new valid-envelope early acceptance; challenge classification only from actual evidence; independent `full_localhost`.
+- **Out of scope:** indexed-overwrite redesign, Project deletion, artifact adoption without GO, normal `v0.1.104` scope.
+- **Promotion:** require `full_direct`, independently executed `full_localhost`, visual-artifact roundtrip, release-live, import smoke, and Artifact Guardian to pass before adoption.
+

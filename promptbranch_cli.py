@@ -232,6 +232,20 @@ DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS = 0.0
 DEFAULT_PROFILE_LEASE_TTL_SECONDS = 24 * 60 * 60.0
 PROFILE_LEASE_DIRNAME = ".promptbranch_profile_lease.lock"
 PROFILE_POOLS_DIR_SUFFIX = "_pools"
+RESOLVED_PROFILE_POOL_SLOT_RE = re.compile(r"(?:^|/)slots/slot-(?P<index>[1-9][0-9]*)$")
+
+
+def _is_resolved_profile_pool_slot(profile_dir: str | Path) -> bool:
+    """Return True when *profile_dir* already names a concrete pool slot.
+
+    A resolved ``.../slots/slot-N`` directory is a physical browser profile,
+    not a seed. Applying another named pool to it would create a nested
+    ``slot-N_pools/<pool>/slots/slot-M`` profile and break continuous-session
+    identity.
+    """
+
+    normalized = str(Path(profile_dir).expanduser()).replace("\\", "/").rstrip("/")
+    return bool(RESOLVED_PROFILE_POOL_SLOT_RE.search(normalized))
 
 
 def _now_unix() -> float:
@@ -492,18 +506,27 @@ def _profile_lease_settings_from_args(args: argparse.Namespace) -> dict[str, Any
         return None
     if bool(getattr(args, "no_profile_lease", False)):
         return None
+    profile_dir = getattr(args, "profile_dir", None) or PROFILE_DIR_NAME
     pool_name = getattr(args, "profile_pool", None)
-    if not pool_name and not bool(getattr(args, "profile_lease", False)):
+    direct_lease_requested = bool(getattr(args, "profile_lease", False))
+    if not pool_name and not direct_lease_requested:
         return None
+
+    resolved_slot = _is_resolved_profile_pool_slot(profile_dir)
+    # A concrete slot is already the physical profile. Never treat it as a
+    # seed for another pool, even when the command parser supplied a default
+    # pool name (release-live historically defaulted to ``release-live``).
+    effective_pool_name = None if resolved_slot else pool_name
     return {
-        "profile_dir": getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        "profile_dir": profile_dir,
         "action": _command_action_name(args),
-        "pool_name": pool_name,
+        "pool_name": effective_pool_name,
         "pool_size": getattr(args, "profile_pool_size", DEFAULT_PROFILE_POOL_SIZE),
-        "seed_profile_dir": getattr(args, "profile_pool_seed_dir", None) or getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-        "refresh_slot": bool(getattr(args, "profile_pool_refresh", False)),
+        "seed_profile_dir": profile_dir if resolved_slot else (getattr(args, "profile_pool_seed_dir", None) or profile_dir),
+        "refresh_slot": False if resolved_slot else bool(getattr(args, "profile_pool_refresh", False)),
         "timeout_seconds": getattr(args, "profile_lease_timeout_seconds", DEFAULT_PROFILE_LEASE_TIMEOUT_SECONDS),
         "ttl_seconds": getattr(args, "profile_lease_ttl_seconds", DEFAULT_PROFILE_LEASE_TTL_SECONDS),
+        "profile_resolution_mode": "exact_resolved_slot_no_pooling" if resolved_slot else ("named_pool" if effective_pool_name else "direct_profile"),
     }
 
 
@@ -22425,6 +22448,13 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
 
     profile_dir = str(getattr(args, "profile_dir", "") or "")
     resolved_profile_dir = resolve_profile_dir(getattr(args, "profile_dir", None))
+    service_transport_used = isinstance(backend, ServiceBackend)
+    physical_profile_dir = "/app/profile" if service_transport_used else str(resolved_profile_dir)
+    profile_resolution_mode = (
+        "exact_resolved_slot_without_profile_lease"
+        if _is_resolved_profile_pool_slot(resolved_profile_dir) and getattr(args, "profile_lease", None) is None
+        else "leased_or_unresolved_profile"
+    )
     original_snapshot = backend.state_snapshot() if hasattr(backend, "state_snapshot") else {}
     explicit_conversation_url = getattr(args, "conversation_url", None)
     test_project_created = False
@@ -22495,9 +22525,11 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "version": f"v{CLI_VERSION}",
             "run_id": run_id,
             "debug_browser": True,
-            "service_transport_used": False,
-            "mode": "visible_local_debug_browser",
+            "service_transport_used": service_transport_used,
+            "mode": "docker_service_exact_profile" if service_transport_used else "visible_local_debug_browser",
             "profile_dir": profile_dir,
+            "physical_profile_dir": physical_profile_dir,
+            "profile_resolution_mode": profile_resolution_mode,
         "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
         "profile_lease": getattr(args, "profile_lease", None),
             "input_zip": str(input_zip),
@@ -22717,9 +22749,11 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
         "version": f"v{CLI_VERSION}",
         "run_id": run_id,
         "debug_browser": True,
-        "service_transport_used": False,
-        "mode": "visible_local_debug_browser",
+        "service_transport_used": service_transport_used,
+        "mode": "docker_service_exact_profile" if service_transport_used else "visible_local_debug_browser",
         "profile_dir": profile_dir,
+        "physical_profile_dir": physical_profile_dir,
+        "profile_resolution_mode": profile_resolution_mode,
         "state_profile_dir": str(resolve_profile_dir(getattr(args, "profile_dir", None))),
         "profile_lease": getattr(args, "profile_lease", None),
         "input_zip": str(input_zip),
@@ -25101,10 +25135,12 @@ async def _async_main(args: argparse.Namespace) -> int:
     try:
         lease_settings = _profile_lease_settings_from_args(args)
         if lease_settings:
+            profile_resolution_mode = str(lease_settings.pop("profile_resolution_mode", "direct_profile"))
             profile_lease = PromptbranchProfileLease(**lease_settings)
             profile_lease.__enter__()
             args._browser_profile_dir = str(profile_lease.leased_profile_dir or lease_settings.get("profile_dir"))
             args.profile_lease = profile_lease.to_payload(ok=True)
+            args.profile_lease["profile_resolution_mode"] = profile_resolution_mode
             # Profile-pool slots are local filesystem browser profiles. Most
             # headed live commands intentionally run through the direct local
             # browser backend.  release-live-continuous is the exception: release

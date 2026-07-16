@@ -18905,6 +18905,36 @@ class ChatGPTBrowserClient:
         stream_status_streaming_observed = any(value.upper() == "IS_STREAMING" for value in stream_status_values)
         post_prepare_stream_status_streaming_observed = any(value.upper() == "IS_STREAMING" for value in post_prepare_stream_status_values)
 
+        def event_path(event: dict[str, Any]) -> str:
+            try:
+                return (urlparse(str(event.get("url") or "")).path or "").lower()
+            except Exception:
+                return ""
+
+        f_conversation_events = [
+            event for event in events
+            if event_path(event).rstrip("/") == "/backend-api/f/conversation"
+            and str(event.get("method") or "").upper() == "POST"
+        ]
+        sentinel_prepare_events = [
+            event for event in events
+            if event_path(event).endswith("/backend-api/sentinel/chat-requirements/prepare")
+        ]
+        sentinel_finalize_events = [
+            event for event in events
+            if event_path(event).endswith("/backend-api/sentinel/chat-requirements/finalize")
+        ]
+        current_submit_flow_signals: list[str] = []
+        if f_conversation_events:
+            current_submit_flow_signals.append("backend_api_f_conversation_post")
+        if sentinel_prepare_events and sentinel_finalize_events:
+            current_submit_flow_signals.append("sentinel_prepare_finalize_pair")
+        if stream_status_streaming_observed:
+            current_submit_flow_signals.append("stream_status_is_streaming")
+        current_submit_flow_observed = bool(current_submit_flow_signals)
+        if not found and current_submit_flow_observed:
+            status = "submit_network_current_flow_observed"
+
         def combine_keys(shapes: list[Any]) -> list[str]:
             keys: list[str] = []
             for shape in shapes:
@@ -19052,15 +19082,20 @@ class ChatGPTBrowserClient:
             for event in events[:20]
         ]
         return {
-            "visible": found,
+            "visible": bool(found or current_submit_flow_observed),
             "status": status,
             "source": "browser_network_events",
             "enabled": bool(observer.get("enabled")),
             "markers_count": observer.get("markers_count"),
-            "request_observed": found,
+            "request_observed": bool(found or current_submit_flow_observed),
             "request_marker_found": bool(matched.get("marker_found")) if matched else False,
-            "request_url": matched.get("url") if matched else None,
-            "request_method": matched.get("method") if matched else None,
+            "causal_flow_verified": current_submit_flow_observed,
+            "causal_flow_signals": current_submit_flow_signals,
+            "f_conversation_request_observed": bool(f_conversation_events),
+            "sentinel_prepare_observed": bool(sentinel_prepare_events),
+            "sentinel_finalize_observed": bool(sentinel_finalize_events),
+            "request_url": matched.get("url") if matched else ((f_conversation_events or message_events or [None])[0] or {}).get("url"),
+            "request_method": matched.get("method") if matched else ((f_conversation_events or message_events or [None])[0] or {}).get("method"),
             "request_matched_by": matched.get("matched_by") if matched else [],
             "request_matched_marker": matched.get("matched_marker") if matched else None,
             "request_post_data_length": matched.get("post_data_length") if matched else None,
@@ -19068,7 +19103,7 @@ class ChatGPTBrowserClient:
             "response_observed": matched_response is not None,
             "response_status": matched_response.get("status") if matched_response else None,
             "response_observed_after_click_seconds": matched_response.get("observed_after_click_seconds") if matched_response else None,
-            "stream_started": bool(matched_response is not None and matched_response.get("status") is not None),
+            "stream_started": bool((matched_response is not None and matched_response.get("status") is not None) or stream_status_streaming_observed),
             "event_count": len(events),
             "all_event_count": len(all_events),
             "response_event_count": len(responses),
@@ -20085,13 +20120,12 @@ class ChatGPTBrowserClient:
     ) -> dict[str, Any]:
         """Confirm submit causality before response extraction.
 
-        v0.0.278.26 keeps URL-only confirmation rejected, but moves the
-        first causality proof closer to the mutation trigger.  A browser network
-        observer is armed before clicking submit; this method first requires a
-        post-click ChatGPT backend request carrying the current prompt marker.
-        It models /backend-api/f/conversation/prepare as a separate phase:
-        prepare-only evidence is useful diagnostics, but it is not message
-        submission proof and fails closed as submit_prepare_without_message_commit.
+        URL-only confirmation remains rejected. A browser network observer is
+        armed before clicking submit; causality may be proven by a marker-bound
+        request or by the current ChatGPT flow: POST /backend-api/f/conversation,
+        a Sentinel prepare/finalize pair, or post-click IS_STREAMING evidence.
+        Prepare-only evidence remains diagnostic and fails closed as
+        submit_prepare_without_message_commit.
         """
 
         started = time.monotonic()
@@ -20120,7 +20154,7 @@ class ChatGPTBrowserClient:
             return [
                 signal
                 for signal in confirmed_by
-                if signal in {"stop_button", "composer_running", "user_turn_echo", "backend_task_message", "network_submit_request"}
+                if signal in {"stop_button", "composer_running", "user_turn_echo", "backend_task_message", "network_submit_request", "network_submit_flow"}
             ]
 
         if network_required:
@@ -20135,12 +20169,15 @@ class ChatGPTBrowserClient:
                 network_evidence = await self._wait_for_submit_network_evidence(page, submit_network_observer)
             network_submit_seconds_total += float(network_evidence.get("probe_seconds") or 0.0)
             last_network_evidence = network_evidence
-            network_found = bool(network_evidence.get("visible") and network_evidence.get("request_marker_found"))
+            marker_network_found = bool(network_evidence.get("visible") and network_evidence.get("request_marker_found"))
+            flow_network_found = bool(network_evidence.get("visible") and network_evidence.get("causal_flow_verified"))
+            network_found = bool(marker_network_found or flow_network_found)
+            network_signal = "network_submit_request" if marker_network_found else ("network_submit_flow" if flow_network_found else None)
             attempts.append({
                 "attempt": attempt,
                 "mode": "network_submit",
                 "confirmed": network_found,
-                "confirmed_by": ["network_submit_request"] if network_found else [],
+                "confirmed_by": [network_signal] if network_signal else [],
                 "network_request_observed": bool(network_evidence.get("request_observed")),
                 "network_request_marker_found": bool(network_evidence.get("request_marker_found")),
                 "network_status": network_evidence.get("status"),
@@ -20250,6 +20287,8 @@ class ChatGPTBrowserClient:
                     fields["network_submit_request_observed"] = False
                     fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
                     fields["network_submit_request_status"] = network_evidence.get("status")
+                    fields["network_submit_causal_flow_verified"] = bool(network_evidence.get("causal_flow_verified"))
+                    fields["network_submit_causal_flow_signals"] = list(network_evidence.get("causal_flow_signals") or [])
                     fields["prepare_request_observed"] = bool(network_evidence.get("prepare_request_observed"))
                     fields["prepare_request_count"] = network_evidence.get("prepare_request_count")
                     fields["prepare_only"] = bool(network_evidence.get("prepare_only"))
@@ -20279,18 +20318,20 @@ class ChatGPTBrowserClient:
 
             if network_found:
                 duration = round(time.monotonic() - started, 3)
+                network_confirmation_mode = "network_submit_request" if marker_network_found else "current_chatgpt_submit_flow"
+                network_causal_reason = "marker_bound_network_submit_request" if marker_network_found else "current_chatgpt_submit_flow"
                 fields = self._submit_confirmation_timing_fields(
-                    mode="network_submit_request",
+                    mode=network_confirmation_mode,
                     fast_path_used=False,
                     fallback_used=False,
                     duration_seconds=duration,
                     probe_seconds=probe_seconds_total,
                     poll_attempt_count=attempt,
                     historical_count_used=False,
-                    confirmed_by=["network_submit_request"],
+                    confirmed_by=[network_signal or "network_submit_request"],
                     causal_required=causal_required,
                     causal_verified=True,
-                    causal_reason="network_submit_request",
+                    causal_reason=network_causal_reason,
                     url_only_rejected=False,
                     user_turn_echo_found=False,
                     user_turn_echo_seconds=user_echo_seconds_total,
@@ -20298,6 +20339,8 @@ class ChatGPTBrowserClient:
                 fields["network_submit_request_observed"] = True
                 fields["network_submit_request_seconds"] = round(network_submit_seconds_total, 3)
                 fields["network_submit_request_status"] = network_evidence.get("status")
+                fields["network_submit_causal_flow_verified"] = bool(network_evidence.get("causal_flow_verified"))
+                fields["network_submit_causal_flow_signals"] = list(network_evidence.get("causal_flow_signals") or [])
                 fields["prepare_request_observed"] = bool(network_evidence.get("prepare_request_observed"))
                 fields["prepare_request_count"] = network_evidence.get("prepare_request_count")
                 fields["prepare_only"] = bool(network_evidence.get("prepare_only"))
@@ -20307,7 +20350,7 @@ class ChatGPTBrowserClient:
                 return {
                     **fields,
                     "confirmed": True,
-                    "confirmed_by": ["network_submit_request"],
+                    "confirmed_by": [network_signal or "network_submit_request"],
                     "raw_confirmed_by": [],
                     "submit_network_evidence": network_evidence,
                     "user_turn_evidence": last_user_echo,
@@ -20570,6 +20613,10 @@ class ChatGPTBrowserClient:
                 duration = round(time.monotonic() - started, 3)
                 if any(signal in effective_confirmed_by for signal in ("stop_button", "composer_running")):
                     causal_reason = "running_state"
+                elif "network_submit_flow" in effective_confirmed_by:
+                    causal_reason = "current_chatgpt_submit_flow"
+                elif "network_submit_request" in effective_confirmed_by:
+                    causal_reason = "marker_bound_network_submit_request"
                 elif "backend_task_message" in effective_confirmed_by:
                     causal_reason = "backend_task_message"
                 else:
@@ -30720,6 +30767,30 @@ class ChatGPTBrowserClient:
         )
         return None, None, 0, probes
 
+    def _payload_is_valid_promptbranch_reply_envelope(self, payload: Any) -> bool:
+        """Return whether a parsed payload is a complete Promptbranch reply envelope."""
+
+        if not isinstance(payload, dict):
+            return False
+        required = {
+            "schema", "schema_version", "request_id", "correlation_id",
+            "status", "result_type", "summary", "baseline", "changes",
+            "artifacts", "validation", "next_step", "confidence",
+        }
+        if not required.issubset(payload):
+            return False
+        if payload.get("schema") != "promptbranch.ask.reply" or str(payload.get("schema_version")) != "1.0":
+            return False
+        if not str(payload.get("request_id") or "").strip() or not str(payload.get("correlation_id") or "").strip():
+            return False
+        if not isinstance(payload.get("artifacts"), list) or not isinstance(payload.get("changes"), list):
+            return False
+        if not isinstance(payload.get("baseline"), dict) or not isinstance(payload.get("validation"), dict):
+            return False
+        if not isinstance(payload.get("next_step"), dict) or not str(payload.get("summary") or "").strip():
+            return False
+        return True
+
     async def _verify_response_freshness(
         self,
         page: Any,
@@ -30767,6 +30838,7 @@ class ChatGPTBrowserClient:
             "request_nonce_key": None,
             "request_nonce_injected": False,
             "request_nonce_stripped_from_answer": False,
+            "reply_envelope_validated": False,
         }
         if not isinstance(response_context, dict):
             return result
@@ -30816,6 +30888,32 @@ class ChatGPTBrowserClient:
                 })
                 response_context["last_response_request_marker_verified"] = True
                 response_context["last_response_request_marker_reason"] = result["reason"]
+                return result
+            binding = response_context.get("last_response_payload_binding")
+            if isinstance(binding, dict):
+                result["payload_bound_to_post_submit_turn"] = bool(binding.get("bound_to_post_submit_turn"))
+                result["payload_turn_index"] = binding.get("turn_index")
+                result["payload_baseline_turn_index"] = binding.get("baseline_turn_index")
+                result["payload_current_turn_count"] = binding.get("current_turn_count")
+                result["payload_seen_before_submit"] = bool(binding.get("payload_seen_before_submit"))
+                result["pre_submit_payload_hashes_count"] = int(binding.get("pre_submit_payload_hashes_count") or 0)
+                result["returned_answer_hash"] = binding.get("payload_hash") or payload_hash
+                result["current_assistant_count"] = binding.get("current_turn_count")
+                try:
+                    result["assistant_count_delta"] = int(binding.get("current_turn_count") or 0) - int(binding.get("baseline_turn_index") or 0)
+                except (TypeError, ValueError):
+                    pass
+            valid_reply_envelope = self._payload_is_valid_promptbranch_reply_envelope(payload)
+            result["reply_envelope_validated"] = valid_reply_envelope
+            if result["payload_bound_to_post_submit_turn"] and valid_reply_envelope:
+                result.update({
+                    "verified": True,
+                    "reason": "post_submit_turn_valid_reply_envelope",
+                    "stale_candidate_detected": False,
+                })
+                response_context["last_response_request_marker_verified"] = False
+                response_context["last_response_request_marker_reason"] = marker_reason or "request_marker_missing"
+                response_context["last_response_post_submit_reply_envelope_verified"] = True
                 return result
             result["stale_candidate_detected"] = True
             response_context["last_response_request_marker_verified"] = False
@@ -30889,6 +30987,7 @@ class ChatGPTBrowserClient:
         breakdown["response_request_marker_reason"] = freshness.get("request_marker_reason")
         breakdown["response_request_nonce_key"] = freshness.get("request_nonce_key")
         breakdown["response_request_nonce_injected"] = bool(freshness.get("request_nonce_injected"))
+        breakdown["response_reply_envelope_validated"] = bool(freshness.get("reply_envelope_validated"))
         breakdown.setdefault("response_request_nonce_stripped_from_answer", False)
 
     def _latest_turn_json_fast_return_enabled(self, response_context: Optional[dict[str, Any]]) -> tuple[bool, str]:
@@ -30902,6 +31001,8 @@ class ChatGPTBrowserClient:
         if isinstance(response_context, dict):
             if response_context.get("last_response_request_marker_verified"):
                 return True, response_context.get("last_response_request_marker_reason") or "request_marker_match"
+            if response_context.get("last_response_post_submit_reply_envelope_verified"):
+                return True, "post_submit_turn_valid_reply_envelope"
             extraction_mode = response_context.get("last_response_extraction_mode")
         if extraction_mode != "latest_turn_json":
             return False, f"extraction_mode_not_latest_turn_json:{extraction_mode or 'unknown'}"

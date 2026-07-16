@@ -1613,8 +1613,9 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert "run_all_tests:  1" in result.stdout
     assert f"all_tests_summary: {summary_path}" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert call_text.count("pb test full") == 1
-    assert "validation_evidence_reuse: reused full_direct browser/source lifecycle for full_localhost" in result.stdout
+    assert call_text.count("pb test full") == 2
+    assert "full_localhost_policy: independent_execution_required" in result.stdout
+    assert "full_localhost_direct_evidence_reuse: forbidden" in result.stdout
     assert "--skip source_add_text,source_remove_text" in call_text
     live_steps = {step["name"]: step for step in summary["steps"] if step["name"] in {"live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}}
     assert live_steps
@@ -2845,19 +2846,19 @@ def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audi
 
     summary = json.loads((log_dir / "pb_test.all.v9.9.91.summary.json").read_text(encoding="utf-8"))
     assert summary["ok"] is True
-    assert summary["validation_reuse"]["reused_groups"] == ["full_direct", "full_localhost"]
-    assert "full_localhost" not in summary["validation_reuse"]["executed_groups"]
+    assert summary["validation_reuse"]["reused_groups"] == ["full_direct"]
+    assert "full_localhost" in summary["validation_reuse"]["executed_groups"]
     assert summary["localhost_matrix_cooldown_audit"]["status"] == "clear"
     assert summary["localhost_matrix_cooldown_audit"]["localhost_steps"] == ["full_localhost"]
     assert summary["localhost_matrix_cooldown_audit"]["rate_limit_retry_allowed_violations"] == []
     localhost_step = next(step for step in summary["steps"] if step["name"] == "full_localhost")
-    assert localhost_step["action"] == "reused_browser_source_lifecycle"
+    assert localhost_step["action"] != "reused_browser_source_lifecycle"
     call_text = calls.read_text(encoding="utf-8")
-    assert call_text.count("pb test full") == 0
-    assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" not in call_text
-    assert "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=1" not in call_text
+    assert call_text.count("pb test full") == 1
+    assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
+    assert "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=1" in call_text
     assert "validation_evidence_reuse: reused full_direct" in result.stdout
-    assert "validation_evidence_reuse: reused full_direct browser/source lifecycle for full_localhost" in result.stdout
+    assert "full_localhost_policy: independent_execution_required" in result.stdout
 
 
 
@@ -2874,14 +2875,13 @@ def test_release_control_adopt_after_run_all_accepts_reused_direct_evidence_with
 
 
 
-def test_release_control_adopt_after_run_all_accepts_reused_localhost_lifecycle_without_localhost_report():
+def test_release_control_adopt_after_run_all_requires_independent_localhost_report():
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
-    assert "report_or_reused_full_localhost_lifecycle_green" in script
-    assert "verify_reused_full_localhost_lifecycle_green" in script
-    assert "full_localhost is not reused_browser_source_lifecycle" in script
-    assert 'report_or_reused_full_localhost_lifecycle_green "${localhost_report_json}"' in script
-    assert 'report_or_reused_full_localhost_lifecycle_green "${report_json}"' in script
-    assert "run-all localhost lifecycle reuse evidence is missing or stale" in script
+    assert "require_independent_full_localhost_report_green" in script
+    assert 'require_independent_full_localhost_report_green "${localhost_report_json}"' in script
+    assert 'require_independent_full_localhost_report_green "${report_json}"' in script
+    assert "independent full_localhost report is missing" in script
+    assert "verify_reused_full_localhost_lifecycle_green" not in script
 
 
 def test_release_control_run_all_emits_percent_progress_contract():
@@ -2901,19 +2901,20 @@ def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_cont
     assert '"localhost_matrix_cooldown_audit": localhost_matrix_cooldown_audit' in text
     assert '"rate_limit_retry_allowed_violations": localhost_retry_allowed_violations' in text
     assert "localhost/offline matrix groups must not sleep/retry on browser cooldown evidence" in text
-    assert "write_reused_localhost_browser_lifecycle_summary" in text
-    assert "reused_browser_source_lifecycle" in text
+    assert '"full_localhost_policy": "independent_execution_required"' in text
+    assert '"reusable_browser_source_lifecycle_groups": []' in text
 
 
 
 
-def test_release_control_run_all_reuses_direct_browser_lifecycle_for_full_localhost() -> None:
+def test_release_control_run_all_executes_full_localhost_independently() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
-    assert 'if [[ ${run_all_tests} -eq 1 && "${label}" == "localhost" ]]' in script
-    assert 'release_validation_full_test_command_signature "0"' in script
-    assert 'write_reused_localhost_browser_lifecycle_summary "${selected_summary_json}" "${full_direct_validation_evidence_json}"' in script
-    assert 'side_effect: pb test full browser/source lifecycle not rerun for localhost after matching green full_direct proof' in script
-    assert '"reusable_browser_source_lifecycle_groups": ["full_localhost"]' in script
+    function = script[script.index("run_full_test_transport()") : script.index("all_test_step_specs=()")]
+    assert 'if [[ ${run_all_tests} -eq 1 && "${label}" == "localhost" ]]' in function
+    assert "full_localhost_policy: independent_execution_required" in function
+    assert "full_localhost_direct_evidence_reuse: forbidden" in function
+    assert "write_reused_localhost_browser_lifecycle_summary" not in function
+    assert '"reusable_browser_source_lifecycle_groups": []' in script
 
 def test_release_control_all_tests_summary_prefers_live_step_result_payloads_over_nested_schema_objects() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
@@ -3930,3 +3931,37 @@ def test_release_control_uploads_only_canonical_artifact_path() -> None:
     assert 'promptbranch src add "${candidate_transport_zip}"' not in script
     assert 'pb artifact adopt "${artifact_zip}" --from-project-source' in script
 
+
+
+def test_release_control_uses_one_exact_live_slot_without_profile_pooling_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    visual = 'pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --no-profile-lease'
+    release = 'pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --no-profile-lease'
+    assert visual in script
+    assert release in script
+    assert 'pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' not in script
+    assert 'pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' not in script
+    assert "continuous_live_profile_policy: exact_resolved_slot_without_profile_pooling" in script
+    assert "continuous_live_profile_container_dir: /app/profile" in script
+
+
+def test_release_control_requires_independent_full_localhost_execution_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    function = script[script.index("run_full_test_transport()") : script.index("all_test_step_specs=()")]
+
+    assert "full_localhost_policy: independent_execution_required" in function
+    assert "full_localhost_direct_evidence_reuse: forbidden" in function
+    assert "write_reused_localhost_browser_lifecycle_summary" not in function
+    assert '"reusable_browser_source_lifecycle_groups": []' in script
+    assert '"full_localhost_policy": "independent_execution_required"' in script
+
+
+def test_release_control_cloudflare_classification_requires_actual_challenge_evidence_static() -> None:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    function = script[script.index("run_all_log_has_cloudflare_challenge()") : script.index("run_all_ensure_shared_live_conversation()")]
+
+    assert '"cloudflare",' not in function
+    assert '"verify you are human"' in function
+    assert '\"challenge_detected\": true' in function
+    assert "submit_causality_not_confirmed" not in function

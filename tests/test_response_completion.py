@@ -707,3 +707,94 @@ def test_attachment_visible_answer_fallback_skips_non_attachment_unconfirmed_sub
     ))
 
     assert result is None
+
+
+def test_current_chatgpt_submit_flow_is_causal_without_prompt_marker(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    event = {
+        "url": "https://chatgpt.com/backend-api/f/conversation",
+        "method": "POST",
+        "backend_like": True,
+        "mutating": True,
+        "prepare_request": False,
+        "message_request_candidate": True,
+        "marker_found": False,
+        "matched_by": [],
+        "captured_at_monotonic": 1.0,
+    }
+    evidence = client._submit_network_evidence_snapshot({
+        "enabled": True,
+        "status": "submit_network_observer_started",
+        "events": [event],
+        "all_events": [event],
+        "responses": [],
+        "all_responses": [],
+        "started_at_monotonic": 0.5,
+    })
+
+    assert evidence["visible"] is True
+    assert evidence["causal_flow_verified"] is True
+    assert evidence["f_conversation_request_observed"] is True
+    assert evidence["request_marker_found"] is False
+    assert evidence["status"] == "submit_network_current_flow_observed"
+    assert "backend_api_f_conversation_post" in evidence["causal_flow_signals"]
+
+
+def test_post_submit_valid_reply_envelope_overrides_missing_request_marker(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+    payload = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": "req-114",
+        "correlation_id": "req-114",
+        "status": "completed",
+        "result_type": "test_report",
+        "summary": "artifact created",
+        "baseline": {},
+        "changes": [],
+        "artifacts": [],
+        "validation": {},
+        "next_step": {"operator_action": "none", "recommended_command": ""},
+        "confidence": "high",
+    }
+    context = {
+        "assistant_count": 1,
+        "assistant_text": "old answer",
+        "response_request_markers": ["missing-marker"],
+        "response_request_binding_required": True,
+        "response_request_binding_mode": "protocol_request_id",
+        "last_response_payload_binding": {
+            "bound_to_post_submit_turn": True,
+            "turn_index": 1,
+            "baseline_turn_index": 1,
+            "current_turn_count": 2,
+            "payload_seen_before_submit": False,
+            "pre_submit_payload_hashes_count": 0,
+        },
+    }
+
+    freshness = asyncio.run(client._verify_response_freshness(
+        None,
+        response_context=context,
+        payload=payload,
+        selector="latest_turn_json",
+        text_length=100,
+    ))
+
+    assert freshness["verified"] is True
+    assert freshness["reason"] == "post_submit_turn_valid_reply_envelope"
+    assert freshness["reply_envelope_validated"] is True
+    assert freshness["payload_bound_to_post_submit_turn"] is True
+    assert context["last_response_post_submit_reply_envelope_verified"] is True
+    enabled, reason = client._latest_turn_json_fast_return_enabled(context)
+    assert enabled is True
+    assert reason == "post_submit_turn_valid_reply_envelope"
+    breakdown = {}
+    client._record_response_freshness(breakdown, freshness)
+    assert breakdown["response_reply_envelope_validated"] is True
+    assert client._latest_turn_json_fast_return_enabled(context) == (
+        True,
+        "post_submit_turn_valid_reply_envelope",
+    )

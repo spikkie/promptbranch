@@ -928,3 +928,13 @@ Read-only source-sync validation may report a missing project artifact registry 
 - The staged copy must be byte-identical to the requested replacement, match the canonical family regex, and be removed after browser selection.
 - No old Project Source may be deleted until the newly assigned source has completed processing, both backing identities are present, and exact assigned-card read-back succeeds.
 - `full_direct` and `full_localhost` remain mandatory before adoption.
+
+## v0.1.103.10.114: continuous live evidence uses one physical slot and current-flow causality
+
+- A path already ending in `slots/slot-N` is a resolved physical profile and must never be passed through profile pooling again.
+- External visual-artifact and release-live steps use the same exact host slot, mapped to `/app/profile`, with profile leasing disabled for those commands.
+- Submit causality may be proven by a post-click `POST /backend-api/f/conversation`, a Sentinel prepare/finalize pair, or `IS_STREAMING`; the obsolete prompt-marker shape is not the only authority.
+- A structurally valid `promptbranch.ask.reply` on a newly created post-submit assistant turn is causal response evidence and may end the long wait.
+- `submit_causality_not_confirmed` is not a Cloudflare classification without an actual challenge marker.
+- `full_localhost` is an independent execution gate; direct browser/source evidence reuse is forbidden.
+

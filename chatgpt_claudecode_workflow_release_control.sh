@@ -755,8 +755,8 @@ case "${test_transport}" in
     full_log="${release_log_dir}/pb_test.full.${ver}.log"
     report_json="${release_log_dir}/pb_test.full.${ver}.report.json"
     structured_summary_json="${release_log_dir}/post_release_validation.${ver}.summary.json"
-    direct_full_log="${full_log}"
-    direct_report_json="${report_json}"
+    direct_full_log="${release_log_dir}/pb_test.full.direct.${ver}.log"
+    direct_report_json="${release_log_dir}/pb_test.full.direct.${ver}.report.json"
     localhost_full_log=""
     localhost_report_json=""
     ;;
@@ -2680,31 +2680,10 @@ verify_reused_full_direct_evidence_green() {
     fail "run-all validation reuse evidence is missing or stale: ${full_direct_validation_evidence_json}"
 }
 
-verify_reused_full_localhost_lifecycle_green() {
-  local command_signature
-  command_signature="$(release_validation_full_test_command_signature 0)"
-  verify_all_tests_summary_green "${all_tests_summary_json}"
-  validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}" "${command_signature}" || \
-    fail "run-all localhost lifecycle reuse evidence is missing or stale: ${full_direct_validation_evidence_json}"
-  python3 - "${all_tests_summary_json}" <<'INNERPY'
-import json
-import sys
-from pathlib import Path
-path = Path(sys.argv[1])
-payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
-for step in steps:
-    if not isinstance(step, dict):
-        continue
-    if step.get("name") != "full_localhost":
-        continue
-    status = step.get("status")
-    action = step.get("action")
-    if step.get("ok") is True and (status == "reused_browser_source_lifecycle" or action == "reused_browser_source_lifecycle"):
-        raise SystemExit(0)
-    raise SystemExit(f"full_localhost is not reused_browser_source_lifecycle in {path}: {step!r}")
-raise SystemExit(f"full_localhost step not found in {path}")
-INNERPY
+require_independent_full_localhost_report_green() {
+  local path="$1"
+  [[ -f "${path}" ]] || fail "independent full_localhost report is missing: ${path}"
+  report_is_green "${path}"
 }
 
 report_or_reused_full_direct_evidence_green() {
@@ -2720,30 +2699,17 @@ report_or_reused_full_direct_evidence_green() {
   report_is_green "${path}"
 }
 
-report_or_reused_full_localhost_lifecycle_green() {
-  local path="$1"
-  if [[ -f "${path}" ]]; then
-    report_is_green "${path}"
-    return 0
-  fi
-  if [[ ${run_all_tests} -eq 1 ]]; then
-    verify_reused_full_localhost_lifecycle_green
-    return 0
-  fi
-  report_is_green "${path}"
-}
-
 verify_validation_reports_green() {
   case "${test_transport}" in
     direct)
       report_or_reused_full_direct_evidence_green "${report_json}"
       ;;
     localhost)
-      report_or_reused_full_localhost_lifecycle_green "${report_json}"
+      require_independent_full_localhost_report_green "${report_json}"
       ;;
     both)
       report_or_reused_full_direct_evidence_green "${direct_report_json}"
-      report_or_reused_full_localhost_lifecycle_green "${localhost_report_json}"
+      require_independent_full_localhost_report_green "${localhost_report_json}"
       ;;
   esac
   if [[ ${run_all_tests} -eq 1 ]]; then
@@ -4376,16 +4342,8 @@ run_full_test_transport() {
     return 0
   fi
   if [[ ${run_all_tests} -eq 1 && "${label}" == "localhost" ]]; then
-    local direct_reuse_command_signature
-    direct_reuse_command_signature="$(release_validation_full_test_command_signature "0")"
-    if validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${service_base_url}" "${direct_reuse_command_signature}"; then
-      echo "validation_evidence_reuse: reused full_direct browser/source lifecycle for full_localhost from ${full_direct_validation_evidence_json}" | tee -a "${selected_full_log}"
-      write_reused_localhost_browser_lifecycle_summary "${selected_summary_json}" "${full_direct_validation_evidence_json}" "${selected_full_log}" "${base_url}"
-      test_rc=0
-      report_rc=0
-      record_all_test_step "full_${label}" "${selected_summary_json}" "0"
-      return 0
-    fi
+    echo "full_localhost_policy: independent_execution_required" | tee -a "${selected_full_log}"
+    echo "full_localhost_direct_evidence_reuse: forbidden" | tee -a "${selected_full_log}"
   fi
   printf '+ CHATGPT_SERVICE_BASE_URL=%s CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE=%s timeout --foreground %s ' "${base_url}" "${release_validation_duplicate_skip}" "${test_timeout_seconds}"
   print_command_line "${full_test_cmd[@]}"
@@ -4841,7 +4799,9 @@ def classify_step_diagnostics(name: str, payload: dict, raw: str, rc: int, recov
         or "live_external_browser_challenge" in raw_lower
         or "auth_challenge_required" in raw_lower
         or "docker_standard_profile_challenged" in raw_lower
-        or "docker_live_profile_challenged" in raw_lower
+        or "status: docker_live_profile_challenged" in raw_lower
+        or '"status": "docker_live_profile_challenged"' in raw_lower
+        or '"challenge_detected": true' in raw_lower
         or "live_bootstrap_guardrail" in raw_lower
         or "skipped_blocked_by_live_bootstrap_guardrail" in raw_lower
         or "bootstrap_sentinel_missing_after_ask_success" in raw_lower
@@ -5081,7 +5041,8 @@ validation_reuse_summary = {
         "reusable_group": "full_direct",
         "must_still_execute_groups": ["import_smoke", "artifact_guard"],
         "external_live_groups": ["live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"],
-        "reusable_browser_source_lifecycle_groups": ["full_localhost"],
+        "reusable_browser_source_lifecycle_groups": [],
+        "full_localhost_policy": "independent_execution_required",
     },
 }
 
@@ -5576,13 +5537,13 @@ lowered = text.lower()
 fixed_markers = (
     "just a moment",
     "__cf_chl",
-    "cloudflare",
+    "verify you are human",
     "auth_challenge_detected",
-    "docker_live_profile_challenged",
+    "status: docker_live_profile_challenged",
 )
 if any(marker in lowered for marker in fixed_markers):
     raise SystemExit(0)
-if "challenge_detected" in lowered and ("true" in lowered or "=true" in lowered or ": true" in lowered):
+if '"challenge_detected": true' in lowered or "challenge_detected=true" in lowered:
     raise SystemExit(0)
 
 decoder = json.JSONDecoder()
@@ -5880,8 +5841,11 @@ INNERPY
 
   if run_all_resolve_live_service_target_url && run_all_recreate_service_for_live_slot_profile && run_all_live_profile_preflight; then
     if run_all_release_live_continuous_bootstrap_and_ask; then
-      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
-      run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+      echo "continuous_live_profile_policy: exact_resolved_slot_without_profile_pooling"
+      echo "continuous_live_profile_host_dir: ${live_profile_pool_slot_dir}"
+      echo "continuous_live_profile_container_dir: /app/profile"
+      run_all_json_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --no-profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
+      run_all_json_step "release_live" "${release_live_log}" env PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1 CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --no-profile-lease --conversation-url "${run_all_shared_conversation_url}" --keep-project --retries 0 --json
     else
       case "${run_all_continuous_failure_kind}" in
         live_bootstrap_guardrail)

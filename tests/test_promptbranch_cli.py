@@ -14589,3 +14589,38 @@ def test_full_test_transport_emits_complete_suite_json_for_missing_registry_safe
     assert payload["profile"] == "full"
     assert payload["failure_count"] == 0
     assert payload["agent"]["steps"][0]["payload"]["registry_status"] == "missing"
+
+
+def test_release_live_resolved_slot_never_creates_nested_profile_pool(tmp_path) -> None:
+    from promptbranch_cli import _profile_lease_settings_from_args, make_parser
+
+    slot = tmp_path / ".pb_profile_local_debug_pools" / "release-live" / "slots" / "slot-1"
+    slot.mkdir(parents=True)
+    parser = make_parser()
+    args = parser.parse_args([
+        "--profile-dir", str(slot),
+        "test", "release-live",
+        "--profile-lease",
+    ])
+    settings = _profile_lease_settings_from_args(args)
+
+    assert settings is not None
+    assert settings["profile_dir"] == str(slot)
+    assert settings["pool_name"] is None
+    assert settings["seed_profile_dir"] == str(slot)
+    assert settings["profile_resolution_mode"] == "exact_resolved_slot_no_pooling"
+
+
+def test_release_live_exact_slot_no_profile_lease_disables_lease_resolution(tmp_path) -> None:
+    from promptbranch_cli import _profile_lease_settings_from_args, make_parser
+
+    slot = tmp_path / "pool" / "slots" / "slot-2"
+    slot.mkdir(parents=True)
+    parser = make_parser()
+    args = parser.parse_args([
+        "--profile-dir", str(slot),
+        "test", "release-live",
+        "--no-profile-lease",
+    ])
+
+    assert _profile_lease_settings_from_args(args) is None

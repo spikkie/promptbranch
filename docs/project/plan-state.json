@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.68.zip",
   "accepted_current_version": "v0.1.103.10.68",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-  "active_candidate_version": "v0.1.103.10.113",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+  "active_candidate_version": "v0.1.103.10.114",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+  "active_slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -17,7 +17,7 @@
     "loop execution cannot mutate Project Sources or adopt artifacts unless a slice explicitly permits it",
     "repository paths in policies and configs remain repo-relative"
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -284,18 +284,26 @@
       "version": "v0.1.103.10.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
       "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+      "status": "repair_required",
+      "created_at": "2026-07-15T20:45:00+00:00",
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.114",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
       "status": "candidate",
-      "created_at": "2026-07-15T20:45:00+00:00"
+      "created_at": "2026-07-16T12:00:00+02:00"
     }
   ],
   "last_completed_normal_slice": "Correction-plan generation without file mutation",
   "last_completed_normal_slice_version": "v0.1.102",
   "last_completed_repair": "v0.1.103.10.68 — completed release-live-continuous sentinel success",
   "last_completed_repair_version": "v0.1.103.10.68",
-  "last_updated": "2026-07-15T20:45:00+00:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-  "next_normal_slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
-  "next_normal_version": "v0.1.103.10.113",
+  "last_updated": "2026-07-16T12:00:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+  "next_normal_slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
+  "next_normal_version": "v0.1.103.10.114",
   "next_planned_slice_after_acceptance": "Sandbox mutation verification and rollback evidence gate",
   "next_planned_version_after_acceptance": "v0.1.104",
   "out_of_scope": [
@@ -708,8 +716,17 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
       "kind": "repair",
       "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+      "status": "repair_required",
+      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption.",
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.114",
+      "kind": "repair",
       "status": "candidate",
-      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption."
+      "summary": "Uses one exact resolved physical browser-profile slot across visual-artifact and release-live validation, prevents nested profile pooling, recognizes current ChatGPT submit-flow evidence, accepts a structurally valid new post-submit reply envelope without waiting through the long fallback, classifies Cloudflare only from actual challenge evidence, and requires full_localhost to execute independently rather than reuse direct browser evidence.",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence"
     }
   ],
   "release_mode": "repair",
@@ -862,8 +879,15 @@
     {
       "version": "v0.1.103.10.113",
       "kind": "repair",
+      "status": "repair_required",
+      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption.",
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.114",
+      "kind": "repair",
       "status": "candidate",
-      "summary": "Stages changed replacement bytes under a collision-free numeric member of the canonical filename family before browser selection, records the staged identity as non-authoritative transaction evidence, keeps process_upload_stream as the sole assigned-name authority, deletes only pre-upload family members after new backing identity proof, and requires full_direct plus full_localhost before adoption."
+      "summary": "Uses one exact resolved physical browser-profile slot across visual-artifact and release-live validation, prevents nested profile pooling, recognizes current ChatGPT submit-flow evidence, accepts a structurally valid new post-submit reply envelope without waiting through the long fallback, classifies Cloudflare only from actual challenge evidence, and requires full_localhost to execute independently rather than reuse direct browser evidence."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -888,13 +912,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
       "release_mode": "repair",
-      "scope": "stage changed replacement bytes under a collision-free numeric canonical-family member, capture exact processing-stream identity, delete only pre-upload members, require final assigned singleton in both full transports",
-      "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+      "scope": "use one exact external-live profile slot, prohibit nested pooling, accept current submit-flow and valid post-submit reply-envelope evidence, classify Cloudflare only from actual challenge signals, and execute full_localhost independently",
+      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
-      "version": "v0.1.103.10.113"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "version": "v0.1.103.10.114"
     },
     {
       "release_mode": "normal",
@@ -938,7 +962,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.103.10.113",
+  "updated_for": "v0.1.103.10.114",
   "candidate_history": [
     {
       "version": "v0.1.103.10.98",
@@ -1044,8 +1068,16 @@
       "version": "v0.1.103.10.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.113.zip",
       "slice": "v0.1.103.10.113 — collision-free indexed replacement upload",
+      "status": "repair_required",
+      "created_at": "2026-07-15T20:45:00+00:00",
+      "validation": "full_direct live-proved the collision-free indexed overwrite transaction and the full_localhost gate reused that direct browser/source evidence; overall release validation returned LIVE_BLOCKED because visual_artifact_roundtrip produced a false-negative submit_causality_not_confirmed result while release_live subsequently passed; adoption was refused"
+    },
+    {
+      "version": "v0.1.103.10.114",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.114.zip",
+      "slice": "v0.1.103.10.114 — continuous live-profile resolution and causal-submit evidence",
       "status": "candidate",
-      "created_at": "2026-07-15T20:45:00+00:00"
+      "created_at": "2026-07-16T12:00:00+02:00"
     }
   ]
 }

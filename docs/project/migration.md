@@ -1128,3 +1128,8 @@ No state migration is required. Existing project-scoped registries remain author
 ## Collision-free indexed replacement staging — v0.1.103.10.113
 
 `v0.1.103.10.112` remains not adopted after both full transports proved that changed bytes selected under the same local basename can still produce no browser upload transaction. `v0.1.103.10.113` introduces no state migration and no filename rename of the canonical artifact. During upload-new replacement only, Promptbranch creates a temporary numeric canonical-family member, selects that staged file once, and removes the temporary local copy after browser selection. The staging token is never backend-index authority. Existing processing-stream assignment, backing-identity, pre-upload deletion-scope, and final-singleton gates remain unchanged and fail closed.
+
+## Continuous live-profile and submit-causality repair — v0.1.103.10.114
+
+No state migration is introduced. Existing pool roots remain valid inputs to `--profile-lease`, while already-resolved `.../slots/slot-N` paths are treated as exact profiles and are never nested into another pool. Release validation passes one exact slot to both external-live commands without `--profile-lease`. Submit evidence accepts the current ChatGPT flow and a valid new post-submit reply envelope; Cloudflare classification remains fail-closed to explicit challenge evidence. Localhost full validation is executed independently. Accepted/current remains `v0.1.103.10.68` until strict release validation and adoption succeed.
+
