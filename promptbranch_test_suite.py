@@ -148,6 +148,16 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "release_lifecycle_plan",
         ),
     },
+    "sandbox_mutation_rollback_gate": {
+        "required": True,
+        "description": "Mandatory sandbox mutation verification, validation immutability, exact rollback, repository immutability, and workspace cleanup gate.",
+        "timeout_seconds": 180.0,
+        "command": _release_validation_command(
+            "scripts/verify-sandbox-mutation-rollback-release-gate.py",
+            "--repo",
+            ".",
+        ),
+    },
     "compileall": {
         "required": True,
         "description": "Repository Python source compiles.",

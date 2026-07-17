@@ -956,3 +956,7 @@ Release-control adoption must not reconstruct authority from a canonical filenam
 - **Fail-closed rule:** missing or contradictory identity/evidence, validation failure, repository drift, rollback failure, or cleanup failure blocks the result.
 - **Next slice:** `v0.1.105 — Sandbox correction promotion readiness check` evaluates evidence only and does not grant broader mutation authority.
 - **Forbidden:** repository mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption from the loop, and ChatGPT Project deletion.
+
+## v0.1.104.1 — mandatory sandbox release gate
+
+Decision: the sandbox mutation/rollback proof is release-blocking. It must appear in the release-validation manifest and as an explicit all-tests step. Reusable evidence identity includes the manifest SHA-256. This repair forbids direct evidence reuse and retains independent localhost execution without broadening sandbox authority.

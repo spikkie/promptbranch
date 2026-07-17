@@ -7,16 +7,16 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
-active candidate version: v0.1.104
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
-next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+active candidate version: v0.1.104.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+next normal slice: v0.1.104.1 — sandbox release-gate integration and fresh validation evidence
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Plan summary
 
-`v0.1.104` resumes the normal MVP-1 roadmap from accepted/current `v0.1.103.10.116`. It verifies one bounded mutation only inside a temporary copied fixture, executes one exact allowlisted validation command inside that workspace, proves validation is read-only, restores the exact before snapshot, deletes the workspace, and stops. The complete product roadmap and current-state handoff are stored in `docs/project/promptbranch-plan-v0.1.104.md`.
+`v0.1.104.1` is a repair of the unadopted `v0.1.104` candidate. It does not broaden sandbox authority. It makes the exact sandbox mutation/validation/rollback proof a mandatory release-validation group and an explicit top-level all-tests step, hashes that manifest into release evidence identity, and forces fresh direct plus independent localhost execution before adoption. Accepted/current remains `v0.1.103.10.116`.
 
 ## Rolling horizon authority
 
@@ -30,24 +30,21 @@ v0.1.107 — Controlled correction execution envelope design
 ```
 
 
-## Active normal slice — v0.1.104 Sandbox mutation verification and rollback evidence gate
+## Active repair slice — v0.1.104.1 sandbox release-gate integration and fresh validation evidence
 
-`v0.1.104` advances the copied-fixture mutation path from before/after observation to a complete fail-closed evidence gate.
+Repair acceptance scope:
 
-Acceptance scope:
+- Preserve the `v0.1.104` sandbox mutation, exact validation, rollback and cleanup implementation unchanged.
+- Add `sandbox_mutation_rollback_gate` as a required `pb test full` release-validation manifest group.
+- Execute the same verifier as an explicit tenth `--run-all-tests` step.
+- Require terminal status `sandbox_mutation_verified_and_rolled_back` and all 13 named gates.
+- Include the exact release-validation manifest SHA-256 in reusable evidence identity.
+- Forbid `full_direct` evidence reuse for `v0.1.104.1`.
+- Require independent `full_localhost` execution.
+- Keep accepted/current `v0.1.103.10.116` until all release gates and adoption succeed.
 
-- Require exact expected-before and expected-after SHA-256 values.
-- Permit one literal fixture under `examples/loop-sandbox/` and one `replace_contents` operation.
-- Prove the exact corrected contents and after hash.
-- Run exactly one allowlisted `python3 -m json.tool <fixture>` command inside the temporary workspace.
-- Prove validation passed without modifying the sandbox fixture.
-- Restore the exact before snapshot and prove rollback equality.
-- Prove the repository fixture stayed unchanged and the temporary workspace was deleted.
-- Emit `sandbox_mutation_verified_and_rolled_back` only after every gate passes.
+No repository mutation, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, or ChatGPT Project deletion is introduced.
 
-Out of scope remains repository mutation, retries, patches, deployment, Kubernetes changes, Project Source mutation, artifact adoption, promotion beyond sandbox fixtures, and ChatGPT Project deletion.
-
-Roadmap authority: `docs/project/promptbranch-plan-v0.1.104.md`.
 ## Release / slice plan
 
 | Version | Slice | Goal | Scope | Out of scope | Expected validation | Status |

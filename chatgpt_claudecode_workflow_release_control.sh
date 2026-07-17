@@ -721,6 +721,10 @@ fi
 
 ver="$(normalize_version "${version_arg}")" || fail "version must be a v-prefixed or bare dotted numeric version with at least three numeric segments, or an artifact ZIP ending in such a version; got '${version_arg}'"
 ver_plain="${ver#v}"
+force_fresh_full_transport_evidence=0
+if [[ "${ver}" == "v0.1.104.1" ]]; then
+  force_fresh_full_transport_evidence=1
+fi
 if [[ -z "${release_test_project_name}" ]]; then
   release_test_project_version="${ver//[^A-Za-z0-9]/-}"
   release_test_project_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -816,6 +820,7 @@ visual_artifact_roundtrip_log="${release_log_dir}/pb_test.visual_artifact_roundt
 release_live_log="${release_log_dir}/pb_test.release_live.${ver}.log"
 import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
 artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
+sandbox_mutation_rollback_gate_log="${release_log_dir}/pb_test.sandbox_mutation_rollback_gate.${ver}.json"
 project_source_add_log="${release_log_dir}/pb_src_add.release_artifact.${ver}.json"
 adoption_source_evidence_json="${release_log_dir}/pb_src_add.release_artifact.${ver}.evidence.json"
 project_join_json="${release_log_dir}/pb_project_join.release_identity.${ver}.json"
@@ -1589,6 +1594,7 @@ printf 'test_transport: %s\n' "${test_transport}"
 printf 'run_all_tests:  %s\n' "${run_all_tests}"
 printf 'run_failing_tests:  %s\n' "${run_failing_tests}"
 printf 'run_all_strict_source_kind_matrix: %s\n' "${run_all_strict_source_kind_matrix}"
+printf 'force_fresh_full_transport_evidence: %s\n' "${force_fresh_full_transport_evidence}"
 printf 'live_seed_dir:  %s\n' "${live_profile_seed_display}"
 printf 'test_project:   %s\n' "${release_test_project_name}"
 printf 'test_cleanup:   unique_project_delete_frozen_retained\n'
@@ -4059,7 +4065,7 @@ run_all_recover_service_after_browser_read_timeout() {
 run_all_step_disallows_browser_rate_limit_retry() {
   local step_name="$1"
   case "${step_name}" in
-    full_localhost|localhost|full_offline|offline|full_release_validation_groups|release_validation_groups)
+    full_localhost|localhost|full_offline|offline|full_release_validation_groups|release_validation_groups|sandbox_mutation_rollback_gate)
       return 0
       ;;
     *)
@@ -4125,15 +4131,38 @@ release_validation_artifact_sha256() {
   sha256sum "${candidate}" | awk '{print $1}'
 }
 
+release_validation_manifest_sha256() {
+  python3 - "${repo_root}" <<'INNERPY'
+from __future__ import annotations
+from pathlib import Path
+import hashlib
+import importlib.util
+import json
+import sys
+root = Path(sys.argv[1]).resolve()
+module_path = root / "promptbranch_test_suite.py"
+spec = importlib.util.spec_from_file_location("promptbranch_release_manifest", module_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("could not load release-validation manifest")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+manifest = module.release_validation_group_manifest()
+encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+print(hashlib.sha256(encoded).hexdigest())
+INNERPY
+}
+
 release_validation_full_test_command_signature() {
   local duplicate_skip="${1:-0}"
   local source_kind_mode="default"
+  local manifest_sha
+  manifest_sha="$(release_validation_manifest_sha256)"
   if [[ "${run_all_strict_source_kind_matrix}" == "1" ]]; then
     source_kind_mode="strict"
   elif [[ ${run_all_tests} -eq 1 ]]; then
     source_kind_mode="release_blocking_file_paths_only"
   fi
-  printf 'pb test full --keep-project --json --source-kind-matrix=%s --run-failing-tests=%s --duplicate-release-validation-groups-skip=%s' "${source_kind_mode}" "${run_failing_tests}" "${duplicate_skip}"
+  printf 'pb test full --keep-project --json --source-kind-matrix=%s --run-failing-tests=%s --duplicate-release-validation-groups-skip=%s --release-validation-manifest-sha256=%s --fresh-full-transport-evidence=%s' "${source_kind_mode}" "${run_failing_tests}" "${duplicate_skip}" "${manifest_sha}" "${force_fresh_full_transport_evidence}"
 }
 
 write_release_validation_evidence() {
@@ -4475,7 +4504,7 @@ run_full_test_transport() {
   fi
   local command_signature
   command_signature="$(release_validation_full_test_command_signature "${release_validation_duplicate_skip}")"
-  if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" ]] && validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${base_url}" "${command_signature}"; then
+  if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" && ${force_fresh_full_transport_evidence} -eq 0 ]] && validate_release_validation_reuse_evidence "${full_direct_validation_evidence_json}" "full_direct" "direct" "${base_url}" "${command_signature}"; then
     echo "validation_evidence_reuse: reused full_direct from ${full_direct_validation_evidence_json}" | tee -a "${selected_full_log}"
     write_reused_full_test_summary "${selected_summary_json}" "${full_direct_validation_evidence_json}" "${selected_full_log}" "full_direct"
     test_rc=0
@@ -4486,6 +4515,10 @@ run_full_test_transport() {
     fi
     record_all_test_step "full_${label}" "${selected_summary_json}" "0"
     return 0
+  fi
+  if [[ ${run_all_tests} -eq 1 && "${label}" == "direct" && ${force_fresh_full_transport_evidence} -eq 1 ]]; then
+    echo "full_direct_policy: fresh_execution_required_for_${ver}" | tee -a "${selected_full_log}"
+    echo "full_direct_validation_evidence_reuse: forbidden" | tee -a "${selected_full_log}"
   fi
   if [[ ${run_all_tests} -eq 1 && "${label}" == "localhost" ]]; then
     echo "full_localhost_policy: independent_execution_required" | tee -a "${selected_full_log}"
@@ -4573,7 +4606,7 @@ run_all_expected_step_count() {
     *) total=0 ;;
   esac
   if [[ ${run_all_tests} -eq 1 && ${run_failing_tests} -eq 0 ]]; then
-    total=$((total + 7))
+    total=$((total + 8))
   fi
   if [[ ${total} -le 0 ]]; then
     total=1
@@ -4830,7 +4863,7 @@ def step_transport_class(name: str) -> str:
         return "direct_browser_service"
     if name in {"live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}:
         return "live_browser"
-    if name in {"import_smoke", "artifact_guard"}:
+    if name in {"import_smoke", "artifact_guard", "sandbox_mutation_rollback_gate"}:
         return "local_static_validation"
     return "unknown"
 
@@ -6077,6 +6110,9 @@ if [[ ${skip_tests} -eq 0 ]]; then
   esac
 
   if [[ ${run_all_tests} -eq 1 ]]; then
+    if [[ ${run_failing_tests} -eq 0 ]]; then
+      run_all_json_step "sandbox_mutation_rollback_gate" "${sandbox_mutation_rollback_gate_log}" python3 "${repo_root}/scripts/verify-sandbox-mutation-rollback-release-gate.py" --repo "${repo_root}"
+    fi
     if [[ ${run_failing_tests} -eq 1 ]]; then
       echo "== pb test all: focused failing tests only =="
       echo "focused_failing_tests: text_source_add_compatibility"
@@ -6250,6 +6286,8 @@ run_external_live_tests: ${run_external_live_tests}
 require_chatgpt_live_validation: ${require_chatgpt_live_validation}
 run_failing_tests: ${run_failing_tests}
 run_all_strict_source_kind_matrix: ${run_all_strict_source_kind_matrix}
+force_fresh_full_transport_evidence: ${force_fresh_full_transport_evidence}
+sandbox_mutation_rollback_gate: $(summary_value "${run_all_tests}" "${sandbox_mutation_rollback_gate_log}")
 all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")
 test_project:   ${release_test_project_name}
 test_cleanup:   unique_project_delete_frozen_retained

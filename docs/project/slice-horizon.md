@@ -1,10 +1,10 @@
 # Slice Horizon
 
-## Active normal slice
+## Active repair slice
 
-`v0.1.104 — Sandbox mutation verification and rollback evidence gate`
+`v0.1.104.1 — sandbox release-gate integration and fresh validation evidence`
 
-The active slice mutates only one copied fixture inside a temporary workspace, verifies the exact declared result, runs one allowlisted sandbox validation, proves exact rollback, proves the repository unchanged, deletes the workspace, and stops.
+The repair preserves the sandbox-only mutation implementation and makes its exact 13-gate result mandatory in both the release-validation manifest and the top-level all-tests summary. Direct evidence reuse is disabled for this candidate; localhost remains independently executed.
 
 ## Accepted repair baseline
 

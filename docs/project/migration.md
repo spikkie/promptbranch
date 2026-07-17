@@ -1147,3 +1147,7 @@ No state migration is introduced. Existing pool roots remain valid inputs to `--
 Accepted/current `v0.1.103.10.116` closes the repair line. The project control surface now resumes normal MVP-1 development with `v0.1.104 — Sandbox mutation verification and rollback evidence gate` and records the complete roadmap in `docs/project/promptbranch-plan-v0.1.104.md`.
 
 The previous `v0.1.103` copied-fixture mutation contract is advanced, not broadened: the mutation remains temporary and sandbox-only, but now requires exact result verification, sandbox validation, read-only validation proof, exact rollback proof, unchanged repository evidence, workspace deletion, and a terminal stop. `v0.1.105` remains the next planned slice.
+
+## v0.1.104.1
+
+No state-format migration is required. Import from accepted/current `v0.1.103.10.116` or the unadopted `v0.1.104` candidate preserves local project/repository registries and browser profiles. Existing `v0.1.104` validation evidence is not reusable because `v0.1.104.1` requires fresh direct execution and a different signed release-validation manifest.

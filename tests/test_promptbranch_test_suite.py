@@ -979,3 +979,16 @@ def test_full_profile_with_missing_registry_emits_complete_suite(monkeypatch, tm
     assert result["agent"] is agent
     assert "failure_count" in result
     assert "failed_steps" in result
+
+
+def test_release_validation_manifest_requires_sandbox_mutation_rollback_gate() -> None:
+    manifest = suite.release_validation_group_manifest()
+    gate = manifest["sandbox_mutation_rollback_gate"]
+    assert gate["required"] is True
+    assert gate["timeout_seconds"] == 180.0
+    assert gate["command"] == [
+        "python3",
+        "scripts/verify-sandbox-mutation-rollback-release-gate.py",
+        "--repo",
+        ".",
+    ]

@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
-active candidate version: v0.1.104
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
-next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+active candidate version: v0.1.104.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+next normal slice: v0.1.104.1 — sandbox release-gate integration and fresh validation evidence
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
@@ -21,17 +21,17 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
 last accepted/current slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-active plan slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-repair mode: false
-scope advance allowed: true
+active plan slice: v0.1.104.1 — sandbox release-gate integration and fresh validation evidence
+repair mode: true
+scope advance allowed: false
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.zip
-release status: v0.1.103.10.116 passed 9/9, completed evidence-bound adoption, and emitted release_adopted_and_verified; v0.1.104 is the active normal sandbox verification/rollback candidate
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
+release status: v0.1.103.10.116 remains accepted/current; v0.1.104 failed strict validation and was not adopted; v0.1.104.1 is the active repair candidate requiring an explicit sandbox gate plus fresh direct and independent localhost evidence
 plan authority file: docs/project/plan-state.json
 roadmap document: docs/project/promptbranch-plan-v0.1.104.md
 control-surface validator: pb project validate-control-surface --json
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Build and validate v0.1.104 from accepted/current v0.1.103.10.116. Require the sandbox fixture to match the declared before hash, the mutation to match the declared after hash and contents, the exact sandbox json.tool validation to pass without mutation, rollback to restore the before snapshot, the repository fixture to remain unchanged, and the workspace to be deleted. Stop after evidence; do not promote beyond sandbox scope.
+Build and validate v0.1.104.1 from the unadopted v0.1.104 candidate while retaining v0.1.103.10.116 as accepted/current. Require the mandatory 13-gate sandbox proof, fresh full_direct, independent full_localhost, complete external-live validation, Artifact Guardian, evidence-bound adoption, and assigned-source-aware final verification.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.104 sandbox mutation verification and rollback evidence gate candidate build
+v0.1.104.1 sandbox release-gate integration and fresh validation evidence candidate build
 ```
 
 
