@@ -530,13 +530,13 @@ def test_loop_read_only_correction_plan_for_passed_result_requires_no_correction
     assert correction["safety"]["files_mutated"] is False
 
 
-def test_loop_sandbox_file_mutation_mutates_temp_fixture_only(tmp_path: Path):
+def test_loop_sandbox_mutation_verification_mutates_validates_rolls_back_and_deletes(tmp_path: Path):
     from promptbranch_loop import (
         build_loop_read_only_command_diagnosis_payload,
         build_loop_read_only_command_execution_payload,
         build_loop_read_only_correction_plan_payload,
         build_loop_read_only_execution_payload,
-        build_loop_sandbox_file_mutation_payload,
+        build_loop_sandbox_mutation_verification_payload,
     )
 
     fixture = tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json"
@@ -558,6 +558,7 @@ def test_loop_sandbox_file_mutation_mutates_temp_fixture_only(tmp_path: Path):
                     "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
                     "expected_before_sha256": __import__("hashlib").sha256(before_text.encode("utf-8")).hexdigest(),
                     "replacement_contents": '{"status":"fixed_in_sandbox_only"}\n',
+                    "expected_after_sha256": __import__("hashlib").sha256(b'{"status":"fixed_in_sandbox_only"}\n').hexdigest(),
                 },
                 "human_required_when": ["repository_fixture_changed"],
             }
@@ -571,24 +572,30 @@ def test_loop_sandbox_file_mutation_mutates_temp_fixture_only(tmp_path: Path):
     diagnosis = build_loop_read_only_command_diagnosis_payload(execution)
     correction = build_loop_read_only_correction_plan_payload(diagnosis)
 
-    mutation = build_loop_sandbox_file_mutation_payload(plan, correction, repo_root=tmp_path)
+    mutation = build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=tmp_path)
 
     assert mutation["ok"] is True
-    assert mutation["schema"] == "promptbranch.loop.sandbox_file_mutation"
-    assert mutation["status"] == "sandbox_file_mutation_applied"
+    assert mutation["schema"] == "promptbranch.loop.sandbox_mutation_verification"
+    assert mutation["status"] == "sandbox_mutation_verified_and_rolled_back"
     assert mutation["summary"]["sandbox_mutation_performed"] is True
+    assert mutation["summary"]["sandbox_mutation_verified"] is True
+    assert mutation["summary"]["sandbox_validation_passed"] is True
+    assert mutation["summary"]["sandbox_rollback_succeeded"] is True
+    assert mutation["summary"]["sandbox_final_state_restored"] is True
     assert mutation["summary"]["repository_file_mutated"] is False
     assert mutation["safety"]["sandbox_only"] is True
     assert mutation["safety"]["project_source_mutation_performed"] is False
     assert mutation["safety"]["artifact_adoption_performed"] is False
-    assert mutation["evidence"]["sandbox_fixture_before"] != mutation["evidence"]["sandbox_fixture_after"]
+    assert mutation["evidence"]["sandbox_fixture_before"] != mutation["evidence"]["sandbox_fixture_after_mutation"]
+    assert mutation["evidence"]["sandbox_fixture_before"] == mutation["evidence"]["sandbox_fixture_after_rollback"]
+    assert mutation["verification_gate"]["failed_gate_count"] == 0
     assert mutation["evidence"]["repository_fixture_before"] == mutation["evidence"]["repository_fixture_after"]
     assert mutation["evidence"]["sandbox_workspace_deleted_after_evidence"] is True
     assert fixture.read_text(encoding="utf-8") == before_text
 
 
-def test_loop_sandbox_file_mutation_blocks_non_sandbox_path(tmp_path: Path):
-    from promptbranch_loop import build_loop_sandbox_file_mutation_payload
+def test_loop_sandbox_mutation_verification_blocks_non_sandbox_path(tmp_path: Path):
+    from promptbranch_loop import build_loop_sandbox_mutation_verification_payload
 
     readme = tmp_path / "README.md"
     readme.write_text("do not mutate\n", encoding="utf-8")
@@ -611,10 +618,113 @@ def test_loop_sandbox_file_mutation_blocks_non_sandbox_path(tmp_path: Path):
         "summary": {"correction_plan_generated": True},
     }
 
-    mutation = build_loop_sandbox_file_mutation_payload(plan, correction, repo_root=tmp_path)
+    mutation = build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=tmp_path)
 
     assert mutation["ok"] is False
-    assert mutation["status"] == "sandbox_file_mutation_blocked"
+    assert mutation["status"] == "sandbox_mutation_verification_blocked"
     assert "blocked_non_sandbox_fixture_path" in mutation["blocked_reasons"]
     assert mutation["summary"]["sandbox_mutation_performed"] is False
     assert readme.read_text(encoding="utf-8") == "do not mutate\n"
+
+
+def _sandbox_verification_plan(tmp_path: Path, *, replacement: str, expected_after_sha256: str) -> tuple[dict, dict, Path, str]:
+    import hashlib
+
+    fixture = tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    before_text = '{"status": "broken",\n'
+    fixture.write_text(before_text, encoding="utf-8")
+    plan = {
+        "ok": True,
+        "target_id": "sandbox-verification-negative-test",
+        "loop_id": "loop-sandbox-verification-negative-test",
+        "target_path": "target.json",
+        "final_state": "SOLVED",
+        "allowed_paths": ["examples/loop-sandbox/invalid-json-fixture.json"],
+        "validation_commands": ["python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"],
+        "sandbox_mutation": {
+            "operation": "replace_contents",
+            "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
+            "expected_before_sha256": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
+            "expected_after_sha256": expected_after_sha256,
+            "replacement_contents": replacement,
+        },
+    }
+    correction = {
+        "schema": "promptbranch.loop.read_only_correction_plan",
+        "status": "correction_plan_generated_failed_result",
+        "source_result_classification": "failed",
+        "summary": {"correction_plan_generated": True},
+    }
+    return plan, correction, fixture, before_text
+
+
+def test_loop_sandbox_mutation_verification_fails_closed_on_after_hash_mismatch(tmp_path: Path):
+    from promptbranch_loop import build_loop_sandbox_mutation_verification_payload
+
+    replacement = '{"status":"fixed"}\n'
+    plan, correction, fixture, before_text = _sandbox_verification_plan(
+        tmp_path,
+        replacement=replacement,
+        expected_after_sha256="0" * 64,
+    )
+
+    payload = build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=tmp_path)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "sandbox_mutation_verification_blocked"
+    assert "sandbox_mutation_expected_after_hash_mismatch" in payload["blocked_reasons"]
+    assert payload["summary"]["sandbox_mutation_performed"] is True
+    assert payload["summary"]["sandbox_rollback_succeeded"] is True
+    assert payload["evidence"]["sandbox_workspace_deleted_after_evidence"] is True
+    assert fixture.read_text(encoding="utf-8") == before_text
+
+
+def test_loop_sandbox_mutation_verification_fails_closed_when_sandbox_validation_fails(tmp_path: Path):
+    import hashlib
+    from promptbranch_loop import build_loop_sandbox_mutation_verification_payload
+
+    replacement = '{"status": "still-broken",\n'
+    plan, correction, fixture, before_text = _sandbox_verification_plan(
+        tmp_path,
+        replacement=replacement,
+        expected_after_sha256=hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+    )
+
+    payload = build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=tmp_path)
+
+    assert payload["ok"] is False
+    assert "sandbox_mutation_validation_failed" in payload["blocked_reasons"]
+    assert payload["summary"]["sandbox_validation_executed"] is True
+    assert payload["summary"]["sandbox_validation_passed"] is False
+    assert payload["summary"]["sandbox_rollback_succeeded"] is True
+    assert payload["validation_evidence"]["exit_code"] != 0
+    assert fixture.read_text(encoding="utf-8") == before_text
+
+
+def test_loop_sandbox_mutation_verification_fails_closed_when_rollback_fails(tmp_path: Path, monkeypatch):
+    import hashlib
+    from promptbranch_loop import build_loop_sandbox_mutation_verification_payload
+
+    replacement = '{"status":"fixed"}\n'
+    plan, correction, fixture, before_text = _sandbox_verification_plan(
+        tmp_path,
+        replacement=replacement,
+        expected_after_sha256=hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+    )
+    original_write_bytes = Path.write_bytes
+
+    def fail_sandbox_rollback(self: Path, data: bytes) -> int:
+        if "promptbranch-loop-sandbox-" in str(self) and data == before_text.encode("utf-8"):
+            raise OSError("simulated rollback failure")
+        return original_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_sandbox_rollback)
+    payload = build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=tmp_path)
+
+    assert payload["ok"] is False
+    assert "sandbox_rollback_failed" in payload["blocked_reasons"]
+    assert payload["summary"]["sandbox_rollback_attempted"] is True
+    assert payload["summary"]["sandbox_rollback_succeeded"] is False
+    assert payload["evidence"]["sandbox_workspace_deleted_after_evidence"] is True
+    assert fixture.read_text(encoding="utf-8") == before_text

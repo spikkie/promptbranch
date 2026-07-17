@@ -452,7 +452,7 @@ def test_loop_run_generate_correction_plan_requires_diagnosis_flag(capsys):
     assert "--generate-correction-plan requires --diagnose-read-only-result" in captured.err
 
 
-def test_loop_run_execute_sandbox_mutation_cli_json_mutates_temp_fixture_only(capsys):
+def test_loop_run_execute_sandbox_mutation_cli_json_verifies_and_rolls_back(capsys):
     before = Path("examples/loop-sandbox/invalid-json-fixture.json").read_text(encoding="utf-8")
     rc = promptbranch_cli.main([
         "loop",
@@ -469,9 +469,12 @@ def test_loop_run_execute_sandbox_mutation_cli_json_mutates_temp_fixture_only(ca
     ])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["schema"] == "promptbranch.loop.sandbox_file_mutation"
-    assert payload["status"] == "sandbox_file_mutation_applied"
+    assert payload["schema"] == "promptbranch.loop.sandbox_mutation_verification"
+    assert payload["status"] == "sandbox_mutation_verified_and_rolled_back"
     assert payload["summary"]["sandbox_mutation_performed"] is True
+    assert payload["summary"]["sandbox_mutation_verified"] is True
+    assert payload["summary"]["sandbox_validation_passed"] is True
+    assert payload["summary"]["sandbox_rollback_succeeded"] is True
     assert payload["summary"]["repository_file_mutated"] is False
     assert payload["safety"]["sandbox_file_mutation_performed"] is True
     assert payload["safety"]["repository_file_mutation_performed"] is False

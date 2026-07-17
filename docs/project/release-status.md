@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-accepted/current version: v0.1.103.10.115
-last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-active candidate version: v0.1.103.10.116
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-next normal slice: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+accepted/current version: v0.1.103.10.116
+last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
+active candidate version: v0.1.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
+next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## ZIP status values
@@ -810,6 +810,8 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 | v0.1.103.10.112 | repair | Changed-content indexed-family overwrite proof | repair_required | changed bytes were proven, but selecting the same local basename emitted no second upload request; fail-closed `source_overwrite_upload_not_started` was correct | DOD-281 remains in_progress; no normal slice advanced | rejected/not adopted |
 | v0.1.103.10.113 | repair | Collision-free indexed replacement upload | repair_required | stage changed bytes as `<stem>(<numeric transaction token>).<ext>` inside the canonical family; exact processing-stream identity remains authoritative; delete only pre-upload family members; require final assigned singleton in both transports | DOD-282 focused candidate; no normal slice advanced | pending |
 | v0.1.103.10.114 | repair | Continuous live-profile resolution and causal-submit evidence | repair_required | all 9 validation gates passed, including independent full_direct/full_localhost, continuous physical profile reuse, current submit-flow evidence, visual artifact and release-live; adoption failed closed because repository/project identity was unresolved; malformed same-count virtualized response still consumed the long completion timeout | DOD-283 live-proven but unadopted; no normal slice advanced | rejected/not adopted |
-| v0.1.103.10.115 | repair | Adoption identity preflight and parse-independent response completion | accepted_current | authoritative `pb project join` preflight before expensive validation; exact assigned source/backing identity transported into adoption; same-count post-submit response stability independent of envelope parsing; structured-only rate-limit retry evidence | DOD-284 focused candidate; no normal slice advanced | pending |
+| v0.1.103.10.115 | repair | Adoption identity preflight and parse-independent response completion | superseded | authoritative `pb project join` preflight before expensive validation; exact assigned source/backing identity transported into adoption; same-count post-submit response stability independent of envelope parsing; structured-only rate-limit retry evidence | DOD-284 focused candidate; no normal slice advanced | pending |
 
-| v0.1.103.10.116 | repair | Assigned-source-aware post-adoption verification | candidate | canonical artifact and exact assigned-source identities verified separately; backing IDs and all version/consistency invariants mandatory | DOD-285 focused candidate; no normal slice advanced | pending |
+| v0.1.103.10.116 | repair | Assigned-source-aware post-adoption verification | accepted_current | canonical artifact and exact assigned-source identities verified separately; backing IDs and all version/consistency invariants mandatory | DOD-285 focused candidate; no normal slice advanced | pending |
+
+| v0.1.104 | normal | Sandbox mutation verification and rollback evidence gate | candidate | exact before/after hash proof, sandbox-only json.tool validation, validation read-only proof, exact rollback proof, repository unchanged, workspace deleted | DOD-286 focused candidate; next slice v0.1.105 | pending |

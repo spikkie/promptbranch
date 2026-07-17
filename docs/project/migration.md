@@ -1141,3 +1141,9 @@ No state migration is introduced. Existing pool roots remain valid inputs to `--
 ## Assigned-source-aware post-adoption verification — v0.1.103.10.116
 
 `v0.1.103.10.116` uses accepted/current `v0.1.103.10.115` as its baseline. It replaces only the final verifier that previously compared all refs to the canonical ZIP. The new verifier accepts the authoritative split between canonical artifact identity and indexed assigned-source identity, verifies the stored processed-file and Library metadata IDs, and emits a structured `release_adopted_and_verified` result after complete alignment. No registry migration, Project Source mutation, profile migration, or response-completion change is introduced.
+
+## v0.1.104 normal-roadmap resumption
+
+Accepted/current `v0.1.103.10.116` closes the repair line. The project control surface now resumes normal MVP-1 development with `v0.1.104 — Sandbox mutation verification and rollback evidence gate` and records the complete roadmap in `docs/project/promptbranch-plan-v0.1.104.md`.
+
+The previous `v0.1.103` copied-fixture mutation contract is advanced, not broadened: the mutation remains temporary and sandbox-only, but now requires exact result verification, sandbox validation, read-only validation proof, exact rollback proof, unchanged repository evidence, workspace deletion, and a terminal stop. `v0.1.105` remains the next planned slice.

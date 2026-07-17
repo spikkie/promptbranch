@@ -49,3 +49,23 @@ v0.1.103.10.69
 
 - Static release-control classifier checks include `live_bootstrap_guardrail` and `skipped_blocked_by_live_bootstrap_guardrail` in the external-live blocked status set.
 - Replay harness verifies live bootstrap guardrail returns final verdict `LIVE_BLOCKED` while downstream live steps remain skipped and artifact guard remains passable.
+
+## v0.1.104 validation addition
+
+The loop-focused release validation must cover:
+
+- the successful mutate/verify/validate/rollback/delete sequence;
+- non-sandbox path rejection;
+- expected-after hash mismatch with successful rollback;
+- sandbox validation failure with successful rollback;
+- rollback failure classification and fail-closed result;
+- unchanged repository fixture evidence;
+- CLI JSON and text contracts for `promptbranch.loop.sandbox_mutation_verification`.
+
+Representative command:
+
+```bash
+python3 -m pytest -q \
+  tests/test_promptbranch_loop.py \
+  tests/test_cli_loop.py
+```

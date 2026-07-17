@@ -946,3 +946,13 @@ Release-control adoption must not reconstruct authority from a canonical filenam
 ## v0.1.103.10.116: post-adoption verification distinguishes artifact and assigned-source identity
 
 `v0.1.103.10.115` is accepted/current because its validation and evidence-bound adoption completed successfully. The post-adoption verifier must not collapse the canonical release artifact filename and the backend-assigned Project Source filename into one identity. `state.artifact_ref` and `registry_current.filename` remain canonical; `state.source_ref` must equal the exact assigned filename captured before validation. Both backing IDs and all existing version/consistency invariants remain mandatory. No adoption mutation is repeated by this repair.
+
+## ADR-PROJ-101 — v0.1.104 sandbox mutation verification remains temporary, exact, and terminal
+
+- **Status:** accepted for candidate implementation
+- **Baseline:** `v0.1.103.10.116`
+- **Active slice:** `v0.1.104 — Sandbox mutation verification and rollback evidence gate`
+- **Decision:** the loop may mutate only one copied fixture in a temporary workspace. Success requires declared before/after hashes, exact corrected contents, one allowlisted sandbox validation command, proof that validation is read-only, exact rollback, an unchanged repository fixture, workspace deletion, and an immediate stop.
+- **Fail-closed rule:** missing or contradictory identity/evidence, validation failure, repository drift, rollback failure, or cleanup failure blocks the result.
+- **Next slice:** `v0.1.105 — Sandbox correction promotion readiness check` evaluates evidence only and does not grant broader mutation authority.
+- **Forbidden:** repository mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption from the loop, and ChatGPT Project deletion.

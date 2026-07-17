@@ -1,8 +1,14 @@
 # Slice Horizon
 
-## Active repair slice
+## Active normal slice
 
-v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-proven UI card
+`v0.1.104 — Sandbox mutation verification and rollback evidence gate`
+
+The active slice mutates only one copied fixture inside a temporary workspace, verifies the exact declared result, runs one allowlisted sandbox validation, proves exact rollback, proves the repository unchanged, deletes the workspace, and stops.
+
+## Accepted repair baseline
+
+`v0.1.103.10.116` is accepted/current after 9/9 validation, evidence-bound adoption, and assigned-source-aware final verification.
 
 ## Recent repair context
 
@@ -19,7 +25,7 @@ v0.1.103.10.93 — reconstruct exact Library filenames and bind one backend-prov
 - v0.1.103.10.82 — reconcile exact Library backing-file IDs for same-name Project Source overwrite
 - v0.1.103.10.84 — restore normal fresh add, attempt non-destructive exact-source replacement, and reserve Library cleanup for proven suffix collisions
 
-## Planned normal horizon after repair acceptance
+## Rolling normal horizon
 
 - v0.1.104 — Sandbox mutation verification and rollback evidence gate
 - v0.1.105 — Sandbox correction promotion readiness check

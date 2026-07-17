@@ -3,48 +3,51 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-accepted/current version: v0.1.103.10.115
-last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-active candidate version: v0.1.103.10.116
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-next normal slice: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+accepted/current version: v0.1.103.10.116
+last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
+active candidate version: v0.1.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
+next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Plan summary
 
-```text
-Keep release slices narrow and KISS-first. v0.1.98 is accepted/current and made docs/project/plan-state.json the machine-readable anti-drift authority. v0.1.99 records how slices are derived, what architecture invariants remain fixed, and which 4–5 upcoming slices form the rolling horizon. First controlled read-only validation command execution is explicitly deferred from v0.1.99 to v0.1.100 so command execution starts only after the architecture-decision protocol and horizon are documented and validated.
-```
+`v0.1.104` resumes the normal MVP-1 roadmap from accepted/current `v0.1.103.10.116`. It verifies one bounded mutation only inside a temporary copied fixture, executes one exact allowlisted validation command inside that workspace, proves validation is read-only, restores the exact before snapshot, deletes the workspace, and stops. The complete product roadmap and current-state handoff are stored in `docs/project/promptbranch-plan-v0.1.104.md`.
 
 ## Rolling horizon authority
 
 The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
 
 ```text
-v0.1.102 — Correction-plan generation without file mutation
-v0.1.103.10.84 — restore normal file add and replace existing Project Sources by identity
 v0.1.104 — Sandbox mutation verification and rollback evidence gate
 v0.1.105 — Sandbox correction promotion readiness check
 v0.1.106 — Controlled correction promotion decision record
+v0.1.107 — Controlled correction execution envelope design
 ```
 
 
-## Active normal slice — v0.1.102 Correction-plan generation without file mutation
+## Active normal slice — v0.1.104 Sandbox mutation verification and rollback evidence gate
 
-`v0.1.102` generates bounded correction-plan evidence from the `v0.1.101` read-only command diagnosis payload. The plan is proposal-only: it may explain operator review steps for blocked or failed command evidence, but it must not write files, retry commands, deploy, mutate Project Sources, adopt artifacts, delete ChatGPT Projects, or emit patch/diff artifacts.
+`v0.1.104` advances the copied-fixture mutation path from before/after observation to a complete fail-closed evidence gate.
 
 Acceptance scope:
 
-- Add a machine-readable correction-plan schema for read-only command diagnosis results.
-- Generate plan entries for `blocked` and `failed` classifications with reason codes and operator-review actions.
-- Generate a `no_correction_required` result for passed diagnosis evidence.
-- Keep file mutation deferred to `v0.1.103.1` sandbox-only execution.
-- Preserve the single allowlisted JSON validation command path from `v0.1.100` and diagnosis layer from `v0.1.101`.
+- Require exact expected-before and expected-after SHA-256 values.
+- Permit one literal fixture under `examples/loop-sandbox/` and one `replace_contents` operation.
+- Prove the exact corrected contents and after hash.
+- Run exactly one allowlisted `python3 -m json.tool <fixture>` command inside the temporary workspace.
+- Prove validation passed without modifying the sandbox fixture.
+- Restore the exact before snapshot and prove rollback equality.
+- Prove the repository fixture stayed unchanged and the temporary workspace was deleted.
+- Emit `sandbox_mutation_verified_and_rolled_back` only after every gate passes.
 
+Out of scope remains repository mutation, retries, patches, deployment, Kubernetes changes, Project Source mutation, artifact adoption, promotion beyond sandbox fixtures, and ChatGPT Project deletion.
+
+Roadmap authority: `docs/project/promptbranch-plan-v0.1.104.md`.
 ## Release / slice plan
 
 | Version | Slice | Goal | Scope | Out of scope | Expected validation | Status |

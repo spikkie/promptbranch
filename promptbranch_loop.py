@@ -55,8 +55,8 @@ LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA = "promptbranch.loop.read_only_command_d
 LOOP_READ_ONLY_COMMAND_DIAGNOSIS_SCHEMA_VERSION = "1.0"
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA = "promptbranch.loop.read_only_correction_plan"
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION = "1.0"
-LOOP_SANDBOX_FILE_MUTATION_SCHEMA = "promptbranch.loop.sandbox_file_mutation"
-LOOP_SANDBOX_FILE_MUTATION_SCHEMA_VERSION = "1.0"
+LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA = "promptbranch.loop.sandbox_mutation_verification"
+LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION = "1.0"
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -1267,18 +1267,61 @@ def _copy_fixture_to_temporary_sandbox(source: Path, *, repo_root: Path, sandbox
     return destination
 
 
-def build_loop_sandbox_file_mutation_payload(
+def _classify_sandbox_validation_command(
+    command: str,
+    *,
+    fixture_rel_path: str,
+) -> dict[str, Any]:
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return {
+            "allowed": False,
+            "status": "sandbox_validation_command_parse_error",
+            "reason": str(exc),
+            "argv": [],
+        }
+    if len(argv) != 4 or argv[:3] != ["python3", "-m", "json.tool"]:
+        return {
+            "allowed": False,
+            "status": "sandbox_validation_command_not_allowlisted",
+            "reason": "v0.1.104 allows only: python3 -m json.tool <sandbox-fixture-relative-path>",
+            "argv": argv,
+        }
+    normalized_arg = str(Path(argv[3])).replace("\\", "/").strip("/")
+    normalized_fixture = str(Path(fixture_rel_path)).replace("\\", "/").strip("/")
+    if normalized_arg != normalized_fixture:
+        return {
+            "allowed": False,
+            "status": "sandbox_validation_command_target_mismatch",
+            "reason": "sandbox validation command must target the exact copied fixture",
+            "argv": argv,
+            "path_argument": normalized_arg,
+        }
+    return {
+        "allowed": True,
+        "status": "allowlisted_sandbox_json_validation",
+        "reason": "exact read-only JSON syntax validation command targets the copied sandbox fixture",
+        "argv": argv,
+        "path_argument": normalized_arg,
+    }
+
+
+def build_loop_sandbox_mutation_verification_payload(
     plan: dict[str, Any],
     correction_payload: dict[str, Any],
     *,
     repo_root: str | Path | None = None,
+    timeout_seconds: float = 15.0,
 ) -> dict[str, Any]:
-    """Perform the first controlled file mutation inside a temporary sandbox only.
+    """Mutate, verify, roll back, and delete one copied sandbox fixture.
 
-    v0.1.103 deliberately limits write capability to a copied fixture under a
-    temporary workspace.  The repository fixture is snapshotted before/after and
-    must remain unchanged.  No correction retry, Project Source mutation,
-    artifact adoption, deployment, or ChatGPT Project deletion is performed.
+    v0.1.104 keeps all write authority inside a temporary workspace. The copied
+    fixture must match the declared before hash, the mutation must match the
+    declared after hash, the allowlisted validation command must pass without
+    changing the file, rollback must restore the exact before snapshot, and the
+    repository fixture must remain unchanged. Any missing or contradictory
+    evidence blocks the result and stops for operator review.
     """
     root = Path.cwd().resolve() if repo_root is None else Path(repo_root).expanduser().resolve()
     source_schema_ok = correction_payload.get("schema") == LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA
@@ -1287,15 +1330,29 @@ def build_loop_sandbox_file_mutation_payload(
     checks = plan.get("checks") if isinstance(plan.get("checks"), dict) else {}
     if checks:
         allowed_paths = [str(item.get("path")) for item in checks.get("allowed_paths") or [] if isinstance(item, dict) and item.get("path")]
+        validation_commands = [str(item.get("command")) for item in checks.get("validation_commands") or [] if isinstance(item, dict) and item.get("command")]
     else:
         allowed_paths = [str(item) for item in plan.get("allowed_paths") or []]
+        validation_commands = [str(item) for item in plan.get("validation_commands") or []]
 
-    blocked_reasons: list[str] = []
     operation = str(sandbox_config.get("operation") or "").strip()
     replacement_contents = sandbox_config.get("replacement_contents")
     fixture_path = str(sandbox_config.get("fixture_path") or "")
+    expected_before_sha = str(sandbox_config.get("expected_before_sha256") or "").strip()
+    expected_after_sha = str(sandbox_config.get("expected_after_sha256") or "").strip()
     classification = _classify_sandbox_fixture_path(fixture_path, repo_root=root, allowed_paths=allowed_paths)
+    validation_command = validation_commands[0] if len(validation_commands) == 1 else ""
+    validation_classification = _classify_sandbox_validation_command(
+        validation_command,
+        fixture_rel_path=str(classification.get("path_argument") or fixture_path),
+    ) if validation_command else {
+        "allowed": False,
+        "status": "sandbox_validation_command_count_invalid",
+        "reason": "exactly one sandbox validation command is required",
+        "argv": [],
+    }
 
+    blocked_reasons: list[str] = []
     if not source_schema_ok:
         blocked_reasons.append("correction_plan_source_schema_invalid")
     if not source_plan_generated:
@@ -1306,68 +1363,177 @@ def build_loop_sandbox_file_mutation_payload(
         blocked_reasons.append("sandbox_mutation_replacement_contents_missing")
     if isinstance(replacement_contents, str) and len(replacement_contents.encode("utf-8")) > 4096:
         blocked_reasons.append("sandbox_mutation_replacement_too_large")
+    if not expected_before_sha:
+        blocked_reasons.append("sandbox_mutation_expected_before_sha256_missing")
+    if not expected_after_sha:
+        blocked_reasons.append("sandbox_mutation_expected_after_sha256_missing")
     if not classification.get("allowed"):
         blocked_reasons.append(str(classification.get("status") or "sandbox_fixture_not_allowlisted"))
+    if len(validation_commands) != 1:
+        blocked_reasons.append("sandbox_validation_command_count_invalid")
+    if not validation_classification.get("allowed"):
+        blocked_reasons.append(str(validation_classification.get("status") or "sandbox_validation_command_not_allowlisted"))
 
     repo_before: dict[str, Any] | None = None
     repo_after: dict[str, Any] | None = None
     sandbox_before: dict[str, Any] | None = None
     sandbox_after: dict[str, Any] | None = None
+    sandbox_after_validation: dict[str, Any] | None = None
+    sandbox_after_rollback: dict[str, Any] | None = None
+    sandbox_workspace: str | None = None
     sandbox_deleted = False
     mutation_performed = False
-    sandbox_rel_path = classification.get("path_argument") or fixture_path
-    sandbox_workspace: str | None = None
-    expected_before_sha = str(sandbox_config.get("expected_before_sha256") or "").strip()
+    mutation_verified = False
+    validation_executed = False
+    validation_passed = False
+    validation_mutation_detected = False
+    rollback_attempted = False
+    rollback_succeeded = False
+    validation_evidence: dict[str, Any] = {
+        "command": validation_command or None,
+        "classification": validation_classification,
+        "executed": False,
+        "exit_code": None,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": False,
+    }
     actual_before_sha: str | None = None
+    actual_after_sha: str | None = None
+    source_path: Path | None = None
+    original_bytes: bytes | None = None
 
-    if not blocked_reasons:
+    if classification.get("target_path"):
         source_path = Path(str(classification["target_path"]))
         repo_before = _safe_stat_snapshot(source_path, repo_root=root)
         actual_before_sha = str(repo_before.get("sha256") or "")
         if expected_before_sha and actual_before_sha != expected_before_sha:
-            blocked_reasons.append("sandbox_fixture_expected_hash_mismatch")
+            blocked_reasons.append("sandbox_fixture_expected_before_hash_mismatch")
 
-    if not blocked_reasons:
-        source_path = Path(str(classification["target_path"]))
+    if not blocked_reasons and source_path is not None:
+        original_bytes = source_path.read_bytes()
         sandbox_dir = tempfile.mkdtemp(prefix="promptbranch-loop-sandbox-")
         sandbox_workspace = sandbox_dir
+        sandbox_root = Path(sandbox_dir)
+        sandbox_file: Path | None = None
         try:
-            sandbox_root = Path(sandbox_dir)
             sandbox_file = _copy_fixture_to_temporary_sandbox(source_path, repo_root=root, sandbox_root=sandbox_root)
             sandbox_before = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
-            sandbox_file.write_text(str(replacement_contents), encoding="utf-8")
-            mutation_performed = True
-            sandbox_after = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+            try:
+                sandbox_file.write_text(str(replacement_contents), encoding="utf-8")
+                mutation_performed = True
+                sandbox_after = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+                actual_after_sha = str((sandbox_after or {}).get("sha256") or "")
+                if sandbox_after == sandbox_before:
+                    blocked_reasons.append("sandbox_mutation_produced_no_change")
+                if actual_after_sha != expected_after_sha:
+                    blocked_reasons.append("sandbox_mutation_expected_after_hash_mismatch")
+                if sandbox_file.read_text(encoding="utf-8") != replacement_contents:
+                    blocked_reasons.append("sandbox_mutation_contents_mismatch")
+                mutation_verified = not any(
+                    reason in blocked_reasons
+                    for reason in {
+                        "sandbox_mutation_produced_no_change",
+                        "sandbox_mutation_expected_after_hash_mismatch",
+                        "sandbox_mutation_contents_mismatch",
+                    }
+                )
+
+                if mutation_verified:
+                    validation_executed = True
+                    validation_evidence["executed"] = True
+                    try:
+                        completed = subprocess.run(
+                            list(validation_classification.get("argv") or []),
+                            cwd=sandbox_root,
+                            capture_output=True,
+                            text=True,
+                            timeout=max(0.1, float(timeout_seconds)),
+                            check=False,
+                        )
+                        validation_evidence.update({
+                            "exit_code": int(completed.returncode),
+                            "stdout": completed.stdout[-4096:],
+                            "stderr": completed.stderr[-4096:],
+                        })
+                        validation_passed = completed.returncode == 0
+                        if not validation_passed:
+                            blocked_reasons.append("sandbox_mutation_validation_failed")
+                    except subprocess.TimeoutExpired as exc:
+                        validation_evidence.update({
+                            "timed_out": True,
+                            "stdout": str(exc.stdout or "")[-4096:],
+                            "stderr": str(exc.stderr or "")[-4096:],
+                        })
+                        blocked_reasons.append("sandbox_mutation_validation_timeout")
+                    sandbox_after_validation = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+                    validation_mutation_detected = sandbox_after_validation != sandbox_after
+                    if validation_mutation_detected:
+                        blocked_reasons.append("sandbox_validation_command_mutated_fixture")
+            except Exception as exc:
+                blocked_reasons.append("sandbox_mutation_execution_failed")
+                validation_evidence["mutation_error"] = str(exc)
+            finally:
+                if sandbox_file is not None and original_bytes is not None:
+                    rollback_attempted = True
+                    try:
+                        sandbox_file.write_bytes(original_bytes)
+                        sandbox_after_rollback = _safe_stat_snapshot(sandbox_file, repo_root=sandbox_root)
+                        rollback_succeeded = sandbox_after_rollback == sandbox_before
+                        if not rollback_succeeded:
+                            blocked_reasons.append("sandbox_rollback_evidence_mismatch")
+                    except Exception as exc:
+                        blocked_reasons.append("sandbox_rollback_failed")
+                        validation_evidence["rollback_error"] = str(exc)
+        finally:
             repo_after = _safe_stat_snapshot(source_path, repo_root=root)
             if repo_before != repo_after:
                 blocked_reasons.append("repository_fixture_changed")
-        finally:
             shutil.rmtree(sandbox_dir, ignore_errors=True)
-            sandbox_deleted = True
-    elif classification.get("target_path"):
-        source_path = Path(str(classification["target_path"]))
-        repo_before = _safe_stat_snapshot(source_path, repo_root=root)
+            sandbox_deleted = not Path(sandbox_dir).exists()
+            if not sandbox_deleted:
+                blocked_reasons.append("sandbox_workspace_cleanup_failed")
+    elif source_path is not None:
         repo_after = _safe_stat_snapshot(source_path, repo_root=root)
 
-    ok = not blocked_reasons and mutation_performed and repo_before == repo_after and sandbox_before != sandbox_after
+    gates = [
+        {"name": "correction_plan_schema_valid", "passed": source_schema_ok},
+        {"name": "correction_plan_generated", "passed": source_plan_generated},
+        {"name": "sandbox_fixture_allowlisted", "passed": bool(classification.get("allowed"))},
+        {"name": "mutation_operation_allowlisted", "passed": operation == "replace_contents"},
+        {"name": "before_hash_matches", "passed": bool(expected_before_sha and actual_before_sha == expected_before_sha)},
+        {"name": "after_hash_matches", "passed": bool(expected_after_sha and actual_after_sha == expected_after_sha)},
+        {"name": "mutation_result_verified", "passed": mutation_verified},
+        {"name": "sandbox_validation_passed", "passed": validation_executed and validation_passed},
+        {"name": "sandbox_validation_read_only", "passed": validation_executed and not validation_mutation_detected},
+        {"name": "repository_fixture_unchanged", "passed": repo_before is not None and repo_before == repo_after},
+        {"name": "rollback_attempted", "passed": rollback_attempted},
+        {"name": "rollback_restored_before_snapshot", "passed": rollback_succeeded},
+        {"name": "sandbox_workspace_deleted", "passed": sandbox_deleted},
+    ]
+    failed_gates = [str(item["name"]) for item in gates if not item.get("passed")]
+    for gate_name in failed_gates:
+        blocked_reasons.append(f"gate_failed:{gate_name}")
+    ok = not blocked_reasons and all(bool(item.get("passed")) for item in gates)
+
     return {
         "ok": ok,
-        "schema": LOOP_SANDBOX_FILE_MUTATION_SCHEMA,
-        "schema_version": LOOP_SANDBOX_FILE_MUTATION_SCHEMA_VERSION,
-        "action": "loop_sandbox_file_mutation",
-        "status": "sandbox_file_mutation_applied" if ok else "sandbox_file_mutation_blocked",
-        "mode": "sandbox_file_mutation",
-        "execution_mode": "local_temporary_sandbox_fixture_mutation",
+        "schema": LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA,
+        "schema_version": LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION,
+        "action": "loop_sandbox_mutation_verification",
+        "status": "sandbox_mutation_verified_and_rolled_back" if ok else "sandbox_mutation_verification_blocked",
+        "mode": "sandbox_mutation_verification",
+        "execution_mode": "local_temporary_sandbox_mutate_verify_rollback",
         "source_schema": correction_payload.get("schema"),
         "source_status": correction_payload.get("status"),
         "source_result_classification": correction_payload.get("source_result_classification"),
         "target_id": plan.get("target_id"),
         "target_path": plan.get("target_path"),
         "loop_id": plan.get("loop_id"),
-        "executed_state": "ACT_STUB",
+        "executed_state": "VERIFY_STUB",
         "source_executed_state": correction_payload.get("executed_state"),
         "final_state": plan.get("final_state"),
-        "decision": "stop_after_sandbox_mutation_evidence" if ok else "stop_for_operator_review",
+        "decision": "stop_after_verified_sandbox_rollback_evidence" if ok else "stop_for_operator_review",
         "blocked_reasons": sorted(set(blocked_reasons)),
         "sandbox_mutation_request": {
             "operation": operation,
@@ -1376,25 +1542,47 @@ def build_loop_sandbox_file_mutation_payload(
             "allowlist_reason": classification.get("reason"),
             "expected_before_sha256": expected_before_sha or None,
             "actual_before_sha256": actual_before_sha,
+            "expected_after_sha256": expected_after_sha or None,
+            "actual_after_sha256": actual_after_sha,
+        },
+        "verification_gate": {
+            "gate_count": len(gates),
+            "passed_gate_count": sum(1 for item in gates if item.get("passed")),
+            "failed_gate_count": len(failed_gates),
+            "gates": gates,
+        },
+        "validation_evidence": validation_evidence,
+        "rollback_evidence": {
+            "attempted": rollback_attempted,
+            "succeeded": rollback_succeeded,
+            "sandbox_fixture_before": sandbox_before,
+            "sandbox_fixture_after_rollback": sandbox_after_rollback,
         },
         "evidence": {
             "repository_fixture_before": repo_before,
             "repository_fixture_after": repo_after,
             "sandbox_fixture_before": sandbox_before,
-            "sandbox_fixture_after": sandbox_after,
+            "sandbox_fixture_after_mutation": sandbox_after,
+            "sandbox_fixture_after_validation": sandbox_after_validation,
+            "sandbox_fixture_after_rollback": sandbox_after_rollback,
             "sandbox_workspace": sandbox_workspace,
             "sandbox_workspace_deleted_after_evidence": sandbox_deleted,
-            "sandbox_relative_path": sandbox_rel_path,
+            "sandbox_relative_path": classification.get("path_argument") or fixture_path,
         },
         "summary": {
             "sandbox_mutation_performed": mutation_performed,
-            "sandbox_file_mutated": mutation_performed,
+            "sandbox_mutation_verified": mutation_verified,
+            "sandbox_validation_executed": validation_executed,
+            "sandbox_validation_passed": validation_passed,
+            "sandbox_rollback_attempted": rollback_attempted,
+            "sandbox_rollback_succeeded": rollback_succeeded,
+            "sandbox_final_state_restored": rollback_succeeded,
             "repository_file_mutated": bool(repo_before != repo_after) if repo_before is not None and repo_after is not None else False,
             "project_source_mutation_performed": False,
             "artifact_adoption_performed": False,
             "deployment_performed": False,
-            "commands_executed": 0,
-            "files_mutated": mutation_performed,
+            "commands_executed": 1 if validation_executed else 0,
+            "transient_sandbox_files_mutated": 1 if mutation_performed else 0,
         },
         "dry_run": False,
         "side_effects_performed": mutation_performed,
@@ -1402,8 +1590,10 @@ def build_loop_sandbox_file_mutation_payload(
             "side_effects_performed": mutation_performed,
             "mutation_allowed": True,
             "sandbox_file_mutation_performed": mutation_performed,
+            "sandbox_mutation_verified": mutation_verified,
+            "sandbox_final_state_restored": rollback_succeeded,
             "repository_file_mutation_performed": bool(repo_before != repo_after) if repo_before is not None and repo_after is not None else False,
-            "commands_executed": False,
+            "commands_executed": validation_executed,
             "deployment_performed": False,
             "kubernetes_mutation_performed": False,
             "project_source_mutation_performed": False,
@@ -1412,8 +1602,10 @@ def build_loop_sandbox_file_mutation_payload(
             "correction_plan_required": True,
             "correction_plan_source_required": True,
             "sandbox_only": True,
+            "rollback_required": True,
+            "stop_after_evidence": True,
         },
-        "operator_instruction": "First controlled file mutation in a temporary sandbox fixture only. The repository fixture is copied, the sandbox copy is mutated, before/after hashes are recorded, and the repository file must remain unchanged. No correction retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion is performed.",
+        "operator_instruction": "Sandbox-only mutation verification complete only when the copied fixture matches the declared after hash, the allowlisted sandbox validation passes without mutation, rollback restores the exact before snapshot, the repository fixture remains unchanged, and the temporary workspace is deleted. Any failed gate stops for operator review. No deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion is performed.",
     }
 
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1663,7 +1855,7 @@ def render_loop_read_only_command_diagnosis_text(payload: dict[str, Any]) -> str
 
 
 
-def render_loop_sandbox_file_mutation_text(payload: dict[str, Any]) -> str:
+def render_loop_sandbox_mutation_verification_text(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     request = payload.get("sandbox_mutation_request") if isinstance(payload.get("sandbox_mutation_request"), dict) else {}
     lines = [
@@ -1676,6 +1868,9 @@ def render_loop_sandbox_file_mutation_text(payload: dict[str, Any]) -> str:
         f"fixture_path={request.get('fixture_path') or 'none'}",
         f"allowlist_status={request.get('allowlist_status') or 'none'}",
         f"sandbox_mutation_performed={str(bool(summary.get('sandbox_mutation_performed'))).lower()}",
+        f"sandbox_mutation_verified={str(bool(summary.get('sandbox_mutation_verified'))).lower()}",
+        f"sandbox_validation_passed={str(bool(summary.get('sandbox_validation_passed'))).lower()}",
+        f"sandbox_rollback_succeeded={str(bool(summary.get('sandbox_rollback_succeeded'))).lower()}",
         f"repository_file_mutated={str(bool(summary.get('repository_file_mutated'))).lower()}",
         f"commands_executed={summary.get('commands_executed', 0)}",
     ]

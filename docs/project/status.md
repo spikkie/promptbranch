@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-accepted/current version: v0.1.103.10.115
-last completed normal slice: v0.1.102 — Correction-plan generation without file mutation
-last completed repair: v0.1.103.10.115 — adoption identity preflight and parse-independent response completion
-active candidate: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-active candidate version: v0.1.103.10.116
-next normal target: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-next normal slice: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-next planned slice after acceptance: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+accepted/current version: v0.1.103.10.116
+last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.zip
+active candidate version: v0.1.104
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.zip
+next normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Current MVP state
@@ -20,19 +20,20 @@ next planned slice after acceptance: v0.1.104 — Sandbox mutation verification 
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.102 — Correction-plan generation without file mutation
-active plan slice: v0.1.103.1 — Docker browser parity diagnostic envelope
-repair mode: true
-scope advance allowed: false
+last accepted/current slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
+active plan slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.115.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-release status: v0.1.103.10.115 passed all nine validation gates and completed authoritative evidence-bound adoption; the final release-control check then falsely rejected the correct indexed state.source_ref after adoption had already succeeded; v0.1.103.10.116 repairs only assigned-source-aware post-adoption verification
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.zip
+release status: v0.1.103.10.116 passed 9/9, completed evidence-bound adoption, and emitted release_adopted_and_verified; v0.1.104 is the active normal sandbox verification/rollback candidate
 plan authority file: docs/project/plan-state.json
+roadmap document: docs/project/promptbranch-plan-v0.1.104.md
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
 slice horizon file: docs/project/slice-horizon.md
@@ -50,22 +51,21 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.103.1` must not be adopted/current without full release-control `all_tests_final_verdict=GO` and `pb artifact current --json` alignment.
-- Any normal, repair, or diagnostic release must validate `docs/project/plan-state.json` against the required control-surface Markdown files before packaging/adoption.
-- `v0.1.103.1` is diagnostic-only and must not mutate repository fixtures, retry commands outside the sandbox, deploy, change Project Sources, adopt artifacts, or delete ChatGPT Projects.
-- Sandbox verification/rollback gates, repository file mutation, deployment, Kubernetes mutation, Project Source behavior changes, artifact adoption behavior changes, and ChatGPT Project deletion remain out of scope.
+- Any sandbox path, operation, before hash, after hash, or validation command that is missing or not exactly allowlisted must block before promotion.
+- Validation failure, validation-side mutation, repository drift, rollback failure, or workspace-cleanup failure must stop for operator review.
+- Repository mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption from the loop, and ChatGPT Project deletion remain forbidden.
+- Full release-control and adoption evidence are still required before `v0.1.104` becomes accepted/current.
 
 ## Current unknowns
 
+- Whether the accumulated `v0.1.103` and `v0.1.104` sandbox evidence is sufficient for a positive `v0.1.105` promotion-readiness assessment.
+- What exact future execution envelope, if any, may safely operate on a disposable repository rather than a copied fixture.
 - What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
-- Whether live ChatGPT file-source indexing will become visible within the extended post-commit readback window in release-control.
-- Whether future lifecycle scripts should delegate their install ZIP checks to `pb artifact guard` in AG-005 or an earlier slice.
-- Whether the first sandbox mutation evidence should gain rollback verification in `v0.1.104`.
 
 ## Next safe action
 
 ```text
-Install v0.1.103.10.116 and validate that final post-adoption verification treats the canonical artifact filename and exact backend-assigned Project Source filename as distinct authoritative identities. Require exact processed-file and Library metadata ID correlation, all four version matches, and all three consistency booleans before emitting release_adopted_and_verified. Do not change or repeat the already accepted v0.1.103.10.115 adoption behavior.
+Build and validate v0.1.104 from accepted/current v0.1.103.10.116. Require the sandbox fixture to match the declared before hash, the mutation to match the declared after hash and contents, the exact sandbox json.tool validation to pass without mutation, rollback to restore the before snapshot, the repository fixture to remain unchanged, and the workspace to be deleted. Stop after evidence; do not promote beyond sandbox scope.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.103.10.116 assigned-source-aware post-adoption verification candidate build
+v0.1.104 sandbox mutation verification and rollback evidence gate candidate build
 ```
 
 

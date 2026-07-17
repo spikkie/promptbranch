@@ -9,6 +9,7 @@ It summarizes the active MVP, Definition of Done, release plan, current status, 
 - `mvp.md` — active MVP goal, boundaries, success signal, scope, non-goals, assumptions, and risks.
 - `definition-of-done.md` — evidence-based DoD checklist for the active MVP and release-control workflow.
 - `plan.md` — current release/slice plan from the accepted baseline.
+- `promptbranch-plan-v0.1.104.md` — product roadmap, accepted state, active sandbox verification slice, and defined next slices.
 - `status.md` — current project state, baseline, risks, blockers, unknowns, and next safe action.
 - `release-status.md` — release-by-release control table for the current line.
 - `decisions.md` — compact durable decision log.
@@ -21,6 +22,6 @@ When older planning documents conflict with accepted release evidence, the accep
 Current authority starts from:
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.76.zip
-accepted checksum: 27030674c5af1b1d9d5199e638b55c2d3beed4b7df36175082e107992721d96f
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
+accepted evidence: 9/9 GO, evidence-bound adoption, release_adopted_and_verified
 ```
