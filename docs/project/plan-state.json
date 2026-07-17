@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip",
   "accepted_current_version": "v0.1.103.10.116",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
-  "active_candidate_version": "v0.1.104.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+  "active_candidate_version": "v0.1.104.2",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.104.1 \u2014 sandbox release-gate integration and fresh validation evidence",
+  "active_slice": "v0.1.104.2 \u2014 bounded post-bootstrap conversation-idle recovery",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -153,11 +153,19 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
       "created_at": "2026-07-17T10:45:00+02:00",
       "slice": "v0.1.104.1 \u2014 sandbox release-gate integration and fresh validation evidence",
-      "status": "candidate",
+      "status": "repair_required",
+      "validation": "Strict host validation ran all 10 gates: fresh full_direct, independent full_localhost, the explicit 13-gate sandbox proof, live profile preflight, import smoke, and Artifact Guardian passed. The continuous external-live flow reproduced target_conversation_busy after a completed bootstrap because interrupted_answer_state persisted before the ask; ask_live and the two later live gates failed as a cascade; adoption was refused.",
       "version": "v0.1.104.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+      "created_at": "2026-07-17T19:45:00+02:00",
+      "slice": "v0.1.104.2 \u2014 bounded post-bootstrap conversation-idle recovery",
+      "status": "candidate",
+      "version": "v0.1.104.2"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -464,10 +472,10 @@
   "last_completed_normal_slice_version": "v0.1.103",
   "last_completed_repair": "v0.1.103.10.116 \u2014 assigned-source-aware post-adoption verification",
   "last_completed_repair_version": "v0.1.103.10.116",
-  "last_updated": "2026-07-16T19:00:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
-  "next_normal_slice": "v0.1.104.1 \u2014 sandbox release-gate integration and fresh validation evidence",
-  "next_normal_version": "v0.1.104.1",
+  "last_updated": "2026-07-17T19:45:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+  "next_normal_slice": "v0.1.104.2 \u2014 bounded post-bootstrap conversation-idle recovery",
+  "next_normal_version": "v0.1.104.2",
   "next_planned_slice_after_acceptance": "Sandbox correction promotion readiness check",
   "next_planned_version_after_acceptance": "v0.1.105",
   "out_of_scope": [
@@ -923,9 +931,18 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
       "kind": "repair",
       "slice": "v0.1.104.1 \u2014 sandbox release-gate integration and fresh validation evidence",
-      "status": "candidate",
+      "status": "repair_required",
       "summary": "Adds the exact 13-gate sandbox rollback proof to the mandatory release-validation manifest and all-tests summary, hashes the manifest into reusable evidence identity, and forbids direct evidence reuse for this repair while retaining independent localhost execution.",
+      "validation": "Strict host validation ran all 10 gates: fresh full_direct, independent full_localhost, the explicit 13-gate sandbox proof, live profile preflight, import smoke, and Artifact Guardian passed. The continuous external-live flow reproduced target_conversation_busy after a completed bootstrap because interrupted_answer_state persisted before the ask; ask_live and the two later live gates failed as a cascade; adoption was refused.",
       "version": "v0.1.104.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+      "kind": "repair",
+      "slice": "v0.1.104.2 \u2014 bounded post-bootstrap conversation-idle recovery",
+      "status": "candidate",
+      "summary": "After a completed bootstrap sentinel, probe composer readiness before filling the ask. When interrupted_answer_state is the sole blocker, reload the same trusted conversation exactly once in the same page/context/profile, reverify the bootstrap sentinel, require no stop/thinking/running state, and submit the ask only after authoritative idle readiness. Persistent or non-exclusive busy state fails closed without ask submission.",
+      "version": "v0.1.104.2"
     }
   ],
   "release_mode": "repair",
@@ -1102,6 +1119,19 @@
       "summary": "Makes final current-state verification distinguish the canonical artifact filename from the exact backend-assigned Project Source filename, verifies both immutable backing IDs, retains all version and consistency checks, and emits release_adopted_and_verified only after complete alignment.",
       "validation": "9/9 GO; evidence-bound adoption and assigned-source-aware final verification passed",
       "version": "v0.1.103.10.116"
+    },
+    {
+      "kind": "repair",
+      "status": "repair_required",
+      "summary": "Integrated the exact sandbox mutation/rollback proof as a mandatory signed release gate and forced fresh direct plus independent localhost execution.",
+      "validation": "Strict host validation ran all 10 gates: fresh full_direct, independent full_localhost, the explicit 13-gate sandbox proof, live profile preflight, import smoke, and Artifact Guardian passed. The continuous external-live flow reproduced target_conversation_busy after a completed bootstrap because interrupted_answer_state persisted before the ask; ask_live and the two later live gates failed as a cascade; adoption was refused.",
+      "version": "v0.1.104.1"
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "After a completed bootstrap sentinel, probe composer readiness before filling the ask. When interrupted_answer_state is the sole blocker, reload the same trusted conversation exactly once in the same page/context/profile, reverify the bootstrap sentinel, require no stop/thinking/running state, and submit the ask only after authoritative idle readiness. Persistent or non-exclusive busy state fails closed without ask submission.",
+      "version": "v0.1.104.2"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1126,13 +1156,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
       "release_mode": "repair",
-      "scope": "make the existing sandbox mutation/rollback proof a mandatory signed release gate and require fresh direct plus independent localhost evidence without advancing scope",
-      "slice": "v0.1.104.1 \u2014 sandbox release-gate integration and fresh validation evidence",
+      "scope": "recover exactly once from post-bootstrap interrupted_answer_state on the same trusted conversation without resubmitting bootstrap or advancing sandbox authority",
+      "slice": "v0.1.104.2 \u2014 bounded post-bootstrap conversation-idle recovery",
       "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.1.zip",
-      "version": "v0.1.104.1"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.2.zip",
+      "version": "v0.1.104.2"
     },
     {
       "release_mode": "normal",
@@ -1169,5 +1199,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.104.1"
+  "updated_for": "v0.1.104.2"
 }

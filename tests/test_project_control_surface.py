@@ -77,7 +77,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.104.1.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.104.2.zip" in text
     assert "standard browser profile default" in text
 
 
@@ -140,11 +140,11 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.103.10.116"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip"
-    assert data["active_candidate_version"] == "v0.1.104.1"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.1.zip"
-    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.1.zip"
-    assert data["next_normal_version"] == "v0.1.104.1"
-    assert data["active_slice"] == "v0.1.104.1 — sandbox release-gate integration and fresh validation evidence"
+    assert data["active_candidate_version"] == "v0.1.104.2"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.2.zip"
+    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.2.zip"
+    assert data["next_normal_version"] == "v0.1.104.2"
+    assert data["active_slice"] == "v0.1.104.2 — bounded post-bootstrap conversation-idle recovery"
     assert data["next_planned_version_after_acceptance"] == "v0.1.105"
     assert data["next_planned_slice_after_acceptance"] == "Sandbox correction promotion readiness check"
     assert data["repair_must_not_advance_scope"] is True
@@ -158,8 +158,8 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.103.10.116"
-    assert payload["active_candidate_version"] == "v0.1.104.1"
-    assert payload["next_normal_slice"] == "v0.1.104.1 — sandbox release-gate integration and fresh validation evidence"
+    assert payload["active_candidate_version"] == "v0.1.104.2"
+    assert payload["next_normal_slice"] == "v0.1.104.2 — bounded post-bootstrap conversation-idle recovery"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 4
 
@@ -176,7 +176,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.1.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.2.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -210,8 +210,8 @@ def test_project_next_slice_payload_is_derived_from_validated_control_surface() 
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip"
-    assert payload["next_normal_version"] == "v0.1.104.1"
-    assert payload["next_normal_slice"] == "v0.1.104.1 — sandbox release-gate integration and fresh validation evidence"
+    assert payload["next_normal_version"] == "v0.1.104.2"
+    assert payload["next_normal_slice"] == "v0.1.104.2 — bounded post-bootstrap conversation-idle recovery"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.105"
     assert payload["next_slice_after_acceptance"] == "Sandbox correction promotion readiness check"
     assert payload["architecture_invariants_checked"] is True
@@ -230,7 +230,7 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.104.1"
+    assert payload["next_normal_version"] == "v0.1.104.2"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.105"
 
 

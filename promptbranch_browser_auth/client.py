@@ -2119,6 +2119,187 @@ class ChatGPTBrowserClient:
             wait_seconds=0.0,
         )
 
+    async def _release_live_post_bootstrap_idle_recovery(
+        self,
+        page: Any,
+        *,
+        conversation_url: str,
+        bootstrap_prompt: str,
+    ) -> dict[str, Any]:
+        """Require an idle composer after bootstrap, with one interrupted-state reload.
+
+        This recovery is intentionally narrower than the generic ask path.  It never
+        resubmits the bootstrap prompt, never creates or selects another conversation,
+        and reuses the same page, browser context, physical profile, and trusted
+        conversation URL.  A reload is allowed only when the sole readiness blocker is
+        ``interrupted_answer_state``.
+        """
+
+        started = time.monotonic()
+        expected_bootstrap_token = self._release_live_expected_single_token(bootstrap_prompt)
+        initial = await self._wait_for_composer_ready_before_fill(
+            page,
+            timeout_ms=3_000,
+            poll_interval_ms=500,
+        )
+        initial_blockers = list(initial.get("blockers") or []) if isinstance(initial, dict) else []
+        initial_ready = bool(isinstance(initial, dict) and initial.get("status") == "composer_ready" and not initial_blockers)
+        base = {
+            "action": "release_live_post_bootstrap_idle_recovery",
+            "conversation_url": conversation_url,
+            "same_page_reused": True,
+            "continuous_browser_context_preserved": True,
+            "physical_profile_preserved": True,
+            "bootstrap_resubmitted": False,
+            "new_conversation_created": False,
+            "recovery_limit": 1,
+            "initial_readiness": initial,
+            "initial_blockers": initial_blockers,
+        }
+        if initial_ready:
+            result = {
+                **base,
+                "ok": True,
+                "status": "post_bootstrap_conversation_idle",
+                "recovery_attempted": False,
+                "recovery_count": 0,
+                "bootstrap_sentinel_reverified_after_reload": None,
+                "final_readiness": initial,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+            self._log("release-live-continuous", "post-bootstrap composer already idle", blockers=initial_blockers)
+            return self._attach_rate_limit_telemetry(result)
+
+        interrupted_only = initial_blockers == ["interrupted_answer_state"]
+        if not interrupted_only:
+            result = {
+                **base,
+                "ok": False,
+                "status": "target_conversation_busy",
+                "recovery_attempted": False,
+                "recovery_count": 0,
+                "recovery_skipped_reason": "readiness_blocker_not_interrupted_answer_state_only",
+                "bootstrap_sentinel_reverified_after_reload": None,
+                "final_readiness": initial,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+            self._log(
+                "release-live-continuous",
+                "post-bootstrap composer not idle and bounded interrupted-state recovery is not applicable",
+                blockers=initial_blockers,
+            )
+            return self._attach_rate_limit_telemetry(result)
+
+        before_url = await self._safe_page_url(page)
+        reload_started = time.monotonic()
+        reload_error: Optional[dict[str, str]] = None
+        try:
+            await page.reload(wait_until="domcontentloaded", timeout=30_000)
+        except Exception as exc:
+            reload_error = {
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:500],
+            }
+        reload_seconds = round(time.monotonic() - reload_started, 3)
+        after_url = await self._safe_page_url(page)
+        scope = self._ask_target_scope_evidence(current_url=after_url, target_url=conversation_url)
+
+        challenge_error: Optional[dict[str, str]] = None
+        if reload_error is None:
+            try:
+                await self._wait_for_challenge_resolution(page, label="release-live-post-bootstrap-idle-recovery")
+                await self._raise_fail_fast_challenge_if_configured(
+                    page,
+                    stage="release-live-post-bootstrap-idle-recovery",
+                )
+            except Exception as exc:
+                challenge_error = {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                }
+
+        assistant_selector: Optional[str] = None
+        assistant_count = 0
+        assistant_text = ""
+        assistant_probes: list[dict[str, Any]] = []
+        if reload_error is None and challenge_error is None and scope.get("matches") is True:
+            assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+                page,
+                ASSISTANT_MESSAGE_SELECTORS,
+            )
+        bootstrap_sentinel_preserved = bool(
+            expected_bootstrap_token
+            and self._release_live_answer_matches_expected_single_token(
+                assistant_text,
+                expected_bootstrap_token,
+            )
+        )
+
+        final_readiness: dict[str, Any] = {
+            "status": "composer_not_checked_after_reload",
+            "blockers": [],
+        }
+        if (
+            reload_error is None
+            and challenge_error is None
+            and scope.get("matches") is True
+            and bootstrap_sentinel_preserved
+        ):
+            final_readiness = await self._wait_for_composer_ready_before_fill(
+                page,
+                timeout_ms=10_000,
+                poll_interval_ms=500,
+            )
+        final_blockers = list(final_readiness.get("blockers") or []) if isinstance(final_readiness, dict) else []
+        final_ready = bool(
+            isinstance(final_readiness, dict)
+            and final_readiness.get("status") == "composer_ready"
+            and not final_blockers
+        )
+        ok = bool(
+            reload_error is None
+            and challenge_error is None
+            and scope.get("matches") is True
+            and bootstrap_sentinel_preserved
+            and final_ready
+        )
+        result = {
+            **base,
+            "ok": ok,
+            "status": "post_bootstrap_conversation_idle_recovered" if ok else "target_conversation_busy",
+            "recovery_attempted": True,
+            "recovery_count": 1,
+            "recovery_kind": "same_conversation_page_reload",
+            "reload_before_url": before_url,
+            "reload_after_url": after_url,
+            "reload_seconds": reload_seconds,
+            "reload_error": reload_error,
+            "challenge_error": challenge_error,
+            "same_conversation_scope": scope,
+            "bootstrap_sentinel_expected": expected_bootstrap_token,
+            "bootstrap_sentinel_reverified_after_reload": bootstrap_sentinel_preserved,
+            "assistant_selector_after_reload": assistant_selector,
+            "assistant_count_after_reload": assistant_count,
+            "assistant_text_after_reload": assistant_text,
+            "assistant_probes_after_reload": assistant_probes,
+            "final_readiness": final_readiness,
+            "final_blockers": final_blockers,
+            "stop_thinking_running_absent": final_ready,
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+        self._log(
+            "release-live-continuous",
+            "bounded post-bootstrap interrupted-state recovery completed",
+            ok=ok,
+            recovery_count=1,
+            same_conversation_scope=scope.get("matches"),
+            bootstrap_sentinel_preserved=bootstrap_sentinel_preserved,
+            final_blockers=final_blockers,
+            reload_error=reload_error,
+            challenge_error=challenge_error,
+        )
+        return self._attach_rate_limit_telemetry(result)
+
     async def _release_live_bootstrap_and_ask_operation(
         self,
         *,
@@ -2378,6 +2559,40 @@ class ChatGPTBrowserClient:
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
 
+        post_bootstrap_idle_recovery = await self._release_live_post_bootstrap_idle_recovery(
+            page,
+            conversation_url=conversation_url,
+            bootstrap_prompt=bootstrap_prompt,
+        )
+        if not bool(post_bootstrap_idle_recovery.get("ok")):
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": "target_conversation_busy",
+                "failed_phase": "ask_live",
+                "project_url": project_url,
+                "conversation_url": conversation_url,
+                "project_result": project_result,
+                "bootstrap_result": bootstrap_result,
+                "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "post_bootstrap_idle_recovery": post_bootstrap_idle_recovery,
+                "ask_submission_attempted": False,
+                "continuous_browser_session": True,
+                "same_profile_for_project_bootstrap_and_ask": True,
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                "trusted_conversation_direct_mode": direct_conversation_mode,
+                "project_identity_source": "warmup_conversation_url" if direct_conversation_mode else "project_ensure",
+                "root_project_discovery_skipped": direct_conversation_mode,
+                "bootstrap_completed_with_expected_sentinel": self._release_live_result_completed_with_expected_token(
+                    bootstrap_result,
+                    bootstrap_prompt,
+                ),
+                "ask_completed_with_expected_sentinel": False,
+                "contains_expected_sentinel": False,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+
         ask_result = await self._ask_question_operation(
             context=context,
             page=page,
@@ -2470,6 +2685,8 @@ class ChatGPTBrowserClient:
             "bootstrap_result": bootstrap_result,
             "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
             "bootstrap_sentinel_retry": bootstrap_sentinel_retry,
+            "post_bootstrap_idle_recovery": post_bootstrap_idle_recovery,
+            "ask_submission_attempted": True,
             "ask_result": ask_result,
             "continuous_browser_session": True,
             "same_profile_for_project_bootstrap_and_ask": True,

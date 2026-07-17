@@ -2,9 +2,13 @@
 
 ## Active repair slice
 
-`v0.1.104.1 — sandbox release-gate integration and fresh validation evidence`
+`v0.1.104.2 — bounded post-bootstrap conversation-idle recovery`
 
-The repair preserves the sandbox-only mutation implementation and makes its exact 13-gate result mandatory in both the release-validation manifest and the top-level all-tests summary. Direct evidence reuse is disabled for this candidate; localhost remains independently executed.
+The repair preserves the proven sandbox and transport gates and adds exactly one same-page reload of the same trusted conversation only when `interrupted_answer_state` is the sole post-bootstrap blocker. It reverifies the bootstrap sentinel and authoritative idle composer state before ask submission.
+
+## Recent repair context
+
+- `v0.1.104.1` proved fresh direct, independent localhost, and all 13 sandbox gates, but external-live reproduced `target_conversation_busy`; adoption was refused.
 
 ## Accepted repair baseline
 

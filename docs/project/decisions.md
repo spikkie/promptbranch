@@ -960,3 +960,8 @@ Release-control adoption must not reconstruct authority from a canonical filenam
 ## v0.1.104.1 — mandatory sandbox release gate
 
 Decision: the sandbox mutation/rollback proof is release-blocking. It must appear in the release-validation manifest and as an explicit all-tests step. Reusable evidence identity includes the manifest SHA-256. This repair forbids direct evidence reuse and retains independent localhost execution without broadening sandbox authority.
+
+
+## v0.1.104.2 — bounded post-bootstrap conversation-idle recovery
+
+Decision: preserve the `v0.1.104.1` sandbox and transport gates unchanged. After a completed bootstrap response, perform a bounded composer-readiness probe. Only `interrupted_answer_state` by itself permits one reload of the same trusted conversation in the same page/context/profile. Reverify the bootstrap sentinel and a clean idle composer before the ask. Never resubmit bootstrap, create another conversation, or infer rate limiting without structured evidence.

@@ -1151,3 +1151,8 @@ The previous `v0.1.103` copied-fixture mutation contract is advanced, not broade
 ## v0.1.104.1
 
 No state-format migration is required. Import from accepted/current `v0.1.103.10.116` or the unadopted `v0.1.104` candidate preserves local project/repository registries and browser profiles. Existing `v0.1.104` validation evidence is not reusable because `v0.1.104.1` requires fresh direct execution and a different signed release-validation manifest.
+
+
+## v0.1.104.2
+
+No state-format migration is required. Import preserves browser profiles and project/repository/artifact registries. `v0.1.104.1` remains unadopted and repair-required; accepted/current remains `v0.1.103.10.116`. Fresh direct and independent localhost evidence remain required.

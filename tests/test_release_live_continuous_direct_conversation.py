@@ -71,6 +71,17 @@ class DirectConversationClient(ChatGPTBrowserClient):
             "answer": "ASK_SENTINEL" if len(self.ask_calls) == 2 else "BOOTSTRAP_SENTINEL",
         }
 
+    async def _release_live_post_bootstrap_idle_recovery(self, page, *, conversation_url: str, bootstrap_prompt: str):  # type: ignore[no-untyped-def]
+        return {
+            "ok": True,
+            "status": "post_bootstrap_conversation_idle",
+            "conversation_url": conversation_url,
+            "recovery_attempted": False,
+            "recovery_count": 0,
+            "bootstrap_resubmitted": False,
+            "final_readiness": {"status": "composer_ready", "blockers": []},
+        }
+
 
 def test_release_live_continuous_trusted_conversation_skips_project_discovery(tmp_path: Path) -> None:
     client = DirectConversationClient(tmp_path)
@@ -482,3 +493,201 @@ def test_release_live_visible_thinking_preamble_normalization_static_guard() -> 
     assert "lines[-1] != expected_text" in source
     assert "all(line in cls._RELEASE_LIVE_VISIBLE_THINKING_PREAMBLES" in source
 
+
+
+class ReloadPage:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.reload_calls: list[dict] = []
+
+    async def reload(self, *, wait_until: str, timeout: int):
+        self.reload_calls.append({"wait_until": wait_until, "timeout": timeout})
+        return None
+
+
+class PostBootstrapInterruptedRecoveryClient(ChatGPTBrowserClient):
+    def __init__(self, tmp_path: Path, *, final_ready: bool = True, initial_blockers: list[str] | None = None) -> None:
+        super().__init__(
+            ChatGPTBrowserConfig(
+                project_url="https://chatgpt.com/g/g-p-demo/c/warmup",
+                profile_dir=str(tmp_path / "profile"),
+                debug_artifact_dir=str(tmp_path / "debug"),
+            )
+        )
+        self.final_ready = final_ready
+        self.initial_blockers = initial_blockers or ["interrupted_answer_state"]
+        self.readiness_calls = 0
+        self.challenge_wait_labels: list[str] = []
+        self.fail_fast_stages: list[str] = []
+
+    def _log(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return None
+
+    async def _wait_for_composer_ready_before_fill(self, page, *, timeout_ms: int = 20_000, poll_interval_ms: int = 500):  # type: ignore[no-untyped-def]
+        self.readiness_calls += 1
+        if self.readiness_calls == 1:
+            return {
+                "status": "composer_not_ready_before_fill",
+                "blockers": list(self.initial_blockers),
+                "stop_visible": "stop_button_visible" in self.initial_blockers,
+                "thinking_state": {"visible": "thinking_visible" in self.initial_blockers},
+                "interrupted_state": {"present": "interrupted_answer_state" in self.initial_blockers},
+            }
+        if self.final_ready:
+            return {
+                "status": "composer_ready",
+                "blockers": [],
+                "stop_visible": False,
+                "thinking_state": {"visible": False},
+                "interrupted_state": {"present": False},
+            }
+        return {
+            "status": "composer_not_ready_before_fill",
+            "blockers": ["interrupted_answer_state"],
+            "stop_visible": False,
+            "thinking_state": {"visible": False},
+            "interrupted_state": {"present": True},
+        }
+
+    async def _safe_page_url(self, page):  # type: ignore[no-untyped-def]
+        return page.url
+
+    async def _wait_for_challenge_resolution(self, page, *, label: str):  # type: ignore[no-untyped-def]
+        self.challenge_wait_labels.append(label)
+
+    async def _raise_fail_fast_challenge_if_configured(self, page, *, stage: str):  # type: ignore[no-untyped-def]
+        self.fail_fast_stages.append(stage)
+
+    async def _extract_last_text_from_selectors(self, page, selectors):  # type: ignore[no-untyped-def]
+        return '[data-message-author-role="assistant"]', 2, "BOOTSTRAP_SENTINEL", []
+
+
+def test_release_live_post_bootstrap_interrupted_state_reloads_same_conversation_once(tmp_path: Path) -> None:
+    url = "https://chatgpt.com/g/g-p-demo/c/warmup"
+    page = ReloadPage(url)
+    client = PostBootstrapInterruptedRecoveryClient(tmp_path, final_ready=True)
+
+    result = asyncio.run(
+        client._release_live_post_bootstrap_idle_recovery(
+            page,
+            conversation_url=url,
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "post_bootstrap_conversation_idle_recovered"
+    assert result["recovery_attempted"] is True
+    assert result["recovery_count"] == 1
+    assert result["bootstrap_resubmitted"] is False
+    assert result["new_conversation_created"] is False
+    assert result["same_page_reused"] is True
+    assert result["continuous_browser_context_preserved"] is True
+    assert result["physical_profile_preserved"] is True
+    assert result["same_conversation_scope"]["matches"] is True
+    assert result["bootstrap_sentinel_reverified_after_reload"] is True
+    assert result["stop_thinking_running_absent"] is True
+    assert result["final_blockers"] == []
+    assert page.reload_calls == [{"wait_until": "domcontentloaded", "timeout": 30_000}]
+    assert client.readiness_calls == 2
+    assert client.challenge_wait_labels == ["release-live-post-bootstrap-idle-recovery"]
+    assert client.fail_fast_stages == ["release-live-post-bootstrap-idle-recovery"]
+
+
+def test_release_live_post_bootstrap_interrupted_state_persists_fails_closed_after_one_reload(tmp_path: Path) -> None:
+    url = "https://chatgpt.com/g/g-p-demo/c/warmup"
+    page = ReloadPage(url)
+    client = PostBootstrapInterruptedRecoveryClient(tmp_path, final_ready=False)
+
+    result = asyncio.run(
+        client._release_live_post_bootstrap_idle_recovery(
+            page,
+            conversation_url=url,
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "target_conversation_busy"
+    assert result["recovery_attempted"] is True
+    assert result["recovery_count"] == 1
+    assert result["bootstrap_resubmitted"] is False
+    assert result["final_blockers"] == ["interrupted_answer_state"]
+    assert page.reload_calls == [{"wait_until": "domcontentloaded", "timeout": 30_000}]
+    assert client.readiness_calls == 2
+
+
+def test_release_live_post_bootstrap_does_not_reload_for_other_busy_blockers(tmp_path: Path) -> None:
+    url = "https://chatgpt.com/g/g-p-demo/c/warmup"
+    page = ReloadPage(url)
+    client = PostBootstrapInterruptedRecoveryClient(
+        tmp_path,
+        initial_blockers=["stop_button_visible", "interrupted_answer_state"],
+    )
+
+    result = asyncio.run(
+        client._release_live_post_bootstrap_idle_recovery(
+            page,
+            conversation_url=url,
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "target_conversation_busy"
+    assert result["recovery_attempted"] is False
+    assert result["recovery_skipped_reason"] == "readiness_blocker_not_interrupted_answer_state_only"
+    assert page.reload_calls == []
+    assert client.readiness_calls == 1
+
+
+class PostBootstrapRecoveryFailureContinuousClient(DirectConversationClient):
+    async def _release_live_post_bootstrap_idle_recovery(self, page, *, conversation_url: str, bootstrap_prompt: str):  # type: ignore[no-untyped-def]
+        return {
+            "ok": False,
+            "status": "target_conversation_busy",
+            "conversation_url": conversation_url,
+            "recovery_attempted": True,
+            "recovery_count": 1,
+            "bootstrap_resubmitted": False,
+            "final_blockers": ["interrupted_answer_state"],
+        }
+
+
+def test_release_live_continuous_does_not_submit_ask_when_post_bootstrap_recovery_fails(tmp_path: Path) -> None:
+    client = PostBootstrapRecoveryFailureContinuousClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Return exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "target_conversation_busy"
+    assert result["failed_phase"] == "ask_live"
+    assert result["ask_submission_attempted"] is False
+    assert result["post_bootstrap_idle_recovery"]["recovery_count"] == 1
+    assert len(client.ask_calls) == 1
+    assert client.ask_calls[0]["prompt"] == "Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else."
+
+
+def test_release_live_post_bootstrap_recovery_static_contract() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert "_release_live_post_bootstrap_idle_recovery" in source
+    assert 'initial_blockers == ["interrupted_answer_state"]' in source
+    assert 'await page.reload(wait_until="domcontentloaded", timeout=30_000)' in source
+    assert "release-live-post-bootstrap-idle-recovery" in source
+    assert "bootstrap_sentinel_reverified_after_reload" in source
+    assert "stop_thinking_running_absent" in source
+    assert '"ask_submission_attempted": False' in source
+    assert '"status": "target_conversation_busy"' in source

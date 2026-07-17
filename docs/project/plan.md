@@ -7,43 +7,37 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
-active candidate version: v0.1.104.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.1.zip
-next normal slice: v0.1.104.1 — sandbox release-gate integration and fresh validation evidence
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
+active candidate version: v0.1.104.2
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
+next normal slice: v0.1.104.2 — bounded post-bootstrap conversation-idle recovery
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Plan summary
 
-`v0.1.104.1` is a repair of the unadopted `v0.1.104` candidate. It does not broaden sandbox authority. It makes the exact sandbox mutation/validation/rollback proof a mandatory release-validation group and an explicit top-level all-tests step, hashes that manifest into release evidence identity, and forces fresh direct plus independent localhost execution before adoption. Accepted/current remains `v0.1.103.10.116`.
+`v0.1.104.2` is a narrow repair of the unadopted `v0.1.104.1` candidate. The 13-gate sandbox mutation/validation/rollback proof, ten-step release manifest, fresh direct execution, and independent localhost execution remain unchanged. The repair addresses only the reproduced post-bootstrap `interrupted_answer_state` transition in the continuous external-live flow. Accepted/current remains `v0.1.103.10.116`.
+
+## Active repair slice — v0.1.104.2 — bounded post-bootstrap conversation-idle recovery
+
+Acceptance scope:
+
+- After a completed and stable bootstrap sentinel, probe composer readiness before inserting the ask prompt.
+- Permit recovery only when `interrupted_answer_state` is the sole blocker.
+- Reload the same trusted conversation exactly once in the same page, browser context, and physical profile.
+- Never resubmit the bootstrap prompt and never create or select another conversation.
+- Reverify the exact bootstrap sentinel after reload.
+- Require no stop button, thinking state, running state, or interrupted-answer blocker before ask submission.
+- Retry the composer-readiness gate once after reload.
+- Submit the ask sentinel only after authoritative idle readiness.
+- Fail closed as `target_conversation_busy` without ask submission when recovery fails or another blocker is present.
+- Do not classify the condition as Cloudflare or rate limiting without structured evidence.
+
+Out of scope: sandbox-gate changes, source replacement changes, general retries, new-conversation fallback, Project Source mutation from the loop, artifact adoption from the loop, deployment, Kubernetes mutation, and ChatGPT Project deletion.
 
 ## Rolling horizon authority
 
-The active rolling horizon is stored in `docs/project/plan-state.json` and explained in `docs/project/slice-horizon.md`.
-
-```text
-v0.1.104 — Sandbox mutation verification and rollback evidence gate
-v0.1.105 — Sandbox correction promotion readiness check
-v0.1.106 — Controlled correction promotion decision record
-v0.1.107 — Controlled correction execution envelope design
-```
-
-
-## Active repair slice — v0.1.104.1 sandbox release-gate integration and fresh validation evidence
-
-Repair acceptance scope:
-
-- Preserve the `v0.1.104` sandbox mutation, exact validation, rollback and cleanup implementation unchanged.
-- Add `sandbox_mutation_rollback_gate` as a required `pb test full` release-validation manifest group.
-- Execute the same verifier as an explicit tenth `--run-all-tests` step.
-- Require terminal status `sandbox_mutation_verified_and_rolled_back` and all 13 named gates.
-- Include the exact release-validation manifest SHA-256 in reusable evidence identity.
-- Forbid `full_direct` evidence reuse for `v0.1.104.1`.
-- Require independent `full_localhost` execution.
-- Keep accepted/current `v0.1.103.10.116` until all release gates and adoption succeed.
-
-No repository mutation, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, or ChatGPT Project deletion is introduced.
+`docs/project/plan-state.json` is authoritative for the active repair and the planned normal horizon. Repair releases may change only the active repair entry and must not advance the normal scope.
 
 ## Release / slice plan
 
