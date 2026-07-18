@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
-active candidate version: v0.1.104.2
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.2.zip
-next normal slice: v0.1.104.2 — bounded post-bootstrap conversation-idle recovery
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
+active candidate version: v0.1.104.3
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
+next normal slice: v0.1.104.3 — current-turn-scoped interrupted-state readiness
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
@@ -817,4 +817,6 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 | v0.1.104 | normal | Sandbox mutation verification and rollback evidence gate | repair_required | exact before/after hash proof, sandbox-only json.tool validation, validation read-only proof, exact rollback proof, repository unchanged, workspace deleted | DOD-286 focused candidate; next slice v0.1.105 | pending |
 | v0.1.104.1 | repair | Sandbox release-gate integration and fresh validation evidence | repair_required | mandatory 13-gate sandbox manifest group; explicit top-level gate; manifest-hash evidence identity; fresh direct; independent localhost | DOD-287 focused candidate; next normal slice v0.1.105 | pending |
 
-| v0.1.104.2 | repair | Bounded post-bootstrap conversation-idle recovery | candidate | one pre-ask readiness probe; one same-conversation reload only for interrupted_answer_state; bootstrap sentinel reverified; authoritative idle required; no general retry | DOD-288 focused candidate; next normal slice v0.1.105 | pending |
+| v0.1.104.2 | repair | Bounded post-bootstrap conversation-idle recovery | repair_required | one pre-ask readiness probe; one same-conversation reload only for interrupted_answer_state; bootstrap sentinel reverified; authoritative idle required; no general retry | DOD-288 focused candidate; next normal slice v0.1.105 | pending |
+
+| v0.1.104.3 | repair | Current-turn-scoped interrupted-state readiness | candidate | ignore historical Retry; separate pre/post bootstrap readiness; one hydrated same-conversation reload; no historical resubmit or general retry | DOD-289 focused candidate; next normal slice v0.1.105 | pending |

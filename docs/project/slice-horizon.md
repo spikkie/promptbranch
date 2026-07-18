@@ -2,13 +2,14 @@
 
 ## Active repair slice
 
-`v0.1.104.2 — bounded post-bootstrap conversation-idle recovery`
+`v0.1.104.3 — current-turn-scoped interrupted-state readiness`
 
-The repair preserves the proven sandbox and transport gates and adds exactly one same-page reload of the same trusted conversation only when `interrupted_answer_state` is the sole post-bootstrap blocker. It reverifies the bootstrap sentinel and authoritative idle composer state before ask submission.
+The repair preserves the proven sandbox and transport gates, ignores historical Retry controls, separates pre-bootstrap readiness from post-bootstrap recovery, and retains exactly one same-page reload of the same trusted conversation only when latest-turn `interrupted_answer_state` is the sole post-bootstrap blocker. After reload it waits boundedly for conversation hydration, then reverifies the exact bootstrap sentinel and authoritative idle composer state before ask submission.
 
 ## Recent repair context
 
-- `v0.1.104.1` proved fresh direct, independent localhost, and all 13 sandbox gates, but external-live reproduced `target_conversation_busy`; adoption was refused.
+- `v0.1.104.1` proved fresh direct, independent localhost, and all 13 sandbox gates, but external-live reproduced post-bootstrap `target_conversation_busy`; adoption was refused.
+- `v0.1.104.2` preserved those gates and added one reload, but a historical Retry control was misclassified as active interruption before bootstrap; adoption was refused.
 
 ## Accepted repair baseline
 

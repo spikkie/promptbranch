@@ -5,7 +5,7 @@ SCRIPT = (ROOT / "chatgpt_claudecode_workflow_release_control.sh").read_text(enc
 
 
 def test_v01041_and_v01042_force_fresh_direct_and_independent_localhost() -> None:
-    assert 'if [[ "${ver}" == "v0.1.104.1" || "${ver}" == "v0.1.104.2" ]]' in SCRIPT
+    assert 'if [[ "${ver}" == "v0.1.104.1" || "${ver}" == "v0.1.104.2" || "${ver}" == "v0.1.104.3" ]]' in SCRIPT
     assert 'force_fresh_full_transport_evidence=1' in SCRIPT
     assert '"${label}" == "direct" && ${force_fresh_full_transport_evidence} -eq 0' in SCRIPT
     assert 'full_direct_validation_evidence_reuse: forbidden' in SCRIPT

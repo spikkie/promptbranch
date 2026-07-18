@@ -1156,3 +1156,8 @@ No state-format migration is required. Import from accepted/current `v0.1.103.10
 ## v0.1.104.2
 
 No state-format migration is required. Import preserves browser profiles and project/repository/artifact registries. `v0.1.104.1` remains unadopted and repair-required; accepted/current remains `v0.1.103.10.116`. Fresh direct and independent localhost evidence remain required.
+
+
+## v0.1.104.3
+
+The continuous release-live readiness model now scopes interruption evidence to the latest/current turn, separates pre-bootstrap readiness from post-bootstrap recovery, and adds bounded post-reload hydration. The sandbox gate and ten-step release manifest are unchanged.

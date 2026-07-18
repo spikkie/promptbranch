@@ -6037,3 +6037,42 @@ def test_global_conversation_history_shield_does_not_intercept_project_endpoint(
     assert route.continued is True
     assert route.fulfilled is None
     assert telemetry["conversation_history_request_shielded_count"] == 0
+
+
+def test_wait_for_composer_ready_ignores_historical_retry_when_latest_turn_is_idle(tmp_path: Path) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+
+    class DummyPage:
+        async def wait_for_timeout(self, ms):
+            raise AssertionError("historical retry must not block the idle composer")
+
+    async def fake_submit_state(page):
+        return {"send_ready": False, "stop_visible": False, "idle_visible": True, "aria_label": "Start Voice"}
+
+    async def fake_thinking_state(page):
+        return {"visible": False}
+
+    async def fake_interrupted_state(page):
+        return {
+            "present": False,
+            "reason": None,
+            "scope": "latest_assistant_turn_or_active_composer",
+            "historical_control_count": 1,
+            "historical_controls_ignored": [
+                {"selector": 'button[aria-label*="Retry" i]', "aria_label": "Retry"}
+            ],
+        }
+
+    client._probe_submit_button_state = fake_submit_state
+    client._probe_thinking_state = fake_thinking_state
+    client._probe_interrupted_answer_state = fake_interrupted_state
+
+    result = asyncio.run(client._wait_for_composer_ready_before_fill(DummyPage(), timeout_ms=50))
+
+    assert result["status"] == "composer_ready"
+    assert result["idle_visible"] is True
+    assert result["stop_visible"] is False
+    assert result["blockers"] == []
+    assert result["interrupted_state"]["historical_control_count"] == 1

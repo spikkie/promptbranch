@@ -62,11 +62,22 @@ class DirectConversationClient(ChatGPTBrowserClient):
             "session_state_reason": "authenticated_indicator_visible",
         }
 
+    async def _wait_for_composer_ready_before_fill(self, page, *, timeout_ms: int = 20_000, poll_interval_ms: int = 500):  # type: ignore[no-untyped-def]
+        return {
+            "status": "composer_ready",
+            "blockers": [],
+            "send_ready": False,
+            "stop_visible": False,
+            "idle_visible": True,
+            "thinking_state": {"visible": False},
+            "interrupted_state": {"present": False},
+        }
+
     async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
         self.ask_calls.append(dict(kwargs))
         return {
             "ok": True,
-            "status": "verified",
+            "status": "completed",
             "conversation_url": kwargs["conversation_url"],
             "answer": "ASK_SENTINEL" if len(self.ask_calls) == 2 else "BOOTSTRAP_SENTINEL",
         }
@@ -92,8 +103,8 @@ def test_release_live_continuous_trusted_conversation_skips_project_discovery(tm
             context=object(),
             page=object(),
             project_name="promptbranch3",
-            bootstrap_prompt="BOOTSTRAP_SENTINEL",
-            ask_prompt="ASK_SENTINEL",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Reply with exactly the single token ASK_SENTINEL and nothing else.",
             icon=None,
             color=None,
             memory_mode="project-only",
@@ -102,7 +113,7 @@ def test_release_live_continuous_trusted_conversation_skips_project_discovery(tm
     )
 
     assert result["ok"] is True
-    assert result["status"] == "verified"
+    assert result["status"] == "completed"
     assert result["trusted_conversation_direct_mode"] is True
     assert result["root_project_discovery_skipped"] is True
     assert result["project_identity_source"] == "warmup_conversation_url"
@@ -328,7 +339,7 @@ class BootstrapSentinelMissingRetryFailureClient(DirectConversationClient):
         }
 
 
-def test_release_live_continuous_retries_missing_bootstrap_sentinel_once_after_ask_success(tmp_path: Path) -> None:
+def test_release_live_continuous_stops_before_ask_when_bootstrap_sentinel_is_wrong(tmp_path: Path) -> None:
     client = BootstrapSentinelMissingRetrySuccessClient(tmp_path)
     warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
 
@@ -346,23 +357,19 @@ def test_release_live_continuous_retries_missing_bootstrap_sentinel_once_after_a
         )
     )
 
-    assert result["ok"] is True
-    assert result["status"] == "completed"
-    assert result["bootstrap_guardrail_retry"] is None
-    assert result["bootstrap_sentinel_retry"]["ok"] is True
-    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
-    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is True
-    assert result["bootstrap_completed_with_expected_sentinel"] is True
-    assert result["ask_completed_with_expected_sentinel"] is True
-    assert len(client.ask_calls) == 3
-    assert [call["prompt"] for call in client.ask_calls] == [
-        "Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
-        "Return exactly the single token ASK_SENTINEL and nothing else.",
-        "Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
-    ]
+    assert result["ok"] is False
+    assert result["status"] == "bootstrap_sentinel_missing_before_ask"
+    assert result["failed_phase"] == "live_conversation_bootstrap"
+    assert result["bootstrap_submission_succeeded"] is True
+    assert result["bootstrap_generation_completed"] is True
+    assert result["bootstrap_completed_with_expected_sentinel"] is False
+    assert result["post_bootstrap_recovery_eligible"] is False
+    assert result["post_bootstrap_idle_recovery"]["recovery_attempted"] is False
+    assert result["ask_submission_attempted"] is False
+    assert len(client.ask_calls) == 1
 
 
-def test_release_live_continuous_missing_bootstrap_sentinel_after_ask_success_has_precise_status(tmp_path: Path) -> None:
+def test_release_live_continuous_wrong_bootstrap_never_runs_old_after_ask_retry(tmp_path: Path) -> None:
     client = BootstrapSentinelMissingRetryFailureClient(tmp_path)
     warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
 
@@ -381,24 +388,22 @@ def test_release_live_continuous_missing_bootstrap_sentinel_after_ask_success_ha
     )
 
     assert result["ok"] is False
-    assert result["status"] == "bootstrap_sentinel_missing_after_ask_success"
+    assert result["status"] == "bootstrap_sentinel_missing_before_ask"
     assert result["failed_phase"] == "live_conversation_bootstrap"
-    assert result["bootstrap_guardrail_retry"] is None
-    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
-    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is False
-    assert result["bootstrap_completed_with_expected_sentinel"] is False
-    assert result["ask_completed_with_expected_sentinel"] is True
-    assert len(client.ask_calls) == 3
+    assert result["post_bootstrap_recovery_eligible"] is False
+    assert result["ask_submission_attempted"] is False
+    assert len(client.ask_calls) == 1
 
 
-def test_release_live_continuous_bootstrap_sentinel_missing_static_guard() -> None:
+def test_release_live_continuous_bootstrap_sentinel_gate_static_guard() -> None:
     source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
-    assert "bootstrap_sentinel_missing_after_ask_success" in source
-    assert "_release_live_bootstrap_sentinel_retry_gate" in source
-    assert "release_live_bootstrap_sentinel_retry_gate" in source
-    assert "if (not bootstrap_completed_with_expected_token) and ask_completed_with_expected_token" in source
-    assert "retry_completed_with_expected_sentinel" in source
-    assert 'result["failed_phase"] = (' in source
+    assert "bootstrap_sentinel_missing_before_ask" in source
+    assert "post_bootstrap_recovery_eligible" in source
+    assert "bootstrap_submission_succeeded" in source
+    assert "bootstrap_generation_completed" in source
+    assert "bootstrap_completed_with_expected_sentinel" in source
+    assert '"ask_submission_attempted": False' in source
+
 
 class VisibleThinkingPreambleCompletedSentinelClient(DirectConversationClient):
     async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
@@ -450,11 +455,8 @@ def test_release_live_accepts_known_visible_thinking_preamble_before_exact_senti
 
     assert result["ok"] is True
     assert result["status"] == "completed"
-    assert result["bootstrap_sentinel_retry"] is None
     assert result["bootstrap_completed_with_expected_sentinel"] is True
     assert result["ask_completed_with_expected_sentinel"] is True
-    assert result["contains_expected_sentinel"] is True
-    assert len(client.ask_calls) == 2
 
 
 def test_release_live_rejects_arbitrary_prefix_before_exact_sentinel(tmp_path: Path) -> None:
@@ -476,12 +478,11 @@ def test_release_live_rejects_arbitrary_prefix_before_exact_sentinel(tmp_path: P
     )
 
     assert result["ok"] is False
-    assert result["status"] == "bootstrap_sentinel_missing_after_ask_success"
+    assert result["status"] == "bootstrap_sentinel_missing_before_ask"
     assert result["failed_phase"] == "live_conversation_bootstrap"
     assert result["bootstrap_completed_with_expected_sentinel"] is False
-    assert result["ask_completed_with_expected_sentinel"] is True
-    assert result["bootstrap_sentinel_retry"]["retry_attempted"] is True
-    assert result["bootstrap_sentinel_retry"]["retry_completed_with_expected_sentinel"] is False
+    assert result["ask_submission_attempted"] is False
+    assert len(client.ask_calls) == 1
 
 
 def test_release_live_visible_thinking_preamble_normalization_static_guard() -> None:
@@ -502,6 +503,9 @@ class ReloadPage:
 
     async def reload(self, *, wait_until: str, timeout: int):
         self.reload_calls.append({"wait_until": wait_until, "timeout": timeout})
+        return None
+
+    async def wait_for_timeout(self, ms: int):
         return None
 
 
@@ -560,6 +564,19 @@ class PostBootstrapInterruptedRecoveryClient(ChatGPTBrowserClient):
 
     async def _extract_last_text_from_selectors(self, page, selectors):  # type: ignore[no-untyped-def]
         return '[data-message-author-role="assistant"]', 2, "BOOTSTRAP_SENTINEL", []
+
+    async def _release_live_wait_for_conversation_hydration(self, page, *, expected_bootstrap_token: str, timeout_ms: int = 15_000, poll_interval_ms: int = 500):  # type: ignore[no-untyped-def]
+        return {
+            "ok": True,
+            "status": "conversation_hydrated",
+            "assistant_selector": '[data-message-author-role="assistant"]',
+            "assistant_count": 2,
+            "assistant_text": "BOOTSTRAP_SENTINEL",
+            "assistant_probes": [],
+            "composer_visible": True,
+            "bootstrap_sentinel_visible": True,
+            "attempt_count": 1,
+        }
 
 
 def test_release_live_post_bootstrap_interrupted_state_reloads_same_conversation_once(tmp_path: Path) -> None:
@@ -688,6 +705,113 @@ def test_release_live_post_bootstrap_recovery_static_contract() -> None:
     assert 'await page.reload(wait_until="domcontentloaded", timeout=30_000)' in source
     assert "release-live-post-bootstrap-idle-recovery" in source
     assert "bootstrap_sentinel_reverified_after_reload" in source
+    assert "_release_live_wait_for_conversation_hydration" in source
+    assert "conversation_hydration" in source
     assert "stop_thinking_running_absent" in source
     assert '"ask_submission_attempted": False' in source
     assert '"status": "target_conversation_busy"' in source
+
+class BootstrapIncompleteNoRecoveryClient(DirectConversationClient):
+    def __init__(self, tmp_path: Path) -> None:
+        super().__init__(tmp_path)
+        self.recovery_calls = 0
+
+    async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.ask_calls.append(dict(kwargs))
+        return {
+            "ok": False,
+            "status": "target_conversation_busy",
+            "conversation_url": kwargs["conversation_url"],
+            "answer": "",
+        }
+
+    async def _release_live_post_bootstrap_idle_recovery(self, page, *, conversation_url: str, bootstrap_prompt: str):  # type: ignore[no-untyped-def]
+        self.recovery_calls += 1
+        raise AssertionError("post-bootstrap recovery must not run before a completed bootstrap sentinel")
+
+
+def test_release_live_continuous_never_invokes_post_bootstrap_recovery_for_incomplete_bootstrap(tmp_path: Path) -> None:
+    client = BootstrapIncompleteNoRecoveryClient(tmp_path)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Reply with exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "target_conversation_busy"
+    assert result["failed_phase"] == "live_conversation_bootstrap"
+    assert result["bootstrap_submission_succeeded"] is False
+    assert result["bootstrap_generation_completed"] is False
+    assert result["bootstrap_completed_with_expected_sentinel"] is False
+    assert result["post_bootstrap_recovery_eligible"] is False
+    assert result["post_bootstrap_idle_recovery"]["status"] == "post_bootstrap_recovery_not_applicable"
+    assert result["post_bootstrap_idle_recovery"]["recovery_attempted"] is False
+    assert result["ask_submission_attempted"] is False
+    assert client.recovery_calls == 0
+    assert len(client.ask_calls) == 1
+
+
+class HydrationWaitClient(ChatGPTBrowserClient):
+    def __init__(self, tmp_path: Path) -> None:
+        super().__init__(
+            ChatGPTBrowserConfig(
+                project_url="https://chatgpt.com/g/g-p-demo/c/warmup",
+                profile_dir=str(tmp_path / "profile"),
+                debug_artifact_dir=str(tmp_path / "debug"),
+            )
+        )
+        self.extract_calls = 0
+
+    def _log(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        return None
+
+    async def _extract_last_text_from_selectors(self, page, selectors):  # type: ignore[no-untyped-def]
+        self.extract_calls += 1
+        if self.extract_calls == 1:
+            return None, 0, "", []
+        return '[data-message-author-role="assistant"]', 2, "BOOTSTRAP_SENTINEL", []
+
+    async def _chat_input_visible(self, page):  # type: ignore[no-untyped-def]
+        return self.extract_calls >= 2
+
+
+def test_release_live_reload_waits_for_bounded_conversation_hydration(tmp_path: Path) -> None:
+    client = HydrationWaitClient(tmp_path)
+    page = ReloadPage("https://chatgpt.com/g/g-p-demo/c/warmup")
+
+    result = asyncio.run(
+        client._release_live_wait_for_conversation_hydration(
+            page,
+            expected_bootstrap_token="BOOTSTRAP_SENTINEL",
+            timeout_ms=100,
+            poll_interval_ms=1,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "conversation_hydrated"
+    assert result["attempt_count"] == 2
+    assert result["assistant_count"] == 2
+    assert result["bootstrap_sentinel_visible"] is True
+    assert result["composer_visible"] is True
+
+
+def test_release_live_current_turn_interruption_scope_static_contract() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_browser_auth" / "client.py").read_text(encoding="utf-8")
+    assert 'scope: "latest_assistant_turn_or_active_composer"' in source
+    assert "historical_controls_ignored" in source
+    assert "latestTurn.contains(item.node)" in source
+    assert "post_bootstrap_recovery_eligible" in source
+    assert '"reason": "bootstrap_not_completed_with_expected_sentinel"' in source
+    assert "_release_live_wait_for_conversation_hydration" in source

@@ -965,3 +965,14 @@ Decision: the sandbox mutation/rollback proof is release-blocking. It must appea
 ## v0.1.104.2 — bounded post-bootstrap conversation-idle recovery
 
 Decision: preserve the `v0.1.104.1` sandbox and transport gates unchanged. After a completed bootstrap response, perform a bounded composer-readiness probe. Only `interrupted_answer_state` by itself permits one reload of the same trusted conversation in the same page/context/profile. Reverify the bootstrap sentinel and a clean idle composer before the ask. Never resubmit bootstrap, create another conversation, or infer rate limiting without structured evidence.
+
+
+## v0.1.104.3 — current-turn-scoped interrupted-state readiness
+
+- A visible Retry or Regenerate control is release-blocking only when it belongs to the latest assistant turn or active composer state.
+- Historical Retry controls are recorded as ignored evidence and do not block an otherwise idle composer.
+- Pre-bootstrap readiness is a separate gate and cannot invoke post-bootstrap recovery.
+- Post-bootstrap recovery is eligible only after successful submission, exact sentinel observation, and completed generation.
+- The one permitted reload must preserve the same page/context/profile/conversation and wait boundedly for hydration before sentinel/readiness checks.
+- No Retry click, historical prompt resubmission, new conversation, or general retry is permitted.
+- The v0.1.104 sandbox verifier remains unchanged and may be run standalone before strict release validation.

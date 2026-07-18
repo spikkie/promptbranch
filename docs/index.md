@@ -1,10 +1,13 @@
 # Promptbranch documentation
 
-Release: `v0.1.104.2`
+Release: `v0.1.104.3`
 
 This documentation entrypoint makes the Promptbranch (`pb`) architecture and release-control material discoverable from one place. It is intentionally a source scaffold for **Material for MkDocs** and does not commit rendered `site/` output.
 
 ## Start here
+
+- [v0.1.104.3 repair note](repair-v0.1.104.3.md)
+- [v0.1.104.3 release note](release-v0.1.104.3.md)
 
 - [v0.1.104.2 repair note](repair-v0.1.104.2.md)
 - [v0.1.104.2 release note](release-v0.1.104.2.md)

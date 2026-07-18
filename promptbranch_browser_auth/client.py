@@ -2119,6 +2119,75 @@ class ChatGPTBrowserClient:
             wait_seconds=0.0,
         )
 
+    async def _release_live_wait_for_conversation_hydration(
+        self,
+        page: Any,
+        *,
+        expected_bootstrap_token: str,
+        timeout_ms: int = 15_000,
+        poll_interval_ms: int = 500,
+    ) -> dict[str, Any]:
+        """Wait boundedly for the reloaded trusted conversation to hydrate."""
+
+        started = time.monotonic()
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        attempt = 0
+        last: dict[str, Any] = {
+            "status": "conversation_hydration_pending",
+            "assistant_count": 0,
+            "composer_visible": False,
+            "bootstrap_sentinel_visible": False,
+        }
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            selector, count, text, probes = await self._extract_last_text_from_selectors(
+                page,
+                ASSISTANT_MESSAGE_SELECTORS,
+            )
+            composer_visible = await self._chat_input_visible(page)
+            sentinel_visible = bool(
+                expected_bootstrap_token
+                and self._release_live_answer_matches_expected_single_token(
+                    text,
+                    expected_bootstrap_token,
+                )
+            )
+            last = {
+                "status": "conversation_hydrated" if sentinel_visible and composer_visible else "conversation_hydration_pending",
+                "attempt": attempt,
+                "assistant_selector": selector,
+                "assistant_count": count,
+                "assistant_text": text,
+                "assistant_probes": probes,
+                "composer_visible": composer_visible,
+                "bootstrap_sentinel_visible": sentinel_visible,
+            }
+            if sentinel_visible and composer_visible:
+                last.update(
+                    {
+                        "ok": True,
+                        "timeout_ms": timeout_ms,
+                        "attempt_count": attempt,
+                        "duration_seconds": round(time.monotonic() - started, 3),
+                    }
+                )
+                return last
+            remaining_ms = int(max(0, (deadline - asyncio.get_running_loop().time()) * 1000))
+            if remaining_ms <= 0:
+                break
+            await page.wait_for_timeout(min(poll_interval_ms, remaining_ms))
+
+        last.update(
+            {
+                "ok": False,
+                "status": "conversation_hydration_timeout",
+                "timeout_ms": timeout_ms,
+                "attempt_count": attempt,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+        )
+        return last
+
     async def _release_live_post_bootstrap_idle_recovery(
         self,
         page: Any,
@@ -2218,22 +2287,28 @@ class ChatGPTBrowserClient:
                     "error": str(exc)[:500],
                 }
 
-        assistant_selector: Optional[str] = None
-        assistant_count = 0
-        assistant_text = ""
-        assistant_probes: list[dict[str, Any]] = []
+        hydration: dict[str, Any] = {
+            "ok": False,
+            "status": "conversation_hydration_not_attempted",
+            "assistant_selector": None,
+            "assistant_count": 0,
+            "assistant_text": "",
+            "assistant_probes": [],
+            "composer_visible": False,
+            "bootstrap_sentinel_visible": False,
+        }
         if reload_error is None and challenge_error is None and scope.get("matches") is True:
-            assistant_selector, assistant_count, assistant_text, assistant_probes = await self._extract_last_text_from_selectors(
+            hydration = await self._release_live_wait_for_conversation_hydration(
                 page,
-                ASSISTANT_MESSAGE_SELECTORS,
+                expected_bootstrap_token=expected_bootstrap_token,
+                timeout_ms=15_000,
+                poll_interval_ms=500,
             )
-        bootstrap_sentinel_preserved = bool(
-            expected_bootstrap_token
-            and self._release_live_answer_matches_expected_single_token(
-                assistant_text,
-                expected_bootstrap_token,
-            )
-        )
+        assistant_selector = hydration.get("assistant_selector")
+        assistant_count = int(hydration.get("assistant_count") or 0)
+        assistant_text = str(hydration.get("assistant_text") or "")
+        assistant_probes = hydration.get("assistant_probes") if isinstance(hydration.get("assistant_probes"), list) else []
+        bootstrap_sentinel_preserved = bool(hydration.get("bootstrap_sentinel_visible"))
 
         final_readiness: dict[str, Any] = {
             "status": "composer_not_checked_after_reload",
@@ -2243,6 +2318,7 @@ class ChatGPTBrowserClient:
             reload_error is None
             and challenge_error is None
             and scope.get("matches") is True
+            and bool(hydration.get("ok"))
             and bootstrap_sentinel_preserved
         ):
             final_readiness = await self._wait_for_composer_ready_before_fill(
@@ -2260,6 +2336,7 @@ class ChatGPTBrowserClient:
             reload_error is None
             and challenge_error is None
             and scope.get("matches") is True
+            and bool(hydration.get("ok"))
             and bootstrap_sentinel_preserved
             and final_ready
         )
@@ -2278,6 +2355,7 @@ class ChatGPTBrowserClient:
             "same_conversation_scope": scope,
             "bootstrap_sentinel_expected": expected_bootstrap_token,
             "bootstrap_sentinel_reverified_after_reload": bootstrap_sentinel_preserved,
+            "conversation_hydration": hydration,
             "assistant_selector_after_reload": assistant_selector,
             "assistant_count_after_reload": assistant_count,
             "assistant_text_after_reload": assistant_text,
@@ -2427,6 +2505,42 @@ class ChatGPTBrowserClient:
                     "root_project_discovery_skipped": True,
                     "duration_seconds": round(time.monotonic() - started, 3),
                 }
+        pre_bootstrap_composer_readiness = await self._wait_for_composer_ready_before_fill(
+            page,
+            timeout_ms=5_000,
+            poll_interval_ms=500,
+        )
+        pre_bootstrap_blockers = list(pre_bootstrap_composer_readiness.get("blockers") or []) if isinstance(pre_bootstrap_composer_readiness, dict) else []
+        pre_bootstrap_ready = bool(
+            isinstance(pre_bootstrap_composer_readiness, dict)
+            and pre_bootstrap_composer_readiness.get("status") == "composer_ready"
+            and not pre_bootstrap_blockers
+        )
+        if not pre_bootstrap_ready:
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": "target_conversation_busy",
+                "failed_phase": "live_conversation_bootstrap",
+                "project_url": project_url,
+                "conversation_url": direct_conversation_url if direct_conversation_mode else None,
+                "project_result": project_result,
+                "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
+                "pre_bootstrap_blockers": pre_bootstrap_blockers,
+                "bootstrap_submission_attempted": False,
+                "post_bootstrap_idle_recovery": {
+                    "ok": False,
+                    "status": "post_bootstrap_recovery_not_applicable",
+                    "reason": "bootstrap_not_submitted",
+                    "recovery_attempted": False,
+                    "recovery_count": 0,
+                },
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                "trusted_conversation_direct_mode": direct_conversation_mode,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+
         pre_bootstrap_event_start = len(self._rate_limit_events)
         pre_bootstrap_telemetry = self._rate_limit_telemetry_snapshot()
         pre_bootstrap_retry_gate: dict[str, Any] | None = None
@@ -2559,6 +2673,64 @@ class ChatGPTBrowserClient:
                 "duration_seconds": round(time.monotonic() - started, 3),
             }
 
+        bootstrap_status = str(bootstrap_result.get("status") or "") if isinstance(bootstrap_result, dict) else ""
+        bootstrap_submit_evidence = bootstrap_result.get("submit_evidence") if isinstance(bootstrap_result, dict) and isinstance(bootstrap_result.get("submit_evidence"), dict) else {}
+        bootstrap_submission_succeeded = bool(
+            isinstance(bootstrap_result, dict)
+            and (
+                bootstrap_status == "completed"
+                or (bootstrap_result.get("ok") is True and bootstrap_submit_evidence.get("submit_confirmed") is True)
+            )
+        )
+        bootstrap_generation_completed = bootstrap_status == "completed"
+        bootstrap_completed_with_expected_sentinel = self._release_live_result_completed_with_expected_token(
+            bootstrap_result,
+            bootstrap_prompt,
+        )
+        post_bootstrap_recovery_eligible = bool(
+            bootstrap_submission_succeeded
+            and bootstrap_generation_completed
+            and bootstrap_completed_with_expected_sentinel
+        )
+        if not post_bootstrap_recovery_eligible:
+            bootstrap_failure_status = (
+                "bootstrap_sentinel_missing_before_ask"
+                if bootstrap_generation_completed and not bootstrap_completed_with_expected_sentinel
+                else (bootstrap_status or "live_bootstrap_incomplete")
+            )
+            return {
+                "ok": False,
+                "action": "test_release_live_continuous",
+                "status": bootstrap_failure_status,
+                "failed_phase": "live_conversation_bootstrap",
+                "project_url": project_url,
+                "conversation_url": conversation_url,
+                "project_result": project_result,
+                "bootstrap_result": bootstrap_result,
+                "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
+                "bootstrap_submission_succeeded": bootstrap_submission_succeeded,
+                "bootstrap_generation_completed": bootstrap_generation_completed,
+                "bootstrap_completed_with_expected_sentinel": bootstrap_completed_with_expected_sentinel,
+                "post_bootstrap_recovery_eligible": False,
+                "post_bootstrap_idle_recovery": {
+                    "ok": False,
+                    "status": "post_bootstrap_recovery_not_applicable",
+                    "reason": "bootstrap_not_completed_with_expected_sentinel",
+                    "recovery_attempted": False,
+                    "recovery_count": 0,
+                },
+                "ask_submission_attempted": False,
+                "continuous_browser_session": True,
+                "same_profile_for_project_bootstrap_and_ask": True,
+                "warmup_conversation_url": warmup_conversation_url,
+                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
+                "trusted_conversation_direct_mode": direct_conversation_mode,
+                "project_identity_source": "warmup_conversation_url" if direct_conversation_mode else "project_ensure",
+                "root_project_discovery_skipped": direct_conversation_mode,
+                "duration_seconds": round(time.monotonic() - started, 3),
+            }
+
         post_bootstrap_idle_recovery = await self._release_live_post_bootstrap_idle_recovery(
             page,
             conversation_url=conversation_url,
@@ -2575,6 +2747,10 @@ class ChatGPTBrowserClient:
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
                 "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
+                "bootstrap_submission_succeeded": bootstrap_submission_succeeded,
+                "bootstrap_generation_completed": bootstrap_generation_completed,
+                "post_bootstrap_recovery_eligible": post_bootstrap_recovery_eligible,
                 "post_bootstrap_idle_recovery": post_bootstrap_idle_recovery,
                 "ask_submission_attempted": False,
                 "continuous_browser_session": True,
@@ -2620,39 +2796,6 @@ class ChatGPTBrowserClient:
             ask_prompt,
         )
         bootstrap_sentinel_retry: dict[str, Any] | None = None
-        if (not bootstrap_completed_with_expected_token) and ask_completed_with_expected_token:
-            bootstrap_sentinel_retry = await self._release_live_bootstrap_sentinel_retry_gate(
-                page,
-                target_url=conversation_url,
-            )
-            if bool(bootstrap_sentinel_retry.get("ok")):
-                retry_bootstrap_result = await self._ask_question_operation(
-                    context=context,
-                    page=page,
-                    prompt=bootstrap_prompt,
-                    file_path=None,
-                    attachment_paths=None,
-                    conversation_url=conversation_url,
-                    expect_json=False,
-                    keep_open=False,
-                    service_timeout_seconds=service_timeout_seconds,
-                    prefer_button_submit=False,
-                    reuse_current_page_if_ready=True,
-                )
-                retry_bootstrap_result = self._attach_rate_limit_telemetry(retry_bootstrap_result)
-                bootstrap_sentinel_retry["retry_attempted"] = True
-                bootstrap_sentinel_retry["retry_result_status"] = str(retry_bootstrap_result.get("status") or "") if isinstance(retry_bootstrap_result, dict) else "non_dict_result"
-                bootstrap_sentinel_retry["retry_completed_with_expected_sentinel"] = self._release_live_result_completed_with_expected_token(
-                    retry_bootstrap_result,
-                    bootstrap_prompt,
-                )
-                bootstrap_sentinel_retry["retry_result"] = retry_bootstrap_result
-                if bool(bootstrap_sentinel_retry.get("retry_completed_with_expected_sentinel")):
-                    bootstrap_result = retry_bootstrap_result
-                    bootstrap_completed_with_expected_token = True
-                    bootstrap_ok = True
-            else:
-                bootstrap_sentinel_retry["retry_attempted"] = False
 
         sentinel_completed_ok = bool(
             isinstance(project_result, dict)
@@ -16466,10 +16609,14 @@ class ChatGPTBrowserClient:
         raise ResponseTimeoutError("Chat input did not become visible") from last_error
 
     async def _probe_interrupted_answer_state(self, page: Any) -> dict[str, Any]:
-        """Detect answer-interrupted UI that must settle before a new prompt is typed."""
+        """Detect interruption only on the latest assistant turn or active composer.
+
+        Historical Retry/Regenerate controls are evidence about older turns and must
+        not block a new prompt when the current composer is otherwise idle.
+        """
 
         started = time.monotonic()
-        script = '''
+        script = r'''
 () => {
   function visible(el) {
     if (!el) return false;
@@ -16477,27 +16624,61 @@ class ChatGPTBrowserClient:
     const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
     return !!(rect && rect.width > 0 && rect.height > 0 && (!style || (style.visibility !== "hidden" && style.display !== "none")));
   }
+  function descriptor(el, selector) {
+    return {
+      selector,
+      aria_label: String(el.getAttribute && el.getAttribute("aria-label") || "").slice(0, 160),
+      text: String(el.innerText || el.textContent || "").slice(0, 160)
+    };
+  }
+
+  const assistantNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]')).filter(visible);
+  const latestAssistant = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
+  const latestTurn = latestAssistant
+    ? (latestAssistant.closest('[data-testid*="conversation-turn"], article') || latestAssistant)
+    : null;
   const buttonSelectors = [
     'button[aria-label*="Continue generating" i]',
     'button[aria-label*="Regenerate" i]',
     'button[aria-label*="Retry" i]'
   ];
+  const visibleControls = [];
   for (const selector of buttonSelectors) {
     try {
-      const nodes = Array.from(document.querySelectorAll(selector));
-      const match = nodes.find(visible);
-      if (match) {
-        return {present: true, reason: "interrupted_control_visible", selector, text: String(match.innerText || match.textContent || "").slice(0, 160)};
+      for (const node of Array.from(document.querySelectorAll(selector))) {
+        if (visible(node)) visibleControls.push({node, selector});
       }
     } catch (err) {}
   }
-  const turns = Array.from(document.querySelectorAll('[data-message-author-role="assistant"], [data-testid*="conversation-turn"], article, section'));
-  const last = turns.length ? turns[turns.length - 1] : null;
-  const text = last ? String(last.innerText || last.textContent || "") : "";
-  const lower = text.toLowerCase();
+
+  const latestControls = visibleControls.filter(item => latestTurn && latestTurn.contains(item.node));
+  const activeComposerControls = visibleControls.filter(item => {
+    if (item.selector.indexOf('Continue generating') < 0) return false;
+    const turn = item.node.closest('[data-testid*="conversation-turn"], [data-message-author-role], article');
+    return !turn;
+  });
+  const currentControl = latestControls[0] || activeComposerControls[0] || null;
+  const historicalControls = visibleControls.filter(item => item !== currentControl && !latestControls.includes(item) && !activeComposerControls.includes(item));
+
+  const latestText = latestTurn ? String(latestTurn.innerText || latestTurn.textContent || "") : "";
+  const lower = latestText.toLowerCase();
   const markers = ["streaming interrupted", "response interrupted", "message interrupted", "generation interrupted"];
-  const marker = markers.find(m => lower.includes(m));
-  return {present: !!marker, reason: marker ? "interrupted_text_marker" : null, marker: marker || null, text_preview: text.slice(0, 220)};
+  const marker = markers.find(m => lower.includes(m)) || null;
+  const present = !!currentControl || !!marker;
+  return {
+    present,
+    reason: currentControl ? "latest_turn_interrupted_control_visible" : (marker ? "latest_turn_interrupted_text_marker" : null),
+    scope: "latest_assistant_turn_or_active_composer",
+    latest_assistant_turn_found: !!latestAssistant,
+    latest_assistant_turn_index: latestAssistant ? assistantNodes.length - 1 : null,
+    latest_control: currentControl ? descriptor(currentControl.node, currentControl.selector) : null,
+    marker,
+    latest_turn_text_preview: latestText.slice(0, 220),
+    visible_control_count: visibleControls.length,
+    latest_control_count: latestControls.length + activeComposerControls.length,
+    historical_control_count: historicalControls.length,
+    historical_controls_ignored: historicalControls.slice(0, 8).map(item => descriptor(item.node, item.selector))
+  };
 }
 '''
         try:
