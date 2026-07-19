@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-active candidate version: v0.1.104.4
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-next normal slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+active candidate version: v0.1.104.5
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+next normal slice: v0.1.104.5 — hermetic release-validation profile isolation
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
@@ -821,6 +821,7 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 
 | v0.1.104.3 | repair | Current-turn-scoped interrupted-state readiness | repair_required | ignore historical Retry; separate pre/post bootstrap readiness; one hydrated same-conversation reload; no historical resubmit or general retry | DOD-289 focused candidate; next normal slice v0.1.105 | pending |
 
-| v0.1.104.4 | repair | Parse-independent visual reply completion and bounded envelope recovery | candidate | causal virtualized-turn response detection, stable UI completion before parse, one deterministic literal-whitespace normalization, one bounded same-conversation malformed-envelope retry | DOD-290 focused candidate; 10/10 required | pending |
+| v0.1.104.4 | repair | Parse-independent visual reply completion and bounded envelope recovery | repair_required | causal virtualized-turn response detection, stable UI completion before parse, one deterministic literal-whitespace normalization, one bounded same-conversation malformed-envelope retry | DOD-290 focused candidate; 10/10 required | pending |
+| v0.1.104.5 | repair | Hermetic release-validation profile isolation | candidate | explicit temporary HOME/XDG/profile/project state/config/cache authority, child-process path preflight, ambient lock unreachable/no-read proof, unchanged 300-second timeout and no node retry | DOD-291 focused candidate; 10/10 required | pending |
 
-Current active repair: `v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`.
+Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.

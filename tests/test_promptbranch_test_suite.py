@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -23,6 +26,29 @@ def _release_groups_ok() -> dict:
         },
     }
 
+
+
+def _preflight_ok(*, repo_path: Path, isolation_root: Path, env: dict[str, str], timeout_seconds: float = 10.0) -> dict:
+    root = isolation_root.resolve()
+    profile = Path(env["PROMPTBRANCH_PROFILE_DIR"]).resolve()
+    return {
+        "ok": True,
+        "status": "isolation_preflight_passed",
+        "isolation_root": str(root),
+        "resolved_paths": {"profile_dir": str(profile)},
+        "outside_isolation_root": {},
+        "profile_inside_isolation_root": True,
+        "ambient_repo_profile_lock": {
+            "profile_dir": str((repo_path / ".pb_profile").resolve()),
+            "lock_path": str((repo_path / ".pb_profile" / ".promptbranch-browser-profile.lock").resolve()),
+            "lock_file_exists": False,
+            "reachable_from_resolved_profile": False,
+            "contents_read": False,
+            "wait_attempted": False,
+        },
+        "stdout_tail": "",
+        "stderr_tail": "",
+    }
 
 def test_agent_profile_runs_local_checks_and_expected_negatives(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.test\n", encoding="utf-8")
@@ -598,6 +624,7 @@ def test_run_release_validation_group_resolves_python_override(monkeypatch, tmp_
         return Completed()
 
     monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, "/opt/project-python")
+    monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     result = suite._run_release_validation_group(
@@ -628,6 +655,7 @@ def test_run_release_validation_group_disables_ambient_pytest_plugins(monkeypatc
         return Completed()
 
     monkeypatch.delenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", raising=False)
+    monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     result = suite._run_release_validation_group(
@@ -722,6 +750,7 @@ def test_release_validation_group_strips_browser_service_env(monkeypatch, tmp_pa
     monkeypatch.setenv("PROMPTBRANCH_SERVICE_IMAGE", "promptbranch-service:live")
     monkeypatch.setenv("PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR", "./.pb_profile_local_debug")
     monkeypatch.setenv("PYTEST_ADDOPTS", "--maxfail=1")
+    monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     spec = {"required": True, "description": "unit", "command": ["python3", "-c", "pass"]}
@@ -734,6 +763,18 @@ def test_release_validation_group_strips_browser_service_env(monkeypatch, tmp_pa
     assert "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR" not in captured["env"]
     assert "PYTEST_ADDOPTS" not in captured["env"]
     assert captured["env"]["PROMPTBRANCH_RELEASE_VALIDATION_ISOLATED"] == "1"
+    isolation_root = Path(captured["env"]["PROMPTBRANCH_RELEASE_VALIDATION_ROOT"])
+    for key in (
+        "HOME",
+        "TMPDIR",
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
+        "PROMPTBRANCH_PROFILE_DIR",
+        "PROMPTBRANCH_PROJECT_STATE_HOME",
+        "PROMPTBRANCH_PROJECT_CONFIG_HOME",
+        "PROMPTBRANCH_PROJECT_CACHE_PATH",
+    ):
+        assert Path(captured["env"][key]).resolve().is_relative_to(isolation_root.resolve())
 
 
 def test_browser_scheduler_release_validation_group_uses_nodeid_progress() -> None:
@@ -757,6 +798,7 @@ def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monk
         envs.append(dict(kwargs.get("env") or {}))
         return Completed()
 
+    monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     result = suite._run_release_validation_group(
@@ -793,7 +835,11 @@ def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monk
     assert envs[0]["HOME"] != envs[1]["HOME"]
     assert envs[0]["TMPDIR"] != envs[1]["TMPDIR"]
     assert result["environment_isolation"]["enabled"] is True
-    assert result["environment_isolation"]["ambient_repo_profile_lock"]["lock_file_exists"] is False
+    assert result["environment_isolation"]["mode"] == "explicit_runtime_path_authority_per_nodeid"
+    assert all(item["ok"] for item in result["environment_isolation"]["node_preflights"])
+    assert envs[0]["PROMPTBRANCH_PROFILE_DIR"].startswith(result["environment_isolation"]["root"])
+    assert envs[0]["XDG_STATE_HOME"].startswith(result["environment_isolation"]["root"])
+    assert envs[0]["PROMPTBRANCH_PROJECT_STATE_HOME"].startswith(result["environment_isolation"]["root"])
     assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=1/2 nodeid=tests/test_demo.py::test_one" in result["stdout_tail"]
 
 
@@ -809,6 +855,7 @@ def test_release_validation_group_nodeid_progress_timeout_reports_active_nodeid(
 
         return Completed()
 
+    monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
 
     result = suite._run_release_validation_group(
@@ -841,24 +888,33 @@ def test_release_validation_group_nodeid_progress_timeout_reports_active_nodeid(
     assert "release_validation_group_progress: group=browser_scheduler_source_lifecycle index=2/2 nodeid=tests/test_demo.py::test_two" in result["stdout_tail"]
 
 
-def test_release_validation_nodeid_progress_records_ambient_profile_lock(monkeypatch, tmp_path: Path) -> None:
-    profile = tmp_path / ".pb_profile"
-    profile.mkdir()
-    lock = profile / ".promptbranch-browser-profile.lock"
-    lock.write_text("pid=123\noperation=add_project_source\n", encoding="utf-8")
+def test_release_validation_scheduler_node_is_hermetic_from_real_ambient_lock(monkeypatch, tmp_path: Path) -> None:
+    source_repo = Path(__file__).resolve().parents[1]
+    repo = tmp_path / "repo"
+    shutil.copytree(
+        source_repo,
+        repo,
+        ignore=shutil.ignore_patterns(".git", ".pb_profile", ".pytest_cache", "__pycache__", "*.pyc", "*.zip"),
+    )
+    ambient_profile = repo / ".pb_profile"
+    ambient_profile.mkdir()
+    ambient_lock = ambient_profile / ".promptbranch-browser-profile.lock"
+    ambient_lock.write_text("pid=123\noperation=add_project_source\n", encoding="utf-8")
 
-    class Completed:
-        returncode = 0
-        stdout = "passed node\n"
-        stderr = ""
+    original_read_text = Path.read_text
 
-    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+    def guarded_read_text(path: Path, *args, **kwargs):
+        if path.resolve() == ambient_lock.resolve():
+            raise AssertionError("ambient repository browser lock contents must not be read")
+        return original_read_text(path, *args, **kwargs)
 
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    started = time.monotonic()
     result = suite._run_release_validation_group(
         "browser_scheduler_source_lifecycle",
         {
             "required": True,
-            "description": "nodeid isolation demo",
+            "description": "exact scheduler isolation regression",
             "timeout_seconds": 300.0,
             "nodeid_progress": True,
             "command": [
@@ -866,17 +922,78 @@ def test_release_validation_nodeid_progress_records_ambient_profile_lock(monkeyp
                 "-m",
                 "pytest",
                 "-q",
-                "tests/test_demo.py::test_one",
+                "tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler",
             ],
         },
-        repo_path=tmp_path,
+        repo_path=repo,
     )
+    elapsed = time.monotonic() - started
 
     assert result["ok"] is True
-    snapshot = result["environment_isolation"]["ambient_repo_profile_lock"]
-    assert snapshot["lock_file_exists"] is True
-    assert snapshot["last_operation"] == "add_project_source"
-    assert snapshot["last_pid"] == "123"
+    assert elapsed < 30.0
+    preflight = result["environment_isolation"]["node_preflights"][0]
+    assert preflight["profile_inside_isolation_root"] is True
+    assert preflight["ambient_repo_profile_lock"]["lock_file_exists"] is True
+    assert preflight["ambient_repo_profile_lock"]["reachable_from_resolved_profile"] is False
+    assert preflight["ambient_repo_profile_lock"]["contents_read"] is False
+    assert preflight["ambient_repo_profile_lock"]["wait_attempted"] is False
+    assert result["completed_nodeids"] == [
+        "tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler"
+    ]
+
+
+def test_release_validation_fails_before_node_when_repo_profile_is_resolved(monkeypatch, tmp_path: Path) -> None:
+    source_repo = Path(__file__).resolve().parents[1]
+    repo = tmp_path / "repo"
+    shutil.copytree(
+        source_repo,
+        repo,
+        ignore=shutil.ignore_patterns(".git", ".pb_profile", ".pytest_cache", "__pycache__", "*.pyc", "*.zip"),
+    )
+    ambient_profile = repo / ".pb_profile"
+    ambient_profile.mkdir()
+    (ambient_profile / ".promptbranch-browser-profile.lock").write_text(
+        "pid=123\noperation=add_project_source\n", encoding="utf-8"
+    )
+    original_env_builder = suite._release_validation_group_env
+    real_run = suite.subprocess.run
+    calls: list[list[str]] = []
+
+    def poisoned_env(*, isolation_root: Path, nodeid: str | None = None) -> dict[str, str]:
+        env = original_env_builder(isolation_root=isolation_root, nodeid=nodeid)
+        env["PROMPTBRANCH_PROFILE_DIR"] = str(ambient_profile)
+        return env
+
+    def tracked_run(command, **kwargs):
+        calls.append(list(command))
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(suite, "_release_validation_group_env", poisoned_env)
+    monkeypatch.setattr(suite.subprocess, "run", tracked_run)
+    result = suite._run_release_validation_group(
+        "browser_scheduler_source_lifecycle",
+        {
+            "required": True,
+            "description": "fail before ambient lock reachability",
+            "timeout_seconds": 300.0,
+            "nodeid_progress": True,
+            "command": [
+                suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER,
+                "-m",
+                "pytest",
+                "-q",
+                "tests/test_promptbranch_automation_service.py::test_project_remove_is_frozen_before_profile_scheduler",
+            ],
+        },
+        repo_path=repo,
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "isolation_preflight_failed"
+    assert len(calls) == 1
+    preflight = result["environment_isolation"]["node_preflights"][0]
+    assert preflight["ambient_repo_profile_lock"]["reachable_from_resolved_profile"] is True
+    assert preflight["outside_isolation_root"]["profile_dir"] == str(ambient_profile.resolve())
 
 
 def test_src_sync_dry_run_missing_registry_is_read_only_planned(tmp_path: Path) -> None:

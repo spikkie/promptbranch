@@ -1161,3 +1161,7 @@ No state-format migration is required. Import preserves browser profiles and pro
 ## v0.1.104.4
 
 The continuous release-live readiness model now scopes interruption evidence to the latest/current turn, separates pre-bootstrap readiness from post-bootstrap recovery, and adds bounded post-reload hydration. The sandbox gate and ten-step release manifest are unchanged.
+
+## v0.1.104.5
+
+No data migration. This repair changes only the environment of offline release-validation subprocesses. Existing repository `.pb_profile`, user configuration, project registries, browser profiles, Project Sources, artifacts, and accepted/current state are preserved and are intentionally unreachable from hermetic pytest nodes.

@@ -2,14 +2,15 @@
 
 ## Active repair slice
 
-`v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`
+`v0.1.104.5 — hermetic release-validation profile isolation`
 
-The repair preserves the proven sandbox and transport gates, ignores historical Retry controls, separates pre-bootstrap readiness from post-bootstrap recovery, and retains exactly one same-page reload of the same trusted conversation only when latest-turn `interrupted_answer_state` is the sole post-bootstrap blocker. After reload it waits boundedly for conversation hydration, then reverifies the exact bootstrap sentinel and authoritative idle composer state before ask submission.
+The repair preserves the live-proven visual completion/envelope behavior, sandbox gate, current-turn readiness, and one-reload recovery. It changes only offline release-validation subprocess isolation: each node receives explicit temporary HOME/XDG/profile/project-state paths, a child-process preflight proves all resolved paths remain inside that root, and pytest is not launched when repository `.pb_profile` or its browser lock would still be reachable.
 
 ## Recent repair context
 
 - `v0.1.104.1` proved fresh direct, independent localhost, and all 13 sandbox gates, but external-live reproduced post-bootstrap `target_conversation_busy`; adoption was refused.
 - `v0.1.104.2` preserved those gates and added one reload, but a historical Retry control was misclassified as active interruption before bootstrap; adoption was refused.
+- `v0.1.104.4` live-proved parse-independent visual completion and envelope handling at 9/10, but full_direct was blocked by ambient release-validation profile reachability; adoption was refused.
 
 ## Accepted repair baseline
 

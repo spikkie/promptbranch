@@ -185,9 +185,31 @@ def _tail_text(text: str, *, max_chars: int = 4000) -> str:
     return text[-max_chars:]
 
 
+def _release_validation_isolation_paths(isolation_root: Path) -> dict[str, Path]:
+    root = isolation_root.expanduser().resolve()
+    paths = {
+        "root": root,
+        "home": root / "home",
+        "tmp": root / "tmp",
+        "xdg_cache": root / "xdg-cache",
+        "xdg_config": root / "xdg-config",
+        "xdg_data": root / "xdg-data",
+        "xdg_state": root / "xdg-state",
+        "profile": root / "profile",
+        "project_state": root / "project-state",
+        "project_config": root / "project-config",
+        "project_cache": root / "xdg-config" / "promptbranch" / "project-list-cache.json",
+    }
+    for key, path in paths.items():
+        if key not in {"root", "project_cache"}:
+            path.mkdir(parents=True, exist_ok=True)
+    paths["project_cache"].parent.mkdir(parents=True, exist_ok=True)
+    return paths
+
+
 def _release_validation_group_env(
     *,
-    isolation_root: Path | None = None,
+    isolation_root: Path,
     nodeid: str | None = None,
 ) -> dict[str, str]:
     env = os.environ.copy()
@@ -196,9 +218,7 @@ def _release_validation_group_env(
     # or change release-gate behavior after live browser tests have run.
     env.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     # These groups are offline repo validations. Do not let the surrounding
-    # live/browser transport leak service routing into the pytest process; a
-    # localhost release-control leg must not make local validators talk to the
-    # browser service or inherit its timeout behavior.
+    # live/browser transport leak service routing into the pytest process.
     for key in list(env):
         if key.startswith("CHATGPT_"):
             env.pop(key, None)
@@ -212,59 +232,182 @@ def _release_validation_group_env(
         "PROMPTBRANCH_LOCALHOST_BASE_URL",
         "PROMPTBRANCH_CONTAINER_ID",
         "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR",
+        "PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS",
+        "PROMPTBRANCH_BROWSER_PROFILE_STALE_LOCK_SECONDS",
+        "PROMPTBRANCH_SOURCE_MUTATION_PROFILE_WAIT_SECONDS",
     ):
         env.pop(key, None)
     # Avoid operator-level pytest customizations in the release-validation
     # subprocess. The release gate owns its selected nodeids and options.
     env.pop("PYTEST_ADDOPTS", None)
-    env["PROMPTBRANCH_RELEASE_VALIDATION_ISOLATED"] = "1"
+
+    paths = _release_validation_isolation_paths(isolation_root)
+    env.update({
+        "HOME": str(paths["home"]),
+        "TMPDIR": str(paths["tmp"]),
+        "XDG_CACHE_HOME": str(paths["xdg_cache"]),
+        "XDG_CONFIG_HOME": str(paths["xdg_config"]),
+        "XDG_DATA_HOME": str(paths["xdg_data"]),
+        "XDG_STATE_HOME": str(paths["xdg_state"]),
+        "PROMPTBRANCH_PROFILE_DIR": str(paths["profile"]),
+        "PROMPTBRANCH_PROJECT_STATE_HOME": str(paths["project_state"]),
+        "PROMPTBRANCH_PROJECT_CONFIG_HOME": str(paths["project_config"]),
+        "PROMPTBRANCH_PROJECT_CACHE_PATH": str(paths["project_cache"]),
+        "PROMPTBRANCH_RELEASE_VALIDATION_ISOLATED": "1",
+        "PROMPTBRANCH_RELEASE_VALIDATION_ROOT": str(paths["root"]),
+        # Retain the older diagnostic variable, but the real runtime authority
+        # is PROMPTBRANCH_PROFILE_DIR above.
+        "PROMPTBRANCH_RELEASE_VALIDATION_PROFILE_DIR": str(paths["profile"]),
+    })
     if nodeid:
         env["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] = nodeid
-    if isolation_root is not None:
-        root = isolation_root.expanduser().resolve()
-        home = root / "home"
-        tmp = root / "tmp"
-        cache = root / "xdg-cache"
-        config = root / "xdg-config"
-        data = root / "xdg-data"
-        profile = root / "profile"
-        for path in (home, tmp, cache, config, data, profile):
-            path.mkdir(parents=True, exist_ok=True)
-        env.update({
-            "HOME": str(home),
-            "TMPDIR": str(tmp),
-            "XDG_CACHE_HOME": str(cache),
-            "XDG_CONFIG_HOME": str(config),
-            "XDG_DATA_HOME": str(data),
-            "PROMPTBRANCH_RELEASE_VALIDATION_PROFILE_DIR": str(profile),
-        })
     return env
 
 
-def _parse_lock_file(path: Path) -> dict[str, str]:
+def _path_is_within(path: Path, root: Path) -> bool:
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {}
-    payload: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            payload[key.strip()] = value.strip()
-    return payload
+        path.expanduser().resolve().relative_to(root.expanduser().resolve())
+    except ValueError:
+        return False
+    return True
 
 
-def _release_validation_ambient_lock_snapshot(repo_path: Path) -> dict[str, Any]:
-    profile_dir = repo_path / ".pb_profile"
-    lock_path = profile_dir / ".promptbranch-browser-profile.lock"
-    lock_payload = _parse_lock_file(lock_path) if lock_path.exists() else {}
+def _release_validation_isolation_preflight(
+    *,
+    repo_path: Path,
+    isolation_root: Path,
+    env: dict[str, str],
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    root = isolation_root.expanduser().resolve()
+    ambient_profile = (repo_path / ".pb_profile").resolve()
+    ambient_lock = ambient_profile / ".promptbranch-browser-profile.lock"
+    script = """
+import json
+import os
+from promptbranch_project import project_config_home, project_state_home
+from promptbranch_state import global_project_cache_path, resolve_profile_dir
+payload = {
+    "profile_dir": str(resolve_profile_dir(cwd=os.getcwd())),
+    "project_state_home": str(project_state_home()),
+    "project_config_home": str(project_config_home()),
+    "project_cache_path": str(global_project_cache_path()),
+    "home": os.environ.get("HOME"),
+    "tmpdir": os.environ.get("TMPDIR"),
+    "xdg_config_home": os.environ.get("XDG_CONFIG_HOME"),
+    "xdg_state_home": os.environ.get("XDG_STATE_HOME"),
+}
+print(json.dumps(payload, sort_keys=True))
+""".strip()
+    command = [release_validation_python(), "-c", script]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(repo_path),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=max(0.1, min(float(timeout_seconds), 10.0)),
+            check=False,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "status": "isolation_preflight_timeout",
+            "command": command,
+            "timeout_seconds": max(0.1, min(float(timeout_seconds), 10.0)),
+            "stdout_tail": _tail_text((exc.stdout or "") if isinstance(exc.stdout, str) else ""),
+            "stderr_tail": _tail_text((exc.stderr or "") if isinstance(exc.stderr, str) else ""),
+            "ambient_repo_profile_lock": {
+                "profile_dir": str(ambient_profile),
+                "lock_path": str(ambient_lock),
+                "lock_file_exists": ambient_lock.exists(),
+                "contents_read": False,
+                "wait_attempted": False,
+            },
+        }
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    if completed.returncode != 0:
+        return {
+            "ok": False,
+            "status": "isolation_preflight_process_failed",
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout_tail": _tail_text(stdout),
+            "stderr_tail": _tail_text(stderr),
+            "ambient_repo_profile_lock": {
+                "profile_dir": str(ambient_profile),
+                "lock_path": str(ambient_lock),
+                "lock_file_exists": ambient_lock.exists(),
+                "contents_read": False,
+                "wait_attempted": False,
+            },
+        }
+    try:
+        payload = json.loads(stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "status": "isolation_preflight_invalid_json",
+            "command": command,
+            "error": str(exc),
+            "stdout_tail": _tail_text(stdout),
+            "stderr_tail": _tail_text(stderr),
+            "ambient_repo_profile_lock": {
+                "profile_dir": str(ambient_profile),
+                "lock_path": str(ambient_lock),
+                "lock_file_exists": ambient_lock.exists(),
+                "contents_read": False,
+                "wait_attempted": False,
+            },
+        }
+
+    resolved = {
+        key: Path(str(value)).expanduser().resolve()
+        for key, value in payload.items()
+        if key in {
+            "profile_dir",
+            "project_state_home",
+            "project_config_home",
+            "project_cache_path",
+            "home",
+            "tmpdir",
+            "xdg_config_home",
+            "xdg_state_home",
+        } and value
+    }
+    outside_root = {
+        key: str(path)
+        for key, path in resolved.items()
+        if not _path_is_within(path, root)
+    }
+    resolved_profile = resolved.get("profile_dir")
+    ambient_lock_reachable = bool(
+        resolved_profile is not None
+        and (resolved_profile == ambient_profile or _path_is_within(ambient_lock, resolved_profile))
+    )
+    ok = not outside_root and not ambient_lock_reachable
     return {
-        "profile_dir": str(profile_dir),
-        "lock_path": str(lock_path),
-        "lock_file_exists": lock_path.exists(),
-        "lock_file": lock_payload,
-        "last_operation": lock_payload.get("operation"),
-        "last_pid": lock_payload.get("pid"),
+        "ok": ok,
+        "status": "isolation_preflight_passed" if ok else "isolation_preflight_failed",
+        "command": command,
+        "returncode": completed.returncode,
+        "isolation_root": str(root),
+        "resolved_paths": {key: str(path) for key, path in resolved.items()},
+        "outside_isolation_root": outside_root,
+        "profile_inside_isolation_root": bool(resolved_profile and _path_is_within(resolved_profile, root)),
+        "ambient_repo_profile_lock": {
+            "profile_dir": str(ambient_profile),
+            "lock_path": str(ambient_lock),
+            "lock_file_exists": ambient_lock.exists(),
+            "reachable_from_resolved_profile": ambient_lock_reachable,
+            "contents_read": False,
+            "wait_attempted": False,
+        },
+        "stdout_tail": _tail_text(stdout),
+        "stderr_tail": _tail_text(stderr),
     }
 
 
@@ -300,7 +443,19 @@ def _run_release_validation_group_with_nodeid_progress(
     isolation_diagnostics = {
         "enabled": True,
         "root": str(isolation_parent),
-        "ambient_repo_profile_lock": _release_validation_ambient_lock_snapshot(repo_path),
+        "mode": "explicit_runtime_path_authority_per_nodeid",
+        "path_authority_env_keys": [
+            "HOME",
+            "TMPDIR",
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "PROMPTBRANCH_PROFILE_DIR",
+            "PROMPTBRANCH_PROJECT_STATE_HOME",
+            "PROMPTBRANCH_PROJECT_CONFIG_HOME",
+            "PROMPTBRANCH_PROJECT_CACHE_PATH",
+        ],
         "stripped_env_prefixes": ["CHATGPT_"],
         "stripped_env_keys": [
             "PROMPTBRANCH_SERVICE_BASE_URL",
@@ -312,8 +467,12 @@ def _run_release_validation_group_with_nodeid_progress(
             "PROMPTBRANCH_LOCALHOST_BASE_URL",
             "PROMPTBRANCH_CONTAINER_ID",
             "PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR",
+            "PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS",
+            "PROMPTBRANCH_BROWSER_PROFILE_STALE_LOCK_SECONDS",
+            "PROMPTBRANCH_SOURCE_MUTATION_PROFILE_WAIT_SECONDS",
             "PYTEST_ADDOPTS",
         ],
+        "node_preflights": [],
     }
     completed_nodeids: list[str] = []
     failed_nodeids: list[str] = []
@@ -359,6 +518,59 @@ def _run_release_validation_group_with_nodeid_progress(
         node_started_at = utc_now()
         node_isolation_root = isolation_parent / f"node-{index:02d}"
         node_env = _release_validation_group_env(isolation_root=node_isolation_root, nodeid=nodeid)
+        preflight = _release_validation_isolation_preflight(
+            repo_path=repo_path,
+            isolation_root=node_isolation_root,
+            env=node_env,
+            timeout_seconds=min(remaining, 10.0),
+        )
+        isolation_diagnostics["node_preflights"].append({"nodeid": nodeid, **preflight})
+        if not preflight.get("ok"):
+            return {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "isolation_preflight_failed",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": command,
+                "command_mode": "per_nodeid_progress",
+                "environment_isolation": isolation_diagnostics,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": timeout_seconds,
+                "active_nodeid": nodeid,
+                "completed_nodeids": completed_nodeids,
+                "failed_nodeids": failed_nodeids,
+                "timed_out_nodeids": timed_out_nodeids,
+                "nodeid_results": nodeid_results,
+                "stdout_tail": _tail_text("\n".join(stdout_parts)),
+                "stderr_tail": _tail_text("\n".join(stderr_parts)),
+            }
+        remaining = timeout_seconds - (time.monotonic() - started_monotonic)
+        if remaining <= 0:
+            timed_out_nodeids.append(nodeid)
+            return {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "timeout",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "command": command,
+                "command_mode": "per_nodeid_progress",
+                "environment_isolation": isolation_diagnostics,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "timeout_seconds": timeout_seconds,
+                "active_nodeid": nodeid,
+                "completed_nodeids": completed_nodeids,
+                "failed_nodeids": failed_nodeids,
+                "timed_out_nodeids": timed_out_nodeids,
+                "nodeid_results": nodeid_results,
+                "stdout_tail": _tail_text("\n".join(stdout_parts)),
+                "stderr_tail": _tail_text("\n".join(stderr_parts)),
+            }
         try:
             completed = subprocess.run(
                 node_command,
@@ -386,6 +598,7 @@ def _run_release_validation_group_with_nodeid_progress(
                 "timeout_seconds": max(0.1, remaining),
                 "stdout_tail": _tail_text(stdout_text),
                 "stderr_tail": _tail_text(stderr_text),
+                "environment_isolation_preflight": preflight,
             })
             return {
                 "ok": False,
@@ -428,6 +641,7 @@ def _run_release_validation_group_with_nodeid_progress(
             "finished_at": utc_now(),
             "stdout_tail": _tail_text(stdout_text),
             "stderr_tail": _tail_text(stderr_text),
+            "environment_isolation_preflight": preflight,
         })
         if not node_ok:
             return {
@@ -504,8 +718,37 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
         if progress_result is not None:
             return progress_result
 
+    isolation_root = Path(tempfile.mkdtemp(prefix=f"pb-release-validation-{group_name}-"))
+    env = _release_validation_group_env(isolation_root=isolation_root)
+    preflight = _release_validation_isolation_preflight(
+        repo_path=repo_path,
+        isolation_root=isolation_root,
+        env=env,
+        timeout_seconds=min(timeout_seconds, 10.0),
+    )
+    isolation_diagnostics = {
+        "enabled": True,
+        "root": str(isolation_root),
+        "mode": "explicit_runtime_path_authority",
+        "preflight": preflight,
+    }
+    if not preflight.get("ok"):
+        return {
+            "ok": False,
+            "action": "release_validation_group",
+            "status": "isolation_preflight_failed",
+            "group": group_name,
+            "required": bool(spec.get("required")),
+            "description": spec.get("description"),
+            "command": command,
+            "environment_isolation": isolation_diagnostics,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "timeout_seconds": timeout_seconds,
+            "stdout_tail": "",
+            "stderr_tail": _tail_text(str(preflight.get("stderr_tail") or "")),
+        }
     try:
-        env = _release_validation_group_env()
         completed = subprocess.run(
             command,
             cwd=str(repo_path),
@@ -525,6 +768,7 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
             "required": bool(spec.get("required")),
             "description": spec.get("description"),
             "command": command,
+            "environment_isolation": isolation_diagnostics,
             "returncode": completed.returncode,
             "started_at": started_at,
             "finished_at": utc_now(),
@@ -541,6 +785,7 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
             "required": bool(spec.get("required")),
             "description": spec.get("description"),
             "command": command,
+            "environment_isolation": isolation_diagnostics,
             "started_at": started_at,
             "finished_at": utc_now(),
             "timeout_seconds": timeout_seconds,

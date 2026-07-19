@@ -7,32 +7,41 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-active candidate version: v0.1.104.4
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-next normal slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+active candidate version: v0.1.104.5
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+next normal slice: v0.1.104.5 — hermetic release-validation profile isolation
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Plan summary
 
-`v0.1.104.4` is a narrow repair of unadopted `v0.1.104.3`. The sandbox gate, ten-step manifest, fresh direct execution, independent localhost execution, current-turn readiness, one-reload recovery, Project Source handling, and adoption flow remain unchanged. The repair completes visual replies from stable authoritative idle UI before parsing, permits one deterministic literal-whitespace normalization, and allows one bounded same-conversation envelope correction. Accepted/current remains `v0.1.103.10.116`.
+`v0.1.104.5` is a narrow repair of unadopted `v0.1.104.4`. The visual completion/envelope behavior, sandbox gate, ten-step manifest, fresh direct execution, independent localhost execution, current-turn readiness, one-reload recovery, Project Source handling, and adoption flow remain unchanged. The repair makes every offline release-validation subprocess use explicit temporary HOME, XDG state/config/data/cache, Promptbranch profile, project state/config, and project cache paths. A child-process preflight rejects any resolved path outside that root before a pytest node starts. Accepted/current remains `v0.1.103.10.116`.
 
-## Active repair slice — v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
+## Active repair slice — v0.1.104.5 — hermetic release-validation profile isolation
+
+### Hermetic validation contract
+
+- Create a unique temporary validation root per pytest node or non-node release group.
+- Set `HOME`, `TMPDIR`, all relevant XDG paths, `PROMPTBRANCH_PROFILE_DIR`, `PROMPTBRANCH_PROJECT_STATE_HOME`, `PROMPTBRANCH_PROJECT_CONFIG_HOME`, and `PROMPTBRANCH_PROJECT_CACHE_PATH` explicitly inside that root.
+- Resolve those paths from a child Python process before pytest starts.
+- Fail closed as `isolation_preflight_failed` when any resolved path leaves the validation root or repository `.pb_profile` remains reachable.
+- Never read or wait on the ambient repository browser lock.
+- Preserve the 300-second scheduler-group timeout, per-node progress, and no automatic node retry.
+
 
 Acceptance scope:
 
-- Ignore Retry/Regenerate controls attached only to historical turns.
-- Treat Start Voice or equivalent idle composer evidence as ready when no stop/thinking/running/latest-turn interruption exists.
-- Gate bootstrap submission with a distinct pre-bootstrap readiness check.
-- Never invoke post-bootstrap recovery unless bootstrap submission succeeded, the exact sentinel was observed, and generation completed.
-- Preserve one same-conversation reload only for latest-turn `interrupted_answer_state` as the sole blocker.
-- Wait boundedly for conversation hydration after reload before rechecking the exact sentinel and composer.
-- Never click Retry, resubmit historical prompts, create another conversation, or add a general retry.
-- Fail closed as `target_conversation_busy` when latest-turn interruption persists.
-- Keep the sandbox verifier byte-identical and runnable standalone before full validation.
+- Give every release-validation pytest process a unique temporary root.
+- Set HOME, TMPDIR, XDG cache/config/data/state, Promptbranch profile, project state/config, and project cache explicitly inside that root.
+- Verify the actual resolved paths in a child Python process before pytest starts.
+- Refuse node execution when any path leaves the isolation root or repository `.pb_profile` remains reachable.
+- Record ambient lock existence/path only; never read its contents and never wait on it.
+- Keep per-node progress and active-node timeout diagnostics.
+- Keep the scheduler group timeout at 300 seconds and do not retry timed-out node IDs.
+- Keep visual, sandbox, current-turn, recovery, source, and adoption behavior byte-for-byte or semantically unchanged outside version/control-surface updates.
 
-Out of scope: sandbox-gate changes, source replacement changes, generic retries, new-conversation fallback, Project Source mutation from the loop, artifact adoption from the loop, deployment, Kubernetes mutation, and ChatGPT Project deletion.
+Out of scope: visual completion changes, envelope normalization changes, sandbox-gate changes, source replacement changes, browser/conversation changes, timeout increases, automatic node retries, Project Source mutation from the loop, artifact adoption from the loop, deployment, Kubernetes mutation, and ChatGPT Project deletion.
 
 ## Rolling horizon authority
 
@@ -2263,4 +2272,4 @@ Release: v0.1.103.10.103
 - preserve both processing-stream watchers, bounded tracing, immutable request phases, sequence-bound protocol discovery, and all downstream deletion/reupload gates unchanged;
 - perform no canonical release `pbsa` and no adoption.
 
-Current active repair: `v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`.
+Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.

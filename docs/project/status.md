@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-active candidate version: v0.1.104.4
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-next normal slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+active candidate version: v0.1.104.5
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+next normal slice: v0.1.104.5 — hermetic release-validation profile isolation
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
@@ -21,7 +21,7 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
 last accepted/current slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-active plan slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
+active plan slice: v0.1.104.5 — hermetic release-validation profile isolation
 repair mode: true
 scope advance allowed: false
 ```
@@ -30,8 +30,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
-release status: v0.1.104.3 passed 9/10 gates and live-proved current-turn readiness, bootstrap, ask, sandbox, direct/localhost, release-live, import smoke, and Artifact Guardian. visual_artifact_roundtrip failed because completion remained parse-dependent and the completed literal-escaped envelope was rejected; adoption was refused. v0.1.104.4 is the active visual completion/envelope repair.
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+release status: v0.1.104.4 retry passed 9/10 gates and live-proved visual completion/envelope handling, sandbox 13/13, localhost, all external-live gates, import smoke, and Artifact Guardian. full_direct functional browser steps passed, but its offline browser_scheduler_source_lifecycle group timed out because repository profile state remained reachable; adoption was refused. v0.1.104.5 is the active hermetic validation repair.
 plan authority file: docs/project/plan-state.json
 roadmap document: docs/project/promptbranch-plan-v0.1.104.md
 control-surface validator: pb project validate-control-surface --json
@@ -51,7 +51,7 @@ architecture file: docs/project/architecture.md
 
 ## Current blockers
 
-- `v0.1.104.4` must prove visual response completion is independent of envelope parsing, literal escaped outer whitespace is normalized exactly once, and the single malformed-envelope retry is bounded and fail-closed.
+- `v0.1.104.5` must prove every release-validation pytest subprocess resolves all profile/state/config/home paths inside its temporary validation root and never reads or waits on repository `.pb_profile` locks.
 - Persistent busy state after one recovery must fail closed before ask submission.
 - All ten release gates, evidence-bound adoption, and assigned-source-aware final verification remain mandatory.
 - Repository mutation, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion remain forbidden.
@@ -65,7 +65,7 @@ architecture file: docs/project/architecture.md
 ## Next safe action
 
 ```text
-Run the unchanged sandbox verifier standalone, then validate v0.1.104.4 while retaining v0.1.103.10.116 as accepted/current. Require fresh full_direct, independent full_localhost, sandbox 13/13, parse-independent visual completion, bounded envelope recovery, complete external-live validation, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.
+Run the unchanged sandbox verifier standalone, then validate v0.1.104.5 while retaining v0.1.103.10.116 as accepted/current. Require fresh full_direct, independent full_localhost, hermetic release-validation path preflights, sandbox 13/13, the already-proven visual completion/envelope behavior, complete external-live validation, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.
 ```
 
 Operator promotion command after candidate ZIP creation:
@@ -81,7 +81,7 @@ Operator promotion command after candidate ZIP creation:
 ## Last updated
 
 ```text
-v0.1.104.4 parse-independent visual reply completion and bounded envelope recovery candidate build
+v0.1.104.5 hermetic release-validation profile isolation candidate build
 ```
 
 
@@ -1246,4 +1246,4 @@ Accepted/current remains `v0.1.103.10.68`. `v0.1.103.10.94` repairs the `10.93` 
 
 `v0.1.103.10.103` waits for one unique asynchronous Library delete confirmation inside a visible dialog, alertdialog, or native dialog. The row-menu action alone can no longer produce `delete_triggered`; a no-confirmation path is accepted only after exact post-boundary backend mutation proof. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.
 
-Current active repair: `v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`.
+Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.

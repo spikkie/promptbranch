@@ -976,3 +976,7 @@ Decision: preserve the `v0.1.104.1` sandbox and transport gates unchanged. After
 - The one permitted reload must preserve the same page/context/profile/conversation and wait boundedly for hydration before sentinel/readiness checks.
 - No Retry click, historical prompt resubmission, new conversation, or general retry is permitted.
 - The v0.1.104 sandbox verifier remains unchanged and may be run standalone before strict release validation.
+
+## v0.1.104.5 — Hermetic release-validation profile isolation
+
+Decision: offline release-validation subprocesses must own explicit temporary HOME, TMPDIR, XDG cache/config/data/state, Promptbranch profile, project state/config, and project cache paths. A child-process preflight must prove every resolved path stays inside the isolation root before pytest starts. If repository `.pb_profile` or its browser lock remains reachable, the node fails closed before execution. Ambient lock contents are never read and no lock wait is attempted. The 300-second scheduler-group timeout, per-node progress, and no automatic retry remain unchanged.
