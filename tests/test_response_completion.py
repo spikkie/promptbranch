@@ -856,3 +856,44 @@ def test_legacy_browser_client_uses_same_bounded_same_count_response_contract() 
         observed_running_state=True,
     ) is True
     assert context["post_submit_turn_evidence_mode"] == "same_count_replacement_after_confirmed_submit_and_running"
+
+
+def test_reduced_visible_assistant_count_is_fresh_only_after_confirmed_submit_and_running(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 5,
+        "assistant_text": "previous answer",
+        "submit_confirmed": True,
+    }
+
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="new virtualized latest answer",
+        observed_running_state=True,
+    ) is True
+    assert context["post_submit_turn_evidence_mode"] == "virtualized_count_rebase_after_confirmed_submit_and_running"
+    assert context["post_submit_visible_assistant_count"] == 3
+    assert context["post_submit_baseline_assistant_count"] == 5
+
+
+def test_reduced_visible_assistant_count_fails_closed_without_submit_or_running(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 5,
+        "assistant_text": "previous answer",
+        "submit_confirmed": False,
+    }
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="different answer",
+        observed_running_state=True,
+    ) is False
+    context["submit_confirmed"] = True
+    assert client._assistant_response_changed(
+        context,
+        count=3,
+        text="different answer",
+        observed_running_state=False,
+    ) is False

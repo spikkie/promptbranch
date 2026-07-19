@@ -14740,3 +14740,198 @@ def test_artifact_adopt_rejects_incomplete_source_evidence_before_mutation(capsy
     assert payload["source_evidence"]["checks"]["library_metadata_object_id_present"] is False
     registry_payload = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
     assert registry_payload["artifacts"] == []
+
+
+def _visual_unit_reply_object(*, request_id: str, filename: str, url: str) -> dict[str, object]:
+    return {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "status": "completed",
+        "result_type": "test_report",
+        "summary": "Created visual artifact.",
+        "baseline": {
+            "input_artifact": None,
+            "input_version": None,
+            "output_artifact": filename,
+            "output_version": None,
+            "release_type": "visual_artifact_roundtrip",
+        },
+        "changes": [{"path": "output.txt", "kind": "added", "summary": "Output."}],
+        "artifacts": [{
+            "kind": "zip",
+            "filename": filename,
+            "version": None,
+            "role": "visual_artifact_roundtrip_output",
+            "download": {"available": True, "link_text": filename, "url": url},
+        }],
+        "validation": {"claimed": ["zip_created"], "not_claimed": ["release_validation"]},
+        "next_step": {"operator_action": "download", "recommended_command": "pb artifact intake"},
+        "confidence": "high",
+    }
+
+
+def test_visual_reply_normalizes_literal_escaped_outer_whitespace_once(tmp_path) -> None:
+    from promptbranch_cli import _visual_reply_parse_with_bounded_normalization
+
+    request_id = "visual-artifact-roundtrip-NORM"
+    payload = _visual_unit_reply_object(
+        request_id=request_id,
+        filename="pb_visual_artifact_roundtrip_NORM.zip",
+        url=(tmp_path / "pb_visual_artifact_roundtrip_NORM.zip").as_uri(),
+    )
+    payload["summary"] = "line\ninside string"
+    encoded = json.dumps(payload, ensure_ascii=False)
+    answer = "BEGIN_PROMPTBRANCH_REPLY_JSON\\n" + encoded + "\\nEND_PROMPTBRANCH_REPLY_JSON"
+
+    parsed, diagnostics = _visual_reply_parse_with_bounded_normalization(
+        answer,
+        expected_request_id=request_id,
+    )
+
+    assert parsed["ok"] is True
+    assert parsed["request_id"] == request_id
+    assert parsed["correlation_id"] == request_id
+    assert parsed["summary"] == "line\ninside string"
+    assert diagnostics["normalization_attempted"] is True
+    assert diagnostics["normalization_applied"] is True
+    assert diagnostics["status"] == "valid_after_normalization"
+
+
+def test_visual_reply_normalization_rejects_wrong_active_request_identity(tmp_path) -> None:
+    from promptbranch_cli import _visual_reply_parse_with_bounded_normalization
+
+    payload = _visual_unit_reply_object(
+        request_id="visual-artifact-roundtrip-OTHER",
+        filename="pb_visual_artifact_roundtrip_ID.zip",
+        url=(tmp_path / "pb_visual_artifact_roundtrip_ID.zip").as_uri(),
+    )
+    answer = "BEGIN_PROMPTBRANCH_REPLY_JSON\\n" + json.dumps(payload) + "\\nEND_PROMPTBRANCH_REPLY_JSON"
+
+    parsed, diagnostics = _visual_reply_parse_with_bounded_normalization(
+        answer,
+        expected_request_id="visual-artifact-roundtrip-ID",
+    )
+
+    assert parsed.get("request_id") != "visual-artifact-roundtrip-ID"
+    assert diagnostics["status"] == "invalid"
+    assert diagnostics["normalization_status"] == "normalized_request_id_mismatch"
+
+
+def test_visual_artifact_roundtrip_uses_one_bounded_envelope_retry(monkeypatch, capsys, tmp_path) -> None:
+    output_zip = tmp_path / "pb_visual_artifact_roundtrip_RETRY.zip"
+    with zipfile.ZipFile(output_zip, "w") as zf:
+        zf.writestr("output.txt", "ZIP_OK")
+    project_url = "https://chatgpt.com/g/g-p-77777777777777777777777777777777-visual/project"
+    conversation_url = project_url.replace("/project", "/c/retry-unit")
+
+    class FakeBackend:
+        def __init__(self) -> None:
+            self.ask_count = 0
+
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, **kwargs):
+            return {"ok": True, "project_url": project_url}
+
+        async def remove_project(self, **kwargs):
+            raise AssertionError("delete-frozen test must retain project")
+
+        async def ask(self, *, prompt, attachment_paths=None, conversation_url=None, expect_json=False,
+                      keep_open=False, retries=None, file_path=None, prefer_button_submit=False,
+                      service_timeout_seconds=None):
+            self.ask_count += 1
+            if self.ask_count == 1:
+                assert service_timeout_seconds is None
+                return {
+                    "ok": True,
+                    "answer": "BEGIN_PROMPTBRANCH_REPLY_JSON\nnot-json\nEND_PROMPTBRANCH_REPLY_JSON",
+                    "conversation_url": conversation_url.replace("/project", "/c/retry-unit"),
+                }
+            assert self.ask_count == 2
+            assert attachment_paths is None
+            assert retries == 0
+            assert service_timeout_seconds == 90.0
+            assert "Do not recreate" in prompt
+            payload = _visual_unit_reply_object(
+                request_id="visual-artifact-roundtrip-RETRY",
+                filename=output_zip.name,
+                url=output_zip.as_uri(),
+            )
+            return {
+                "ok": True,
+                "answer": "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(payload) + "\nEND_PROMPTBRANCH_REPLY_JSON",
+                "conversation_url": conversation_url.replace("/project", "/c/retry-unit"),
+            }
+
+    backend = FakeBackend()
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: backend)
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "visual-artifact-roundtrip", "--json", "--run-id", "RETRY",
+        "--output-filename", output_zip.name,
+        "--expect-entry", "output.txt", "--expect-content", "ZIP_OK",
+    ])
+    result = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert backend.ask_count == 2
+    assert result["ok"] is True
+    assert result["malformed_envelope_retry"]["attempted"] is True
+    assert result["malformed_envelope_retry"]["max_attempts"] == 1
+    assert result["reply_parse_diagnostics"]["status"] == "valid_after_single_bounded_retry"
+    assert result["download_performed"] is True
+
+
+def test_visual_artifact_roundtrip_stops_after_one_invalid_retry_without_download(monkeypatch, capsys, tmp_path) -> None:
+    project_url = "https://chatgpt.com/g/g-p-88888888888888888888888888888888-visual/project"
+    conversation_url = project_url.replace("/project", "/c/invalid-retry")
+
+    class FakeBackend:
+        def __init__(self) -> None:
+            self.ask_count = 0
+            self.download_count = 0
+
+        def state_snapshot(self):
+            return {}
+
+        async def create_project(self, **kwargs):
+            return {"ok": True, "project_url": project_url}
+
+        async def remove_project(self, **kwargs):
+            raise AssertionError("delete-frozen test must retain project")
+
+        async def ask(self, *, prompt, attachment_paths=None, conversation_url=None, expect_json=False,
+                      keep_open=False, retries=None, file_path=None, prefer_button_submit=False,
+                      service_timeout_seconds=None):
+            self.ask_count += 1
+            if self.ask_count == 2:
+                assert retries == 0
+                assert service_timeout_seconds == 90.0
+            return {
+                "ok": True,
+                "answer": "BEGIN_PROMPTBRANCH_REPLY_JSON\ninvalid\nEND_PROMPTBRANCH_REPLY_JSON",
+                "conversation_url": conversation_url.replace("/project", "/c/invalid-retry"),
+            }
+
+        async def download_chat_artifact(self, **kwargs):
+            self.download_count += 1
+            raise AssertionError("download must remain unreachable for invalid envelope")
+
+    backend = FakeBackend()
+    monkeypatch.setattr("promptbranch_cli.build_backend", lambda args: backend)
+    rc = main([
+        "--profile-dir", str(tmp_path / ".pb_profile"),
+        "test", "visual-artifact-roundtrip", "--json", "--run-id", "INVALID",
+        "--output-filename", "pb_visual_artifact_roundtrip_INVALID.zip",
+        "--expect-entry", "output.txt", "--expect-content", "ZIP_OK",
+    ])
+    result = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert backend.ask_count == 2
+    assert backend.download_count == 0
+    assert result["status"] == "artifact_candidate_not_selected"
+    assert result["malformed_envelope_retry"]["attempted"] is True
+    assert result["download_performed"] is False
+    assert result["verification_performed"] is False

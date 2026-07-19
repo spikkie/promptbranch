@@ -145,7 +145,16 @@ from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_source_queue import build_source_mutation_queue_plan
 from promptbranch_release_scheduler import build_release_lifecycle_scheduler_plan
-from promptbranch_ask_protocol import build_ask_request_envelope, classify_artifact_candidates, parse_promptbranch_reply, render_protocol_ask_prompt
+from promptbranch_ask_protocol import (
+    BEGIN_REPLY_MARKER,
+    END_REPLY_MARKER,
+    REPLY_SCHEMA,
+    build_ask_request_envelope,
+    classify_artifact_candidates,
+    extract_reply_blocks,
+    parse_promptbranch_reply,
+    render_protocol_ask_prompt,
+)
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
     STATE_FILE_NAME,
@@ -1235,6 +1244,7 @@ class DirectBackend:
         keep_open: bool = False,
         retries: Optional[int] = None,
         prefer_button_submit: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         if new_task and conversation_url:
             return _new_task_conversation_url_conflict_payload()
@@ -1265,6 +1275,7 @@ class DirectBackend:
                 expect_json=expect_json,
                 keep_open=keep_open,
                 retries=retries,
+                service_timeout_seconds=service_timeout_seconds,
                 prefer_button_submit=prefer_button_submit,
             )
         finally:
@@ -1575,6 +1586,7 @@ class ServiceBackend:
         keep_open: bool = False,
         retries: Optional[int] = None,
         prefer_button_submit: bool = False,
+        service_timeout_seconds: Optional[float] = None,
     ) -> Any:
         if new_task and conversation_url:
             return _new_task_conversation_url_conflict_payload()
@@ -1596,7 +1608,11 @@ class ServiceBackend:
             keep_open=keep_open,
             retries=retries,
             project_url=effective_project_url,
-            service_timeout_seconds=self._service_timeout_seconds,
+            service_timeout_seconds=(
+                self._service_timeout_seconds
+                if service_timeout_seconds is None
+                else float(service_timeout_seconds)
+            ),
             prefer_button_submit=prefer_button_submit,
         )
         _, returned_conversation_url = _split_ask_response(result)
@@ -22539,6 +22555,157 @@ def _visual_artifact_roundtrip_prompt(
     )
 
 
+
+def _decode_literal_escaped_json_whitespace_outside_strings(value: str) -> tuple[str, bool]:
+    """Decode only literal escaped JSON whitespace that appears outside strings."""
+
+    source = str(value or "")
+    output: list[str] = []
+    in_string = False
+    string_escape = False
+    changed = False
+    index = 0
+    while index < len(source):
+        char = source[index]
+        if in_string:
+            output.append(char)
+            if string_escape:
+                string_escape = False
+            elif char == "\\":
+                string_escape = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(source) and source[index + 1] in {"n", "r", "t"}:
+            escaped = source[index + 1]
+            output.append("\n" if escaped in {"n", "r"} else "\t")
+            changed = True
+            index += 2
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output), changed
+
+
+def _visual_reply_parse_with_bounded_normalization(
+    answer_text: str,
+    *,
+    expected_request_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Parse once normally, then apply one visual-only deterministic normalization."""
+
+    source = str(answer_text or "")
+    initial = parse_promptbranch_reply(source)
+    diagnostics: dict[str, Any] = {
+        "initial_status": initial.get("status"),
+        "normalization_attempted": False,
+        "normalization_applied": False,
+        "normalization_status": "not_needed",
+        "expected_request_id": expected_request_id,
+    }
+
+    def identity_ok(parsed: dict[str, Any]) -> bool:
+        return bool(
+            parsed.get("ok")
+            and parsed.get("schema") == REPLY_SCHEMA
+            and parsed.get("request_id") == expected_request_id
+            and parsed.get("correlation_id") == expected_request_id
+        )
+
+    if identity_ok(initial):
+        diagnostics["status"] = "valid_without_normalization"
+        return initial, diagnostics
+
+    diagnostics["normalization_attempted"] = True
+    blocks = extract_reply_blocks(source)
+    diagnostics["block_count"] = len(blocks)
+    if len(blocks) != 1:
+        diagnostics["normalization_status"] = "requires_exactly_one_marked_block"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+
+    normalized_block, changed = _decode_literal_escaped_json_whitespace_outside_strings(blocks[0].text)
+    diagnostics["normalization_applied"] = changed
+    diagnostics["original_block_length"] = len(blocks[0].text)
+    diagnostics["normalized_block_length"] = len(normalized_block)
+    if not changed:
+        diagnostics["normalization_status"] = "no_supported_literal_escaped_whitespace"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+
+    decoder = json.JSONDecoder()
+    candidate = normalized_block.strip()
+    try:
+        normalized_object, end = decoder.raw_decode(candidate)
+    except json.JSONDecodeError as exc:
+        diagnostics["normalization_status"] = "normalized_json_invalid"
+        diagnostics["normalization_error"] = str(exc)
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+    if candidate[end:].strip():
+        diagnostics["normalization_status"] = "normalized_block_contains_trailing_non_whitespace"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+    if not isinstance(normalized_object, dict):
+        diagnostics["normalization_status"] = "normalized_json_root_not_object"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+    if normalized_object.get("schema") != REPLY_SCHEMA:
+        diagnostics["normalization_status"] = "normalized_schema_mismatch"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+    if normalized_object.get("request_id") != expected_request_id:
+        diagnostics["normalization_status"] = "normalized_request_id_mismatch"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+    if normalized_object.get("correlation_id") != expected_request_id:
+        diagnostics["normalization_status"] = "normalized_correlation_id_mismatch"
+        diagnostics["status"] = "invalid"
+        return initial, diagnostics
+
+    canonical_answer = (
+        f"{BEGIN_REPLY_MARKER}\n"
+        + json.dumps(normalized_object, ensure_ascii=False, separators=(",", ":"))
+        + f"\n{END_REPLY_MARKER}"
+    )
+    normalized_parsed = parse_promptbranch_reply(canonical_answer)
+    if not identity_ok(normalized_parsed):
+        diagnostics["normalization_status"] = "normalized_envelope_failed_schema_validation"
+        diagnostics["normalized_parse_status"] = normalized_parsed.get("status")
+        diagnostics["status"] = "invalid"
+        return normalized_parsed, diagnostics
+
+    diagnostics["normalization_status"] = "literal_escaped_whitespace_normalized"
+    diagnostics["status"] = "valid_after_normalization"
+    return normalized_parsed, diagnostics
+
+
+def _visual_artifact_roundtrip_envelope_retry_prompt(
+    *,
+    request_id: str,
+    output_filename: str,
+) -> str:
+    return f"""Your previous visual-artifact response is complete, but its Promptbranch reply envelope is invalid.
+Do not recreate, rename, or modify the already-created artifact.
+Do not start another conversation and do not repeat any historical prompt.
+Return exactly one corrected Promptbranch reply envelope for the existing artifact.
+Do not use a Markdown code fence.
+The block must begin with {BEGIN_REPLY_MARKER} and end with {END_REPLY_MARKER}.
+The JSON must parse directly without literal escaped newlines outside JSON strings.
+The schema must be exactly {REPLY_SCHEMA}.
+request_id must be exactly {request_id}.
+correlation_id must be exactly {request_id}.
+artifacts must contain exactly one ZIP candidate named {output_filename} with its existing real downloadable URL.
+If that exact existing artifact cannot be referenced, return status failed, result_type test_report, and artifacts as an empty array.
+"""
+
+
 async def cmd_test_artifact_roundtrip(args: argparse.Namespace) -> int:
     payload = artifact_roundtrip_smoke(
         repo_path=getattr(args, "path", "."),
@@ -22617,6 +22784,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
     answer_text: str | None = None
     conversation_url: str | None = None
     parsed: dict[str, Any] | None = None
+    reply_parse_diagnostics: dict[str, Any] | None = None
+    malformed_envelope_retry: dict[str, Any] | None = None
     intake: dict[str, Any] | None = None
     download: dict[str, Any] | None = None
     verified: dict[str, Any] | None = None
@@ -22710,6 +22879,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "intake_equivalent_command": intake_equivalent_command,
             "error": error,
             "error_type": error_type,
+            "reply_parse_diagnostics": reply_parse_diagnostics,
+            "malformed_envelope_retry": malformed_envelope_retry,
             "ask_result_summary": {
                 "type": ask_result.__class__.__name__ if ask_result is not None else None,
                 "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
@@ -22810,9 +22981,79 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             )
 
         parse_started_at = time.monotonic()
-        parsed = parse_promptbranch_reply(str(answer_text or ""))
+        expected_request_id = f"visual-artifact-roundtrip-{run_id}"
+        parsed, reply_parse_diagnostics = _visual_reply_parse_with_bounded_normalization(
+            str(answer_text or ""),
+            expected_request_id=expected_request_id,
+        )
+        if not parsed.get("ok") or parsed.get("request_id") != expected_request_id or parsed.get("correlation_id") != expected_request_id:
+            retry_started_at = time.monotonic()
+            retry_prompt = _visual_artifact_roundtrip_envelope_retry_prompt(
+                request_id=expected_request_id,
+                output_filename=output_filename,
+            )
+            retry_result = await backend.ask(
+                prompt=retry_prompt,
+                attachment_paths=None,
+                conversation_url=conversation_url,
+                expect_json=False,
+                keep_open=bool(getattr(args, "keep_open", False)),
+                retries=0,
+                service_timeout_seconds=90.0,
+            )
+            retry_answer_text, retry_conversation_url = _split_ask_response(retry_result)
+            phase_timings["malformed_envelope_retry_seconds"] = _elapsed_seconds_since(retry_started_at)
+            retry_parsed, retry_diagnostics = _visual_reply_parse_with_bounded_normalization(
+                str(retry_answer_text or ""),
+                expected_request_id=expected_request_id,
+            )
+            malformed_envelope_retry = {
+                "attempted": True,
+                "max_attempts": 1,
+                "bounded_service_timeout_seconds": 90.0,
+                "result_ok": retry_result.get("ok") if isinstance(retry_result, dict) else None,
+                "answer_text_length": len(str(retry_answer_text or "")),
+                "conversation_url_preserved": bool(retry_conversation_url == conversation_url),
+                "parse_diagnostics": retry_diagnostics,
+            }
+            if retry_conversation_url and retry_conversation_url != conversation_url:
+                return await emit_failure(
+                    "malformed_envelope_retry_wrong_conversation",
+                    error="bounded malformed-envelope retry returned a different conversation",
+                    error_type="WrongConversation",
+                    extra={
+                        "answer_text_length": len(str(answer_text or "")),
+                        "reply_parse_diagnostics": reply_parse_diagnostics,
+                        "malformed_envelope_retry": malformed_envelope_retry,
+                    },
+                )
+            parsed = retry_parsed
+            answer_text = retry_answer_text
+            reply_parse_diagnostics = {
+                "initial": reply_parse_diagnostics,
+                "retry": retry_diagnostics,
+                "status": "valid_after_single_bounded_retry" if retry_parsed.get("ok") else "invalid_after_single_bounded_retry",
+            }
+        else:
+            malformed_envelope_retry = {"attempted": False, "max_attempts": 1}
+
         intake = _artifact_intake_from_parsed_answer(parsed, expected_filename=output_filename)
         phase_timings["reply_parse_seconds"] = _elapsed_seconds_since(parse_started_at)
+        if not intake.get("ok") or int(intake.get("valid_zip_candidate_count") or 0) != 1:
+            return await emit_failure(
+                "artifact_candidate_not_selected",
+                error=str(intake.get("status") or parsed.get("status") or "exactly one valid ZIP candidate was not available"),
+                error_type="ArtifactCandidateInvalid",
+                extra={
+                    "answer_text_length": len(str(answer_text or "")),
+                    "reply_parse_diagnostics": reply_parse_diagnostics,
+                    "malformed_envelope_retry": malformed_envelope_retry,
+                    "parsed_reply": parsed,
+                    "artifact_intake": intake,
+                    "download_performed": False,
+                    "verification_performed": False,
+                },
+            )
         conversation_id = conversation_id_from_url(conversation_url or "") or "conversation_unknown"
         answer_id = parsed.get("answer_id") or "answer_unknown"
         intake.update({
@@ -22952,6 +23193,8 @@ async def cmd_test_visual_artifact_roundtrip(backend: CommandBackend, args: argp
             "type": ask_result.__class__.__name__ if ask_result is not None else None,
             "ok": ask_result.get("ok") if isinstance(ask_result, dict) else None,
         },
+        "reply_parse_diagnostics": reply_parse_diagnostics,
+        "malformed_envelope_retry": malformed_envelope_retry,
         "parsed_reply": parsed,
         "artifact_intake": verified,
         "operator_note": _delete_frozen_live_test_operator_note(str(getattr(args, "result_profile", None) or "visual-artifact-roundtrip")),

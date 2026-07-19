@@ -7,18 +7,18 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-active candidate version: v0.1.104.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-next normal slice: v0.1.104.3 — current-turn-scoped interrupted-state readiness
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+active candidate version: v0.1.104.4
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+next normal slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
 ## Plan summary
 
-`v0.1.104.3` is a narrow repair of unadopted `v0.1.104.2`. The sandbox gate, ten-step manifest, fresh direct execution, independent localhost execution, Project Source handling, and adoption flow remain unchanged. The repair scopes interruption evidence to the latest/current turn, separates pre-bootstrap readiness from post-bootstrap recovery, and waits boundedly for hydration after the one permitted reload. Accepted/current remains `v0.1.103.10.116`.
+`v0.1.104.4` is a narrow repair of unadopted `v0.1.104.3`. The sandbox gate, ten-step manifest, fresh direct execution, independent localhost execution, current-turn readiness, one-reload recovery, Project Source handling, and adoption flow remain unchanged. The repair completes visual replies from stable authoritative idle UI before parsing, permits one deterministic literal-whitespace normalization, and allows one bounded same-conversation envelope correction. Accepted/current remains `v0.1.103.10.116`.
 
-## Active repair slice — v0.1.104.3 — current-turn-scoped interrupted-state readiness
+## Active repair slice — v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
 
 Acceptance scope:
 
@@ -2262,3 +2262,5 @@ Release: v0.1.103.10.103
 - return `soft_delete_confirmation_or_direct_mutation_not_observed` when neither confirmation nor direct mutation is proven;
 - preserve both processing-stream watchers, bounded tracing, immutable request phases, sequence-bound protocol discovery, and all downstream deletion/reupload gates unchanged;
 - perform no canonical release `pbsa` and no adoption.
+
+Current active repair: `v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`.

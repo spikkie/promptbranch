@@ -722,7 +722,7 @@ fi
 ver="$(normalize_version "${version_arg}")" || fail "version must be a v-prefixed or bare dotted numeric version with at least three numeric segments, or an artifact ZIP ending in such a version; got '${version_arg}'"
 ver_plain="${ver#v}"
 force_fresh_full_transport_evidence=0
-if [[ "${ver}" == "v0.1.104.1" || "${ver}" == "v0.1.104.2" || "${ver}" == "v0.1.104.3" ]]; then
+if [[ "${ver}" == "v0.1.104.1" || "${ver}" == "v0.1.104.2" || "${ver}" == "v0.1.104.3" || "${ver}" == "v0.1.104.4" ]]; then
   force_fresh_full_transport_evidence=1
 fi
 if [[ -z "${release_test_project_name}" ]]; then

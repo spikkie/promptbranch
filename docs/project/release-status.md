@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.103.10.116
 last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
 last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-active candidate version: v0.1.104.3
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.3.zip
-next normal slice: v0.1.104.3 — current-turn-scoped interrupted-state readiness
+active candidate: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+active candidate version: v0.1.104.4
+next normal target: chatgpt_claudecode_workflow-2_v0.1.104.4.zip
+next normal slice: v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery
 next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
 ```
 
@@ -819,4 +819,8 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 
 | v0.1.104.2 | repair | Bounded post-bootstrap conversation-idle recovery | repair_required | one pre-ask readiness probe; one same-conversation reload only for interrupted_answer_state; bootstrap sentinel reverified; authoritative idle required; no general retry | DOD-288 focused candidate; next normal slice v0.1.105 | pending |
 
-| v0.1.104.3 | repair | Current-turn-scoped interrupted-state readiness | candidate | ignore historical Retry; separate pre/post bootstrap readiness; one hydrated same-conversation reload; no historical resubmit or general retry | DOD-289 focused candidate; next normal slice v0.1.105 | pending |
+| v0.1.104.3 | repair | Current-turn-scoped interrupted-state readiness | repair_required | ignore historical Retry; separate pre/post bootstrap readiness; one hydrated same-conversation reload; no historical resubmit or general retry | DOD-289 focused candidate; next normal slice v0.1.105 | pending |
+
+| v0.1.104.4 | repair | Parse-independent visual reply completion and bounded envelope recovery | candidate | causal virtualized-turn response detection, stable UI completion before parse, one deterministic literal-whitespace normalization, one bounded same-conversation malformed-envelope retry | DOD-290 focused candidate; 10/10 required | pending |
+
+Current active repair: `v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`.

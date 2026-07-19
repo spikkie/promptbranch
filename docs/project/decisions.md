@@ -967,7 +967,7 @@ Decision: the sandbox mutation/rollback proof is release-blocking. It must appea
 Decision: preserve the `v0.1.104.1` sandbox and transport gates unchanged. After a completed bootstrap response, perform a bounded composer-readiness probe. Only `interrupted_answer_state` by itself permits one reload of the same trusted conversation in the same page/context/profile. Reverify the bootstrap sentinel and a clean idle composer before the ask. Never resubmit bootstrap, create another conversation, or infer rate limiting without structured evidence.
 
 
-## v0.1.104.3 — current-turn-scoped interrupted-state readiness
+## v0.1.104.4 — current-turn-scoped interrupted-state readiness
 
 - A visible Retry or Regenerate control is release-blocking only when it belongs to the latest assistant turn or active composer state.
 - Historical Retry controls are recorded as ignored evidence and do not block an otherwise idle composer.

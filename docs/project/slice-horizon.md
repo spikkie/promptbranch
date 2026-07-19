@@ -2,7 +2,7 @@
 
 ## Active repair slice
 
-`v0.1.104.3 — current-turn-scoped interrupted-state readiness`
+`v0.1.104.4 — parse-independent visual reply completion and bounded envelope recovery`
 
 The repair preserves the proven sandbox and transport gates, ignores historical Retry controls, separates pre-bootstrap readiness from post-bootstrap recovery, and retains exactly one same-page reload of the same trusted conversation only when latest-turn `interrupted_answer_state` is the sole post-bootstrap blocker. After reload it waits boundedly for conversation hydration, then reverifies the exact bootstrap sentinel and authoritative idle composer state before ask submission.
 
@@ -189,3 +189,7 @@ Repair-only scope: capture the exact successful release Project Source upload, j
 ### v0.1.103.10.116 — assigned-source-aware post-adoption verification
 
 Repair-only scope: keep accepted/current `v0.1.103.10.115`; distinguish canonical artifact refs from exact assigned Project Source refs in final verification; require exact backing IDs, four matching versions, and three true consistency booleans; emit `release_adopted_and_verified` only after success. No normal-slice scope advancement.
+
+## Previous repair evidence
+
+`v0.1.104.3` passed 9/10 gates and proved current-turn-scoped readiness; visual artifact envelope handling remained repair-required.

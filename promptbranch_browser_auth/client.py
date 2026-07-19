@@ -4845,6 +4845,10 @@ class ChatGPTBrowserClient:
         response_context = await self._capture_response_context(page)
         if isinstance(response_context, dict):
             response_context.update(response_request_binding)
+            response_context["require_observed_generation_then_idle"] = bool(
+                "Visual artifact roundtrip request" in prompt
+                or "previous visual-artifact response" in prompt
+            )
         mark_phase("response_context_seconds", phase_started)
         dom_weight = response_context.get("dom_weight") if isinstance(response_context, dict) else {}
         if isinstance(dom_weight, dict):
@@ -32290,6 +32294,24 @@ class ChatGPTBrowserClient:
             )
             return True
 
+        # Conversation virtualization can also reduce the visible assistant count
+        # after a causally confirmed submit. Accept the newest text only after an
+        # observed generation transition and only when it differs from the exact
+        # pre-submit baseline. Completion still requires stable text and idle UI.
+        reduced_count_confirmed_rebase = bool(
+            count < baseline_count
+            and response_context.get("submit_confirmed") is True
+            and observed_running_state
+            and candidate != baseline_text
+        )
+        if reduced_count_confirmed_rebase:
+            response_context["post_submit_turn_evidence_mode"] = (
+                "virtualized_count_rebase_after_confirmed_submit_and_running"
+            )
+            response_context["post_submit_visible_assistant_count"] = count
+            response_context["post_submit_baseline_assistant_count"] = baseline_count
+            return True
+
         # Without both confirmed submit causality and an observed generation
         # transition, a same-count mutation may be a stale previous turn.
         return False
@@ -32426,9 +32448,19 @@ class ChatGPTBrowserClient:
                     observed_idle_after_running=observed_idle_after_running,
                 )
                 idle_label_visible = self._is_idle_composer_label(submit_state.get("aria_label"))
+                require_observed_generation_then_idle = bool(
+                    isinstance(response_context, dict)
+                    and response_context.get("require_observed_generation_then_idle")
+                )
+                generation_then_idle_ready = bool(
+                    not require_observed_generation_then_idle
+                    or (observed_running_state and observed_idle_after_running)
+                )
                 strong_idle_completion = bool(
                     completion_ready
+                    and generation_then_idle_ready
                     and text_length
+                    and stable_polls >= 1
                     and composer_idle_visible
                     and idle_label_visible
                     and not submit_state.get("stop_visible")
@@ -32437,6 +32469,7 @@ class ChatGPTBrowserClient:
                 )
                 stable_completion = bool(
                     completion_ready
+                    and generation_then_idle_ready
                     and stable_polls >= stable_required
                     and stable_elapsed_s >= min_completion_delay_s
                 )
@@ -32486,6 +32519,8 @@ class ChatGPTBrowserClient:
                         thinking_text=thinking_state.get("text"),
                         observed_running_state=observed_running_state,
                         observed_idle_after_running=observed_idle_after_running,
+                        require_observed_generation_then_idle=require_observed_generation_then_idle,
+                        generation_then_idle_ready=generation_then_idle_ready,
                         preview=self._preview_text(candidate_text, 160),
                     )
                     if self.config.debug:
