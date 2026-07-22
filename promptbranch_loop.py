@@ -59,6 +59,8 @@ LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA = "promptbranch.loop.sandbox_mutation_
 LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION = "1.0"
 LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA = "promptbranch.loop.sandbox_correction_promotion_readiness"
 LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA_VERSION = "1.0"
+LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA = "promptbranch.loop.sandbox_correction_promotion_decision"
+LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA_VERSION = "1.0"
 
 PROMOTION_READINESS_REPOSITORY_MARKERS: tuple[tuple[str, str], ...] = (
     ("VERSION", "file"),
@@ -2019,6 +2021,218 @@ def render_loop_sandbox_correction_promotion_readiness_text(payload: dict[str, A
     blockers = payload.get("execution_blockers") or []
     if blockers:
         lines.append("execution blockers: " + ", ".join(str(item) for item in blockers))
+    lines.append(str(payload.get("operator_instruction") or ""))
+    return "\n".join(lines) + "\n"
+
+
+PROMOTION_DECISION_MANDATORY_EVIDENCE = (
+    "readiness_schema_exact",
+    "readiness_schema_version_exact",
+    "readiness_ok_true",
+    "readiness_status_ready",
+    "readiness_decision_exact",
+    "target_path_present",
+    "required_run_count_exact_three",
+    "observed_run_count_exact_three",
+    "readiness_checks_all_true",
+    "failed_readiness_checks_empty",
+    "execution_blockers_empty",
+    "determinism_true",
+    "unique_fingerprint_count_one",
+    "workspace_count_exact_three",
+    "unique_workspace_count_exact_three",
+    "independent_temporary_workspaces_true",
+    "evidence_run_count_exact_three",
+    "every_evidence_run_complete",
+    "every_evidence_run_failed_checks_empty",
+    "evidence_fingerprint_singleton",
+    "readiness_assessment_only_true",
+    "promotion_not_previously_recorded",
+    "no_broader_mutation_authority",
+    "no_specific_mutation_authority",
+    "sandbox_only_true",
+    "existing_sandbox_contract_reused_true",
+    "no_new_mutation_operations",
+    "no_repository_mutation",
+    "no_deployment",
+    "no_project_source_mutation",
+    "no_artifact_adoption",
+    "no_project_deletion",
+)
+
+
+def build_loop_sandbox_correction_promotion_decision_payload(
+    readiness_payload: dict[str, Any],
+) -> dict[str, Any]:
+    readiness = readiness_payload if isinstance(readiness_payload, dict) else {}
+    readiness_checks = readiness.get("readiness_checks") if isinstance(readiness.get("readiness_checks"), dict) else {}
+    determinism = readiness.get("determinism") if isinstance(readiness.get("determinism"), dict) else {}
+    authority = readiness.get("authority") if isinstance(readiness.get("authority"), dict) else {}
+    safety = readiness.get("safety") if isinstance(readiness.get("safety"), dict) else {}
+    evidence_runs = readiness.get("evidence_runs") if isinstance(readiness.get("evidence_runs"), list) else []
+    fingerprints = [
+        str(item.get("determinism_fingerprint_sha256"))
+        for item in evidence_runs
+        if isinstance(item, dict) and item.get("determinism_fingerprint_sha256")
+    ]
+    unique_fingerprints = sorted(set(fingerprints))
+    specific_authority_fields = (
+        "repository_mutation_authority_granted",
+        "deployment_authority_granted",
+        "kubernetes_mutation_authority_granted",
+        "project_source_mutation_authority_granted",
+        "artifact_adoption_authority_granted",
+        "chatgpt_project_deletion_authority_granted",
+    )
+    checks = {
+        "readiness_schema_exact": readiness.get("schema") == LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA,
+        "readiness_schema_version_exact": readiness.get("schema_version") == LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA_VERSION,
+        "readiness_ok_true": readiness.get("ok") is True,
+        "readiness_status_ready": readiness.get("status") == "ready",
+        "readiness_decision_exact": readiness.get("decision") == "ready_for_explicit_v0.1.106_go_no_go_decision",
+        "target_path_present": isinstance(readiness.get("target_path"), str) and bool(str(readiness.get("target_path")).strip()),
+        "required_run_count_exact_three": readiness.get("required_run_count") == 3,
+        "observed_run_count_exact_three": readiness.get("observed_run_count") == 3,
+        "readiness_checks_all_true": bool(readiness_checks) and all(value is True for value in readiness_checks.values()),
+        "failed_readiness_checks_empty": readiness.get("failed_readiness_checks") == [],
+        "execution_blockers_empty": readiness.get("execution_blockers") == [],
+        "determinism_true": determinism.get("deterministic") is True,
+        "unique_fingerprint_count_one": determinism.get("unique_fingerprint_count") == 1,
+        "workspace_count_exact_three": determinism.get("workspace_count") == 3,
+        "unique_workspace_count_exact_three": determinism.get("unique_workspace_count") == 3,
+        "independent_temporary_workspaces_true": determinism.get("independent_temporary_workspaces") is True,
+        "evidence_run_count_exact_three": len(evidence_runs) == 3,
+        "every_evidence_run_complete": len(evidence_runs) == 3 and all(isinstance(item, dict) and item.get("complete") is True for item in evidence_runs),
+        "every_evidence_run_failed_checks_empty": len(evidence_runs) == 3 and all(isinstance(item, dict) and item.get("failed_checks") == [] for item in evidence_runs),
+        "evidence_fingerprint_singleton": len(fingerprints) == 3 and len(unique_fingerprints) == 1,
+        "readiness_assessment_only_true": authority.get("assessment_only") is True,
+        "promotion_not_previously_recorded": authority.get("promotion_decision_recorded") is False,
+        "no_broader_mutation_authority": authority.get("broader_mutation_authority_granted") is False,
+        "no_specific_mutation_authority": all(authority.get(name) is False for name in specific_authority_fields),
+        "sandbox_only_true": safety.get("sandbox_only") is True,
+        "existing_sandbox_contract_reused_true": safety.get("existing_sandbox_contract_reused") is True,
+        "no_new_mutation_operations": safety.get("new_mutation_operations_enabled") is False,
+        "no_repository_mutation": safety.get("repository_files_mutated") is False,
+        "no_deployment": safety.get("deployment_performed") is False,
+        "no_project_source_mutation": safety.get("project_source_mutation_performed") is False,
+        "no_artifact_adoption": safety.get("artifact_adoption_performed") is False,
+        "no_project_deletion": safety.get("chatgpt_project_deletion_performed") is False,
+    }
+    failed_checks = [name for name in PROMOTION_DECISION_MANDATORY_EVIDENCE if checks.get(name) is not True]
+    go = not failed_checks
+    decision = "go" if go else "no_go"
+    status = "promotion_go_recorded" if go else "promotion_no_go_recorded"
+    stop_conditions = [
+        {"name": name, "triggered": checks.get(name) is not True}
+        for name in PROMOTION_DECISION_MANDATORY_EVIDENCE
+    ]
+    fingerprint = unique_fingerprints[0] if len(unique_fingerprints) == 1 else None
+    return {
+        "ok": True,
+        "schema": LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA,
+        "schema_version": LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA_VERSION,
+        "action": "record_sandbox_correction_promotion_decision",
+        "decision_version": "v0.1.106",
+        "readiness_contract_version": "v0.1.105.1",
+        "decision_record_id": f"v0.1.106:sandbox-correction-promotion:{fingerprint or 'no-fingerprint'}",
+        "status": status,
+        "decision": decision,
+        "decision_scope": "controlled_execution_envelope_design_only" if go else "remain_sandbox_only",
+        "source_readiness": {
+            "schema": readiness.get("schema"),
+            "schema_version": readiness.get("schema_version"),
+            "status": readiness.get("status"),
+            "decision": readiness.get("decision"),
+            "target_path": readiness.get("target_path"),
+            "required_run_count": readiness.get("required_run_count"),
+            "observed_run_count": readiness.get("observed_run_count"),
+            "failed_readiness_checks": readiness.get("failed_readiness_checks"),
+            "execution_blockers": readiness.get("execution_blockers"),
+            "determinism_fingerprint_sha256": fingerprint,
+            "unique_fingerprint_count": determinism.get("unique_fingerprint_count"),
+            "workspace_count": determinism.get("workspace_count"),
+            "unique_workspace_count": determinism.get("unique_workspace_count"),
+        },
+        "mandatory_evidence": {
+            "check_count": len(PROMOTION_DECISION_MANDATORY_EVIDENCE),
+            "passed_check_count": sum(1 for name in PROMOTION_DECISION_MANDATORY_EVIDENCE if checks.get(name) is True),
+            "failed_check_count": len(failed_checks),
+            "checks": [{"name": name, "passed": checks.get(name) is True} for name in PROMOTION_DECISION_MANDATORY_EVIDENCE],
+            "failed_checks": failed_checks,
+        },
+        "stop_conditions": stop_conditions,
+        "triggered_stop_conditions": failed_checks,
+        "authority": {
+            "promotion_decision_recorded": True,
+            "v0_1_107_execution_envelope_design_authorized": go,
+            "correction_execution_authority_granted": False,
+            "disposable_repository_mutation_authority_granted": False,
+            "real_repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "decision_record_only": True,
+            "sandbox_evidence_reused": True,
+            "new_mutation_operations_enabled": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.107",
+            "slice": "Controlled correction execution envelope design",
+            "permitted": go,
+            "scope": "design_only_no_correction_execution",
+        },
+        "operator_instruction": (
+            "GO records that the repeated sandbox evidence is sufficient to proceed only to v0.1.107 controlled execution-envelope design. "
+            "It grants no correction execution, repository mutation, deployment, Kubernetes, Project Source, artifact-adoption, or Project-deletion authority."
+            if go
+            else
+            "NO-GO records that one or more mandatory evidence or safety conditions failed. Remain sandbox-only and do not design or execute a broader correction envelope until a later explicit decision record passes every stop condition."
+        ),
+    }
+
+
+def assess_loop_sandbox_correction_promotion_decision(
+    target_path: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+    required_runs: int = 3,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    readiness = assess_loop_sandbox_correction_promotion_readiness(
+        target_path,
+        repo_root=repo_root,
+        required_runs=required_runs,
+        timeout_seconds=timeout_seconds,
+    )
+    return build_loop_sandbox_correction_promotion_decision_payload(readiness)
+
+
+def render_loop_sandbox_correction_promotion_decision_text(payload: dict[str, Any]) -> str:
+    source = payload.get("source_readiness") if isinstance(payload.get("source_readiness"), dict) else {}
+    evidence = payload.get("mandatory_evidence") if isinstance(payload.get("mandatory_evidence"), dict) else {}
+    lines = [
+        "Promptbranch controlled correction promotion decision",
+        f"decision: {str(payload.get('decision') or '').upper().replace('_', '-')}",
+        f"status: {payload.get('status')}",
+        f"readiness: {source.get('status')}",
+        f"evidence runs: {source.get('observed_run_count')}/{source.get('required_run_count')}",
+        f"mandatory evidence: {evidence.get('passed_check_count')}/{evidence.get('check_count')}",
+        f"v0.1.107 design authorized: {bool((payload.get('authority') or {}).get('v0_1_107_execution_envelope_design_authorized'))}",
+        "correction execution authority granted: false",
+    ]
+    triggered = payload.get("triggered_stop_conditions") or []
+    if triggered:
+        lines.append("triggered stop conditions: " + ", ".join(str(item) for item in triggered))
     lines.append(str(payload.get("operator_instruction") or ""))
     return "\n".join(lines) + "\n"
 

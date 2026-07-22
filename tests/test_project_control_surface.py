@@ -58,7 +58,7 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |" in text
     assert "v0.1.104.5" in text
     assert "accepted/current" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.104.5.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.105.1.zip" in text
     assert "v0.1.104" in text
     assert "standard browser profile default" in text
     assert "candidate" in text
@@ -76,7 +76,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     text = read_doc("status.md")
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.104.5.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.105.1.zip" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.105.1.zip" in text
     assert "standard browser profile default" in text
 
@@ -138,18 +138,18 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     data = json.loads((PROJECT_DOCS / "plan-state.json").read_text(encoding="utf-8"))
     assert data["schema"] == "promptbranch.project.plan_state"
     assert data["schema_version"] == "1.0"
-    assert data["accepted_current_version"] == "v0.1.104.5"
-    assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.5.zip"
-    assert data["active_candidate_version"] == "v0.1.105.1"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.105.1.zip"
-    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.105.1.zip"
-    assert data["next_normal_version"] == "v0.1.105.1"
-    assert data["active_slice"] == "v0.1.105.1 — target-anchored promotion-readiness repository resolution"
-    assert data["next_planned_version_after_acceptance"] == "v0.1.106"
-    assert data["next_planned_slice_after_acceptance"] == "Controlled correction promotion decision record"
+    assert data["accepted_current_version"] == "v0.1.105.1"
+    assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.105.1.zip"
+    assert data["active_candidate_version"] == "v0.1.106"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.106.zip"
+    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.106.zip"
+    assert data["next_normal_version"] == "v0.1.106"
+    assert data["active_slice"] == "v0.1.106 — Controlled correction promotion decision record"
+    assert data["next_planned_version_after_acceptance"] == "v0.1.107"
+    assert data["next_planned_slice_after_acceptance"] == "Controlled correction execution envelope design"
     assert data["repair_must_not_advance_scope"] is True
-    assert data["release_mode"] == "repair"
-    assert data["scope_advance_allowed"] is False
+    assert data["release_mode"] == "normal"
+    assert data["scope_advance_allowed"] is True
     assert data["architecture_goal"] == "controlled problem-solving loop"
     assert len(data["rolling_slice_horizon"]) == 5
 
@@ -157,9 +157,9 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
 def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
-    assert payload["accepted_current_version"] == "v0.1.104.5"
-    assert payload["active_candidate_version"] == "v0.1.105.1"
-    assert payload["next_normal_slice"] == "v0.1.105.1 — target-anchored promotion-readiness repository resolution"
+    assert payload["accepted_current_version"] == "v0.1.105.1"
+    assert payload["active_candidate_version"] == "v0.1.106"
+    assert payload["next_normal_slice"] == "v0.1.106 — Controlled correction promotion decision record"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
 
@@ -176,7 +176,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.105.1.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.106.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -187,7 +187,7 @@ def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path
     (repo / "VERSION").write_text("v0.1.103.1\n", encoding="utf-8")
     status = repo / "docs" / "project" / "status.md"
     text = status.read_text(encoding="utf-8")
-    status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.104.5.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
+    status.write_text(text.replace("chatgpt_claudecode_workflow-2_v0.1.105.1.zip", "chatgpt_claudecode_workflow-2_v0.1.79.zip", 1), encoding="utf-8")
 
     payload = validate_project_control_surface(repo)
     assert payload["ok"] is False
@@ -209,11 +209,11 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
 def test_project_next_slice_payload_is_derived_from_validated_control_surface() -> None:
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
-    assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.104.5.zip"
-    assert payload["next_normal_version"] == "v0.1.105.1"
-    assert payload["next_normal_slice"] == "v0.1.105.1 — target-anchored promotion-readiness repository resolution"
-    assert payload["next_slice_after_acceptance_version"] == "v0.1.106"
-    assert payload["next_slice_after_acceptance"] == "Controlled correction promotion decision record"
+    assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.105.1.zip"
+    assert payload["next_normal_version"] == "v0.1.106"
+    assert payload["next_normal_slice"] == "v0.1.106 — Controlled correction promotion decision record"
+    assert payload["next_slice_after_acceptance_version"] == "v0.1.107"
+    assert payload["next_slice_after_acceptance"] == "Controlled correction execution envelope design"
     assert payload["architecture_invariants_checked"] is True
     assert payload["control_surface_validated"] is True
 
@@ -230,8 +230,8 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.105.1"
-    assert payload["next_slice_after_acceptance_version"] == "v0.1.106"
+    assert payload["next_normal_version"] == "v0.1.106"
+    assert payload["next_slice_after_acceptance_version"] == "v0.1.107"
 
 
 def test_project_control_surface_validator_rejects_short_horizon(tmp_path: Path) -> None:
@@ -301,3 +301,34 @@ def test_project_control_surface_validator_rejects_repair_scope_advance(tmp_path
     payload = validate_project_control_surface(repo)
     assert payload["ok"] is False
     assert "repair releases must set scope_advance_allowed=false" in payload["errors"]
+
+
+def test_v0_1_106_promotion_decision_record_is_go_with_design_only_authority() -> None:
+    record_path = PROJECT_DOCS / "correction-promotion-decision-v0.1.106.json"
+    assert record_path.is_file()
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+
+    assert payload["schema"] == "promptbranch.loop.sandbox_correction_promotion_decision"
+    assert payload["schema_version"] == "1.0"
+    assert payload["decision_version"] == "v0.1.106"
+    assert payload["readiness_contract_version"] == "v0.1.105.1"
+    assert payload["status"] == "promotion_go_recorded"
+    assert payload["decision"] == "go"
+    assert payload["decision_scope"] == "controlled_execution_envelope_design_only"
+    assert payload["source_readiness"]["observed_run_count"] == 3
+    assert payload["source_readiness"]["unique_workspace_count"] == 3
+    assert payload["source_readiness"]["unique_fingerprint_count"] == 1
+    assert payload["source_readiness"]["determinism_fingerprint_sha256"] == "470e04f73c008bcd49827102f94f84e447f6f8618db69ae3272159f637959756"
+    assert payload["mandatory_evidence"]["passed_check_count"] == 32
+    assert payload["mandatory_evidence"]["failed_check_count"] == 0
+    assert payload["triggered_stop_conditions"] == []
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is True
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["authority"]["disposable_repository_mutation_authority_granted"] is False
+    assert payload["authority"]["real_repository_mutation_authority_granted"] is False
+    assert payload["authority"]["deployment_authority_granted"] is False
+    assert payload["authority"]["project_source_mutation_authority_granted"] is False
+    assert payload["authority"]["artifact_adoption_authority_granted"] is False
+    assert payload["authority"]["chatgpt_project_deletion_authority_granted"] is False
+    assert payload["next_slice"]["version"] == "v0.1.107"
+    assert payload["next_slice"]["scope"] == "design_only_no_correction_execution"

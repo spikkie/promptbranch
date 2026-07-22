@@ -1,0 +1,337 @@
+{
+  "ok": true,
+  "schema": "promptbranch.loop.sandbox_correction_promotion_decision",
+  "schema_version": "1.0",
+  "action": "record_sandbox_correction_promotion_decision",
+  "decision_version": "v0.1.106",
+  "readiness_contract_version": "v0.1.105.1",
+  "decision_record_id": "v0.1.106:sandbox-correction-promotion:470e04f73c008bcd49827102f94f84e447f6f8618db69ae3272159f637959756",
+  "status": "promotion_go_recorded",
+  "decision": "go",
+  "decision_scope": "controlled_execution_envelope_design_only",
+  "source_readiness": {
+    "schema": "promptbranch.loop.sandbox_correction_promotion_readiness",
+    "schema_version": "1.0",
+    "status": "ready",
+    "decision": "ready_for_explicit_v0.1.106_go_no_go_decision",
+    "target_path": "examples/loop-targets/sandboxed-file-mutation-target.json",
+    "required_run_count": 3,
+    "observed_run_count": 3,
+    "failed_readiness_checks": [],
+    "execution_blockers": [],
+    "determinism_fingerprint_sha256": "470e04f73c008bcd49827102f94f84e447f6f8618db69ae3272159f637959756",
+    "unique_fingerprint_count": 1,
+    "workspace_count": 3,
+    "unique_workspace_count": 3
+  },
+  "mandatory_evidence": {
+    "check_count": 32,
+    "passed_check_count": 32,
+    "failed_check_count": 0,
+    "checks": [
+      {
+        "name": "readiness_schema_exact",
+        "passed": true
+      },
+      {
+        "name": "readiness_schema_version_exact",
+        "passed": true
+      },
+      {
+        "name": "readiness_ok_true",
+        "passed": true
+      },
+      {
+        "name": "readiness_status_ready",
+        "passed": true
+      },
+      {
+        "name": "readiness_decision_exact",
+        "passed": true
+      },
+      {
+        "name": "target_path_present",
+        "passed": true
+      },
+      {
+        "name": "required_run_count_exact_three",
+        "passed": true
+      },
+      {
+        "name": "observed_run_count_exact_three",
+        "passed": true
+      },
+      {
+        "name": "readiness_checks_all_true",
+        "passed": true
+      },
+      {
+        "name": "failed_readiness_checks_empty",
+        "passed": true
+      },
+      {
+        "name": "execution_blockers_empty",
+        "passed": true
+      },
+      {
+        "name": "determinism_true",
+        "passed": true
+      },
+      {
+        "name": "unique_fingerprint_count_one",
+        "passed": true
+      },
+      {
+        "name": "workspace_count_exact_three",
+        "passed": true
+      },
+      {
+        "name": "unique_workspace_count_exact_three",
+        "passed": true
+      },
+      {
+        "name": "independent_temporary_workspaces_true",
+        "passed": true
+      },
+      {
+        "name": "evidence_run_count_exact_three",
+        "passed": true
+      },
+      {
+        "name": "every_evidence_run_complete",
+        "passed": true
+      },
+      {
+        "name": "every_evidence_run_failed_checks_empty",
+        "passed": true
+      },
+      {
+        "name": "evidence_fingerprint_singleton",
+        "passed": true
+      },
+      {
+        "name": "readiness_assessment_only_true",
+        "passed": true
+      },
+      {
+        "name": "promotion_not_previously_recorded",
+        "passed": true
+      },
+      {
+        "name": "no_broader_mutation_authority",
+        "passed": true
+      },
+      {
+        "name": "no_specific_mutation_authority",
+        "passed": true
+      },
+      {
+        "name": "sandbox_only_true",
+        "passed": true
+      },
+      {
+        "name": "existing_sandbox_contract_reused_true",
+        "passed": true
+      },
+      {
+        "name": "no_new_mutation_operations",
+        "passed": true
+      },
+      {
+        "name": "no_repository_mutation",
+        "passed": true
+      },
+      {
+        "name": "no_deployment",
+        "passed": true
+      },
+      {
+        "name": "no_project_source_mutation",
+        "passed": true
+      },
+      {
+        "name": "no_artifact_adoption",
+        "passed": true
+      },
+      {
+        "name": "no_project_deletion",
+        "passed": true
+      }
+    ],
+    "failed_checks": []
+  },
+  "stop_conditions": [
+    {
+      "name": "readiness_schema_exact",
+      "triggered": false
+    },
+    {
+      "name": "readiness_schema_version_exact",
+      "triggered": false
+    },
+    {
+      "name": "readiness_ok_true",
+      "triggered": false
+    },
+    {
+      "name": "readiness_status_ready",
+      "triggered": false
+    },
+    {
+      "name": "readiness_decision_exact",
+      "triggered": false
+    },
+    {
+      "name": "target_path_present",
+      "triggered": false
+    },
+    {
+      "name": "required_run_count_exact_three",
+      "triggered": false
+    },
+    {
+      "name": "observed_run_count_exact_three",
+      "triggered": false
+    },
+    {
+      "name": "readiness_checks_all_true",
+      "triggered": false
+    },
+    {
+      "name": "failed_readiness_checks_empty",
+      "triggered": false
+    },
+    {
+      "name": "execution_blockers_empty",
+      "triggered": false
+    },
+    {
+      "name": "determinism_true",
+      "triggered": false
+    },
+    {
+      "name": "unique_fingerprint_count_one",
+      "triggered": false
+    },
+    {
+      "name": "workspace_count_exact_three",
+      "triggered": false
+    },
+    {
+      "name": "unique_workspace_count_exact_three",
+      "triggered": false
+    },
+    {
+      "name": "independent_temporary_workspaces_true",
+      "triggered": false
+    },
+    {
+      "name": "evidence_run_count_exact_three",
+      "triggered": false
+    },
+    {
+      "name": "every_evidence_run_complete",
+      "triggered": false
+    },
+    {
+      "name": "every_evidence_run_failed_checks_empty",
+      "triggered": false
+    },
+    {
+      "name": "evidence_fingerprint_singleton",
+      "triggered": false
+    },
+    {
+      "name": "readiness_assessment_only_true",
+      "triggered": false
+    },
+    {
+      "name": "promotion_not_previously_recorded",
+      "triggered": false
+    },
+    {
+      "name": "no_broader_mutation_authority",
+      "triggered": false
+    },
+    {
+      "name": "no_specific_mutation_authority",
+      "triggered": false
+    },
+    {
+      "name": "sandbox_only_true",
+      "triggered": false
+    },
+    {
+      "name": "existing_sandbox_contract_reused_true",
+      "triggered": false
+    },
+    {
+      "name": "no_new_mutation_operations",
+      "triggered": false
+    },
+    {
+      "name": "no_repository_mutation",
+      "triggered": false
+    },
+    {
+      "name": "no_deployment",
+      "triggered": false
+    },
+    {
+      "name": "no_project_source_mutation",
+      "triggered": false
+    },
+    {
+      "name": "no_artifact_adoption",
+      "triggered": false
+    },
+    {
+      "name": "no_project_deletion",
+      "triggered": false
+    }
+  ],
+  "triggered_stop_conditions": [],
+  "authority": {
+    "promotion_decision_recorded": true,
+    "v0_1_107_execution_envelope_design_authorized": true,
+    "correction_execution_authority_granted": false,
+    "disposable_repository_mutation_authority_granted": false,
+    "real_repository_mutation_authority_granted": false,
+    "deployment_authority_granted": false,
+    "kubernetes_mutation_authority_granted": false,
+    "project_source_mutation_authority_granted": false,
+    "artifact_adoption_authority_granted": false,
+    "chatgpt_project_deletion_authority_granted": false
+  },
+  "safety": {
+    "decision_record_only": true,
+    "sandbox_evidence_reused": true,
+    "new_mutation_operations_enabled": false,
+    "repository_files_mutated": false,
+    "deployment_performed": false,
+    "kubernetes_mutation_performed": false,
+    "project_source_mutation_performed": false,
+    "artifact_adoption_performed": false,
+    "chatgpt_project_deletion_performed": false
+  },
+  "next_slice": {
+    "version": "v0.1.107",
+    "slice": "Controlled correction execution envelope design",
+    "permitted": true,
+    "scope": "design_only_no_correction_execution"
+  },
+  "operator_instruction": "GO records that the repeated sandbox evidence is sufficient to proceed only to v0.1.107 controlled execution-envelope design. It grants no correction execution, repository mutation, deployment, Kubernetes, Project Source, artifact-adoption, or Project-deletion authority.",
+  "source_authority": {
+    "accepted_current_version": "v0.1.105.1",
+    "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
+    "accepted_validation": "10/10 GO",
+    "accepted_adoption_status": "release_adopted_and_verified",
+    "assigned_project_source": "chatgpt_claudecode_workflow-2_v0.1.105.1(1).zip"
+  },
+  "record_scope": {
+    "records_go_no_go_only": true,
+    "runtime_persistence_required": false,
+    "project_decision_file": "docs/project/correction-promotion-decision-v0.1.106.json",
+    "release_acceptance_required_before_current": true
+  }
+}

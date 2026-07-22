@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.104.5.zip",
-  "accepted_current_version": "v0.1.104.5",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
-  "active_candidate_version": "v0.1.105.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
+  "accepted_current_version": "v0.1.105.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
+  "active_candidate_version": "v0.1.106",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
+  "active_slice": "v0.1.106 — Controlled correction promotion decision record",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -201,11 +201,19 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
       "created_at": "2026-07-19T15:00:00+02:00",
       "slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
+      "status": "accepted_current",
+      "version": "v0.1.105.1",
+      "validation": "Strict host validation passed all 10/10 gates with fresh full_direct, independent full_localhost, sandbox 13/13, all external-live gates, import smoke, Artifact Guardian, evidence-bound adoption, and final release_adopted_and_verified."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
+      "created_at": "2026-07-22T14:30:00+02:00",
+      "slice": "v0.1.106 — Controlled correction promotion decision record",
       "status": "candidate",
-      "version": "v0.1.105.1"
+      "version": "v0.1.106"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.104.5.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -531,16 +539,16 @@
       "version": "v0.1.105.1"
     }
   ],
-  "last_completed_normal_slice": "Sandbox mutation verification and rollback evidence gate",
-  "last_completed_normal_slice_version": "v0.1.104",
-  "last_completed_repair": "v0.1.104.5 — hermetic release-validation profile isolation",
-  "last_completed_repair_version": "v0.1.104.5",
-  "last_updated": "2026-07-19T15:00:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
-  "next_normal_slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
-  "next_normal_version": "v0.1.105.1",
-  "next_planned_slice_after_acceptance": "Controlled correction promotion decision record",
-  "next_planned_version_after_acceptance": "v0.1.106",
+  "last_completed_normal_slice": "v0.1.105 — Sandbox correction promotion readiness check (completed by v0.1.105.1)",
+  "last_completed_normal_slice_version": "v0.1.105",
+  "last_completed_repair": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
+  "last_completed_repair_version": "v0.1.105.1",
+  "last_updated": "2026-07-22T14:30:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
+  "next_normal_slice": "v0.1.106 — Controlled correction promotion decision record",
+  "next_normal_version": "v0.1.106",
+  "next_planned_slice_after_acceptance": "Controlled correction execution envelope design",
+  "next_planned_version_after_acceptance": "v0.1.107",
   "out_of_scope": [
     "granting broader correction or repository mutation authority in v0.1.105.1",
     "recording the v0.1.106 GO/NO-GO promotion decision in this slice",
@@ -1049,12 +1057,21 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
       "kind": "repair",
       "slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
-      "status": "candidate",
+      "status": "accepted_current",
       "summary": "Derives promotion-readiness repository authority from the resolved target path using authoritative repository markers, supports an explicit --repo-root, requires target containment, and blocks before evidence execution when root resolution is absent, ambiguous, or wrong.",
-      "version": "v0.1.105.1"
+      "version": "v0.1.105.1",
+      "validation": "Strict host validation passed all 10/10 gates with fresh full_direct, independent full_localhost, sandbox 13/13, all external-live gates, import smoke, Artifact Guardian, evidence-bound adoption, and final release_adopted_and_verified."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
+      "kind": "normal",
+      "slice": "v0.1.106 — Controlled correction promotion decision record",
+      "status": "candidate",
+      "summary": "Records deterministic GO/NO-GO from the accepted three-run sandbox readiness evidence. GO authorizes only v0.1.107 execution-envelope design and no correction execution or broader mutation authority.",
+      "version": "v0.1.106"
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -1258,9 +1275,10 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "accepted_current",
       "summary": "Derives promotion-readiness repository authority from the resolved target path using authoritative repository markers, supports an explicit --repo-root, requires target containment, and blocks before evidence execution when root resolution is absent, ambiguous, or wrong.",
-      "version": "v0.1.105.1"
+      "version": "v0.1.105.1",
+      "validation": "Strict host validation passed all 10/10 gates and final release_adopted_and_verified."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1296,39 +1314,41 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.105.zip",
       "release_mode": "normal",
-      "scope": "readiness evidence model implemented, but repository authority incorrectly depended on caller cwd for absolute targets",
+      "scope": "sandbox correction promotion readiness completed through accepted target-anchored repair v0.1.105.1",
       "slice": "v0.1.105 — Sandbox correction promotion readiness check",
-      "status": "repair_required",
+      "status": "completed_via_repair",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.zip",
       "version": "v0.1.105"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
       "release_mode": "repair",
-      "scope": "derive repository authority from the target or explicit validated root; block before evidence on absent, ambiguous, or non-containing roots",
+      "scope": "accepted target-anchored repository authority repair; 10/10 GO and adoption verified",
       "slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
-      "status": "active",
+      "status": "completed",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
       "version": "v0.1.105.1"
     },
     {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
       "release_mode": "normal",
-      "scope": "record an explicit GO/NO-GO decision on whether correction workflows may move beyond disposable sandbox fixtures",
-      "slice": "Controlled correction promotion decision record",
-      "status": "planned_after_acceptance",
+      "scope": "record deterministic GO/NO-GO from mandatory sandbox readiness evidence; GO permits only v0.1.107 design",
+      "slice": "v0.1.106 — Controlled correction promotion decision record",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
       "version": "v0.1.106"
     },
     {
       "release_mode": "normal",
-      "scope": "define the future deterministic execution envelope for controlled corrections without enabling repository-wide mutation",
+      "scope": "define the deterministic controlled-correction execution envelope without enabling correction execution",
       "slice": "Controlled correction execution envelope design",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "version": "v0.1.107"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1339,5 +1359,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.105.1"
+  "updated_for": "v0.1.106"
 }

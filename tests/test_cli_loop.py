@@ -616,3 +616,76 @@ def test_loop_promotion_readiness_cli_blocks_wrong_explicit_repo_root(tmp_path: 
     assert payload["observed_run_count"] == 0
     assert payload["execution_blockers"] == ["target_outside_repository_root"]
     assert payload["authority"]["broader_mutation_authority_granted"] is False
+
+
+def test_loop_promotion_decision_cli_records_go_from_unrelated_cwd_without_execution_authority(tmp_path: Path):
+    unrelated_repo = tmp_path / "unrelated-repository"
+    unrelated_repo.mkdir()
+    (unrelated_repo / ".git").mkdir()
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "promotion-decision",
+            "--target",
+            str(target),
+            "--runs",
+            "3",
+            "--json",
+        ],
+        cwd=unrelated_repo,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema"] == "promptbranch.loop.sandbox_correction_promotion_decision"
+    assert payload["status"] == "promotion_go_recorded"
+    assert payload["decision"] == "go"
+    assert payload["source_readiness"]["observed_run_count"] == 3
+    assert payload["source_readiness"]["unique_workspace_count"] == 3
+    assert payload["source_readiness"]["unique_fingerprint_count"] == 1
+    assert payload["mandatory_evidence"]["failed_check_count"] == 0
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is True
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["authority"]["real_repository_mutation_authority_granted"] is False
+
+
+def test_loop_promotion_decision_cli_records_no_go_for_wrong_explicit_repo_root(tmp_path: Path):
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "promotion-decision",
+            "--target",
+            str(target),
+            "--repo-root",
+            str(wrong_root),
+            "--runs",
+            "3",
+            "--json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "promotion_no_go_recorded"
+    assert payload["decision"] == "no_go"
+    assert payload["source_readiness"]["status"] == "blocked"
+    assert payload["source_readiness"]["observed_run_count"] == 0
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False

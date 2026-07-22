@@ -3,56 +3,37 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-accepted/current version: v0.1.104.5
-last completed normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-last completed repair: v0.1.104.5 — hermetic release-validation profile isolation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-active candidate version: v0.1.105.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-next normal slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-next planned slice after acceptance: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+accepted/current version: v0.1.105.1
+last completed normal slice: v0.1.105 — Sandbox correction promotion readiness check (completed by v0.1.105.1)
+last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.106.zip
+active candidate version: v0.1.106
+next normal target: chatgpt_claudecode_workflow-2_v0.1.106.zip
+next normal slice: v0.1.106 — Controlled correction promotion decision record
+next planned slice after acceptance: v0.1.107 — Controlled correction execution envelope design
 ```
 
 ## Plan summary
 
-`v0.1.105` is the first normal slice after the accepted `v0.1.104.5` authority completed the `v0.1.104` repair sequence at 10/10 GO with adoption verified. The slice assesses deterministic completeness of the existing sandbox-only correction evidence. It runs the unchanged sandbox proof three independent times, compares canonical evidence fingerprints, and emits `ready`, `not_ready`, or `blocked`. It does not grant broader mutation authority or record the later promotion decision.
+`v0.1.106` records the explicit controlled correction promotion decision from the accepted `v0.1.105.1` readiness authority. The decision is GO because all 32 mandatory evidence and safety checks pass across exactly three complete independent sandbox runs with one canonical fingerprint.
 
-## Active repair slice — v0.1.105.1 — target-anchored promotion-readiness repository resolution
-
-
-### Repair contract
-
-- Add optional `--repo-root`.
-- Without it, derive exactly one repository root from the resolved target path using authoritative Promptbranch markers.
-- Require target containment.
-- Return `blocked` with zero evidence runs when root resolution is missing, ambiguous, marker-invalid, or non-containing.
-- Preserve the v0.1.105 evidence model and all authority restrictions unchanged.
-
-### Readiness contract
-
-- Execute the existing sandbox-only mutation/validation/rollback proof three times by default.
-- Require three distinct temporary workspace identities.
-- Require complete exact evidence and all 13 existing sandbox gates from every run.
-- Canonicalize only deterministic evidence; exclude temporary workspace names and timing.
-- Require one identical SHA-256 evidence fingerprint across all runs for `ready`.
-- Emit `not_ready` for complete assessment runs with incomplete, contradictory, unsafe, or non-deterministic evidence.
-- Emit `blocked` when the assessment cannot be performed safely.
-- Keep `promotion_decision_recorded=false` and every broader authority flag false for all statuses.
+## Active normal slice — v0.1.106 — Controlled correction promotion decision record
 
 Acceptance scope:
 
-- Add `pb loop promotion-readiness --target ... --runs 3 --json`.
-- Produce exact `ready`, `not_ready`, or `blocked` status.
-- Prove independent workspace use and deterministic evidence fingerprints.
-- Preserve the existing sandbox verifier and mandatory 13-gate release check unchanged.
-- Preserve fresh full_direct, independent full_localhost, all ten release gates, visual completion, current-turn readiness, Project Source handling, and adoption behavior.
+- Add `pb loop promotion-decision --target ... --runs 3 --json`.
+- Record exactly `go` or `no_go`; never infer partial promotion.
+- Require all mandatory readiness, determinism, workspace, rollback, cleanup, and authority checks for GO.
+- Persist the canonical project decision record in `docs/project/correction-promotion-decision-v0.1.106.json`.
+- Authorize only `v0.1.107 — Controlled correction execution envelope design` when GO.
+- Preserve all existing sandbox, transport, external-live, visual, source, hermetic-validation, and adoption gates.
 
-Out of scope: recording the v0.1.106 promotion decision, repository correction, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, ChatGPT Project deletion, new mutation operations, broader shell execution, and automatic correction outside the temporary sandbox.
+Out of scope: executing corrections beyond the current temporary sandbox, mutating disposable or real repositories, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, ChatGPT Project deletion, generic shell authority, or automatic correction.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.105.1` repairs only repository resolution; readiness remains assessment-only. `v0.1.106` is the earliest slice allowed to record a GO/NO-GO promotion decision.
+`docs/project/plan-state.json` is authoritative. `v0.1.106` records GO for design-only advancement to `v0.1.107`; no correction execution authority is granted.
 
 ## Release / slice plan
 

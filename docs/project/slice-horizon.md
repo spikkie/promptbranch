@@ -2,18 +2,19 @@
 
 ## Accepted/current authority
 
-`v0.1.104.5 — hermetic release-validation profile isolation` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. This completes the `v0.1.104` repair sequence.
+`v0.1.105.1 — target-anchored promotion-readiness repository resolution` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. This completes the v0.1.105 readiness slice.
 
 ## Active normal slice
 
-`v0.1.105 — Sandbox correction promotion readiness check`
+`v0.1.106 — Controlled correction promotion decision record`
 
-Run the unchanged sandbox-only proof three independent times, require complete exact evidence, compare deterministic fingerprints, and emit `ready`, `not_ready`, or `blocked`. No status grants broader mutation authority or records the promotion decision.
+Record deterministic GO/NO-GO from exactly three complete independent sandbox evidence runs. GO permits only v0.1.107 execution-envelope design and grants no correction execution or broader mutation authority.
 
 ## Rolling normal horizon
 
-- v0.1.104.5 — completed accepted repair authority for the v0.1.104 sandbox gate
-- v0.1.105 — Sandbox correction promotion readiness check
+- v0.1.104.5 — completed accepted hermetic release-validation repair authority
+- v0.1.105 — completed sandbox correction promotion readiness check
+- v0.1.105.1 — completed accepted target-anchored readiness repair
 - v0.1.106 — Controlled correction promotion decision record
 - v0.1.107 — Controlled correction execution envelope design
 
@@ -175,11 +176,10 @@ Repair-only scope: keep accepted/current `v0.1.103.10.115`; distinguish canonica
 `v0.1.104.3` passed 9/10 gates and proved current-turn-scoped readiness; visual artifact envelope handling remained repair-required.
 
 
-## Active repair
+## Completed repair
 
-`v0.1.105.1 — target-anchored promotion-readiness repository resolution` repairs the `v0.1.105` standalone root-selection defect without changing the readiness evidence model or granting broader authority.
+`v0.1.105.1 — target-anchored promotion-readiness repository resolution` is accepted/current and completes the v0.1.105 readiness slice.
 
 ## Planned after acceptance
 
-- `v0.1.106 — Controlled correction promotion decision record`
 - `v0.1.107 — Controlled correction execution envelope design`

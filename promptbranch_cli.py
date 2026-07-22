@@ -88,6 +88,7 @@ from promptbranch_loop import (
     build_loop_read_only_correction_plan_payload,
     build_loop_sandbox_mutation_verification_payload,
     assess_loop_sandbox_correction_promotion_readiness,
+    assess_loop_sandbox_correction_promotion_decision,
     build_loop_read_only_evidence_gate,
     build_loop_read_only_evidence_report,
     build_loop_read_only_execution_payload,
@@ -99,6 +100,7 @@ from promptbranch_loop import (
     render_loop_read_only_correction_plan_text,
     render_loop_sandbox_mutation_verification_text,
     render_loop_sandbox_correction_promotion_readiness_text,
+    render_loop_sandbox_correction_promotion_decision_text,
     render_loop_read_only_evidence_gate_text,
     render_loop_read_only_execution_text,
     render_loop_plan_text,
@@ -7814,7 +7816,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "chat-summarize": ["--json", "--keep-open", "--retries"],
         "summarize": ["--json", "--keep-open", "--retries"],
         "state": ["--json", "--proof"],
-        "loop": ["validate", "plan", "run", "promotion-readiness", "--target", "--repo-root", "--runs", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation", "--diagnose-read-only-result", "--generate-correction-plan"],
+        "loop": ["validate", "plan", "run", "promotion-readiness", "promotion-decision", "--target", "--repo-root", "--runs", "--json", "--dry-run", "--state-only", "--planned-actions", "--read-only-execution", "--evidence-report", "--evidence-gate", "--execute-read-only-validation", "--diagnose-read-only-result", "--generate-correction-plan"],
         "prompt": ["--json"],
         "state-clear": [],
         "use": ["--pick", "--conversation-url", "--project-name", "--json", "--keep-open"],
@@ -8382,6 +8384,17 @@ async def cmd_loop(backend: CommandBackend, args: argparse.Namespace) -> int:
         if payload.get("status") == "not_ready":
             return 1
         return 2
+    if loop_command == "promotion-decision":
+        payload = assess_loop_sandbox_correction_promotion_decision(
+            target,
+            repo_root=getattr(args, "repo_root", None),
+            required_runs=int(getattr(args, "runs", 3)),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(render_loop_sandbox_correction_promotion_decision_text(payload), end="")
+        return 0 if payload.get("decision") == "go" else 1
     if loop_command == "run":
         # The loop runner remains gated. Presentation modes remain dry-run;
         # v0.1.100 adds exactly one explicit allowlisted read-only validation
@@ -25236,6 +25249,12 @@ def make_parser() -> argparse.ArgumentParser:
     loop_promotion_readiness.add_argument("--repo-root", help="Optional explicit repository root. Without it, derive the root from the resolved target path using authoritative Promptbranch repository markers.")
     loop_promotion_readiness.add_argument("--runs", type=int, default=3, help="Independent sandbox proof count. Must be between 2 and 5; defaults to 3.")
     loop_promotion_readiness.add_argument("--json", action="store_true", help="Emit the promotion-readiness assessment as JSON.")
+
+    loop_promotion_decision = loop_subparsers.add_parser("promotion-decision", help="Record a deterministic GO/NO-GO decision from repeated sandbox readiness evidence. GO authorizes only v0.1.107 execution-envelope design and no correction execution.")
+    loop_promotion_decision.add_argument("--target", required=True, help="Path to the sandbox mutation loop target JSON file.")
+    loop_promotion_decision.add_argument("--repo-root", help="Optional explicit repository root. Without it, derive the root from the resolved target path using authoritative Promptbranch repository markers.")
+    loop_promotion_decision.add_argument("--runs", type=int, default=3, help="Sandbox proof count. The GO decision requires exactly 3 complete independent runs; defaults to 3.")
+    loop_promotion_decision.add_argument("--json", action="store_true", help="Emit the controlled promotion decision record as JSON.")
 
     loop_run = loop_subparsers.add_parser("run", help="Run the gated loop control flow. Presentation modes remain dry-run; explicit read-only validation execution is allowlisted.")
     loop_run.add_argument("--target", required=True, help="Path to a Promptbranch loop target JSON file.")

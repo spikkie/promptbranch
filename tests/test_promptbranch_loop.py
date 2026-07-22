@@ -910,3 +910,102 @@ def test_sandbox_correction_promotion_readiness_blocks_unresolvable_repository_r
     assert payload["status"] == "blocked"
     assert payload["observed_run_count"] == 0
     assert payload["execution_blockers"] == ["repository_root_not_found_from_target"]
+
+
+def test_sandbox_correction_promotion_decision_records_go_only_for_complete_ready_evidence(tmp_path: Path):
+    from promptbranch_loop import (
+        assess_loop_sandbox_correction_promotion_readiness,
+        build_loop_sandbox_correction_promotion_decision_payload,
+    )
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    readiness = assess_loop_sandbox_correction_promotion_readiness(
+        target,
+        repo_root=tmp_path,
+        required_runs=3,
+    )
+    payload = build_loop_sandbox_correction_promotion_decision_payload(readiness)
+
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.sandbox_correction_promotion_decision"
+    assert payload["status"] == "promotion_go_recorded"
+    assert payload["decision"] == "go"
+    assert payload["decision_scope"] == "controlled_execution_envelope_design_only"
+    assert payload["mandatory_evidence"]["failed_check_count"] == 0
+    assert payload["mandatory_evidence"]["passed_check_count"] == payload["mandatory_evidence"]["check_count"]
+    assert payload["triggered_stop_conditions"] == []
+    assert payload["authority"]["promotion_decision_recorded"] is True
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is True
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["authority"]["disposable_repository_mutation_authority_granted"] is False
+    assert payload["authority"]["real_repository_mutation_authority_granted"] is False
+    assert payload["authority"]["deployment_authority_granted"] is False
+    assert payload["next_slice"]["version"] == "v0.1.107"
+    assert payload["next_slice"]["scope"] == "design_only_no_correction_execution"
+
+
+def test_sandbox_correction_promotion_decision_records_no_go_when_any_mandatory_evidence_fails(tmp_path: Path):
+    import copy
+    from promptbranch_loop import (
+        assess_loop_sandbox_correction_promotion_readiness,
+        build_loop_sandbox_correction_promotion_decision_payload,
+    )
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    readiness = assess_loop_sandbox_correction_promotion_readiness(
+        target,
+        repo_root=tmp_path,
+        required_runs=3,
+    )
+    unsafe = copy.deepcopy(readiness)
+    unsafe["authority"]["broader_mutation_authority_granted"] = True
+
+    payload = build_loop_sandbox_correction_promotion_decision_payload(unsafe)
+
+    assert payload["ok"] is True
+    assert payload["status"] == "promotion_no_go_recorded"
+    assert payload["decision"] == "no_go"
+    assert payload["decision_scope"] == "remain_sandbox_only"
+    assert "no_broader_mutation_authority" in payload["triggered_stop_conditions"]
+    assert payload["authority"]["promotion_decision_recorded"] is True
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["next_slice"]["permitted"] is False
+
+
+def test_sandbox_correction_promotion_decision_records_no_go_for_blocked_readiness(tmp_path: Path):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_decision
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+
+    payload = assess_loop_sandbox_correction_promotion_decision(
+        target,
+        repo_root=wrong_root,
+        required_runs=3,
+    )
+
+    assert payload["status"] == "promotion_no_go_recorded"
+    assert payload["decision"] == "no_go"
+    assert payload["source_readiness"]["status"] == "blocked"
+    assert payload["source_readiness"]["observed_run_count"] == 0
+    assert payload["triggered_stop_conditions"]
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+
+
+def test_sandbox_correction_promotion_decision_requires_exactly_three_runs(tmp_path: Path):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_decision
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    payload = assess_loop_sandbox_correction_promotion_decision(
+        target,
+        repo_root=tmp_path,
+        required_runs=2,
+    )
+
+    assert payload["status"] == "promotion_no_go_recorded"
+    assert payload["decision"] == "no_go"
+    assert "required_run_count_exact_three" in payload["triggered_stop_conditions"]
+    assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False

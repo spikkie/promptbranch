@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-accepted/current version: v0.1.104.5
-last completed normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-last completed repair: v0.1.104.5 — hermetic release-validation profile isolation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-active candidate version: v0.1.105.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-next normal slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-next planned slice after acceptance: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+accepted/current version: v0.1.105.1
+last completed normal slice: v0.1.105 — Sandbox correction promotion readiness check (completed by v0.1.105.1)
+last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.106.zip
+active candidate version: v0.1.106
+next normal target: chatgpt_claudecode_workflow-2_v0.1.106.zip
+next normal slice: v0.1.106 — Controlled correction promotion decision record
+next planned slice after acceptance: v0.1.107 — Controlled correction execution envelope design
 ```
 
 ## ZIP status values
@@ -831,3 +831,6 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 | v0.1.105 | normal | Sandbox correction promotion readiness check | candidate | focused readiness tests produce three complete independent runs with one deterministic fingerprint; strict host validation and adoption pending | DOD-292 focused candidate; v0.1.106 decision remains pending | pending |
 
 | v0.1.105.1 | repair | Target-anchored promotion-readiness repository resolution | candidate | absolute target derives authoritative root; explicit wrong root blocks before evidence; unrelated cwd produces ready with 3 workspaces and 1 fingerprint | DOD-293 focused candidate; strict host validation pending | pending |
+
+| v0.1.105.1 | repair | Target-anchored promotion-readiness repository resolution | accepted_current | strict host validation passed 10/10 with fresh direct, independent localhost, sandbox 13/13, all external-live gates, import smoke, Artifact Guardian, and release_adopted_and_verified | DOD-293 done | ca2ce7c619e5d61535734089def7e493631afc21310e724492c6dacd69143bdb |
+| v0.1.106 | normal | Controlled correction promotion decision record | candidate | focused decision-record tests and local three-run GO evidence; strict host validation and adoption pending | DOD-294 focused candidate | pending |

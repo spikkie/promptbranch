@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-accepted/current version: v0.1.104.5
-last completed normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-last completed repair: v0.1.104.5 — hermetic release-validation profile isolation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-active candidate version: v0.1.105.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-next normal slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-next planned slice after acceptance: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+accepted/current version: v0.1.105.1
+last completed normal slice: v0.1.105 — Sandbox correction promotion readiness check (completed by v0.1.105.1)
+last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.106.zip
+active candidate version: v0.1.106
+next normal target: chatgpt_claudecode_workflow-2_v0.1.106.zip
+next normal slice: v0.1.106 — Controlled correction promotion decision record
+next planned slice after acceptance: v0.1.107 — Controlled correction execution envelope design
 ```
 
 ## Current MVP state
@@ -20,20 +20,21 @@ next planned slice after acceptance: v0.1.106 — Controlled correction promotio
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
-active plan slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-repair mode: true
-scope advance allowed: false
+last accepted/current slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+active plan slice: v0.1.106 — Controlled correction promotion decision record
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-release status: v0.1.104.5 remains accepted/current. v0.1.105 is repair_required because absolute-target readiness incorrectly used caller cwd as repository authority. v0.1.105.1 is the active repair candidate.
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.106.zip
+release status: v0.1.105.1 passed 10/10 and is accepted/current. v0.1.106 is the active normal candidate and records GO/NO-GO from mandatory sandbox readiness evidence.
 plan authority file: docs/project/plan-state.json
-roadmap document: docs/project/promptbranch-plan-v0.1.105.md
+roadmap document: docs/project/promptbranch-plan-v0.1.106.md
+decision record: docs/project/correction-promotion-decision-v0.1.106.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
 slice horizon file: docs/project/slice-horizon.md
@@ -42,35 +43,32 @@ architecture file: docs/project/architecture.md
 
 ## Current risks
 
-- A readiness result could be misread as permission to mutate repositories; all broader authority flags must remain false.
-- Dynamic temporary paths or timing must not contaminate deterministic evidence fingerprints.
-- Incomplete evidence must never be promoted by majority vote or best-effort inference.
+- A GO decision could be misread as correction execution authority; it authorizes only v0.1.107 design.
+- Any incomplete or unsafe readiness evidence must deterministically record NO-GO.
 - Project deletion remains frozen.
 - Artifact Guardian remains a structural ZIP guard, not adoption authority.
 
 ## Current blockers
 
-- `v0.1.105.1` must prove target-anchored repository resolution from an unrelated cwd while preserving three complete independent runs and one deterministic fingerprint.
-- `not_ready` and `blocked` must fail closed without recording a promotion decision.
+- v0.1.106 must preserve exact three-run readiness evidence and all 32 mandatory decision checks.
 - All ten release gates, fresh full_direct, independent full_localhost, evidence-bound adoption, and assigned-source-aware final verification remain mandatory.
 - Repository mutation, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion remain forbidden.
 
 ## Current unknowns
 
-- Whether strict host validation and adoption will confirm the v0.1.105.1 repair across all ten release gates.
-- Whether `v0.1.106` should record GO or NO-GO after reviewing the repaired `v0.1.105.1` readiness evidence.
-- What exact future execution envelope, if any, may safely operate beyond copied fixtures.
+- Whether strict host validation and adoption will confirm the v0.1.106 decision-record slice across all ten release gates.
+- The exact deterministic fields and validation rules for the future v0.1.107 execution envelope.
 
 ## Next safe action
 
 ```text
-Run pb loop promotion-readiness from an unrelated cwd with an absolute target and three independent sandbox proofs. Then run strict v0.1.105.1 release validation with fresh full_direct, independent full_localhost, all ten gates, evidence-bound adoption, and final release_adopted_and_verified. A ready assessment does not grant broader mutation authority.
+Run pb loop promotion-decision with exactly three sandbox proofs and verify GO, 32/32 mandatory evidence, the canonical fingerprint, and zero correction execution authority. Then run strict v0.1.106 release validation with fresh full_direct, independent full_localhost, all ten gates, evidence-bound adoption, and final release_adopted_and_verified.
 ```
 
 ## Last updated
 
 ```text
-v0.1.105.1 target-anchored promotion-readiness repository resolution repair candidate build
+v0.1.106 controlled correction promotion decision record candidate build
 ```
 
 ## v0.1.102 candidate status

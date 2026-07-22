@@ -998,3 +998,14 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Decision:** An absolute readiness target must derive one authoritative repository root from target ancestors unless `--repo-root` is supplied explicitly.
 - **Fail closed:** Missing, ambiguous, marker-invalid, or non-containing roots return `blocked` before evidence execution.
 - **Authority:** No broader mutation or promotion authority is granted.
+
+
+## ADR-PROJ-104 — v0.1.106 records GO for execution-envelope design only
+
+- **Status:** accepted for candidate implementation
+- **Baseline:** `v0.1.105.1` accepted/current after 10/10 GO and `release_adopted_and_verified`.
+- **Decision:** record GO only when exactly three complete independent sandbox evidence runs satisfy all mandatory readiness, determinism, rollback, cleanup, and zero-authority checks. Otherwise record NO-GO.
+- **Recorded evidence:** one canonical fingerprint `470e04f73c008bcd49827102f94f84e447f6f8618db69ae3272159f637959756`, three distinct temporary workspaces, and 32/32 mandatory decision checks.
+- **GO scope:** authorize only `v0.1.107 — Controlled correction execution envelope design`.
+- **Forbidden:** correction execution, disposable- or real-repository mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption from the loop, ChatGPT Project deletion, generic write authority, and automatic correction.
+- **Fail closed:** any missing, contradictory, unsafe, non-deterministic, non-independent, failed-validation, repository-drift, rollback, cleanup, root-resolution, or authority evidence records NO-GO.
