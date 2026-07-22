@@ -497,3 +497,122 @@ def test_loop_run_execute_sandbox_mutation_requires_correction_plan(capsys):
     assert rc == 2
     captured = capsys.readouterr()
     assert "--execute-sandbox-mutation requires --generate-correction-plan" in captured.err
+
+
+def test_loop_promotion_readiness_cli_reports_ready_without_granting_authority():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "promptbranch_cli.py",
+            "loop",
+            "promotion-readiness",
+            "--target",
+            "examples/loop-targets/sandboxed-file-mutation-target.json",
+            "--runs",
+            "3",
+            "--json",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema"] == "promptbranch.loop.sandbox_correction_promotion_readiness"
+    assert payload["status"] == "ready"
+    assert payload["observed_run_count"] == 3
+    assert payload["determinism"]["unique_fingerprint_count"] == 1
+    assert payload["authority"]["promotion_decision_recorded"] is False
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+    assert payload["next_slice"]["version"] == "v0.1.106"
+
+
+def test_loop_promotion_readiness_cli_blocks_invalid_run_count(capsys):
+    rc = promptbranch_cli.main(
+        [
+            "loop",
+            "promotion-readiness",
+            "--target",
+            "examples/loop-targets/sandboxed-file-mutation-target.json",
+            "--runs",
+            "1",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 2
+    payload = json.loads(captured.out)
+    assert payload["status"] == "blocked"
+    assert payload["observed_run_count"] == 0
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+
+
+def test_loop_promotion_readiness_cli_derives_repo_from_absolute_target_outside_cwd(tmp_path: Path):
+    unrelated_repo = tmp_path / "unrelated-repository"
+    unrelated_repo.mkdir()
+    (unrelated_repo / ".git").mkdir()
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "promotion-readiness",
+            "--target",
+            str(target),
+            "--runs",
+            "3",
+            "--json",
+        ],
+        cwd=unrelated_repo,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ready"
+    assert payload["observed_run_count"] == 3
+    assert payload["determinism"]["unique_workspace_count"] == 3
+    assert payload["determinism"]["unique_fingerprint_count"] == 1
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+
+
+def test_loop_promotion_readiness_cli_blocks_wrong_explicit_repo_root(tmp_path: Path):
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+    for filename in ("VERSION", "pyproject.toml", "promptbranch_cli.py", "promptbranch_loop.py"):
+        (wrong_root / filename).write_text("marker\n", encoding="utf-8")
+    (wrong_root / "examples" / "loop-targets").mkdir(parents=True)
+    (wrong_root / "examples" / "loop-sandbox").mkdir(parents=True)
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "promotion-readiness",
+            "--target",
+            str(target),
+            "--repo-root",
+            str(wrong_root),
+            "--runs",
+            "3",
+            "--json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "blocked"
+    assert payload["observed_run_count"] == 0
+    assert payload["execution_blockers"] == ["target_outside_repository_root"]
+    assert payload["authority"]["broader_mutation_authority_granted"] is False

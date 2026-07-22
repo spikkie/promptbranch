@@ -1,39 +1,18 @@
 # Slice Horizon
 
-## Active repair slice
+## Accepted/current authority
 
-`v0.1.104.5 — hermetic release-validation profile isolation`
+`v0.1.104.5 — hermetic release-validation profile isolation` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. This completes the `v0.1.104` repair sequence.
 
-The repair preserves the live-proven visual completion/envelope behavior, sandbox gate, current-turn readiness, and one-reload recovery. It changes only offline release-validation subprocess isolation: each node receives explicit temporary HOME/XDG/profile/project-state paths, a child-process preflight proves all resolved paths remain inside that root, and pytest is not launched when repository `.pb_profile` or its browser lock would still be reachable.
+## Active normal slice
 
-## Recent repair context
+`v0.1.105 — Sandbox correction promotion readiness check`
 
-- `v0.1.104.1` proved fresh direct, independent localhost, and all 13 sandbox gates, but external-live reproduced post-bootstrap `target_conversation_busy`; adoption was refused.
-- `v0.1.104.2` preserved those gates and added one reload, but a historical Retry control was misclassified as active interruption before bootstrap; adoption was refused.
-- `v0.1.104.4` live-proved parse-independent visual completion and envelope handling at 9/10, but full_direct was blocked by ambient release-validation profile reachability; adoption was refused.
-
-## Accepted repair baseline
-
-`v0.1.103.10.116` is accepted/current after 9/9 validation, evidence-bound adoption, and assigned-source-aware final verification.
-
-## Recent repair context
-
-- v0.1.103.10.67 — composer wait target-close is classified as browser_context_closed_during_submit
-- v0.1.103.10.68 — release-live-continuous marks completed bootstrap/ask sentinel run as ok
-- v0.1.103.10.69 — add install.sh strict all-all release gate
-
-- v0.1.103.10.70 — classify release-live-continuous bootstrap guardrail as external live blocked
-- v0.1.103.10.71 — final verdict aggregation maps live_bootstrap_guardrail cascade to LIVE_BLOCKED
-- v0.1.103.10.72 — update project control surface active candidate and preserve LIVE_BLOCKED only when product validation is clean
-
-- v0.1.103.10.78 — make pb src add exact-name idempotent and block suffix-renamed Project Source uploads
-- v0.1.103.10.79 — require stable Project Sources preflight and fail fast on backend-assigned suffix names
-- v0.1.103.10.82 — reconcile exact Library backing-file IDs for same-name Project Source overwrite
-- v0.1.103.10.84 — restore normal fresh add, attempt non-destructive exact-source replacement, and reserve Library cleanup for proven suffix collisions
+Run the unchanged sandbox-only proof three independent times, require complete exact evidence, compare deterministic fingerprints, and emit `ready`, `not_ready`, or `blocked`. No status grants broader mutation authority or records the promotion decision.
 
 ## Rolling normal horizon
 
-- v0.1.104 — Sandbox mutation verification and rollback evidence gate
+- v0.1.104.5 — completed accepted repair authority for the v0.1.104 sandbox gate
 - v0.1.105 — Sandbox correction promotion readiness check
 - v0.1.106 — Controlled correction promotion decision record
 - v0.1.107 — Controlled correction execution envelope design
@@ -194,3 +173,13 @@ Repair-only scope: keep accepted/current `v0.1.103.10.115`; distinguish canonica
 ## Previous repair evidence
 
 `v0.1.104.3` passed 9/10 gates and proved current-turn-scoped readiness; visual artifact envelope handling remained repair-required.
+
+
+## Active repair
+
+`v0.1.105.1 — target-anchored promotion-readiness repository resolution` repairs the `v0.1.105` standalone root-selection defect without changing the readiness evidence model or granting broader authority.
+
+## Planned after acceptance
+
+- `v0.1.106 — Controlled correction promotion decision record`
+- `v0.1.107 — Controlled correction execution envelope design`

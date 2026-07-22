@@ -980,3 +980,21 @@ Decision: preserve the `v0.1.104.1` sandbox and transport gates unchanged. After
 ## v0.1.104.5 — Hermetic release-validation profile isolation
 
 Decision: offline release-validation subprocesses must own explicit temporary HOME, TMPDIR, XDG cache/config/data/state, Promptbranch profile, project state/config, and project cache paths. A child-process preflight must prove every resolved path stays inside the isolation root before pytest starts. If repository `.pb_profile` or its browser lock remains reachable, the node fails closed before execution. Ambient lock contents are never read and no lock wait is attempted. The 300-second scheduler-group timeout, per-node progress, and no automatic retry remain unchanged.
+
+## ADR-PROJ-102 — v0.1.105 readiness is repeated evidence assessment, not promotion authority
+
+- **Status:** accepted for candidate implementation
+- **Baseline:** `v0.1.104.5`
+- **Active slice:** `v0.1.105 — Sandbox correction promotion readiness check`
+- **Decision:** execute the existing sandbox-only mutation/validation/rollback proof three independent times by default. Assess exact evidence completeness, require distinct temporary workspaces, canonicalize deterministic evidence only, and require one identical SHA-256 fingerprint for `ready`.
+- **Result states:** `ready`, `not_ready`, and `blocked` are the only terminal readiness states.
+- **Authority boundary:** `ready` permits only the planned `v0.1.106 — Controlled correction promotion decision record`. It does not record a GO decision and grants no repository, deployment, Kubernetes, Project Source, artifact-adoption, or Project-deletion authority.
+- **Fail-closed rule:** invalid target/run count, missing runs, execution failure, incomplete evidence, failed sandbox gates, unsafe evidence, non-deterministic fingerprints, or non-independent workspace identity cannot produce `ready`.
+- **Preserved:** the v0.1.104 sandbox implementation and 13-gate release verifier, ten release gates, fresh direct, independent localhost, current-turn readiness, visual completion, source handling, and adoption behavior.
+
+
+## ADR-PROJ-103 — v0.1.105.1 promotion-readiness repository authority is target-anchored
+
+- **Decision:** An absolute readiness target must derive one authoritative repository root from target ancestors unless `--repo-root` is supplied explicitly.
+- **Fail closed:** Missing, ambiguous, marker-invalid, or non-containing roots return `blocked` before evidence execution.
+- **Authority:** No broader mutation or promotion authority is granted.

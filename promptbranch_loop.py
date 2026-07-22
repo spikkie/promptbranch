@@ -57,6 +57,33 @@ LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA = "promptbranch.loop.read_only_correction_
 LOOP_READ_ONLY_CORRECTION_PLAN_SCHEMA_VERSION = "1.0"
 LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA = "promptbranch.loop.sandbox_mutation_verification"
 LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION = "1.0"
+LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA = "promptbranch.loop.sandbox_correction_promotion_readiness"
+LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA_VERSION = "1.0"
+
+PROMOTION_READINESS_REPOSITORY_MARKERS: tuple[tuple[str, str], ...] = (
+    ("VERSION", "file"),
+    ("pyproject.toml", "file"),
+    ("promptbranch_cli.py", "file"),
+    ("promptbranch_loop.py", "file"),
+    ("examples/loop-targets", "dir"),
+    ("examples/loop-sandbox", "dir"),
+)
+
+SANDBOX_PROMOTION_REQUIRED_GATES = (
+    "correction_plan_schema_valid",
+    "correction_plan_generated",
+    "sandbox_fixture_allowlisted",
+    "mutation_operation_allowlisted",
+    "before_hash_matches",
+    "after_hash_matches",
+    "mutation_result_verified",
+    "sandbox_validation_passed",
+    "sandbox_validation_read_only",
+    "repository_fixture_unchanged",
+    "rollback_attempted",
+    "rollback_restored_before_snapshot",
+    "sandbox_workspace_deleted",
+)
 
 STATE_ACTION_BLUEPRINTS: dict[str, tuple[str, str]] = {
     "INTAKE": (
@@ -1607,6 +1634,393 @@ def build_loop_sandbox_mutation_verification_payload(
         },
         "operator_instruction": "Sandbox-only mutation verification complete only when the copied fixture matches the declared after hash, the allowlisted sandbox validation passes without mutation, rollback restores the exact before snapshot, the repository fixture remains unchanged, and the temporary workspace is deleted. Any failed gate stops for operator review. No deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion is performed.",
     }
+
+
+def _sandbox_promotion_snapshot(snapshot: Any) -> dict[str, Any] | None:
+    if not isinstance(snapshot, dict):
+        return None
+    return {
+        "path": snapshot.get("path"),
+        "exists": snapshot.get("exists"),
+        "is_file": snapshot.get("is_file"),
+        "size": snapshot.get("size"),
+        "sha256": snapshot.get("sha256"),
+    }
+
+
+def _sandbox_promotion_evidence_assessment(payload: dict[str, Any]) -> dict[str, Any]:
+    request = payload.get("sandbox_mutation_request") if isinstance(payload.get("sandbox_mutation_request"), dict) else {}
+    gate = payload.get("verification_gate") if isinstance(payload.get("verification_gate"), dict) else {}
+    validation = payload.get("validation_evidence") if isinstance(payload.get("validation_evidence"), dict) else {}
+    classification = validation.get("classification") if isinstance(validation.get("classification"), dict) else {}
+    rollback = payload.get("rollback_evidence") if isinstance(payload.get("rollback_evidence"), dict) else {}
+    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    gates = gate.get("gates") if isinstance(gate.get("gates"), list) else []
+    observed_gates = {
+        str(item.get("name")): item.get("passed") is True
+        for item in gates
+        if isinstance(item, dict) and item.get("name")
+    }
+
+    checks = {
+        "schema_exact": payload.get("schema") == LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA,
+        "schema_version_exact": payload.get("schema_version") == LOOP_SANDBOX_MUTATION_VERIFICATION_SCHEMA_VERSION,
+        "payload_ok": payload.get("ok") is True,
+        "terminal_status_exact": payload.get("status") == "sandbox_mutation_verified_and_rolled_back",
+        "terminal_decision_exact": payload.get("decision") == "stop_after_verified_sandbox_rollback_evidence",
+        "blocked_reasons_empty": payload.get("blocked_reasons") == [],
+        "target_id_present": isinstance(payload.get("target_id"), str) and bool(str(payload.get("target_id")).strip()),
+        "operation_exact": request.get("operation") == "replace_contents",
+        "fixture_path_present": isinstance(request.get("fixture_path"), str) and bool(str(request.get("fixture_path")).strip()),
+        "before_hash_exact": bool(request.get("expected_before_sha256")) and request.get("expected_before_sha256") == request.get("actual_before_sha256"),
+        "after_hash_exact": bool(request.get("expected_after_sha256")) and request.get("expected_after_sha256") == request.get("actual_after_sha256"),
+        "gate_count_exact": gate.get("gate_count") == len(SANDBOX_PROMOTION_REQUIRED_GATES),
+        "passed_gate_count_exact": gate.get("passed_gate_count") == len(SANDBOX_PROMOTION_REQUIRED_GATES),
+        "failed_gate_count_zero": gate.get("failed_gate_count") == 0,
+        "gate_names_exact": set(observed_gates) == set(SANDBOX_PROMOTION_REQUIRED_GATES),
+        "all_required_gates_passed": all(observed_gates.get(name) is True for name in SANDBOX_PROMOTION_REQUIRED_GATES),
+        "validation_allowlisted": classification.get("allowed") is True and classification.get("status") == "allowlisted_sandbox_json_validation",
+        "validation_executed": validation.get("executed") is True,
+        "validation_exit_zero": validation.get("exit_code") == 0,
+        "validation_not_timed_out": validation.get("timed_out") is False,
+        "rollback_attempted": rollback.get("attempted") is True,
+        "rollback_succeeded": rollback.get("succeeded") is True,
+        "repository_snapshot_equal": evidence.get("repository_fixture_before") == evidence.get("repository_fixture_after"),
+        "sandbox_mutation_changed_snapshot": evidence.get("sandbox_fixture_before") != evidence.get("sandbox_fixture_after_mutation"),
+        "sandbox_validation_read_only": evidence.get("sandbox_fixture_after_mutation") == evidence.get("sandbox_fixture_after_validation"),
+        "sandbox_rollback_snapshot_equal": evidence.get("sandbox_fixture_before") == evidence.get("sandbox_fixture_after_rollback"),
+        "workspace_deleted": evidence.get("sandbox_workspace_deleted_after_evidence") is True,
+        "summary_mutation_verified": summary.get("sandbox_mutation_verified") is True,
+        "summary_validation_passed": summary.get("sandbox_validation_passed") is True,
+        "summary_rollback_succeeded": summary.get("sandbox_rollback_succeeded") is True,
+        "summary_repository_unchanged": summary.get("repository_file_mutated") is False,
+        "single_validation_command": summary.get("commands_executed") == 1,
+        "single_transient_fixture_mutation": summary.get("transient_sandbox_files_mutated") == 1,
+        "sandbox_only": safety.get("sandbox_only") is True,
+        "rollback_required": safety.get("rollback_required") is True,
+        "stop_after_evidence": safety.get("stop_after_evidence") is True,
+        "repository_mutation_forbidden": safety.get("repository_file_mutation_performed") is False,
+        "deployment_forbidden": safety.get("deployment_performed") is False,
+        "kubernetes_mutation_forbidden": safety.get("kubernetes_mutation_performed") is False,
+        "project_source_mutation_forbidden": safety.get("project_source_mutation_performed") is False,
+        "artifact_adoption_forbidden": safety.get("artifact_adoption_performed") is False,
+        "project_deletion_forbidden": safety.get("chatgpt_project_deletion_performed") is False,
+    }
+    failed_checks = sorted(name for name, passed in checks.items() if not passed)
+    canonical = {
+        "schema": payload.get("schema"),
+        "schema_version": payload.get("schema_version"),
+        "status": payload.get("status"),
+        "decision": payload.get("decision"),
+        "target_id": payload.get("target_id"),
+        "source_schema": payload.get("source_schema"),
+        "source_status": payload.get("source_status"),
+        "source_result_classification": payload.get("source_result_classification"),
+        "sandbox_mutation_request": {
+            "operation": request.get("operation"),
+            "fixture_path": request.get("fixture_path"),
+            "allowlist_status": request.get("allowlist_status"),
+            "expected_before_sha256": request.get("expected_before_sha256"),
+            "actual_before_sha256": request.get("actual_before_sha256"),
+            "expected_after_sha256": request.get("expected_after_sha256"),
+            "actual_after_sha256": request.get("actual_after_sha256"),
+        },
+        "verification_gates": [
+            {"name": name, "passed": observed_gates.get(name) is True}
+            for name in SANDBOX_PROMOTION_REQUIRED_GATES
+        ],
+        "validation": {
+            "command": validation.get("command"),
+            "classification_status": classification.get("status"),
+            "argv": classification.get("argv"),
+            "executed": validation.get("executed"),
+            "exit_code": validation.get("exit_code"),
+            "timed_out": validation.get("timed_out"),
+            "stdout_sha256": hashlib.sha256(str(validation.get("stdout") or "").encode("utf-8")).hexdigest(),
+            "stderr_sha256": hashlib.sha256(str(validation.get("stderr") or "").encode("utf-8")).hexdigest(),
+        },
+        "snapshots": {
+            "repository_before": _sandbox_promotion_snapshot(evidence.get("repository_fixture_before")),
+            "repository_after": _sandbox_promotion_snapshot(evidence.get("repository_fixture_after")),
+            "sandbox_before": _sandbox_promotion_snapshot(evidence.get("sandbox_fixture_before")),
+            "sandbox_after_mutation": _sandbox_promotion_snapshot(evidence.get("sandbox_fixture_after_mutation")),
+            "sandbox_after_validation": _sandbox_promotion_snapshot(evidence.get("sandbox_fixture_after_validation")),
+            "sandbox_after_rollback": _sandbox_promotion_snapshot(evidence.get("sandbox_fixture_after_rollback")),
+        },
+        "summary": {
+            key: summary.get(key)
+            for key in (
+                "sandbox_mutation_performed",
+                "sandbox_mutation_verified",
+                "sandbox_validation_executed",
+                "sandbox_validation_passed",
+                "sandbox_rollback_attempted",
+                "sandbox_rollback_succeeded",
+                "sandbox_final_state_restored",
+                "repository_file_mutated",
+                "project_source_mutation_performed",
+                "artifact_adoption_performed",
+                "deployment_performed",
+                "commands_executed",
+                "transient_sandbox_files_mutated",
+            )
+        },
+        "safety": {
+            key: safety.get(key)
+            for key in (
+                "repository_file_mutation_performed",
+                "deployment_performed",
+                "kubernetes_mutation_performed",
+                "project_source_mutation_performed",
+                "artifact_adoption_performed",
+                "chatgpt_project_deletion_performed",
+                "sandbox_only",
+                "rollback_required",
+                "stop_after_evidence",
+            )
+        },
+    }
+    canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return {
+        "complete": not failed_checks,
+        "failed_checks": failed_checks,
+        "checks": checks,
+        "canonical_evidence": canonical,
+        "determinism_fingerprint_sha256": hashlib.sha256(canonical_json.encode("utf-8")).hexdigest(),
+        "sandbox_workspace": evidence.get("sandbox_workspace"),
+    }
+
+
+def build_loop_sandbox_correction_promotion_readiness_payload(
+    evidence_payloads: list[dict[str, Any]],
+    *,
+    required_runs: int = 3,
+    execution_blockers: list[str] | None = None,
+    target_path: str | None = None,
+) -> dict[str, Any]:
+    blockers = sorted(set(str(item) for item in (execution_blockers or []) if str(item).strip()))
+    run_assessments = [
+        {"run_index": index, **_sandbox_promotion_evidence_assessment(payload)}
+        for index, payload in enumerate(evidence_payloads, start=1)
+        if isinstance(payload, dict)
+    ]
+    fingerprints = [str(item.get("determinism_fingerprint_sha256")) for item in run_assessments]
+    workspace_paths = [str(item.get("sandbox_workspace")) for item in run_assessments if item.get("sandbox_workspace")]
+    evidence_count_exact = len(run_assessments) == required_runs
+    all_runs_complete = evidence_count_exact and all(item.get("complete") is True for item in run_assessments)
+    deterministic = all_runs_complete and len(set(fingerprints)) == 1
+    independent_workspaces = evidence_count_exact and len(workspace_paths) == required_runs and len(set(workspace_paths)) == required_runs
+
+    readiness_checks = {
+        "required_run_count_valid": 2 <= required_runs <= 5,
+        "evidence_run_count_exact": evidence_count_exact,
+        "all_runs_complete": all_runs_complete,
+        "determinism_fingerprint_equal": deterministic,
+        "independent_temporary_workspaces": independent_workspaces,
+        "no_execution_blockers": not blockers,
+    }
+    failed_readiness_checks = sorted(name for name, passed in readiness_checks.items() if not passed)
+    if blockers or not readiness_checks["required_run_count_valid"] or not evidence_count_exact:
+        status = "blocked"
+        decision = "stop_for_operator_review"
+    elif all_runs_complete and deterministic and independent_workspaces:
+        status = "ready"
+        decision = "ready_for_explicit_v0.1.106_go_no_go_decision"
+    else:
+        status = "not_ready"
+        decision = "remain_sandbox_only_and_collect_or_repair_evidence"
+
+    return {
+        "ok": status == "ready",
+        "schema": LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA,
+        "schema_version": LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA_VERSION,
+        "action": "sandbox_correction_promotion_readiness_check",
+        "status": status,
+        "decision": decision,
+        "target_path": target_path,
+        "required_run_count": required_runs,
+        "observed_run_count": len(run_assessments),
+        "readiness_checks": readiness_checks,
+        "failed_readiness_checks": failed_readiness_checks,
+        "execution_blockers": blockers,
+        "determinism": {
+            "deterministic": deterministic,
+            "fingerprints": fingerprints,
+            "unique_fingerprint_count": len(set(fingerprints)),
+            "independent_temporary_workspaces": independent_workspaces,
+            "workspace_count": len(workspace_paths),
+            "unique_workspace_count": len(set(workspace_paths)),
+        },
+        "evidence_runs": run_assessments,
+        "authority": {
+            "assessment_only": True,
+            "promotion_decision_recorded": False,
+            "broader_mutation_authority_granted": False,
+            "repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "sandbox_only": True,
+            "existing_sandbox_contract_reused": True,
+            "new_mutation_operations_enabled": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.106",
+            "slice": "Controlled correction promotion decision record",
+            "permitted_only_when_status_ready": True,
+        },
+        "operator_instruction": "This readiness result assesses deterministic completeness of repeated sandbox-only evidence. Even status ready grants no broader correction, repository, deployment, Project Source, artifact-adoption, or Project-deletion authority. Only v0.1.106 may record an explicit GO/NO-GO promotion decision.",
+    }
+
+
+def _promotion_readiness_repository_markers_present(root: Path) -> bool:
+    for relative_path, kind in PROMOTION_READINESS_REPOSITORY_MARKERS:
+        candidate = root / relative_path
+        if kind == "file" and not candidate.is_file():
+            return False
+        if kind == "dir" and not candidate.is_dir():
+            return False
+    return True
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve_promotion_readiness_repository(
+    target_path: str | Path,
+    *,
+    repo_root: str | Path | None,
+) -> tuple[Path, Path | None, list[str]]:
+    explicit_root = Path(repo_root).expanduser().resolve() if repo_root is not None else None
+    target = Path(target_path).expanduser()
+    if target.is_absolute():
+        resolved_target = target.resolve()
+    elif explicit_root is not None:
+        resolved_target = (explicit_root / target).resolve()
+    else:
+        resolved_target = (Path.cwd() / target).resolve()
+
+    if explicit_root is not None:
+        if not _promotion_readiness_repository_markers_present(explicit_root):
+            return resolved_target, None, ["explicit_repo_root_missing_authoritative_markers"]
+        if not _path_is_within(resolved_target, explicit_root):
+            return resolved_target, None, ["target_outside_repository_root"]
+        return resolved_target, explicit_root, []
+
+    candidates: list[Path] = []
+    for candidate in (resolved_target.parent, *resolved_target.parents):
+        candidate = candidate.resolve()
+        if candidate in candidates:
+            continue
+        if _promotion_readiness_repository_markers_present(candidate):
+            candidates.append(candidate)
+    if not candidates:
+        return resolved_target, None, ["repository_root_not_found_from_target"]
+    if len(candidates) != 1:
+        rendered = "|".join(str(item) for item in sorted(candidates, key=str))
+        return resolved_target, None, [f"repository_root_ambiguous:{rendered}"]
+    root = candidates[0]
+    if not _path_is_within(resolved_target, root):
+        return resolved_target, None, ["target_outside_repository_root"]
+    return resolved_target, root, []
+
+
+def assess_loop_sandbox_correction_promotion_readiness(
+    target_path: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+    required_runs: int = 3,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
+    resolved_target, root, resolution_blockers = _resolve_promotion_readiness_repository(
+        target_path,
+        repo_root=repo_root,
+    )
+    if not 2 <= required_runs <= 5:
+        return build_loop_sandbox_correction_promotion_readiness_payload(
+            [],
+            required_runs=required_runs,
+            execution_blockers=["required_run_count_must_be_between_2_and_5"],
+            target_path=str(resolved_target),
+        )
+    if resolution_blockers or root is None:
+        return build_loop_sandbox_correction_promotion_readiness_payload(
+            [],
+            required_runs=required_runs,
+            execution_blockers=resolution_blockers or ["repository_root_resolution_failed"],
+            target_path=str(resolved_target),
+        )
+    initial_plan = plan_loop_target_file(resolved_target, execute_stubbed=True)
+    if not initial_plan.get("ok"):
+        return build_loop_sandbox_correction_promotion_readiness_payload(
+            [],
+            required_runs=required_runs,
+            execution_blockers=[f"target_plan_invalid:{initial_plan.get('error') or initial_plan.get('status')}"],
+            target_path=str(resolved_target),
+        )
+
+    payloads: list[dict[str, Any]] = []
+    blockers: list[str] = []
+    for run_index in range(1, required_runs + 1):
+        try:
+            plan = plan_loop_target_file(resolved_target, execute_stubbed=True)
+            execution = build_loop_read_only_execution_payload(plan, repo_root=root)
+            gate = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(execution))
+            command = build_loop_read_only_command_execution_payload(execution, gate, repo_root=root, timeout_seconds=timeout_seconds)
+            diagnosis = build_loop_read_only_command_diagnosis_payload(command)
+            correction = build_loop_read_only_correction_plan_payload(diagnosis)
+            sandbox = build_loop_sandbox_mutation_verification_payload(
+                plan=plan,
+                correction_payload=correction,
+                repo_root=root,
+                timeout_seconds=timeout_seconds,
+            )
+            payloads.append(sandbox)
+        except Exception as exc:
+            blockers.append(f"run_{run_index}_execution_error:{type(exc).__name__}:{exc}")
+            break
+    return build_loop_sandbox_correction_promotion_readiness_payload(
+        payloads,
+        required_runs=required_runs,
+        execution_blockers=blockers,
+        target_path=str(resolved_target),
+    )
+
+
+def render_loop_sandbox_correction_promotion_readiness_text(payload: dict[str, Any]) -> str:
+    lines = [
+        "Promptbranch sandbox correction promotion readiness",
+        f"status: {payload.get('status')}",
+        f"decision: {payload.get('decision')}",
+        f"evidence runs: {payload.get('observed_run_count')}/{payload.get('required_run_count')}",
+        f"deterministic: {bool((payload.get('determinism') or {}).get('deterministic'))}",
+        "broader mutation authority granted: false",
+        "promotion decision recorded: false",
+    ]
+    failed = payload.get("failed_readiness_checks") or []
+    if failed:
+        lines.append("failed readiness checks: " + ", ".join(str(item) for item in failed))
+    blockers = payload.get("execution_blockers") or []
+    if blockers:
+        lines.append("execution blockers: " + ", ".join(str(item) for item in blockers))
+    lines.append(str(payload.get("operator_instruction") or ""))
+    return "\n".join(lines) + "\n"
 
 def build_loop_read_only_evidence_report(payload: dict[str, Any]) -> dict[str, Any]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}

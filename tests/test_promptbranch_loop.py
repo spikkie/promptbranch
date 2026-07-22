@@ -728,3 +728,185 @@ def test_loop_sandbox_mutation_verification_fails_closed_when_rollback_fails(tmp
     assert payload["summary"]["sandbox_rollback_succeeded"] is False
     assert payload["evidence"]["sandbox_workspace_deleted_after_evidence"] is True
     assert fixture.read_text(encoding="utf-8") == before_text
+
+
+def _write_sandbox_promotion_target(tmp_path: Path) -> Path:
+    import hashlib
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for filename in ("VERSION", "pyproject.toml", "promptbranch_cli.py", "promptbranch_loop.py"):
+        marker = tmp_path / filename
+        if not marker.exists():
+            marker.write_text("marker\n", encoding="utf-8")
+
+    fixture = tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    before_text = '{"status": "broken",\n'
+    replacement = '{"status":"fixed_in_sandbox_only"}\n'
+    fixture.write_text(before_text, encoding="utf-8")
+    target = tmp_path / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(
+            {
+                "schema": "promptbranch.loop.target",
+                "schema_version": "1.0",
+                "target_id": "sandbox-promotion-readiness-test",
+                "goal": "Assess repeated sandbox-only correction evidence.",
+                "allowed_paths": [
+                    "examples/loop-sandbox/invalid-json-fixture.json",
+                    "examples/loop-targets/sandboxed-file-mutation-target.json",
+                ],
+                "forbidden_actions": [
+                    "project_delete",
+                    "project_source_mutation",
+                    "artifact_adoption",
+                    "kubernetes_apply",
+                    "docker_push",
+                    "helm_release",
+                    "destructive_filesystem_change",
+                ],
+                "validation": {
+                    "commands": [
+                        "python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"
+                    ]
+                },
+                "sandbox_mutation": {
+                    "operation": "replace_contents",
+                    "fixture_path": "examples/loop-sandbox/invalid-json-fixture.json",
+                    "expected_before_sha256": hashlib.sha256(before_text.encode("utf-8")).hexdigest(),
+                    "replacement_contents": replacement,
+                    "expected_after_sha256": hashlib.sha256(replacement.encode("utf-8")).hexdigest(),
+                },
+                "human_required_when": ["sandbox_mutation_verification_fails"],
+                "deployment": {"requested": False, "allowed": False},
+                "max_iterations": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return target
+
+
+def _build_valid_sandbox_evidence(target: Path, repo_root: Path) -> dict:
+    from promptbranch_loop import (
+        build_loop_read_only_command_diagnosis_payload,
+        build_loop_read_only_command_execution_payload,
+        build_loop_read_only_correction_plan_payload,
+        build_loop_read_only_evidence_gate,
+        build_loop_read_only_evidence_report,
+        build_loop_read_only_execution_payload,
+        build_loop_sandbox_mutation_verification_payload,
+        plan_loop_target_file,
+    )
+
+    plan = plan_loop_target_file(target, execute_stubbed=True)
+    execution = build_loop_read_only_execution_payload(plan, repo_root=repo_root)
+    gate = build_loop_read_only_evidence_gate(build_loop_read_only_evidence_report(execution))
+    command = build_loop_read_only_command_execution_payload(execution, gate, repo_root=repo_root)
+    diagnosis = build_loop_read_only_command_diagnosis_payload(command)
+    correction = build_loop_read_only_correction_plan_payload(diagnosis)
+    return build_loop_sandbox_mutation_verification_payload(plan, correction, repo_root=repo_root)
+
+
+def test_sandbox_correction_promotion_readiness_is_ready_only_for_three_complete_deterministic_runs(tmp_path: Path):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_readiness
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    before = (tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json").read_bytes()
+
+    payload = assess_loop_sandbox_correction_promotion_readiness(
+        target,
+        repo_root=tmp_path,
+        required_runs=3,
+    )
+
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.sandbox_correction_promotion_readiness"
+    assert payload["status"] == "ready"
+    assert payload["decision"] == "ready_for_explicit_v0.1.106_go_no_go_decision"
+    assert payload["observed_run_count"] == 3
+    assert payload["determinism"]["deterministic"] is True
+    assert payload["determinism"]["unique_fingerprint_count"] == 1
+    assert payload["determinism"]["independent_temporary_workspaces"] is True
+    assert payload["authority"]["promotion_decision_recorded"] is False
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+    assert payload["authority"]["repository_mutation_authority_granted"] is False
+    assert payload["authority"]["deployment_authority_granted"] is False
+    assert payload["safety"]["repository_files_mutated"] is False
+    assert (tmp_path / "examples" / "loop-sandbox" / "invalid-json-fixture.json").read_bytes() == before
+
+
+def test_sandbox_correction_promotion_readiness_is_not_ready_for_incomplete_or_nondeterministic_evidence(tmp_path: Path):
+    import copy
+    from promptbranch_loop import build_loop_sandbox_correction_promotion_readiness_payload
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    good = _build_valid_sandbox_evidence(target, tmp_path)
+    changed = copy.deepcopy(good)
+    changed["safety"]["deployment_performed"] = True
+
+    payload = build_loop_sandbox_correction_promotion_readiness_payload(
+        [good, good, changed],
+        required_runs=3,
+        target_path=str(target),
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "not_ready"
+    assert payload["decision"] == "remain_sandbox_only_and_collect_or_repair_evidence"
+    assert payload["readiness_checks"]["all_runs_complete"] is False
+    assert payload["readiness_checks"]["determinism_fingerprint_equal"] is False
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+    assert payload["authority"]["promotion_decision_recorded"] is False
+
+
+def test_sandbox_correction_promotion_readiness_is_blocked_before_execution_for_invalid_run_count(tmp_path: Path):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_readiness
+
+    target = _write_sandbox_promotion_target(tmp_path)
+    payload = assess_loop_sandbox_correction_promotion_readiness(
+        target,
+        repo_root=tmp_path,
+        required_runs=1,
+    )
+
+    assert payload["ok"] is False
+    assert payload["status"] == "blocked"
+    assert payload["observed_run_count"] == 0
+    assert payload["execution_blockers"] == ["required_run_count_must_be_between_2_and_5"]
+    assert payload["authority"]["broader_mutation_authority_granted"] is False
+
+
+def test_sandbox_correction_promotion_readiness_derives_repo_root_from_absolute_target(tmp_path: Path, monkeypatch):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_readiness
+
+    repo_root = tmp_path / "promptbranch-repo"
+    target = _write_sandbox_promotion_target(repo_root)
+    for filename in ("VERSION", "pyproject.toml", "promptbranch_cli.py", "promptbranch_loop.py"):
+        (repo_root / filename).write_text("marker\n", encoding="utf-8")
+    unrelated = tmp_path / "other-repo"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    payload = assess_loop_sandbox_correction_promotion_readiness(
+        target.resolve(),
+        required_runs=3,
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["observed_run_count"] == 3
+    assert payload["determinism"]["unique_workspace_count"] == 3
+    assert payload["determinism"]["unique_fingerprint_count"] == 1
+
+
+def test_sandbox_correction_promotion_readiness_blocks_unresolvable_repository_root(tmp_path: Path):
+    from promptbranch_loop import assess_loop_sandbox_correction_promotion_readiness
+
+    target = tmp_path / "target.json"
+    target.write_text("{}\n", encoding="utf-8")
+    payload = assess_loop_sandbox_correction_promotion_readiness(target, required_runs=3)
+
+    assert payload["status"] == "blocked"
+    assert payload["observed_run_count"] == 0
+    assert payload["execution_blockers"] == ["repository_root_not_found_from_target"]

@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-accepted/current version: v0.1.103.10.116
-last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-active candidate version: v0.1.104.5
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-next normal slice: v0.1.104.5 — hermetic release-validation profile isolation
-next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+accepted/current version: v0.1.104.5
+last completed normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+last completed repair: v0.1.104.5 — hermetic release-validation profile isolation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+active candidate version: v0.1.105.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+next normal slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+next planned slice after acceptance: v0.1.106 — Controlled correction promotion decision record
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.105 — Sandbox correction promotion r
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-active plan slice: v0.1.104.5 — hermetic release-validation profile isolation
+last accepted/current slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+active plan slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
 repair mode: true
 scope advance allowed: false
 ```
@@ -29,11 +29,11 @@ scope advance allowed: false
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-release status: v0.1.104.4 retry passed 9/10 gates and live-proved visual completion/envelope handling, sandbox 13/13, localhost, all external-live gates, import smoke, and Artifact Guardian. full_direct functional browser steps passed, but its offline browser_scheduler_source_lifecycle group timed out because repository profile state remained reachable; adoption was refused. v0.1.104.5 is the active hermetic validation repair.
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+release status: v0.1.104.5 remains accepted/current. v0.1.105 is repair_required because absolute-target readiness incorrectly used caller cwd as repository authority. v0.1.105.1 is the active repair candidate.
 plan authority file: docs/project/plan-state.json
-roadmap document: docs/project/promptbranch-plan-v0.1.104.md
+roadmap document: docs/project/promptbranch-plan-v0.1.105.md
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
 slice horizon file: docs/project/slice-horizon.md
@@ -42,36 +42,35 @@ architecture file: docs/project/architecture.md
 
 ## Current risks
 
-- Project deletion is now frozen because the current automation path can execute real ChatGPT project deletion; deletion must remain unavailable until a secure delete protocol exists.
-- Project Source file uploads can reach commit-seen / stale-inflight / not-visible states that must remain release-blocking unless refreshed persistence is proven.
-- Artifact Guardian must remain a structural ZIP guard only, not a build/heal/agent workflow.
-- Guard-passed must not be confused with accepted/current adoption state.
-- Project-specific ZIP requirements must remain policy-driven through `.artifact-guardian.yml`, not duplicated as hidden code constants.
-- Slice drift can occur when repairs or local failures cause the next release to be inferred from memory instead of repo control-surface state.
+- A readiness result could be misread as permission to mutate repositories; all broader authority flags must remain false.
+- Dynamic temporary paths or timing must not contaminate deterministic evidence fingerprints.
+- Incomplete evidence must never be promoted by majority vote or best-effort inference.
+- Project deletion remains frozen.
+- Artifact Guardian remains a structural ZIP guard, not adoption authority.
 
 ## Current blockers
 
-- `v0.1.104.5` must prove every release-validation pytest subprocess resolves all profile/state/config/home paths inside its temporary validation root and never reads or waits on repository `.pb_profile` locks.
-- Persistent busy state after one recovery must fail closed before ask submission.
-- All ten release gates, evidence-bound adoption, and assigned-source-aware final verification remain mandatory.
+- `v0.1.105.1` must prove target-anchored repository resolution from an unrelated cwd while preserving three complete independent runs and one deterministic fingerprint.
+- `not_ready` and `blocked` must fail closed without recording a promotion decision.
+- All ten release gates, fresh full_direct, independent full_localhost, evidence-bound adoption, and assigned-source-aware final verification remain mandatory.
 - Repository mutation, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion remain forbidden.
 
 ## Current unknowns
 
-- Whether the accumulated `v0.1.103` and `v0.1.104` sandbox evidence is sufficient for a positive `v0.1.105` promotion-readiness assessment.
-- What exact future execution envelope, if any, may safely operate on a disposable repository rather than a copied fixture.
-- What secure multi-factor delete protocol, if any, is acceptable for future ChatGPT Project deletion.
+- Whether strict host validation and adoption will confirm the v0.1.105.1 repair across all ten release gates.
+- Whether `v0.1.106` should record GO or NO-GO after reviewing the repaired `v0.1.105.1` readiness evidence.
+- What exact future execution envelope, if any, may safely operate beyond copied fixtures.
 
 ## Next safe action
 
 ```text
-Run the unchanged sandbox verifier standalone, then validate v0.1.104.5 while retaining v0.1.103.10.116 as accepted/current. Require fresh full_direct, independent full_localhost, hermetic release-validation path preflights, sandbox 13/13, the already-proven visual completion/envelope behavior, complete external-live validation, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.
+Run pb loop promotion-readiness from an unrelated cwd with an absolute target and three independent sandbox proofs. Then run strict v0.1.105.1 release validation with fresh full_direct, independent full_localhost, all ten gates, evidence-bound adoption, and final release_adopted_and_verified. A ready assessment does not grant broader mutation authority.
 ```
 
-Operator promotion command after candidate ZIP creation:
+## Last updated
 
-```bash
-./install.sh v0.1.103.10.84 "$HOME/Downloads/chatgpt_claudecode_workflow-2_v0.1.103.10.84.zip"
+```text
+v0.1.105.1 target-anchored promotion-readiness repository resolution repair candidate build
 ```
 
 ## v0.1.102 candidate status

@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.103.10.116.zip
-accepted/current version: v0.1.103.10.116
-last completed normal slice: v0.1.103 — First controlled file mutation in sandboxed fixture only
-last completed repair: v0.1.103.10.116 — assigned-source-aware post-adoption verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-active candidate version: v0.1.104.5
-next normal target: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
-next normal slice: v0.1.104.5 — hermetic release-validation profile isolation
-next planned slice after acceptance: v0.1.105 — Sandbox correction promotion readiness check
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.104.5.zip
+accepted/current version: v0.1.104.5
+last completed normal slice: v0.1.104 — Sandbox mutation verification and rollback evidence gate
+last completed repair: v0.1.104.5 — hermetic release-validation profile isolation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+active candidate version: v0.1.105.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
+next normal slice: v0.1.105.1 — target-anchored promotion-readiness repository resolution
+next planned slice after acceptance: v0.1.106 — Controlled correction promotion decision record
 ```
 
 ## ZIP status values
@@ -31,6 +31,7 @@ repair_required
 ## Status rule
 
 A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, state artifact, state source, registry current, and consistency alignment.
+
 | v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | repair_required | release-control passed validation groups but failed live browser source remove under 120s source-mutation wait | DOD-029 done; DOD-030 required | pending |
 
 | v0.1.74.3 | repair | Full integration source-mutation wait alignment | accepted_current | operator-pinned baseline for v0.1.75 rebase; full adoption JSON not present in this package build context | DOD-030 done; baseline advanced by operator instruction | pending |
@@ -825,3 +826,8 @@ This repair removes unconditional Library/Recently deleted preflight from ordina
 | v0.1.104.5 | repair | Hermetic release-validation profile isolation | candidate | explicit temporary HOME/XDG/profile/project state/config/cache authority, child-process path preflight, ambient lock unreachable/no-read proof, unchanged 300-second timeout and no node retry | DOD-291 focused candidate; 10/10 required | pending |
 
 Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.
+
+| v0.1.104.5 | repair | Hermetic release-validation profile isolation | accepted_current | strict host validation passed 10/10; scheduler group 9/9; sandbox 13/13; all external-live gates passed; evidence-bound adoption and release_adopted_and_verified completed | DOD-291 done; v0.1.104 repair sequence complete | fe9951b308bc1108d7ec6d92ed098b61229ed368125dbb83c99a8885c4c97bc6 |
+| v0.1.105 | normal | Sandbox correction promotion readiness check | candidate | focused readiness tests produce three complete independent runs with one deterministic fingerprint; strict host validation and adoption pending | DOD-292 focused candidate; v0.1.106 decision remains pending | pending |
+
+| v0.1.105.1 | repair | Target-anchored promotion-readiness repository resolution | candidate | absolute target derives authoritative root; explicit wrong root blocks before evidence; unrelated cwd produces ready with 3 workspaces and 1 fingerprint | DOD-293 focused candidate; strict host validation pending | pending |

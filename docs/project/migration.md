@@ -1165,3 +1165,12 @@ The continuous release-live readiness model now scopes interruption evidence to 
 ## v0.1.104.5
 
 No data migration. This repair changes only the environment of offline release-validation subprocesses. Existing repository `.pb_profile`, user configuration, project registries, browser profiles, Project Sources, artifacts, and accepted/current state are preserved and are intentionally unreachable from hermetic pytest nodes.
+
+## v0.1.105
+
+No data or registry migration is required. `v0.1.104.5` is the accepted/current authority. The new `pb loop promotion-readiness` command creates only temporary sandbox workspaces through the existing sandbox contract, emits an in-memory/stdout assessment, and does not persist a promotion decision or grant broader mutation authority. `v0.1.106` remains the earliest slice permitted to record an explicit GO/NO-GO decision.
+
+
+## v0.1.105.1
+
+No migration is required. The repair changes only runtime repository-root resolution for promotion-readiness. Existing readiness evidence, sandbox contracts, and authority restrictions remain unchanged.
