@@ -689,3 +689,65 @@ def test_loop_promotion_decision_cli_records_no_go_for_wrong_explicit_repo_root(
     assert payload["source_readiness"]["observed_run_count"] == 0
     assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False
     assert payload["authority"]["correction_execution_authority_granted"] is False
+
+
+def test_loop_execution_envelope_design_cli_is_ready_from_unrelated_cwd(tmp_path: Path):
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "execution-envelope-design",
+            "--target",
+            str(target),
+            "--json",
+        ],
+        cwd=unrelated,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "execution_envelope_design_ready"
+    assert payload["execution_envelope"]["allowed_target"]["kind"] == "future_disposable_repository_copy"
+    assert payload["determinism"]["canonical_design_sha256"] == "742089d5904ab2db9fb16a44f1eb7390c3c1acbb3d12edf8a892e13c43b0c057"
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["safety"]["commands_executed"] == 0
+    assert payload["safety"]["files_mutated"] is False
+
+
+def test_loop_execution_envelope_design_cli_blocks_wrong_explicit_repo_root(tmp_path: Path):
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "execution-envelope-design",
+            "--target",
+            str(target),
+            "--repo-root",
+            str(wrong_root),
+            "--json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "execution_envelope_design_blocked"
+    assert payload["execution_envelope"] is None
+    assert payload["execution_blockers"] == ["explicit_repo_root_missing_authoritative_markers"]
+    assert payload["authority"]["correction_execution_authority_granted"] is False

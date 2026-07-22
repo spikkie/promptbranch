@@ -1009,3 +1009,66 @@ def test_sandbox_correction_promotion_decision_requires_exactly_three_runs(tmp_p
     assert payload["decision"] == "no_go"
     assert "required_run_count_exact_three" in payload["triggered_stop_conditions"]
     assert payload["authority"]["v0_1_107_execution_envelope_design_authorized"] is False
+
+
+def test_controlled_correction_execution_envelope_design_is_deterministic_and_design_only(tmp_path: Path, monkeypatch):
+    from promptbranch_loop import design_loop_controlled_correction_execution_envelope
+
+    root = Path(__file__).resolve().parents[1]
+    target = (root / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    first = design_loop_controlled_correction_execution_envelope(target)
+    second = design_loop_controlled_correction_execution_envelope(target)
+
+    assert first["ok"] is True
+    assert first["schema"] == "promptbranch.loop.controlled_correction_execution_envelope_design"
+    assert first["status"] == "execution_envelope_design_ready"
+    assert first["decision"] == "design_complete_no_execution_authority"
+    assert first["failed_design_check_count"] == 0
+    assert first["determinism"] == second["determinism"]
+    envelope = first["execution_envelope"]
+    assert envelope["schema"] == "promptbranch.loop.controlled_correction_execution_envelope"
+    assert envelope["allowed_target"]["kind"] == "future_disposable_repository_copy"
+    assert envelope["allowed_target"]["real_repository_forbidden"] is True
+    assert envelope["allowed_files"]["mutable"] == ["examples/loop-sandbox/invalid-json-fixture.json"]
+    assert envelope["allowed_operation"]["type"] == "replace_contents"
+    assert envelope["allowed_operation"]["maximum_occurrences"] == 1
+    assert envelope["validation"]["maximum_command_count"] == 1
+    assert envelope["validation"]["retry_count"] == 0
+    assert envelope["rollback"]["required"] is True
+    assert envelope["limits"]["generic_shell_authority"] is False
+    assert envelope["promotion_authority"]["execution_authority_granted_by_this_design"] is False
+    assert first["authority"]["future_envelope_validation_authority_granted"] is True
+    assert first["authority"]["correction_execution_authority_granted"] is False
+    assert first["authority"]["disposable_repository_mutation_authority_granted"] is False
+    assert first["authority"]["real_repository_mutation_authority_granted"] is False
+    assert first["safety"]["commands_executed"] == 0
+    assert first["safety"]["files_mutated"] is False
+    assert first["safety"]["workspace_created"] is False
+    assert first["next_slice"]["version"] == "v0.1.108"
+    assert first["next_slice"]["scope"] == "validation_only_no_correction_execution"
+
+
+def test_controlled_correction_execution_envelope_design_blocks_wrong_explicit_repo_root(tmp_path: Path):
+    from promptbranch_loop import design_loop_controlled_correction_execution_envelope
+
+    root = Path(__file__).resolve().parents[1]
+    target = (root / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+
+    payload = design_loop_controlled_correction_execution_envelope(target, repo_root=wrong_root)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "execution_envelope_design_blocked"
+    assert payload["decision"] == "stop_without_execution"
+    assert payload["execution_envelope"] is None
+    assert payload["execution_blockers"] == ["explicit_repo_root_missing_authoritative_markers"]
+    assert payload["authority"]["future_envelope_validation_authority_granted"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["safety"]["commands_executed"] == 0
+    assert payload["safety"]["files_mutated"] is False
+    assert payload["safety"]["workspace_created"] is False

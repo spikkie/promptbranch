@@ -1009,3 +1009,11 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **GO scope:** authorize only `v0.1.107 — Controlled correction execution envelope design`.
 - **Forbidden:** correction execution, disposable- or real-repository mutation, deployment, Kubernetes mutation, Project Source mutation, artifact adoption from the loop, ChatGPT Project deletion, generic write authority, and automatic correction.
 - **Fail closed:** any missing, contradictory, unsafe, non-deterministic, non-independent, failed-validation, repository-drift, rollback, cleanup, root-resolution, or authority evidence records NO-GO.
+
+## ADR-PROJ-105 — v0.1.107 execution envelope is design data, not execution authority
+
+- **Status:** accepted for candidate implementation
+- **Baseline:** `v0.1.106` accepted/current after 10/10 GO and `release_adopted_and_verified`.
+- **Decision:** define one deterministic future disposable-repository correction envelope with exact target, mutable file, operation, pre/post hashes, validation, rollback, limits, timeouts, evidence requirements, and a canonical fingerprint.
+- **Authority boundary:** the design authorizes only `v0.1.108` envelope validation. Correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and Project deletion remain forbidden.
+- **Fail closed:** missing or contradictory decision, target, path, hash, validation, rollback, limit, timeout, or authority evidence blocks design before any execution.

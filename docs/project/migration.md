@@ -1179,3 +1179,9 @@ No migration is required. The repair changes only runtime repository-root resolu
 ## v0.1.106 decision-record migration note
 
 No data or registry migration is required. `v0.1.105.1` is accepted/current. `v0.1.106` adds a deterministic stdout decision command and the machine-readable project record `docs/project/correction-promotion-decision-v0.1.106.json`. The GO decision permits only `v0.1.107 — Controlled correction execution envelope design`; it enables no correction execution or broader mutation authority.
+
+## v0.1.107
+
+No data or registry migration is required. `v0.1.106` is accepted/current. `v0.1.107` adds a deterministic design-only execution-envelope command and project record. It does not create a workspace, execute a correction, or grant repository mutation authority.
+
+The next planned slice is `v0.1.108 — Controlled correction execution envelope validation gate`; it remains validation-only and grants no correction execution authority.

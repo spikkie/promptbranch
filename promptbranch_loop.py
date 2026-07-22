@@ -61,6 +61,11 @@ LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA = "promptbranch.loop.sandbox_
 LOOP_SANDBOX_CORRECTION_PROMOTION_READINESS_SCHEMA_VERSION = "1.0"
 LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA = "promptbranch.loop.sandbox_correction_promotion_decision"
 LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA_VERSION = "1.0"
+LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA = "promptbranch.loop.controlled_correction_execution_envelope_design"
+LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA_VERSION = "1.0"
+CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA = "promptbranch.loop.controlled_correction_execution_envelope"
+CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA_VERSION = "1.0"
+CONTROLLED_CORRECTION_PROMOTION_DECISION_RECORD = "docs/project/correction-promotion-decision-v0.1.106.json"
 
 PROMOTION_READINESS_REPOSITORY_MARKERS: tuple[tuple[str, str], ...] = (
     ("VERSION", "file"),
@@ -2233,6 +2238,361 @@ def render_loop_sandbox_correction_promotion_decision_text(payload: dict[str, An
     triggered = payload.get("triggered_stop_conditions") or []
     if triggered:
         lines.append("triggered stop conditions: " + ", ".join(str(item) for item in triggered))
+    lines.append(str(payload.get("operator_instruction") or ""))
+    return "\n".join(lines) + "\n"
+
+
+
+def _is_sha256_hex(value: Any) -> bool:
+    text = str(value or "")
+    return len(text) == 64 and all(ch in "0123456789abcdef" for ch in text)
+
+
+def _blocked_execution_envelope_design_payload(
+    *,
+    target_path: str,
+    blockers: list[str],
+    checks: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    observed_checks = checks or {}
+    failed_checks = sorted(name for name, passed in observed_checks.items() if passed is not True)
+    return {
+        "ok": False,
+        "schema": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA,
+        "schema_version": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA_VERSION,
+        "action": "design_controlled_correction_execution_envelope",
+        "design_version": "v0.1.107",
+        "status": "execution_envelope_design_blocked",
+        "decision": "stop_without_execution",
+        "target_path": target_path,
+        "design_checks": observed_checks,
+        "failed_design_checks": failed_checks,
+        "execution_blockers": sorted(set(str(item) for item in blockers if str(item).strip())),
+        "execution_envelope": None,
+        "determinism": {"canonical_design_sha256": None},
+        "authority": {
+            "design_record_emitted": False,
+            "future_envelope_validation_authority_granted": False,
+            "correction_execution_authority_granted": False,
+            "disposable_repository_mutation_authority_granted": False,
+            "real_repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "design_only": True,
+            "commands_executed": 0,
+            "files_mutated": False,
+            "workspace_created": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.108",
+            "slice": "Controlled correction execution envelope validation gate",
+            "permitted": False,
+            "scope": "validation_only_no_correction_execution",
+        },
+        "operator_instruction": "Execution-envelope design is blocked. No command was executed, no workspace was created, and no file or repository was mutated.",
+    }
+
+
+def design_loop_controlled_correction_execution_envelope(
+    target_path: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+    validation_timeout_seconds: float = 15.0,
+    total_timeout_seconds: float = 60.0,
+) -> dict[str, Any]:
+    """Design a deterministic future correction envelope without executing it."""
+    resolved_target, root, root_blockers = _resolve_promotion_readiness_repository(
+        target_path,
+        repo_root=repo_root,
+    )
+    if root_blockers or root is None:
+        return _blocked_execution_envelope_design_payload(
+            target_path=str(resolved_target),
+            blockers=root_blockers or ["repository_root_resolution_failed"],
+        )
+    try:
+        target_rel = resolved_target.relative_to(root).as_posix()
+    except ValueError:
+        return _blocked_execution_envelope_design_payload(
+            target_path=str(resolved_target),
+            blockers=["target_outside_repository_root"],
+        )
+    target, raw, target_error = load_loop_target(resolved_target)
+    if target_error or target is None or not isinstance(raw, dict):
+        return _blocked_execution_envelope_design_payload(
+            target_path=target_rel,
+            blockers=[f"target_invalid:{target_error or 'unknown'}"],
+        )
+    decision_path = root / CONTROLLED_CORRECTION_PROMOTION_DECISION_RECORD
+    try:
+        decision = json.loads(decision_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return _blocked_execution_envelope_design_payload(
+            target_path=target_rel,
+            blockers=[f"promotion_decision_record_unavailable:{type(exc).__name__}:{exc}"],
+        )
+    if not isinstance(decision, dict):
+        return _blocked_execution_envelope_design_payload(
+            target_path=target_rel,
+            blockers=["promotion_decision_record_not_object"],
+        )
+
+    decision_authority = decision.get("authority") if isinstance(decision.get("authority"), dict) else {}
+    decision_next = decision.get("next_slice") if isinstance(decision.get("next_slice"), dict) else {}
+    decision_source = decision.get("source_readiness") if isinstance(decision.get("source_readiness"), dict) else {}
+    sandbox = raw.get("sandbox_mutation") if isinstance(raw.get("sandbox_mutation"), dict) else {}
+    fixture_path = str(sandbox.get("fixture_path") or "").replace("\\", "/").strip("/")
+    operation = str(sandbox.get("operation") or "")
+    replacement_contents = sandbox.get("replacement_contents")
+    expected_before = str(sandbox.get("expected_before_sha256") or "")
+    expected_after = str(sandbox.get("expected_after_sha256") or "")
+    fixture_classification = _classify_sandbox_fixture_path(
+        fixture_path,
+        repo_root=root,
+        allowed_paths=list(target.allowed_paths),
+    )
+    commands = list(target.validation_commands)
+    validation_command = commands[0] if len(commands) == 1 else ""
+    validation_classification = _classify_sandbox_validation_command(
+        validation_command,
+        fixture_rel_path=fixture_path,
+    ) if validation_command else {"allowed": False, "status": "validation_command_count_invalid", "argv": []}
+    fixture_abs = (root / fixture_path).resolve() if fixture_path else root
+    actual_before = hashlib.sha256(fixture_abs.read_bytes()).hexdigest() if fixture_abs.is_file() else None
+    replacement_bytes = replacement_contents.encode("utf-8") if isinstance(replacement_contents, str) else b""
+    replacement_sha = hashlib.sha256(replacement_bytes).hexdigest() if replacement_bytes else None
+
+    checks = {
+        "promotion_decision_schema_exact": decision.get("schema") == LOOP_SANDBOX_CORRECTION_PROMOTION_DECISION_SCHEMA,
+        "promotion_decision_version_exact": decision.get("decision_version") == "v0.1.106",
+        "promotion_decision_go": decision.get("status") == "promotion_go_recorded" and decision.get("decision") == "go",
+        "promotion_decision_design_scope_exact": decision.get("decision_scope") == "controlled_execution_envelope_design_only",
+        "v0_1_107_design_authorized": decision_authority.get("v0_1_107_execution_envelope_design_authorized") is True,
+        "promotion_decision_execution_authority_false": decision_authority.get("correction_execution_authority_granted") is False,
+        "promotion_decision_broader_authority_false": all(
+            decision_authority.get(name) is False
+            for name in (
+                "disposable_repository_mutation_authority_granted",
+                "real_repository_mutation_authority_granted",
+                "deployment_authority_granted",
+                "kubernetes_mutation_authority_granted",
+                "project_source_mutation_authority_granted",
+                "artifact_adoption_authority_granted",
+                "chatgpt_project_deletion_authority_granted",
+            )
+        ),
+        "promotion_decision_next_slice_exact": decision_next.get("version") == "v0.1.107" and decision_next.get("scope") == "design_only_no_correction_execution" and decision_next.get("permitted") is True,
+        "promotion_readiness_fingerprint_present": _is_sha256_hex(decision_source.get("determinism_fingerprint_sha256")),
+        "target_schema_valid": target.raw.get("schema", LOOP_TARGET_SCHEMA) == LOOP_TARGET_SCHEMA,
+        "target_contained_in_repository": _path_is_within(resolved_target, root),
+        "deployment_not_requested_or_allowed": target.deployment_requested is False and target.deployment_allowed is False,
+        "single_iteration_limit": target.max_iterations == 1,
+        "single_mutable_fixture": fixture_classification.get("allowed") is True and fixture_path in target.allowed_paths,
+        "operation_exact_replace_contents": operation == "replace_contents",
+        "replacement_contents_present": isinstance(replacement_contents, str) and bool(replacement_contents),
+        "replacement_size_within_limit": 0 < len(replacement_bytes) <= 4096,
+        "expected_before_sha256_valid": _is_sha256_hex(expected_before),
+        "expected_after_sha256_valid": _is_sha256_hex(expected_after),
+        "repository_fixture_matches_pre_state": actual_before == expected_before,
+        "replacement_matches_post_state": replacement_sha == expected_after,
+        "single_validation_command": len(commands) == 1,
+        "validation_command_allowlisted": validation_classification.get("allowed") is True,
+        "validation_timeout_valid": isinstance(validation_timeout_seconds, (int, float)) and 0 < float(validation_timeout_seconds) <= 60,
+        "total_timeout_valid": isinstance(total_timeout_seconds, (int, float)) and float(validation_timeout_seconds) < float(total_timeout_seconds) <= 300,
+    }
+    failed_checks = sorted(name for name, passed in checks.items() if passed is not True)
+    if failed_checks:
+        return _blocked_execution_envelope_design_payload(
+            target_path=target_rel,
+            blockers=[f"design_check_failed:{name}" for name in failed_checks],
+            checks=checks,
+        )
+
+    envelope = {
+        "schema": CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA,
+        "schema_version": CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA_VERSION,
+        "envelope_version": "v0.1.107",
+        "envelope_id": f"v0.1.107:{target.target_id}:{expected_before[:12]}:{expected_after[:12]}",
+        "design_scope": "future_disposable_repository_copy_only",
+        "source_promotion_decision": {
+            "record_path": CONTROLLED_CORRECTION_PROMOTION_DECISION_RECORD,
+            "decision": "go",
+            "decision_version": "v0.1.106",
+            "readiness_fingerprint_sha256": decision_source.get("determinism_fingerprint_sha256"),
+        },
+        "allowed_target": {
+            "kind": "future_disposable_repository_copy",
+            "target_id": target.target_id,
+            "target_definition_path": target_rel,
+            "repository_binding": "must_be_explicitly_supplied_and_verified_by_future_validation_slice",
+            "real_repository_forbidden": True,
+            "current_repository_forbidden": True,
+        },
+        "allowed_files": {
+            "mutable": [fixture_path],
+            "read_only": [target_rel],
+            "maximum_mutable_file_count": 1,
+            "path_policy": "literal_repo_relative_no_glob_no_parent_traversal",
+        },
+        "allowed_operation": {
+            "type": "replace_contents",
+            "maximum_occurrences": 1,
+            "replacement_contents_utf8": replacement_contents,
+            "replacement_size_bytes": len(replacement_bytes),
+            "expected_before_sha256": expected_before,
+            "expected_after_sha256": expected_after,
+        },
+        "required_pre_state": {
+            "target_file_exists": True,
+            "target_file_sha256": expected_before,
+            "repository_snapshot_required": True,
+            "only_allowed_file_may_change": True,
+        },
+        "required_post_state": {
+            "target_file_sha256": expected_after,
+            "validation_must_pass": True,
+            "unrelated_repository_paths_unchanged": True,
+            "promotion_or_adoption_forbidden": True,
+        },
+        "validation": {
+            "commands": [validation_command],
+            "argv": [validation_classification.get("argv")],
+            "maximum_command_count": 1,
+            "read_only_required": True,
+            "timeout_seconds": float(validation_timeout_seconds),
+            "retry_count": 0,
+        },
+        "rollback": {
+            "required": True,
+            "trigger": "always_after_evidence_or_immediately_on_any_failure",
+            "method": "restore_exact_pre_state_bytes",
+            "required_restored_sha256": expected_before,
+            "rollback_validation_required": True,
+            "workspace_deletion_required": True,
+        },
+        "limits": {
+            "maximum_iterations": 1,
+            "maximum_mutated_files": 1,
+            "maximum_write_operations": 1,
+            "maximum_validation_commands": 1,
+            "maximum_replacement_bytes": 4096,
+            "automatic_retries": 0,
+            "parallel_execution": False,
+            "generic_shell_authority": False,
+        },
+        "timeouts": {
+            "total_seconds": float(total_timeout_seconds),
+            "validation_seconds": float(validation_timeout_seconds),
+            "rollback_seconds": 15.0,
+        },
+        "required_evidence_bundle": {
+            "schema": "promptbranch.loop.controlled_correction_execution_evidence",
+            "schema_version": "1.0",
+            "required_fields": [
+                "envelope_sha256",
+                "disposable_repository_identity",
+                "repository_snapshot_before",
+                "target_file_before_sha256",
+                "target_file_after_sha256",
+                "validation_command",
+                "validation_exit_code",
+                "validation_stdout_sha256",
+                "validation_stderr_sha256",
+                "repository_snapshot_after_validation",
+                "rollback_attempted",
+                "rollback_succeeded",
+                "target_file_rollback_sha256",
+                "repository_snapshot_after_rollback",
+                "workspace_deleted",
+            ],
+            "all_fields_required": True,
+            "missing_or_contradictory_evidence_blocks": True,
+        },
+        "promotion_authority": {
+            "execution_authority_granted_by_this_design": False,
+            "future_validation_gate_required": True,
+            "artifact_adoption_forbidden": True,
+            "project_source_mutation_forbidden": True,
+            "deployment_forbidden": True,
+        },
+    }
+    canonical_json = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    fingerprint = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+    return {
+        "ok": True,
+        "schema": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA,
+        "schema_version": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA_VERSION,
+        "action": "design_controlled_correction_execution_envelope",
+        "design_version": "v0.1.107",
+        "status": "execution_envelope_design_ready",
+        "decision": "design_complete_no_execution_authority",
+        "target_path": target_rel,
+        "design_checks": checks,
+        "passed_design_check_count": len(checks),
+        "failed_design_check_count": 0,
+        "failed_design_checks": [],
+        "execution_blockers": [],
+        "execution_envelope": envelope,
+        "determinism": {"canonical_design_sha256": fingerprint},
+        "authority": {
+            "design_record_emitted": True,
+            "future_envelope_validation_authority_granted": True,
+            "correction_execution_authority_granted": False,
+            "disposable_repository_mutation_authority_granted": False,
+            "real_repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "design_only": True,
+            "commands_executed": 0,
+            "files_mutated": False,
+            "workspace_created": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.108",
+            "slice": "Controlled correction execution envelope validation gate",
+            "permitted": True,
+            "scope": "validation_only_no_correction_execution",
+        },
+        "operator_instruction": "The controlled execution envelope has been designed deterministically. This result grants validation of the envelope design only; it creates no workspace, executes no command, mutates no file or repository, and grants no correction execution authority.",
+    }
+
+
+def render_loop_controlled_correction_execution_envelope_design_text(payload: dict[str, Any]) -> str:
+    authority = payload.get("authority") if isinstance(payload.get("authority"), dict) else {}
+    lines = [
+        "Promptbranch controlled correction execution envelope design",
+        f"status: {payload.get('status')}",
+        f"decision: {payload.get('decision')}",
+        f"design fingerprint: {(payload.get('determinism') or {}).get('canonical_design_sha256')}",
+        f"future validation authorized: {authority.get('future_envelope_validation_authority_granted') is True}",
+        "correction execution authority granted: false",
+        "repository mutation authority granted: false",
+    ]
+    blockers = payload.get("execution_blockers") or []
+    if blockers:
+        lines.append("execution blockers: " + ", ".join(str(item) for item in blockers))
     lines.append(str(payload.get("operator_instruction") or ""))
     return "\n".join(lines) + "\n"
 

@@ -2,21 +2,21 @@
 
 ## Accepted/current authority
 
-`v0.1.105.1 — target-anchored promotion-readiness repository resolution` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. This completes the v0.1.105 readiness slice.
+`v0.1.106 — Controlled correction promotion decision record` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. Its GO decision authorizes design of the bounded envelope only.
 
 ## Active normal slice
 
-`v0.1.106 — Controlled correction promotion decision record`
+`v0.1.107 — Controlled correction execution envelope design`
 
-Record deterministic GO/NO-GO from exactly three complete independent sandbox evidence runs. GO permits only v0.1.107 execution-envelope design and grants no correction execution or broader mutation authority.
+Define the deterministic future disposable-repository execution envelope while creating no workspace, executing no command, mutating no file, and granting no correction execution authority.
 
 ## Rolling normal horizon
 
-- v0.1.104.5 — completed accepted hermetic release-validation repair authority
 - v0.1.105 — completed sandbox correction promotion readiness check
 - v0.1.105.1 — completed accepted target-anchored readiness repair
-- v0.1.106 — Controlled correction promotion decision record
+- v0.1.106 — completed accepted controlled promotion GO decision record
 - v0.1.107 — Controlled correction execution envelope design
+- v0.1.108 — Controlled correction execution envelope validation gate
 
 ## Repair horizon rule
 

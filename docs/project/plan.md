@@ -3,37 +3,37 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.105.1.zip
-accepted/current version: v0.1.105.1
-last completed normal slice: v0.1.105 — Sandbox correction promotion readiness check (completed by v0.1.105.1)
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.106.zip
+accepted/current version: v0.1.106
+last completed normal slice: v0.1.106 — Controlled correction promotion decision record
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.106.zip
-active candidate version: v0.1.106
-next normal target: chatgpt_claudecode_workflow-2_v0.1.106.zip
-next normal slice: v0.1.106 — Controlled correction promotion decision record
-next planned slice after acceptance: v0.1.107 — Controlled correction execution envelope design
+active candidate: chatgpt_claudecode_workflow-2_v0.1.107.zip
+active candidate version: v0.1.107
+next normal target: chatgpt_claudecode_workflow-2_v0.1.107.zip
+next normal slice: v0.1.107 — Controlled correction execution envelope design
+next planned slice after acceptance: v0.1.108 — Controlled correction execution envelope validation gate
 ```
 
 ## Plan summary
 
-`v0.1.106` records the explicit controlled correction promotion decision from the accepted `v0.1.105.1` readiness authority. The decision is GO because all 32 mandatory evidence and safety checks pass across exactly three complete independent sandbox runs with one canonical fingerprint.
+`v0.1.107` defines the deterministic controlled-correction execution envelope permitted by the accepted `v0.1.106` GO record. The envelope is design data only and grants no correction execution or repository mutation authority.
 
-## Active normal slice — v0.1.106 — Controlled correction promotion decision record
+## Active normal slice — v0.1.107 — Controlled correction execution envelope design
 
 Acceptance scope:
 
-- Add `pb loop promotion-decision --target ... --runs 3 --json`.
-- Record exactly `go` or `no_go`; never infer partial promotion.
-- Require all mandatory readiness, determinism, workspace, rollback, cleanup, and authority checks for GO.
-- Persist the canonical project decision record in `docs/project/correction-promotion-decision-v0.1.106.json`.
-- Authorize only `v0.1.107 — Controlled correction execution envelope design` when GO.
-- Preserve all existing sandbox, transport, external-live, visual, source, hermetic-validation, and adoption gates.
+- Add `pb loop execution-envelope-design --target ... --json`.
+- Consume the accepted `v0.1.106` GO decision record without rerunning or executing a correction.
+- Define one exact future disposable-repository target, mutable file, operation, pre-state, post-state, validation command, rollback contract, limits, timeouts, evidence bundle, and authority boundary.
+- Emit one canonical deterministic design fingerprint.
+- Create no workspace, execute no command, and mutate no file or repository.
+- Preserve all ten release gates, fresh direct, independent localhost, sandbox 13/13, and evidence-bound adoption.
 
-Out of scope: executing corrections beyond the current temporary sandbox, mutating disposable or real repositories, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, ChatGPT Project deletion, generic shell authority, or automatic correction.
+Out of scope: correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.106` records GO for design-only advancement to `v0.1.107`; no correction execution authority is granted.
+`docs/project/plan-state.json` is authoritative. `v0.1.107` records the bounded envelope design only; `v0.1.108` may validate that design but still may not execute a correction.
 
 ## Release / slice plan
 
@@ -2261,3 +2261,7 @@ Release: v0.1.103.10.103
 - perform no canonical release `pbsa` and no adoption.
 
 Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.
+
+| v0.1.106 | Controlled correction promotion decision record | Record GO/NO-GO | accepted 10/10 | correction execution | strict release validation | accepted_current |
+| v0.1.107 | Controlled correction execution envelope design | Define bounded deterministic design only | target/file/operation/hashes/validation/rollback/limits/timeouts/evidence | correction execution and repository mutation | focused design plus strict release validation | candidate |
+| v0.1.108 | Controlled correction execution envelope validation gate | Validate the design without execution | planned | execution | future focused validation | planned_after_acceptance |
