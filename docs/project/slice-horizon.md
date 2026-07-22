@@ -2,21 +2,21 @@
 
 ## Accepted/current authority
 
-`v0.1.106 — Controlled correction promotion decision record` is accepted/current after all 10/10 gates, evidence-bound adoption, and `release_adopted_and_verified`. Its GO decision authorizes design of the bounded envelope only.
+`v0.1.107 — Controlled correction execution envelope design` is accepted/current. Its canonical envelope design grants validation authority only and no correction execution authority.
 
 ## Active normal slice
 
-`v0.1.107 — Controlled correction execution envelope design`
+`v0.1.108 — Controlled correction execution envelope validation gate`
 
-Define the deterministic future disposable-repository execution envelope while creating no workspace, executing no command, mutating no file, and granting no correction execution authority.
+Validate the recorded envelope deterministically without creating a workspace, executing a command, mutating a file, or granting correction execution authority.
 
 ## Rolling normal horizon
 
-- v0.1.105 — completed sandbox correction promotion readiness check
 - v0.1.105.1 — completed accepted target-anchored readiness repair
 - v0.1.106 — completed accepted controlled promotion GO decision record
-- v0.1.107 — Controlled correction execution envelope design
-- v0.1.108 — Controlled correction execution envelope validation gate
+- v0.1.107 — completed accepted controlled correction execution-envelope design
+- v0.1.108 — active controlled correction execution-envelope validation gate
+- v0.1.109 — planned PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 
 ## Repair horizon rule
 

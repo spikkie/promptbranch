@@ -1185,3 +1185,9 @@ No data or registry migration is required. `v0.1.105.1` is accepted/current. `v0
 No data or registry migration is required. `v0.1.106` is accepted/current. `v0.1.107` adds a deterministic design-only execution-envelope command and project record. It does not create a workspace, execute a correction, or grant repository mutation authority.
 
 The next planned slice is `v0.1.108 — Controlled correction execution envelope validation gate`; it remains validation-only and grants no correction execution authority.
+
+## v0.1.108
+
+No artifact-registry or runtime-state migration is required. `v0.1.107` is accepted/current. `v0.1.108` advances the repository control surface, adds a validation-only CLI and machine-readable validation record, and preserves all correction-execution and mutation authority flags as false.
+
+The historical conversational use of `v0.1.108` for `PROJECT_SETTINGS.md` work is explicitly superseded by the adopted repository control surface. That work is moved to `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition`.

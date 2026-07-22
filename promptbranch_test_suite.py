@@ -158,6 +158,19 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             ".",
         ),
     },
+    "execution_envelope_validation_gate": {
+        "required": True,
+        "description": "Mandatory v0.1.108 deterministic execution-envelope validation with zero commands, workspaces, mutations, or correction execution authority.",
+        "timeout_seconds": 120.0,
+        "command": _release_validation_command(
+            "promptbranch_cli.py",
+            "loop",
+            "execution-envelope-validation",
+            "--target",
+            "examples/loop-targets/sandboxed-file-mutation-target.json",
+            "--json",
+        ),
+    },
     "compileall": {
         "required": True,
         "description": "Repository Python source compiles.",

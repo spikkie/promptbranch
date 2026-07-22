@@ -1072,3 +1072,52 @@ def test_controlled_correction_execution_envelope_design_blocks_wrong_explicit_r
     assert payload["safety"]["commands_executed"] == 0
     assert payload["safety"]["files_mutated"] is False
     assert payload["safety"]["workspace_created"] is False
+
+
+def test_controlled_correction_execution_envelope_validation_is_deterministic_validation_only(tmp_path: Path, monkeypatch):
+    from promptbranch_loop import validate_loop_controlled_correction_execution_envelope
+
+    root = Path(__file__).resolve().parents[1]
+    target = (root / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    payload = validate_loop_controlled_correction_execution_envelope(target)
+
+    assert payload["ok"] is True
+    assert payload["schema"] == "promptbranch.loop.controlled_correction_execution_envelope_validation"
+    assert payload["status"] == "execution_envelope_validation_passed"
+    assert payload["decision"] == "validation_complete_no_execution_authority"
+    assert payload["failed_validation_check_count"] == 0
+    assert payload["determinism"]["recorded_design_sha256"] == "742089d5904ab2db9fb16a44f1eb7390c3c1acbb3d12edf8a892e13c43b0c057"
+    assert payload["determinism"]["fingerprints_match"] is True
+    assert payload["authority"]["v0_1_109_project_authority_graph_definition_authorized"] is True
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["authority"]["real_repository_mutation_authority_granted"] is False
+    assert payload["safety"]["commands_executed"] == 0
+    assert payload["safety"]["files_mutated"] is False
+    assert payload["safety"]["workspace_created"] is False
+    assert payload["next_slice"]["version"] == "v0.1.109"
+    assert payload["next_slice"]["scope"] == "definition_only_no_remote_settings_mutation"
+
+
+def test_controlled_correction_execution_envelope_validation_blocks_wrong_explicit_repo_root(tmp_path: Path):
+    from promptbranch_loop import validate_loop_controlled_correction_execution_envelope
+
+    root = Path(__file__).resolve().parents[1]
+    target = (root / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+
+    payload = validate_loop_controlled_correction_execution_envelope(target, repo_root=wrong_root)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "execution_envelope_validation_blocked"
+    assert payload["decision"] == "stop_without_execution"
+    assert payload["validation_blockers"] == ["explicit_repo_root_missing_authoritative_markers"]
+    assert payload["authority"]["v0_1_109_project_authority_graph_definition_authorized"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["safety"]["commands_executed"] == 0
+    assert payload["safety"]["files_mutated"] is False
+    assert payload["safety"]["workspace_created"] is False

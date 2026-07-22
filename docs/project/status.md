@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.106.zip
-accepted/current version: v0.1.106
-last completed normal slice: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
+accepted/current version: v0.1.107
+last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.107.zip
-active candidate version: v0.1.107
-next normal target: chatgpt_claudecode_workflow-2_v0.1.107.zip
-next normal slice: v0.1.107 — Controlled correction execution envelope design
-next planned slice after acceptance: v0.1.108 — Controlled correction execution envelope validation gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
+active candidate version: v0.1.108
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
+next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
 ## Current MVP state
@@ -20,8 +20,8 @@ next planned slice after acceptance: v0.1.108 — Controlled correction executio
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: in_progress
-last accepted/current slice: v0.1.106 — Controlled correction promotion decision record
-active plan slice: v0.1.107 — Controlled correction execution envelope design
+last accepted/current slice: v0.1.107 — Controlled correction execution envelope design
+active plan slice: v0.1.108 — Controlled correction execution envelope validation gate
 repair mode: false
 scope advance allowed: true
 ```
@@ -29,47 +29,43 @@ scope advance allowed: true
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.106.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.107.zip
-release status: v0.1.106 passed 10/10 and is accepted/current. v0.1.107 is the active design-only execution-envelope candidate.
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.107.zip
+latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.108.zip
+release status: v0.1.107 is adopted/current. v0.1.108 is the validation-only execution-envelope candidate.
 plan authority file: docs/project/plan-state.json
-roadmap document: docs/project/promptbranch-plan-v0.1.107.md
-decision record: docs/project/correction-promotion-decision-v0.1.106.json
+roadmap document: docs/project/promptbranch-plan-v0.1.108.md
 execution-envelope design record: docs/project/controlled-correction-execution-envelope-v0.1.107.json
+execution-envelope validation record: docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
-slice horizon file: docs/project/slice-horizon.md
-architecture file: docs/project/architecture.md
 ```
 
 ## Current risks
 
-- An envelope design could be misread as execution authority; every execution and mutation authority flag remains false.
-- Any missing or contradictory GO, target, hash, validation, rollback, limit, timeout, or evidence field must block design.
-- Project deletion remains frozen.
-- Artifact Guardian remains a structural ZIP guard, not adoption authority.
+- Envelope validation could be misread as correction execution authority; every execution and mutation authority flag remains false.
+- Any design-record, target, fingerprint, rollback, evidence, limit, or authority drift must block validation.
+- The historical duplicate v0.1.108 assignment must remain explicitly resolved in favor of the adopted repository control surface.
 
 ## Current blockers
 
-- `v0.1.107` must emit one deterministic envelope fingerprint while executing zero commands and mutating zero files.
-- All ten release gates, fresh full_direct, independent full_localhost, evidence-bound adoption, and assigned-source-aware final verification remain mandatory.
+- Strict host release validation and evidence-bound adoption remain pending for v0.1.108.
 - Correction execution and all broader mutation authority remain forbidden.
 
 ## Current unknowns
 
-- Whether strict host validation and adoption will confirm the design-only envelope across all ten release gates.
-- Whether `v0.1.108` validation will accept the envelope without enabling execution.
+- Whether strict host validation and adoption will confirm the validation-only gate across all release gates.
+- The exact machine-readable authority-graph schema to be defined in v0.1.109.
 
 ## Next safe action
 
 ```text
-Run pb loop execution-envelope-design from an unrelated working directory and verify one canonical fingerprint, the exact bounded envelope, zero commands, zero mutations, and zero correction execution authority. Then run strict v0.1.107 release validation.
+Run pb loop execution-envelope-validation from an unrelated working directory, prove all 36 checks, exact fingerprint equality, zero commands, zero workspaces, zero mutations, and zero correction execution authority. Then run strict v0.1.108 release validation.
 ```
 
 ## Last updated
 
 ```text
-v0.1.107 controlled correction execution envelope design candidate build
+v0.1.108 controlled correction execution envelope validation candidate build
 ```
 
 ## v0.1.102 candidate status

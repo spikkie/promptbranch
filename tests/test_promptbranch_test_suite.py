@@ -584,6 +584,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         "repo_project_registry",
         "browser_scheduler_source_lifecycle",
         "release_lifecycle_plan",
+        "execution_envelope_validation_gate",
         "compileall",
     }
     assert required.issubset(manifest)
@@ -1108,4 +1109,20 @@ def test_release_validation_manifest_requires_sandbox_mutation_rollback_gate() -
         "scripts/verify-sandbox-mutation-rollback-release-gate.py",
         "--repo",
         ".",
+    ]
+
+
+def test_release_validation_manifest_requires_execution_envelope_validation_gate() -> None:
+    manifest = suite.release_validation_group_manifest()
+    gate = manifest["execution_envelope_validation_gate"]
+    assert gate["required"] is True
+    assert gate["timeout_seconds"] == 120.0
+    assert gate["command"] == [
+        "python3",
+        "promptbranch_cli.py",
+        "loop",
+        "execution-envelope-validation",
+        "--target",
+        "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--json",
     ]

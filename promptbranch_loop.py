@@ -65,6 +65,9 @@ LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA = "promptbranch.loop
 LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA_VERSION = "1.0"
 CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA = "promptbranch.loop.controlled_correction_execution_envelope"
 CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA_VERSION = "1.0"
+LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA = "promptbranch.loop.controlled_correction_execution_envelope_validation"
+LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA_VERSION = "1.0"
+CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_RECORD = "docs/project/controlled-correction-execution-envelope-v0.1.107.json"
 CONTROLLED_CORRECTION_PROMOTION_DECISION_RECORD = "docs/project/correction-promotion-decision-v0.1.106.json"
 
 PROMOTION_READINESS_REPOSITORY_MARKERS: tuple[tuple[str, str], ...] = (
@@ -2593,6 +2596,272 @@ def render_loop_controlled_correction_execution_envelope_design_text(payload: di
     blockers = payload.get("execution_blockers") or []
     if blockers:
         lines.append("execution blockers: " + ", ".join(str(item) for item in blockers))
+    lines.append(str(payload.get("operator_instruction") or ""))
+    return "\n".join(lines) + "\n"
+
+
+
+def _blocked_execution_envelope_validation_payload(
+    *,
+    target_path: str,
+    blockers: list[str],
+    checks: dict[str, bool] | None = None,
+    recorded_fingerprint: str | None = None,
+    recomputed_fingerprint: str | None = None,
+) -> dict[str, Any]:
+    observed_checks = checks or {}
+    failed_checks = sorted(name for name, passed in observed_checks.items() if passed is not True)
+    return {
+        "ok": False,
+        "schema": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA,
+        "schema_version": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA_VERSION,
+        "action": "validate_controlled_correction_execution_envelope",
+        "validation_version": "v0.1.108",
+        "status": "execution_envelope_validation_blocked",
+        "decision": "stop_without_execution",
+        "target_path": target_path,
+        "validation_checks": observed_checks,
+        "failed_validation_checks": failed_checks,
+        "validation_blockers": sorted(set(str(item) for item in blockers if str(item).strip())),
+        "determinism": {
+            "recorded_design_sha256": recorded_fingerprint,
+            "recomputed_design_sha256": recomputed_fingerprint,
+            "fingerprints_match": False,
+        },
+        "authority": {
+            "validation_record_emitted": False,
+            "v0_1_109_project_authority_graph_definition_authorized": False,
+            "correction_execution_authority_granted": False,
+            "disposable_repository_mutation_authority_granted": False,
+            "real_repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "validation_only": True,
+            "commands_executed": 0,
+            "files_mutated": False,
+            "workspace_created": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.109",
+            "slice": "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
+            "permitted": False,
+            "scope": "definition_only_no_remote_settings_mutation",
+        },
+        "operator_instruction": "Execution-envelope validation is blocked. No command was executed, no workspace was created, and no file or repository was mutated.",
+    }
+
+
+def validate_loop_controlled_correction_execution_envelope(
+    target_path: str | Path,
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Validate the v0.1.107 envelope design without executing a correction."""
+    resolved_target, root, root_blockers = _resolve_promotion_readiness_repository(
+        target_path,
+        repo_root=repo_root,
+    )
+    if root_blockers or root is None:
+        return _blocked_execution_envelope_validation_payload(
+            target_path=str(resolved_target),
+            blockers=root_blockers or ["repository_root_resolution_failed"],
+        )
+    try:
+        target_rel = resolved_target.relative_to(root).as_posix()
+    except ValueError:
+        return _blocked_execution_envelope_validation_payload(
+            target_path=str(resolved_target),
+            blockers=["target_outside_repository_root"],
+        )
+
+    design_path = root / CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_RECORD
+    try:
+        recorded = json.loads(design_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return _blocked_execution_envelope_validation_payload(
+            target_path=target_rel,
+            blockers=[f"execution_envelope_design_record_unavailable:{type(exc).__name__}:{exc}"],
+        )
+    if not isinstance(recorded, dict):
+        return _blocked_execution_envelope_validation_payload(
+            target_path=target_rel,
+            blockers=["execution_envelope_design_record_not_object"],
+        )
+
+    recomputed = design_loop_controlled_correction_execution_envelope(
+        resolved_target,
+        repo_root=root,
+    )
+    recorded_envelope = recorded.get("execution_envelope") if isinstance(recorded.get("execution_envelope"), dict) else None
+    recomputed_envelope = recomputed.get("execution_envelope") if isinstance(recomputed.get("execution_envelope"), dict) else None
+    recorded_determinism = recorded.get("determinism") if isinstance(recorded.get("determinism"), dict) else {}
+    recomputed_determinism = recomputed.get("determinism") if isinstance(recomputed.get("determinism"), dict) else {}
+    recorded_fingerprint = str(recorded_determinism.get("canonical_design_sha256") or "") or None
+    recomputed_fingerprint = str(recomputed_determinism.get("canonical_design_sha256") or "") or None
+    envelope = recorded_envelope or {}
+    allowed_target = envelope.get("allowed_target") if isinstance(envelope.get("allowed_target"), dict) else {}
+    allowed_files = envelope.get("allowed_files") if isinstance(envelope.get("allowed_files"), dict) else {}
+    operation = envelope.get("allowed_operation") if isinstance(envelope.get("allowed_operation"), dict) else {}
+    validation = envelope.get("validation") if isinstance(envelope.get("validation"), dict) else {}
+    rollback = envelope.get("rollback") if isinstance(envelope.get("rollback"), dict) else {}
+    limits = envelope.get("limits") if isinstance(envelope.get("limits"), dict) else {}
+    evidence = envelope.get("required_evidence_bundle") if isinstance(envelope.get("required_evidence_bundle"), dict) else {}
+    promotion = envelope.get("promotion_authority") if isinstance(envelope.get("promotion_authority"), dict) else {}
+    source_authority = recorded.get("authority") if isinstance(recorded.get("authority"), dict) else {}
+    source_safety = recorded.get("safety") if isinstance(recorded.get("safety"), dict) else {}
+    source_next = recorded.get("next_slice") if isinstance(recorded.get("next_slice"), dict) else {}
+
+    required_evidence_fields = {
+        "envelope_sha256",
+        "disposable_repository_identity",
+        "repository_snapshot_before",
+        "target_file_before_sha256",
+        "target_file_after_sha256",
+        "validation_command",
+        "validation_exit_code",
+        "validation_stdout_sha256",
+        "validation_stderr_sha256",
+        "repository_snapshot_after_validation",
+        "rollback_attempted",
+        "rollback_succeeded",
+        "target_file_rollback_sha256",
+        "repository_snapshot_after_rollback",
+        "workspace_deleted",
+    }
+    validation_commands = validation.get("commands") if isinstance(validation.get("commands"), list) else []
+    validation_argv = validation.get("argv") if isinstance(validation.get("argv"), list) else []
+    mutable_files = allowed_files.get("mutable") if isinstance(allowed_files.get("mutable"), list) else []
+    read_only_files = allowed_files.get("read_only") if isinstance(allowed_files.get("read_only"), list) else []
+
+    checks = {
+        "record_schema_exact": recorded.get("schema") == LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA,
+        "record_schema_version_exact": recorded.get("schema_version") == LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_SCHEMA_VERSION,
+        "record_design_version_exact": recorded.get("design_version") == "v0.1.107",
+        "record_status_ready": recorded.get("status") == "execution_envelope_design_ready" and recorded.get("ok") is True,
+        "record_decision_design_only": recorded.get("decision") == "design_complete_no_execution_authority",
+        "recomputed_design_ready": recomputed.get("status") == "execution_envelope_design_ready" and recomputed.get("ok") is True,
+        "recorded_fingerprint_valid": _is_sha256_hex(recorded_fingerprint),
+        "recomputed_fingerprint_valid": _is_sha256_hex(recomputed_fingerprint),
+        "fingerprint_matches_recomputed": recorded_fingerprint == recomputed_fingerprint,
+        "recorded_envelope_matches_recomputed": recorded_envelope == recomputed_envelope,
+        "envelope_schema_exact": envelope.get("schema") == CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA,
+        "envelope_schema_version_exact": envelope.get("schema_version") == CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_SCHEMA_VERSION,
+        "envelope_version_exact": envelope.get("envelope_version") == "v0.1.107",
+        "design_scope_disposable_copy_only": envelope.get("design_scope") == "future_disposable_repository_copy_only",
+        "target_definition_exact": allowed_target.get("target_definition_path") == target_rel,
+        "target_kind_disposable_copy": allowed_target.get("kind") == "future_disposable_repository_copy",
+        "current_and_real_repository_forbidden": allowed_target.get("current_repository_forbidden") is True and allowed_target.get("real_repository_forbidden") is True,
+        "single_literal_mutable_file": len(mutable_files) == 1 and allowed_files.get("maximum_mutable_file_count") == 1 and allowed_files.get("path_policy") == "literal_repo_relative_no_glob_no_parent_traversal",
+        "target_definition_read_only": read_only_files == [target_rel],
+        "operation_bounded_replace_contents": operation.get("type") == "replace_contents" and operation.get("maximum_occurrences") == 1,
+        "operation_hashes_valid": _is_sha256_hex(operation.get("expected_before_sha256")) and _is_sha256_hex(operation.get("expected_after_sha256")),
+        "replacement_size_bounded": isinstance(operation.get("replacement_size_bytes"), int) and 0 < operation.get("replacement_size_bytes") <= 4096,
+        "single_read_only_validation_command": len(validation_commands) == 1 and len(validation_argv) == 1 and validation.get("maximum_command_count") == 1 and validation.get("read_only_required") is True,
+        "validation_has_no_retry": validation.get("retry_count") == 0,
+        "validation_timeout_bounded": isinstance(validation.get("timeout_seconds"), (int, float)) and 0 < float(validation.get("timeout_seconds")) <= 60,
+        "rollback_always_required": rollback.get("required") is True and rollback.get("trigger") == "always_after_evidence_or_immediately_on_any_failure",
+        "rollback_exact_restore_required": rollback.get("method") == "restore_exact_pre_state_bytes" and rollback.get("required_restored_sha256") == operation.get("expected_before_sha256"),
+        "rollback_and_workspace_verification_required": rollback.get("rollback_validation_required") is True and rollback.get("workspace_deletion_required") is True,
+        "limits_single_iteration_single_write": limits.get("maximum_iterations") == 1 and limits.get("maximum_mutated_files") == 1 and limits.get("maximum_write_operations") == 1,
+        "limits_no_retry_no_parallel_no_shell": limits.get("automatic_retries") == 0 and limits.get("parallel_execution") is False and limits.get("generic_shell_authority") is False,
+        "evidence_schema_exact": evidence.get("schema") == "promptbranch.loop.controlled_correction_execution_evidence" and evidence.get("schema_version") == "1.0",
+        "evidence_fields_complete": set(evidence.get("required_fields") or []) == required_evidence_fields and evidence.get("all_fields_required") is True and evidence.get("missing_or_contradictory_evidence_blocks") is True,
+        "promotion_authority_still_forbidden": promotion.get("execution_authority_granted_by_this_design") is False and promotion.get("future_validation_gate_required") is True and promotion.get("artifact_adoption_forbidden") is True and promotion.get("project_source_mutation_forbidden") is True and promotion.get("deployment_forbidden") is True,
+        "source_authority_zero_execution": source_authority.get("future_envelope_validation_authority_granted") is True and all(source_authority.get(name) is False for name in ("correction_execution_authority_granted", "disposable_repository_mutation_authority_granted", "real_repository_mutation_authority_granted", "deployment_authority_granted", "kubernetes_mutation_authority_granted", "project_source_mutation_authority_granted", "artifact_adoption_authority_granted", "chatgpt_project_deletion_authority_granted")),
+        "source_safety_zero_side_effects": source_safety.get("commands_executed") == 0 and source_safety.get("files_mutated") is False and source_safety.get("workspace_created") is False and source_safety.get("repository_files_mutated") is False,
+        "source_next_slice_exact": source_next.get("version") == "v0.1.108" and source_next.get("scope") == "validation_only_no_correction_execution" and source_next.get("permitted") is True,
+    }
+    failed_checks = sorted(name for name, passed in checks.items() if passed is not True)
+    if failed_checks:
+        return _blocked_execution_envelope_validation_payload(
+            target_path=target_rel,
+            blockers=[f"validation_check_failed:{name}" for name in failed_checks],
+            checks=checks,
+            recorded_fingerprint=recorded_fingerprint,
+            recomputed_fingerprint=recomputed_fingerprint,
+        )
+
+    return {
+        "ok": True,
+        "schema": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA,
+        "schema_version": LOOP_CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_VALIDATION_SCHEMA_VERSION,
+        "action": "validate_controlled_correction_execution_envelope",
+        "validation_version": "v0.1.108",
+        "status": "execution_envelope_validation_passed",
+        "decision": "validation_complete_no_execution_authority",
+        "target_path": target_rel,
+        "design_record_path": CONTROLLED_CORRECTION_EXECUTION_ENVELOPE_DESIGN_RECORD,
+        "validation_checks": checks,
+        "passed_validation_check_count": len(checks),
+        "failed_validation_check_count": 0,
+        "failed_validation_checks": [],
+        "validation_blockers": [],
+        "determinism": {
+            "recorded_design_sha256": recorded_fingerprint,
+            "recomputed_design_sha256": recomputed_fingerprint,
+            "fingerprints_match": True,
+        },
+        "validated_envelope": envelope,
+        "authority": {
+            "validation_record_emitted": True,
+            "v0_1_109_project_authority_graph_definition_authorized": True,
+            "correction_execution_authority_granted": False,
+            "disposable_repository_mutation_authority_granted": False,
+            "real_repository_mutation_authority_granted": False,
+            "deployment_authority_granted": False,
+            "kubernetes_mutation_authority_granted": False,
+            "project_source_mutation_authority_granted": False,
+            "artifact_adoption_authority_granted": False,
+            "chatgpt_project_deletion_authority_granted": False,
+        },
+        "safety": {
+            "validation_only": True,
+            "commands_executed": 0,
+            "files_mutated": False,
+            "workspace_created": False,
+            "repository_files_mutated": False,
+            "deployment_performed": False,
+            "kubernetes_mutation_performed": False,
+            "project_source_mutation_performed": False,
+            "artifact_adoption_performed": False,
+            "chatgpt_project_deletion_performed": False,
+        },
+        "next_slice": {
+            "version": "v0.1.109",
+            "slice": "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
+            "permitted": True,
+            "scope": "definition_only_no_remote_settings_mutation",
+        },
+        "operator_instruction": "The v0.1.107 execution-envelope design is structurally complete, deterministic, and still grants no correction execution authority. v0.1.109 may define the PROJECT_SETTINGS.md and AGENTS.md authority graph without mutating remote ChatGPT Project Settings.",
+    }
+
+
+def render_loop_controlled_correction_execution_envelope_validation_text(payload: dict[str, Any]) -> str:
+    authority = payload.get("authority") if isinstance(payload.get("authority"), dict) else {}
+    lines = [
+        "Promptbranch controlled correction execution envelope validation",
+        f"status: {payload.get('status')}",
+        f"decision: {payload.get('decision')}",
+        f"recorded fingerprint: {(payload.get('determinism') or {}).get('recorded_design_sha256')}",
+        f"recomputed fingerprint: {(payload.get('determinism') or {}).get('recomputed_design_sha256')}",
+        f"v0.1.109 authority-graph definition authorized: {authority.get('v0_1_109_project_authority_graph_definition_authorized') is True}",
+        "correction execution authority granted: false",
+        "repository mutation authority granted: false",
+    ]
+    blockers = payload.get("validation_blockers") or []
+    if blockers:
+        lines.append("validation blockers: " + ", ".join(str(item) for item in blockers))
     lines.append(str(payload.get("operator_instruction") or ""))
     return "\n".join(lines) + "\n"
 

@@ -3,37 +3,38 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.106.zip
-accepted/current version: v0.1.106
-last completed normal slice: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
+accepted/current version: v0.1.107
+last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.107.zip
-active candidate version: v0.1.107
-next normal target: chatgpt_claudecode_workflow-2_v0.1.107.zip
-next normal slice: v0.1.107 — Controlled correction execution envelope design
-next planned slice after acceptance: v0.1.108 — Controlled correction execution envelope validation gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
+active candidate version: v0.1.108
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
+next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
 ## Plan summary
 
-`v0.1.107` defines the deterministic controlled-correction execution envelope permitted by the accepted `v0.1.106` GO record. The envelope is design data only and grants no correction execution or repository mutation authority.
+`v0.1.108` validates the deterministic controlled-correction execution envelope recorded by accepted/current `v0.1.107`. Validation is structural and deterministic only: no workspace, command, correction, or mutation authority is created.
 
-## Active normal slice — v0.1.107 — Controlled correction execution envelope design
+## Active normal slice — v0.1.108 — Controlled correction execution envelope validation gate
 
 Acceptance scope:
 
-- Add `pb loop execution-envelope-design --target ... --json`.
-- Consume the accepted `v0.1.106` GO decision record without rerunning or executing a correction.
-- Define one exact future disposable-repository target, mutable file, operation, pre-state, post-state, validation command, rollback contract, limits, timeouts, evidence bundle, and authority boundary.
-- Emit one canonical deterministic design fingerprint.
+- Add `pb loop execution-envelope-validation --target ... --json`.
+- Load and recompute the canonical `v0.1.107` execution-envelope design.
+- Require exact envelope equality and exact canonical fingerprint equality.
+- Validate target, path, operation, hash, validation, rollback, evidence, limits, timeouts, and authority constraints.
+- Emit a machine-readable validation record.
 - Create no workspace, execute no command, and mutate no file or repository.
-- Preserve all ten release gates, fresh direct, independent localhost, sandbox 13/13, and evidence-bound adoption.
+- Preserve all release gates and evidence-bound adoption.
 
-Out of scope: correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, and ChatGPT Project deletion.
+Out of scope: correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, ChatGPT Project deletion, and remote ChatGPT Project Settings mutation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.107` records the bounded envelope design only; `v0.1.108` may validate that design but still may not execute a correction.
+`docs/project/plan-state.json` is authoritative. The historical conversational `v0.1.108` settings proposal is superseded by the adopted `v0.1.107` control surface. `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` is the sole planned slice after acceptance.
 
 ## Release / slice plan
 
@@ -2265,3 +2266,6 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 | v0.1.106 | Controlled correction promotion decision record | Record GO/NO-GO | accepted 10/10 | correction execution | strict release validation | accepted_current |
 | v0.1.107 | Controlled correction execution envelope design | Define bounded deterministic design only | target/file/operation/hashes/validation/rollback/limits/timeouts/evidence | correction execution and repository mutation | focused design plus strict release validation | candidate |
 | v0.1.108 | Controlled correction execution envelope validation gate | Validate the design without execution | planned | execution | future focused validation | planned_after_acceptance |
+
+| v0.1.108 | Controlled correction execution envelope validation gate | Validate the accepted design without execution | exact design/fingerprint/authority verification | correction execution and repository mutation | focused validation plus strict release validation | candidate |
+| v0.1.109 | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | Define closed project fact ownership and drift model | schemas, authority graph, read-only validation and documentation | remote settings mutation | future focused contract validation | planned_after_acceptance |

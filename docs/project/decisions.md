@@ -1017,3 +1017,11 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Decision:** define one deterministic future disposable-repository correction envelope with exact target, mutable file, operation, pre/post hashes, validation, rollback, limits, timeouts, evidence requirements, and a canonical fingerprint.
 - **Authority boundary:** the design authorizes only `v0.1.108` envelope validation. Correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation, artifact adoption, and Project deletion remain forbidden.
 - **Fail closed:** missing or contradictory decision, target, path, hash, validation, rollback, limit, timeout, or authority evidence blocks design before any execution.
+
+## ADR-PROJ-106 — v0.1.108 validates the envelope and resolves the duplicate roadmap assignment
+
+- **Decision:** `v0.1.108` remains `Controlled correction execution envelope validation gate`, as assigned by the adopted `v0.1.107` project control surface.
+- **Reason:** repository control data is authoritative over earlier conversational roadmap proposals.
+- **Validation boundary:** validation recomputes and compares the complete envelope and canonical fingerprint while creating no workspace, executing no command, mutating no file, and granting no correction execution authority.
+- **Roadmap resolution:** the earlier `PROJECT_SETTINGS.md` proposal is renumbered to `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition`.
+- **v0.1.109 boundary:** definition, normalization, conflict detection, and read-only drift verification only; remote ChatGPT Project Settings mutation remains forbidden.

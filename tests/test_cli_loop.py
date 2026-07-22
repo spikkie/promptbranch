@@ -751,3 +751,65 @@ def test_loop_execution_envelope_design_cli_blocks_wrong_explicit_repo_root(tmp_
     assert payload["execution_envelope"] is None
     assert payload["execution_blockers"] == ["explicit_repo_root_missing_authoritative_markers"]
     assert payload["authority"]["correction_execution_authority_granted"] is False
+
+
+def test_loop_execution_envelope_validation_cli_passes_from_unrelated_cwd(tmp_path: Path):
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "execution-envelope-validation",
+            "--target",
+            str(target),
+            "--json",
+        ],
+        cwd=unrelated,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "execution_envelope_validation_passed"
+    assert payload["determinism"]["fingerprints_match"] is True
+    assert payload["authority"]["v0_1_109_project_authority_graph_definition_authorized"] is True
+    assert payload["authority"]["correction_execution_authority_granted"] is False
+    assert payload["safety"]["commands_executed"] == 0
+    assert payload["safety"]["files_mutated"] is False
+
+
+def test_loop_execution_envelope_validation_cli_blocks_wrong_explicit_repo_root(tmp_path: Path):
+    target = (ROOT / "examples" / "loop-targets" / "sandboxed-file-mutation-target.json").resolve()
+    wrong_root = tmp_path / "wrong-root"
+    wrong_root.mkdir()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "promptbranch_cli.py"),
+            "loop",
+            "execution-envelope-validation",
+            "--target",
+            str(target),
+            "--repo-root",
+            str(wrong_root),
+            "--json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "execution_envelope_validation_blocked"
+    assert payload["validation_blockers"] == ["explicit_repo_root_missing_authoritative_markers"]
+    assert payload["authority"]["v0_1_109_project_authority_graph_definition_authorized"] is False
+    assert payload["authority"]["correction_execution_authority_granted"] is False

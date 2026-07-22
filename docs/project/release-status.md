@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.106.zip
-accepted/current version: v0.1.106
-last completed normal slice: v0.1.106 — Controlled correction promotion decision record
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
+accepted/current version: v0.1.107
+last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.107.zip
-active candidate version: v0.1.107
-next normal target: chatgpt_claudecode_workflow-2_v0.1.107.zip
-next normal slice: v0.1.107 — Controlled correction execution envelope design
-next planned slice after acceptance: v0.1.108 — Controlled correction execution envelope validation gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
+active candidate version: v0.1.108
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
+next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
 ## ZIP status values
@@ -837,3 +837,5 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 
 | v0.1.106 | normal | Controlled correction promotion decision record | accepted_current | strict host validation passed 10/10; evidence-bound adoption and final verification passed | DOD-294 done | 8eeba054de99cfbaab5917202199c0a2eaea9f8eaabc44d9b12b09f7557cf43e |
 | v0.1.107 | normal | Controlled correction execution envelope design | candidate | focused design, CLI, control-surface, sandbox, package, and artifact validation before strict host release-control | DOD-295 focused candidate | pending |
+
+| v0.1.108 | normal | Controlled correction execution envelope validation gate | candidate | focused validation gate, CLI, control-surface, package, and Artifact Guardian validation before strict host release-control | DOD-296 focused candidate; adoption pending | pending |

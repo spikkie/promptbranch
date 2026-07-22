@@ -1,0 +1,210 @@
+{
+  "ok": true,
+  "schema": "promptbranch.loop.controlled_correction_execution_envelope_validation",
+  "schema_version": "1.0",
+  "action": "validate_controlled_correction_execution_envelope",
+  "validation_version": "v0.1.108",
+  "status": "execution_envelope_validation_passed",
+  "decision": "validation_complete_no_execution_authority",
+  "target_path": "examples/loop-targets/sandboxed-file-mutation-target.json",
+  "design_record_path": "docs/project/controlled-correction-execution-envelope-v0.1.107.json",
+  "validation_checks": {
+    "record_schema_exact": true,
+    "record_schema_version_exact": true,
+    "record_design_version_exact": true,
+    "record_status_ready": true,
+    "record_decision_design_only": true,
+    "recomputed_design_ready": true,
+    "recorded_fingerprint_valid": true,
+    "recomputed_fingerprint_valid": true,
+    "fingerprint_matches_recomputed": true,
+    "recorded_envelope_matches_recomputed": true,
+    "envelope_schema_exact": true,
+    "envelope_schema_version_exact": true,
+    "envelope_version_exact": true,
+    "design_scope_disposable_copy_only": true,
+    "target_definition_exact": true,
+    "target_kind_disposable_copy": true,
+    "current_and_real_repository_forbidden": true,
+    "single_literal_mutable_file": true,
+    "target_definition_read_only": true,
+    "operation_bounded_replace_contents": true,
+    "operation_hashes_valid": true,
+    "replacement_size_bounded": true,
+    "single_read_only_validation_command": true,
+    "validation_has_no_retry": true,
+    "validation_timeout_bounded": true,
+    "rollback_always_required": true,
+    "rollback_exact_restore_required": true,
+    "rollback_and_workspace_verification_required": true,
+    "limits_single_iteration_single_write": true,
+    "limits_no_retry_no_parallel_no_shell": true,
+    "evidence_schema_exact": true,
+    "evidence_fields_complete": true,
+    "promotion_authority_still_forbidden": true,
+    "source_authority_zero_execution": true,
+    "source_safety_zero_side_effects": true,
+    "source_next_slice_exact": true
+  },
+  "passed_validation_check_count": 36,
+  "failed_validation_check_count": 0,
+  "failed_validation_checks": [],
+  "validation_blockers": [],
+  "determinism": {
+    "recorded_design_sha256": "742089d5904ab2db9fb16a44f1eb7390c3c1acbb3d12edf8a892e13c43b0c057",
+    "recomputed_design_sha256": "742089d5904ab2db9fb16a44f1eb7390c3c1acbb3d12edf8a892e13c43b0c057",
+    "fingerprints_match": true
+  },
+  "validated_envelope": {
+    "schema": "promptbranch.loop.controlled_correction_execution_envelope",
+    "schema_version": "1.0",
+    "envelope_version": "v0.1.107",
+    "envelope_id": "v0.1.107:sandboxed-file-mutation-fixture:d14fbc90f8e9:c6df8c07d17d",
+    "design_scope": "future_disposable_repository_copy_only",
+    "source_promotion_decision": {
+      "record_path": "docs/project/correction-promotion-decision-v0.1.106.json",
+      "decision": "go",
+      "decision_version": "v0.1.106",
+      "readiness_fingerprint_sha256": "470e04f73c008bcd49827102f94f84e447f6f8618db69ae3272159f637959756"
+    },
+    "allowed_target": {
+      "kind": "future_disposable_repository_copy",
+      "target_id": "sandboxed-file-mutation-fixture",
+      "target_definition_path": "examples/loop-targets/sandboxed-file-mutation-target.json",
+      "repository_binding": "must_be_explicitly_supplied_and_verified_by_future_validation_slice",
+      "real_repository_forbidden": true,
+      "current_repository_forbidden": true
+    },
+    "allowed_files": {
+      "mutable": [
+        "examples/loop-sandbox/invalid-json-fixture.json"
+      ],
+      "read_only": [
+        "examples/loop-targets/sandboxed-file-mutation-target.json"
+      ],
+      "maximum_mutable_file_count": 1,
+      "path_policy": "literal_repo_relative_no_glob_no_parent_traversal"
+    },
+    "allowed_operation": {
+      "type": "replace_contents",
+      "maximum_occurrences": 1,
+      "replacement_contents_utf8": "{\n  \"status\": \"fixed_in_temporary_sandbox_only\",\n  \"mutation_scope\": \"temporary_sandbox_fixture\"\n}\n",
+      "replacement_size_bytes": 99,
+      "expected_before_sha256": "d14fbc90f8e9f61051c3c47254fe91b8002ce6c211a84012ebabc41d51f1ce67",
+      "expected_after_sha256": "c6df8c07d17dff7fcb2f9c4b00d3b530612b2837b445dfc9f06228216bacd580"
+    },
+    "required_pre_state": {
+      "target_file_exists": true,
+      "target_file_sha256": "d14fbc90f8e9f61051c3c47254fe91b8002ce6c211a84012ebabc41d51f1ce67",
+      "repository_snapshot_required": true,
+      "only_allowed_file_may_change": true
+    },
+    "required_post_state": {
+      "target_file_sha256": "c6df8c07d17dff7fcb2f9c4b00d3b530612b2837b445dfc9f06228216bacd580",
+      "validation_must_pass": true,
+      "unrelated_repository_paths_unchanged": true,
+      "promotion_or_adoption_forbidden": true
+    },
+    "validation": {
+      "commands": [
+        "python3 -m json.tool examples/loop-sandbox/invalid-json-fixture.json"
+      ],
+      "argv": [
+        [
+          "python3",
+          "-m",
+          "json.tool",
+          "examples/loop-sandbox/invalid-json-fixture.json"
+        ]
+      ],
+      "maximum_command_count": 1,
+      "read_only_required": true,
+      "timeout_seconds": 15.0,
+      "retry_count": 0
+    },
+    "rollback": {
+      "required": true,
+      "trigger": "always_after_evidence_or_immediately_on_any_failure",
+      "method": "restore_exact_pre_state_bytes",
+      "required_restored_sha256": "d14fbc90f8e9f61051c3c47254fe91b8002ce6c211a84012ebabc41d51f1ce67",
+      "rollback_validation_required": true,
+      "workspace_deletion_required": true
+    },
+    "limits": {
+      "maximum_iterations": 1,
+      "maximum_mutated_files": 1,
+      "maximum_write_operations": 1,
+      "maximum_validation_commands": 1,
+      "maximum_replacement_bytes": 4096,
+      "automatic_retries": 0,
+      "parallel_execution": false,
+      "generic_shell_authority": false
+    },
+    "timeouts": {
+      "total_seconds": 60.0,
+      "validation_seconds": 15.0,
+      "rollback_seconds": 15.0
+    },
+    "required_evidence_bundle": {
+      "schema": "promptbranch.loop.controlled_correction_execution_evidence",
+      "schema_version": "1.0",
+      "required_fields": [
+        "envelope_sha256",
+        "disposable_repository_identity",
+        "repository_snapshot_before",
+        "target_file_before_sha256",
+        "target_file_after_sha256",
+        "validation_command",
+        "validation_exit_code",
+        "validation_stdout_sha256",
+        "validation_stderr_sha256",
+        "repository_snapshot_after_validation",
+        "rollback_attempted",
+        "rollback_succeeded",
+        "target_file_rollback_sha256",
+        "repository_snapshot_after_rollback",
+        "workspace_deleted"
+      ],
+      "all_fields_required": true,
+      "missing_or_contradictory_evidence_blocks": true
+    },
+    "promotion_authority": {
+      "execution_authority_granted_by_this_design": false,
+      "future_validation_gate_required": true,
+      "artifact_adoption_forbidden": true,
+      "project_source_mutation_forbidden": true,
+      "deployment_forbidden": true
+    }
+  },
+  "authority": {
+    "validation_record_emitted": true,
+    "v0_1_109_project_authority_graph_definition_authorized": true,
+    "correction_execution_authority_granted": false,
+    "disposable_repository_mutation_authority_granted": false,
+    "real_repository_mutation_authority_granted": false,
+    "deployment_authority_granted": false,
+    "kubernetes_mutation_authority_granted": false,
+    "project_source_mutation_authority_granted": false,
+    "artifact_adoption_authority_granted": false,
+    "chatgpt_project_deletion_authority_granted": false
+  },
+  "safety": {
+    "validation_only": true,
+    "commands_executed": 0,
+    "files_mutated": false,
+    "workspace_created": false,
+    "repository_files_mutated": false,
+    "deployment_performed": false,
+    "kubernetes_mutation_performed": false,
+    "project_source_mutation_performed": false,
+    "artifact_adoption_performed": false,
+    "chatgpt_project_deletion_performed": false
+  },
+  "next_slice": {
+    "version": "v0.1.109",
+    "slice": "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
+    "permitted": true,
+    "scope": "definition_only_no_remote_settings_mutation"
+  },
+  "operator_instruction": "The v0.1.107 execution-envelope design is structurally complete, deterministic, and still grants no correction execution authority. v0.1.109 may define the PROJECT_SETTINGS.md and AGENTS.md authority graph without mutating remote ChatGPT Project Settings."
+}
