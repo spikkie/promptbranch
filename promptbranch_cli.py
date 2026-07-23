@@ -65,7 +65,12 @@ from promptbranch_browser_auth.exceptions import (
     UnsupportedOperationError,
 )
 from promptbranch_service_client import ChatGPTServiceClient
-from promptbranch_test_suite import artifact_roundtrip_smoke, package_import_smoke, run_test_suite_async
+from promptbranch_test_suite import (
+    artifact_roundtrip_smoke,
+    package_import_smoke,
+    run_project_source_file_reliability_async,
+    run_test_suite_async,
+)
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_orchestration import (
@@ -8265,6 +8270,83 @@ async def cmd_test_smoke(args: argparse.Namespace) -> int:
         for step in steps:
             print(f"{step.get('name')}: {step.get('status')}")
     return 0 if ok else 1
+
+async def cmd_test_project_source_file_reliability(args: argparse.Namespace) -> int:
+    _apply_test_suite_defaults(args)
+    payload = {
+        'project_url': args.project_url,
+        'email': args.email,
+        'password': args.password,
+        'password_file': args.password_file,
+        'profile_dir': args.profile_dir,
+        'headless': args.headless,
+        'use_playwright': args.use_playwright,
+        'browser_channel': args.browser_channel,
+        'enable_fedcm': args.enable_fedcm,
+        'keep_no_sandbox': args.keep_no_sandbox,
+        'max_retries': args.max_retries,
+        'retry_backoff_seconds': args.retry_backoff_seconds,
+        'debug': args.debug,
+        'keep_open': args.keep_open,
+        'keep_project': True,
+        'step_delay_seconds': args.step_delay_seconds,
+        'post_ask_delay_seconds': args.post_ask_delay_seconds,
+        'task_list_visible_timeout_seconds': args.task_list_visible_timeout_seconds,
+        'task_list_visible_poll_min_seconds': args.task_list_visible_poll_min_seconds,
+        'task_list_visible_poll_max_seconds': args.task_list_visible_poll_max_seconds,
+        'task_list_visible_max_attempts': args.task_list_visible_max_attempts,
+        'allow_recent_state_task_fallback': getattr(args, 'allow_recent_state_task_fallback', False),
+        'skip': [],
+        'only': [],
+        'strict_remove_ui': True,
+        'project_name': args.project_name,
+        'project_name_prefix': args.project_name_prefix,
+        'run_id': args.run_id,
+        'memory_mode': args.memory_mode,
+        'link_url': args.link_url,
+        'ask_prompt': args.ask_prompt,
+        'json_out': args.json_out,
+        'project_list_debug_scroll_rounds': args.project_list_debug_scroll_rounds,
+        'project_list_debug_wait_ms': args.project_list_debug_wait_ms,
+        'project_list_debug_manual_pause': args.project_list_debug_manual_pause,
+        'service_base_url': args.service_base_url,
+        'service_token': args.service_token,
+        'service_timeout_seconds': args.service_timeout_seconds,
+        'clear_singleton_locks': args.clear_singleton_locks,
+        'path': getattr(args, 'path', '.'),
+    }
+    try:
+        summary = await run_project_source_file_reliability_async(**payload)
+    except Exception as exc:
+        summary = {
+            "ok": False,
+            "action": "test_suite",
+            "profile": "project-source-file-reliability",
+            "status": "pre_suite_failure",
+            "version": f"v{CLI_VERSION}" if not str(CLI_VERSION).startswith("v") else str(CLI_VERSION),
+            "failure_count": 1,
+            "failed_steps": [{
+                "section": "browser",
+                "scope": "pre_suite",
+                "name": "project_source_file_reliability_dispatch",
+                "status": "pre_suite_failure",
+                "diagnostic": str(exc),
+                "error_type": type(exc).__name__,
+            }],
+        }
+    if getattr(args, "json_out", None):
+        Path(args.json_out).expanduser().resolve().write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    if getattr(args, "json", False):
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={summary.get('status')}")
+        print(f"profile={summary.get('profile')}")
+        print(f"failure_count={summary.get('failure_count', 0)}")
+    return 0 if summary.get("ok") else 1
+
 
 async def cmd_test_suite(args: argparse.Namespace) -> int:
     _apply_test_suite_defaults(args)
@@ -23372,6 +23454,9 @@ async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
     if args.test_command == "smoke":
         _apply_test_suite_defaults(args)
         return await cmd_test_smoke(args)
+    if args.test_command == "project-source-file-reliability":
+        _apply_test_suite_defaults(args)
+        return await cmd_test_project_source_file_reliability(args)
     if args.test_command in {"browser", "agent", "full"}:
         _apply_test_suite_defaults(args)
         args.profile = args.test_command
@@ -25034,6 +25119,13 @@ def make_parser() -> argparse.ArgumentParser:
 
     test_full = test_subparsers.add_parser("full", help="Run browser and agent test profiles through one command.")
     _add_test_suite_profile_options(test_full)
+
+    test_source_reliability = test_subparsers.add_parser(
+        "project-source-file-reliability",
+        help="Run only staged file overwrite and authoritative removal-proof live regressions.",
+    )
+    _add_test_suite_profile_options(test_source_reliability)
+    test_source_reliability.set_defaults(project_name_prefix="itest-pb-source-reliability")
 
     test_ask_live = test_subparsers.add_parser("ask-live", help="Run the visible/local operator pb ask workflow profile in a run-scoped delete-frozen test project.")
     test_ask_live.add_argument("--json", action="store_true", help="Emit the ask-live result as JSON.")

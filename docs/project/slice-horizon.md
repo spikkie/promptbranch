@@ -2,25 +2,25 @@
 
 ## Accepted/current authority
 
-`v0.1.107 — Controlled correction execution envelope design` is accepted/current. Its canonical envelope design grants validation authority only and no correction execution authority.
+`v0.1.107 — Controlled correction execution envelope design` remains accepted/current. `v0.1.108` was not adopted.
 
-## Active normal slice
+## Active repair slice
 
-`v0.1.108 — Controlled correction execution envelope validation gate`
+`v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability`
 
-Validate the recorded envelope deterministically without creating a workspace, executing a command, mutating a file, or granting correction execution authority.
+Repair only the Project Source staged-overwrite transaction and authoritative removal proof. No normal scope advances.
 
 ## Rolling normal horizon
 
-- v0.1.105.1 — completed accepted target-anchored readiness repair
 - v0.1.106 — completed accepted controlled promotion GO decision record
 - v0.1.107 — completed accepted controlled correction execution-envelope design
-- v0.1.108 — active controlled correction execution-envelope validation gate
-- v0.1.109 — planned PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+- v0.1.108 — repair_required after strict Project Source lifecycle failures
+- v0.1.108.1 — active Project Source staged-overwrite and removal-proof reliability repair
+- v0.1.109 — planned PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition; implementation not started
 
 ## Repair horizon rule
 
-Repair releases must not advance the normal horizon.
+Repair releases must not advance the normal horizon. `v0.1.109` remains planned_after_acceptance until v0.1.108.1 is adopted.
 
 ## v0.1.103.10.87
 

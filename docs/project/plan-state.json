@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.107.zip",
   "accepted_current_version": "v0.1.107",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-  "active_candidate_version": "v0.1.108",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+  "active_candidate_version": "v0.1.108.1",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.108 — Controlled correction execution envelope validation gate",
+  "active_slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -224,11 +224,20 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
       "created_at": "2026-07-22T20:30:00+02:00",
       "slice": "v0.1.108 — Controlled correction execution envelope validation gate",
+      "status": "repair_required",
+      "version": "v0.1.108",
+      "validation": "Strict v0.1.108 release validation was attempted twice and adoption was refused. The second run reproduced Project Source staged-overwrite upload failure in full_direct without rate-limit evidence and stable-disappearance proof failure in full_localhost. 8/10 gates passed; full_direct and full_localhost failed."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+      "created_at": "2026-07-23T14:30:00+02:00",
+      "slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
       "status": "candidate",
-      "version": "v0.1.108"
+      "version": "v0.1.108.1",
+      "validation": "Deterministic focused source/service/integration tests pass locally; focused direct/localhost live reliability preflight and full release validation remain pending."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -565,18 +574,27 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
       "created_at": "2026-07-22T20:30:00+02:00",
       "slice": "v0.1.108 — Controlled correction execution envelope validation gate",
+      "status": "repair_required",
+      "version": "v0.1.108",
+      "validation": "Strict v0.1.108 release validation was attempted twice and adoption was refused. The second run reproduced Project Source staged-overwrite upload failure in full_direct without rate-limit evidence and stable-disappearance proof failure in full_localhost. 8/10 gates passed; full_direct and full_localhost failed."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+      "created_at": "2026-07-23T14:30:00+02:00",
+      "slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
       "status": "candidate",
-      "version": "v0.1.108"
+      "version": "v0.1.108.1",
+      "validation": "Deterministic focused source/service/integration tests pass locally; focused direct/localhost live reliability preflight and full release validation remain pending."
     }
   ],
   "last_completed_normal_slice": "v0.1.107 — Controlled correction execution envelope design",
   "last_completed_normal_slice_version": "v0.1.107",
   "last_completed_repair": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
   "last_completed_repair_version": "v0.1.105.1",
-  "last_updated": "2026-07-22T20:30:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-  "next_normal_slice": "v0.1.108 — Controlled correction execution envelope validation gate",
-  "next_normal_version": "v0.1.108",
+  "last_updated": "2026-07-23T14:30:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+  "next_normal_slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
+  "next_normal_version": "v0.1.108.1",
   "next_planned_slice_after_acceptance": "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
   "next_planned_version_after_acceptance": "v0.1.109",
   "out_of_scope": [
@@ -1113,12 +1131,22 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
       "kind": "normal",
       "slice": "v0.1.108 — Controlled correction execution envelope validation gate",
-      "status": "candidate",
+      "status": "repair_required",
       "summary": "Validates the canonical v0.1.107 controlled correction execution-envelope design structurally and deterministically while executing zero commands, creating no workspace, mutating no file, and granting no correction execution authority.",
-      "version": "v0.1.108"
+      "version": "v0.1.108",
+      "validation": "Strict v0.1.108 release validation was attempted twice and adoption was refused. The second run reproduced Project Source staged-overwrite upload failure in full_direct without rate-limit evidence and stable-disappearance proof failure in full_localhost. 8/10 gates passed; full_direct and full_localhost failed."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+      "kind": "repair",
+      "slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
+      "status": "candidate",
+      "summary": "Adds structured failed-upload diagnostics, exactly one fail-closed retry before any commit/processing/backing identity, authoritative three-state removal proof, and a focused project-source-file-reliability live profile. It does not advance v0.1.109 scope.",
+      "validation": "Deterministic focused source/service/integration tests pass locally; focused direct/localhost live reliability preflight and full release validation remain pending.",
+      "version": "v0.1.108.1"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -1326,6 +1354,13 @@
       "summary": "Derives promotion-readiness repository authority from the resolved target path using authoritative repository markers, supports an explicit --repo-root, requires target containment, and blocks before evidence execution when root resolution is absent, ambiguous, or wrong.",
       "version": "v0.1.105.1",
       "validation": "Strict host validation passed all 10/10 gates and final release_adopted_and_verified."
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Repairs Project Source upload-new/verify/delete-old reliability and stable removal proof while preserving the original source until replacement identity is verified and keeping v0.1.109 unstarted.",
+      "validation": "Deterministic focused source/service/integration tests pass locally; focused direct/localhost live reliability preflight and full release validation remain pending.",
+      "version": "v0.1.108.1"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1350,15 +1385,6 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
-      "release_mode": "repair",
-      "scope": "accepted target-anchored repository authority repair; 10/10 GO and adoption verified",
-      "slice": "v0.1.105.1 — target-anchored promotion-readiness repository resolution",
-      "status": "completed",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.105.1.zip",
-      "version": "v0.1.105.1"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.106.zip",
       "release_mode": "normal",
       "scope": "accepted deterministic GO decision record; authorizes v0.1.107 design only",
@@ -1377,25 +1403,34 @@
       "version": "v0.1.107"
     },
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-      "release_mode": "normal",
-      "scope": "validate the canonical v0.1.107 execution envelope without creating a workspace, executing commands, or granting correction execution authority",
+      "version": "v0.1.108",
       "slice": "v0.1.108 — Controlled correction execution envelope validation gate",
-      "status": "active",
-      "version": "v0.1.108"
+      "status": "repair_required",
+      "release_mode": "normal",
+      "scope": "validation-only envelope gate implemented and locally proven; strict release validation failed in Project Source staged overwrite/removal proof, so adoption was refused",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip"
     },
     {
-      "release_mode": "normal",
-      "scope": "define the authority domains, precedence-free fact ownership, projections, conflict rules, and drift detection for PROJECT_SETTINGS.md, AGENTS.md, VERSION, plan state, registries, and ChatGPT Project Settings; no remote settings mutation",
+      "version": "v0.1.108.1",
+      "slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
+      "status": "active",
+      "release_mode": "repair",
+      "scope": "prove staged upload initiation, preserve failed request diagnostics, allow one invariant-bounded retry, and classify removal proof as verified_absent, still_present, or surface_unresolved",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip"
+    },
+    {
+      "version": "v0.1.109",
       "slice": "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
       "status": "planned_after_acceptance",
-      "version": "v0.1.109"
+      "release_mode": "normal",
+      "scope": "define the authority domains, precedence-free fact ownership, projections, conflict rules, and drift detection for PROJECT_SETTINGS.md, AGENTS.md, VERSION, plan state, registries, and ChatGPT Project Settings; no remote settings mutation"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1406,5 +1441,6 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.108"
+  "updated_for": "v0.1.108.1",
+  "repair_of_version": "v0.1.108"
 }

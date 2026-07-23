@@ -6362,9 +6362,9 @@ def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
         )
     )
 
-    assert calls == {"upload": 1, "remove": 0}
-    assert len(uploaded_paths) == 1
-    assert not Path(uploaded_paths[0]).exists()
+    assert calls == {"upload": 2, "remove": 0}
+    assert len(uploaded_paths) == 2
+    assert all(not Path(path).exists() for path in uploaded_paths)
     assert result["ok"] is False
     assert result["status"] == "source_overwrite_upload_not_started"
     assert result["replacement_mode"] == "upload_new_verify_delete_old"
@@ -6376,6 +6376,9 @@ def test_add_file_source_replace_fallback_fails_closed_when_upload_not_started(
     assert result["overwritten"] is False
     assert result["removed_existing"] is False
     assert result["replacement_backing_identity_verified"] is False
+    assert result["replacement_retry_attempted"] is True
+    assert result["replacement_retry_count"] == 1
+    assert result["replacement_retry_decision"]["eligible"] is True
 
 
 def test_add_file_source_replace_fallback_fails_closed_without_both_backing_ids(
@@ -6482,3 +6485,343 @@ def test_family_replacement_never_deletes_concurrent_unobserved_family_member(
     assert result["ok"] is False
     assert result["status"] == "source_family_replacement_not_verified"
     assert result["residual_previous_source_identities"] == [concurrent_card["identity"]]
+
+
+def test_staged_overwrite_evaluation_captures_failed_request_details(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    summary = {
+        "started": 2,
+        "failed": 2,
+        "saw_commit": False,
+        "processing_stream_started": 0,
+        "backing_file_ids": [],
+        "request_failure_count": 2,
+        "request_failures": [
+            {
+                "url": "https://chatgpt.com/backend-api/files/upload",
+                "method": "POST",
+                "error": "net::ERR_FAILED",
+                "is_commit": False,
+                "is_processing_stream": False,
+            }
+        ],
+    }
+
+    result = browser_client._evaluate_staged_overwrite_upload(
+        save_summary=summary,
+        processing_stream={"status": "processing_stream_not_observed"},
+        canonical_name="release.zip",
+        previous_backing_file_ids=[],
+    )
+
+    assert result["ok"] is False
+    assert result["failure_status"] == "source_overwrite_upload_request_failed"
+    assert result["backend_upload_started"] is True
+    assert result["upload_commit_observed"] is False
+    assert result["processing_stream_observed"] is False
+    assert result["backing_file_identity_created"] is False
+    assert result["request_failure_count"] == 2
+    assert result["request_failures"][0]["error"] == "net::ERR_FAILED"
+
+
+def test_staged_overwrite_retry_is_allowed_only_before_any_backend_identity(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    base = {
+        "upload_commit_observed": False,
+        "processing_stream_observed": False,
+        "backing_file_identity_created": False,
+    }
+    allowed = browser_client._staged_overwrite_retry_decision(
+        evaluation=base,
+        original_source_verified=True,
+        retry_count=0,
+    )
+    assert allowed["eligible"] is True
+    assert allowed["blockers"] == []
+
+    for changed_key in (
+        "upload_commit_observed",
+        "processing_stream_observed",
+        "backing_file_identity_created",
+    ):
+        blocked_state = dict(base)
+        blocked_state[changed_key] = True
+        blocked = browser_client._staged_overwrite_retry_decision(
+            evaluation=blocked_state,
+            original_source_verified=True,
+            retry_count=0,
+        )
+        assert blocked["eligible"] is False
+        assert changed_key in blocked["blockers"]
+
+    missing_original = browser_client._staged_overwrite_retry_decision(
+        evaluation=base,
+        original_source_verified=False,
+        retry_count=0,
+    )
+    assert missing_original["eligible"] is False
+    assert "original_source_not_verified" in missing_original["blockers"]
+
+    already_used = browser_client._staged_overwrite_retry_decision(
+        evaluation=base,
+        original_source_verified=True,
+        retry_count=1,
+    )
+    assert already_used["eligible"] is False
+    assert "retry_already_used" in already_used["blockers"]
+
+
+@pytest.mark.parametrize(
+    ("surface", "expected_status", "expected_ok"),
+    [
+        (
+            {
+                "ok": True,
+                "sources": [],
+                "stable_observations": 2,
+                "source_card_count": 0,
+                "empty_state_visible": True,
+            },
+            "verified_absent",
+            True,
+        ),
+        (
+            {
+                "ok": True,
+                "sources": [
+                    {
+                        "identity": "remove-me.txt Document",
+                        "title": "remove-me.txt",
+                        "text": "remove-me.txt Document",
+                    }
+                ],
+                "stable_observations": 2,
+                "source_card_count": 1,
+                "empty_state_visible": False,
+            },
+            "still_present",
+            False,
+        ),
+        (
+            {
+                "ok": False,
+                "status": "source_preflight_not_authoritative",
+                "sources": [],
+                "stable_observations": 1,
+            },
+            "surface_unresolved",
+            False,
+        ),
+    ],
+)
+def test_removal_proof_uses_three_state_authoritative_classification(
+    browser_client: ChatGPTBrowserClient,
+    surface: dict,
+    expected_status: str,
+    expected_ok: bool,
+) -> None:
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_surface(*_args, **kwargs):
+        assert kwargs["required_stable_observations"] == 2
+        return surface
+
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_surface  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._prove_project_source_removal(
+            object(),
+            project_url="https://chatgpt.com/g/g-p-123/project",
+            source_names=["remove-me.txt", "remove-me.txt Document"],
+            exact=False,
+        )
+    )
+
+    assert result["ok"] is expected_ok
+    assert result["status"] == expected_status
+    assert result["required_stable_observations"] == 2
+
+
+def test_staged_overwrite_retries_once_and_preserves_old_source_until_retry_is_verified(
+    browser_client: ChatGPTBrowserClient,
+    tmp_path: Path,
+) -> None:
+    class Context:
+        def on(self, *_args, **_kwargs) -> None:
+            return None
+
+        def remove_listener(self, *_args, **_kwargs) -> None:
+            return None
+
+    page = object()
+    old_card = {
+        "identity": "release.zip Document",
+        "title": "release.zip",
+        "text": "release.zip Document",
+    }
+    new_card = {
+        "identity": "release(21).zip Document",
+        "title": "release(21).zip",
+        "text": "release(21).zip Document",
+    }
+    processed_file_id = "file_000000001234567890abcdef12345678"
+    library_object_id = "libfile_1234567890abcdef1234567890abcdef"
+    calls = {"uploads": 0, "removes": []}
+    watchers = [
+        {
+            "installed": True,
+            "attempt": 1,
+            "source_kind": "file",
+            "started": 2,
+            "finished": 0,
+            "failed": 2,
+            "saw_relevant": True,
+            "saw_commit": False,
+            "inflight": set(),
+            "processing_stream_started": 0,
+            "backing_file_ids": [],
+            "backend_assigned_names": [],
+            "request_failures": [
+                {
+                    "url": "https://chatgpt.com/backend-api/files/upload",
+                    "method": "POST",
+                    "error": "net::ERR_FAILED",
+                    "is_commit": False,
+                    "is_processing_stream": False,
+                }
+            ],
+        },
+        {
+            "installed": True,
+            "attempt": 2,
+            "source_kind": "file",
+            "started": 2,
+            "finished": 2,
+            "failed": 0,
+            "saw_relevant": True,
+            "saw_commit": True,
+            "inflight": set(),
+            "processing_stream_started": 1,
+            "processing_stream_finished": 1,
+            "backing_file_ids": [processed_file_id],
+            "backend_assigned_names": ["release(21).zip"],
+            "request_failures": [],
+        },
+    ]
+    visible_sources = [old_card]
+
+    async def fake_noop(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_authority(*_args, **kwargs):
+        return {
+            "ok": True,
+            "status": "authoritative_non_empty",
+            "sources": list(visible_sources),
+            "source_card_count": len(visible_sources),
+            "source_identities": [item["identity"] for item in visible_sources],
+            "stable_observations": 2,
+            "empty_state_visible": False,
+        }
+
+    async def fake_replace(*_args, **_kwargs):
+        return {
+            "ok": False,
+            "status": "project_source_replace_not_supported",
+            "project_source_mutated": False,
+            "visible_source_actions": ["Download", "Delete"],
+        }
+
+    async def fake_upload(*_args, **kwargs):
+        calls["uploads"] += 1
+        path = Path(str(kwargs["file_path"]))
+        assert path.exists()
+        return {"file_input_submission_attempted": True, "file_input_found": True}
+
+    async def fake_settle(*_args, **_kwargs):
+        return {"settled": True}
+
+    async def fake_quiet(_page, watch, **_kwargs):
+        return browser_client._project_source_save_watch_summary(watch)
+
+    async def fake_processing(_page, watch, **_kwargs):
+        if watch.get("attempt") == 1:
+            return {"ok": True, "status": "processing_stream_not_observed"}
+        visible_sources[:] = [old_card, new_card]
+        return {
+            "ok": True,
+            "status": "project_source_processing_stream_completed",
+            "assigned_filename": "release(21).zip",
+            "library_file_name": "release(21).zip",
+            "processed_file_id": processed_file_id,
+            "library_metadata_object_id": library_object_id,
+        }
+
+    async def fake_assigned(*_args, **_kwargs):
+        return {
+            "ok": True,
+            "status": "exact_assigned_source_verified",
+            "assigned_filename": "release(21).zip",
+            "family_sources": [old_card, new_card],
+            "source_card": new_card,
+        }
+
+    async def fake_remove(*_args, **kwargs):
+        target = kwargs["source_name"]
+        calls["removes"].append(target)
+        visible_sources[:] = [item for item in visible_sources if item["title"] != target]
+        return {"ok": True, "status": "verified_absent", "removed_via_ui": True, "source_match": target}
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_authoritative_project_sources_surface = fake_authority  # type: ignore[method-assign]
+    browser_client._replace_project_file_source_operation = fake_replace  # type: ignore[method-assign]
+    browser_client._add_project_file_source = fake_upload  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_settle  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_processing_stream = fake_processing  # type: ignore[method-assign]
+    browser_client._wait_for_exact_assigned_file_source = fake_assigned  # type: ignore[method-assign]
+    browser_client._remove_project_source_operation = fake_remove  # type: ignore[method-assign]
+    async def fail_generic_persistence(*_args, **_kwargs):
+        raise AssertionError("generic persistence path must be skipped")
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return list(visible_sources)
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client._verify_project_source_persistence = fail_generic_persistence  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watchers.pop(0)  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    file_path = tmp_path / "release.zip"
+    file_path.write_bytes(b"replacement bytes")
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=Context(),
+            page=page,
+            source_kind="file",
+            value=None,
+            file_path=str(file_path),
+            display_name=str(file_path),
+        )
+    )
+
+    assert calls["uploads"] == 2
+    assert calls["removes"] == ["release.zip"]
+    assert result["ok"] is True
+    assert result["status"] == "source_replaced"
+    assert result["replacement_retry_attempted"] is True
+    assert result["replacement_retry_count"] == 1
+    assert result["replacement_retry_first_attempt"]["status"] == "source_overwrite_upload_request_failed"
+    assert result["replacement_retry_first_attempt"]["evaluation"]["request_failure_count"] == 1
+    assert result["final_family_source_count"] == 1

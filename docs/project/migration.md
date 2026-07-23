@@ -1191,3 +1191,9 @@ The next planned slice is `v0.1.108 — Controlled correction execution envelope
 No artifact-registry or runtime-state migration is required. `v0.1.107` is accepted/current. `v0.1.108` advances the repository control surface, adds a validation-only CLI and machine-readable validation record, and preserves all correction-execution and mutation authority flags as false.
 
 The historical conversational use of `v0.1.108` for `PROJECT_SETTINGS.md` work is explicitly superseded by the adopted repository control surface. That work is moved to `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition`.
+
+## v0.1.108.1 repair migration
+
+`v0.1.108` is not an accepted/current baseline and requires no compatibility migration. Build `v0.1.108.1` from the v0.1.108 candidate implementation while preserving accepted/current `v0.1.107` authority.
+
+The repair introduces structured upload-request failure diagnostics, one invariant-bounded staged-upload retry, and authoritative three-state removal proof. Existing state is not silently upgraded: unresolved or contradictory Project Source evidence fails closed. `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` remains planned and unimplemented until this repair is adopted.

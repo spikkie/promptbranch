@@ -14935,3 +14935,57 @@ def test_visual_artifact_roundtrip_stops_after_one_invalid_retry_without_downloa
     assert result["malformed_envelope_retry"]["attempted"] is True
     assert result["download_performed"] is False
     assert result["verification_performed"] is False
+
+
+def test_parser_accepts_project_source_file_reliability_profile() -> None:
+    args = make_parser().parse_args([
+        "test",
+        "project-source-file-reliability",
+        "--project-name",
+        "itest-focused",
+        "--json",
+    ])
+
+    assert args.command == "test"
+    assert args.test_command == "project-source-file-reliability"
+    assert args.project_name == "itest-focused"
+    assert args.json is True
+    assert args.project_name_prefix == "itest-pb-source-reliability"
+
+
+def test_project_source_file_reliability_command_dispatches_focused_profile(
+    monkeypatch,
+    capsys,
+) -> None:
+    captured = {}
+
+    async def fake_profile(**kwargs):
+        captured.update(kwargs)
+        return {
+            "ok": True,
+            "action": "test_suite",
+            "profile": "project-source-file-reliability",
+            "status": "passed",
+            "failure_count": 0,
+            "scenarios": {},
+        }
+
+    monkeypatch.setattr(
+        "promptbranch_cli.run_project_source_file_reliability_async",
+        fake_profile,
+    )
+
+    exit_code = main([
+        "test",
+        "project-source-file-reliability",
+        "--project-name",
+        "itest-focused",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["profile"] == "project-source-file-reliability"
+    assert captured["project_name"] == "itest-focused"
+    assert captured["keep_project"] is True
+    assert captured["strict_remove_ui"] is True

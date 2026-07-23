@@ -13768,6 +13768,12 @@ class ChatGPTBrowserClient:
         upload_new_family_replacement_required = False
         replacement_previous_family_sources: list[dict[str, Any]] = []
         replacement_upload_staging: Optional[dict[str, Any]] = None
+        replacement_retry_attempted = False
+        replacement_retry_count = 0
+        replacement_retry_first_attempt: Optional[dict[str, Any]] = None
+        replacement_retry_original_source_proof: Optional[dict[str, Any]] = None
+        replacement_retry_decision: Optional[dict[str, Any]] = None
+        file_input_submission: Optional[dict[str, Any]] = None
         capacity_prune_result: Optional[dict[str, Any]] = None
         capacity_limit = 25
         capacity_before = len(before_sources)
@@ -14485,7 +14491,7 @@ class ChatGPTBrowserClient:
                         ),
                     )
                 if not duplicate_detected:
-                    await self._add_project_file_source(page, file_path=upload_file_path)
+                    file_input_submission = await self._add_project_file_source(page, file_path=upload_file_path)
                     if replacement_upload_staging is not None:
                         self._cleanup_collision_free_indexed_replacement_file(replacement_upload_staging)
             else:
@@ -14563,45 +14569,95 @@ class ChatGPTBrowserClient:
                     expected_filename=canonical_display_name if normalized_kind == "file" else display_name,
                 )
                 if normalized_kind == "file" and upload_new_family_replacement_required:
-                    replacement_save_summary = self._project_source_save_watch_summary(save_request_watch)
-                    replacement_stream = processing_stream_result if isinstance(processing_stream_result, dict) else {}
-                    replacement_upload_started = bool(
-                        int(replacement_save_summary.get("started") or 0) > 0
-                        or int(replacement_save_summary.get("processing_stream_started") or 0) > 0
-                    )
-                    replacement_stream_completed = (
-                        replacement_stream.get("status") == "project_source_processing_stream_completed"
-                    )
-                    replacement_assigned_filename = self._file_source_family_filename(
-                        replacement_stream.get("assigned_filename") or replacement_stream.get("library_file_name")
-                    )
-                    replacement_processed_file_id = self._library_file_record_id(
-                        replacement_stream.get("processed_file_id")
-                    )
-                    replacement_library_object_id = self._library_file_record_id(
-                        replacement_stream.get("library_metadata_object_id")
-                    )
                     replacement_canonical_name = canonical_display_name or (
                         source_match_candidates[0] if source_match_candidates else ""
                     )
-                    replacement_identity_is_new = not bool(
-                        replacement_processed_file_id
-                        and replacement_processed_file_id in set(family_source_backing_file_ids)
+                    replacement_save_summary = self._project_source_save_watch_summary(save_request_watch)
+                    replacement_evaluation = self._evaluate_staged_overwrite_upload(
+                        save_summary=replacement_save_summary,
+                        processing_stream=processing_stream_result,
+                        canonical_name=replacement_canonical_name,
+                        previous_backing_file_ids=family_source_backing_file_ids,
                     )
-                    replacement_failure_status = None
-                    if not replacement_upload_started or not bool(replacement_save_summary.get("saw_commit")):
-                        replacement_failure_status = "source_overwrite_upload_not_started"
-                    elif not replacement_stream_completed:
-                        replacement_failure_status = "source_overwrite_processing_stream_not_completed"
-                    elif not replacement_assigned_filename or not self._file_source_family_member(
-                        replacement_assigned_filename,
-                        replacement_canonical_name,
-                    ):
-                        replacement_failure_status = "source_overwrite_assigned_filename_not_verified"
-                    elif not replacement_processed_file_id or not replacement_library_object_id:
-                        replacement_failure_status = "source_overwrite_backing_identity_missing"
-                    elif not replacement_identity_is_new:
-                        replacement_failure_status = "source_overwrite_backing_identity_not_new"
+                    replacement_failure_status = replacement_evaluation.get("failure_status")
+
+                    if replacement_failure_status in {
+                        "source_overwrite_upload_not_started",
+                        "source_overwrite_upload_request_failed",
+                    }:
+                        replacement_retry_first_attempt = {
+                            "status": replacement_failure_status,
+                            "evaluation": replacement_evaluation,
+                            "file_input_submission": file_input_submission,
+                            "save_request_summary": replacement_save_summary,
+                            "save_request_quiet": save_request_quiet_result,
+                            "processing_stream": processing_stream_result,
+                            "replacement_upload_staging": self._collision_free_indexed_replacement_evidence(
+                                replacement_upload_staging
+                            ),
+                        }
+                        replacement_retry_original_source_proof = await self._verify_original_file_source_family_present(
+                            page,
+                            project_url=project_home_url,
+                            canonical_name=replacement_canonical_name,
+                            previous_family_sources=replacement_previous_family_sources,
+                        )
+                        replacement_retry_decision = self._staged_overwrite_retry_decision(
+                            evaluation=replacement_evaluation,
+                            original_source_verified=bool(replacement_retry_original_source_proof.get("ok")),
+                            retry_count=replacement_retry_count,
+                        )
+                        if replacement_retry_decision.get("eligible"):
+                            replacement_retry_attempted = True
+                            replacement_retry_count = 1
+                            dispose_save_request_watch_once()
+                            save_request_watch_disposed = False
+                            save_request_watch = self._install_project_source_save_request_watch(
+                                context,
+                                source_kind="file",
+                                expected_filename=replacement_canonical_name,
+                            )
+                            replacement_upload_staging = self._stage_collision_free_indexed_replacement_file(
+                                file_path=file_path or "",
+                                canonical_name=replacement_canonical_name,
+                            )
+                            retry_upload_file_path = str(
+                                replacement_upload_staging.get("file_path") or file_path or ""
+                            )
+                            try:
+                                file_input_submission = await self._add_project_file_source(
+                                    page,
+                                    file_path=retry_upload_file_path,
+                                )
+                            finally:
+                                self._cleanup_collision_free_indexed_replacement_file(replacement_upload_staging)
+                            await self._wait_for_project_source_post_save_settle(
+                                page,
+                                source_kind="file",
+                                expected_source_name=replacement_canonical_name,
+                            )
+                            save_request_quiet_result = await self._wait_for_project_source_save_request_quiet(
+                                page,
+                                save_request_watch,
+                                source_kind="file",
+                                timeout_ms=60_000,
+                                allow_stale_inflight_after_commit=False,
+                            )
+                            processing_stream_result = await self._wait_for_project_source_processing_stream(
+                                page,
+                                save_request_watch,
+                                source_kind="file",
+                                expected_filename=replacement_canonical_name,
+                            )
+                            replacement_save_summary = self._project_source_save_watch_summary(save_request_watch)
+                            replacement_evaluation = self._evaluate_staged_overwrite_upload(
+                                save_summary=replacement_save_summary,
+                                processing_stream=processing_stream_result,
+                                canonical_name=replacement_canonical_name,
+                                previous_backing_file_ids=family_source_backing_file_ids,
+                            )
+                            replacement_failure_status = replacement_evaluation.get("failure_status")
+
                     if replacement_failure_status:
                         return {
                             "ok": False,
@@ -14612,11 +14668,11 @@ class ChatGPTBrowserClient:
                             "source_match_requested": replacement_canonical_name,
                             "source_match_candidates": source_match_candidates,
                             "requested_filename": replacement_canonical_name,
-                            "assigned_filename": replacement_assigned_filename,
-                            "processed_file_id": replacement_processed_file_id,
-                            "library_metadata_object_id": replacement_library_object_id,
+                            "assigned_filename": replacement_evaluation.get("assigned_filename"),
+                            "processed_file_id": replacement_evaluation.get("processed_file_id"),
+                            "library_metadata_object_id": replacement_evaluation.get("library_metadata_object_id"),
                             "persistence_verified": False,
-                            "project_source_mutated": bool(replacement_save_summary.get("saw_commit")),
+                            "project_source_mutated": bool(replacement_evaluation.get("upload_commit_observed")),
                             "release_blocking": True,
                             "operator_review_required": False,
                             "already_exists": True,
@@ -14635,11 +14691,27 @@ class ChatGPTBrowserClient:
                                 replacement_upload_staging
                             ),
                             "in_place_replace_attempt": in_place_replace_attempt,
-                            "upload_started": replacement_upload_started,
+                            "file_input_submission": file_input_submission,
+                            "file_input_submission_attempted": bool(
+                                isinstance(file_input_submission, dict)
+                                and file_input_submission.get("file_input_submission_attempted")
+                            ) or file_input_submission is None,
+                            "backend_upload_started": bool(replacement_evaluation.get("backend_upload_started")),
+                            "upload_started": bool(replacement_evaluation.get("backend_upload_started")),
+                            "upload_commit_observed": bool(replacement_evaluation.get("upload_commit_observed")),
+                            "processing_stream_observed": bool(replacement_evaluation.get("processing_stream_observed")),
+                            "backing_file_identity_created": bool(replacement_evaluation.get("backing_file_identity_created")),
+                            "request_failure_count": int(replacement_evaluation.get("request_failure_count") or 0),
+                            "request_failures": list(replacement_evaluation.get("request_failures") or []),
                             "processing_stream": processing_stream_result,
                             "save_request_summary": replacement_save_summary,
                             "save_request_quiet": save_request_quiet_result,
                             "replacement_backing_identity_verified": False,
+                            "replacement_retry_attempted": replacement_retry_attempted,
+                            "replacement_retry_count": replacement_retry_count,
+                            "replacement_retry_first_attempt": replacement_retry_first_attempt,
+                            "replacement_retry_original_source_proof": replacement_retry_original_source_proof,
+                            "replacement_retry_decision": replacement_retry_decision,
                             "pre_upload_family_source_count": len(replacement_previous_family_sources),
                             "pre_upload_family_source_identities": [
                                 self._preferred_source_card_identity(source) or source.get("text")
@@ -15566,6 +15638,19 @@ class ChatGPTBrowserClient:
             ),
             "current_url": await self._safe_page_url(page),
         }
+        if upload_new_family_replacement_required:
+            result.update({
+                "file_input_submission": file_input_submission,
+                "file_input_submission_attempted": bool(
+                    isinstance(file_input_submission, dict)
+                    and file_input_submission.get("file_input_submission_attempted")
+                ) or file_input_submission is None,
+                "replacement_retry_attempted": replacement_retry_attempted,
+                "replacement_retry_count": replacement_retry_count,
+                "replacement_retry_first_attempt": replacement_retry_first_attempt,
+                "replacement_retry_original_source_proof": replacement_retry_original_source_proof,
+                "replacement_retry_decision": replacement_retry_decision,
+            })
         if normalized_kind == "file":
             assigned_names = list(success_save_summary.get("backend_assigned_names") or [])
             local_identity = self._local_file_artifact_identity(file_path)
@@ -16311,9 +16396,24 @@ class ChatGPTBrowserClient:
                     raise ResponseTimeoutError(f"Project source was not found during remove retry: {source_name}")
 
         if removal_triggered and not source_removed:
-            await self._wait_for_source_absence(page, match_candidates, exact=exact)
+            try:
+                await self._wait_for_source_absence(page, match_candidates, exact=exact)
+            except ResponseTimeoutError as exc:
+                self._log(
+                    "project-source-remove",
+                    "soft absence wait did not complete; continuing to authoritative removal proof",
+                    source_name=source_name,
+                    error=str(exc),
+                )
 
-        final_source_cards = await self._snapshot_project_source_cards(page)
+        removal_proof = await self._prove_project_source_removal(
+            page,
+            project_url=project_home_url,
+            source_names=match_candidates,
+            exact=exact,
+        )
+        proof_surface = removal_proof.get("source_surface") if isinstance(removal_proof, dict) else None
+        final_source_cards = list(proof_surface.get("sources") or []) if isinstance(proof_surface, dict) else []
         final_remove_guard = self._source_card_remove_guard(
             initial_source_cards,
             final_source_cards,
@@ -16325,14 +16425,32 @@ class ChatGPTBrowserClient:
                 "Project source remove deleted additional rows "
                 f"(target={source_name}, collateral_removed={final_remove_guard['collateral_removed']})"
             )
-        if not final_remove_guard["target_removed"] and not await self._project_source_is_stably_absent(page, match_candidates, exact=exact):
-            raise ResponseTimeoutError(
-                f"Project source remove completed without proving disappearance of target: {source_name}"
-            )
         source_identity_used = self._preferred_source_card_identity(matched_card) or source_name
+        if not removal_proof.get("ok"):
+            result = {
+                "ok": False,
+                "action": "remove",
+                "status": removal_proof.get("status") or "surface_unresolved",
+                "project_url": project_home_url,
+                "source_name": source_name,
+                "source_match": source_identity_used,
+                "source_identity_used": source_identity_used,
+                "source_match_candidates": match_candidates,
+                "exact": exact,
+                "already_absent": False,
+                "removed_via_ui": bool(removal_triggered),
+                "project_source_mutated": bool(removal_triggered),
+                "release_blocking": True,
+                "operator_review_required": removal_proof.get("status") == "surface_unresolved",
+                "removal_proof": removal_proof,
+                "current_url": await self._safe_page_url(page),
+            }
+            self._log("project-source-remove", "project source removal not proven", **result)
+            return result
         result = {
             "ok": True,
             "action": "remove",
+            "status": "verified_absent",
             "project_url": project_home_url,
             "source_name": source_name,
             "source_match": source_identity_used,
@@ -16341,6 +16459,7 @@ class ChatGPTBrowserClient:
             "exact": exact,
             "already_absent": False,
             "removed_via_ui": True,
+            "removal_proof": removal_proof,
             "current_url": await self._safe_page_url(page),
         }
         self._log("project-source-remove", "project source removed", **result)
@@ -27376,7 +27495,7 @@ class ChatGPTBrowserClient:
         except Exception as exc:
             self._log("project-source", "text source DOM submit fallback failed", error=repr(exc))
 
-    async def _add_project_file_source(self, page: Any, *, file_path: str) -> None:
+    async def _add_project_file_source(self, page: Any, *, file_path: str) -> dict[str, Any]:
         before_count = await page.locator('input[type="file"]').count()
         await self._click_add_source_button(page)
         await self._click_source_kind_option(page, "file")
@@ -27395,6 +27514,11 @@ class ChatGPTBrowserClient:
             )
         await target.set_input_files(file_path)
         await page.wait_for_timeout(1_500)
+        return {
+            "file_input_found": True,
+            "file_input_submission_attempted": True,
+            "file_path": str(file_path),
+        }
 
 
     def _is_project_source_processing_stream_request(self, request_or_url: Any, *, source_kind: str) -> bool:
@@ -27548,6 +27672,7 @@ class ChatGPTBrowserClient:
             "processing_stream_responses": {},
             "backend_assigned_names": [],
             "backing_file_ids": [],
+            "request_failures": [],
             "handlers": None,
         }
         if context is None or not hasattr(context, "on"):
@@ -27751,6 +27876,14 @@ class ChatGPTBrowserClient:
                 failure_text = failure if isinstance(failure, str) else getattr(failure, "error_text", None)
             except Exception:
                 failure_text = None
+            failure_record = {
+                "url": self._redact_backend_api_url(str(getattr(req, "url", "") or "")).get("redacted_url"),
+                "method": str(getattr(req, "method", "") or "").upper() or None,
+                "error": failure_text,
+                "is_commit": bool(is_commit),
+                "is_processing_stream": bool(is_processing_stream),
+            }
+            watch.setdefault("request_failures", []).append(failure_record)
             self._log(
                 "project-source-add",
                 "observed project source save request failure",
@@ -27760,6 +27893,7 @@ class ChatGPTBrowserClient:
                 is_commit=is_commit,
                 is_processing_stream=is_processing_stream,
                 failure=failure_text,
+                failure_record=failure_record,
                 failed=watch.get("failed"),
                 inflight=len(inflight),
             )
@@ -28680,8 +28814,172 @@ class ChatGPTBrowserClient:
             "backend_assigned_names": list(watch.get("backend_assigned_names") or []),
             "backing_file_ids": list(watch.get("backing_file_ids") or []),
             "backing_file_identity_captured": bool(watch.get("backing_file_ids")),
+            "request_failure_count": len(watch.get("request_failures") or []),
+            "request_failures": [
+                {
+                    "url": item.get("url"),
+                    "method": item.get("method"),
+                    "error": item.get("error"),
+                    "is_commit": bool(item.get("is_commit")),
+                    "is_processing_stream": bool(item.get("is_processing_stream")),
+                }
+                for item in list(watch.get("request_failures") or [])[:20]
+                if isinstance(item, dict)
+            ],
             "response_count": len(watch.get("responses") or []),
             "response_diagnostics": diagnostics,
+        }
+
+    def _evaluate_staged_overwrite_upload(
+        self,
+        *,
+        save_summary: Optional[dict[str, Any]],
+        processing_stream: Optional[dict[str, Any]],
+        canonical_name: str,
+        previous_backing_file_ids: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        summary = save_summary if isinstance(save_summary, dict) else {}
+        stream = processing_stream if isinstance(processing_stream, dict) else {}
+        started = int(summary.get("started") or 0)
+        failed = int(summary.get("failed") or 0)
+        processing_stream_started = int(summary.get("processing_stream_started") or 0)
+        saw_commit = bool(summary.get("saw_commit"))
+        stream_status = str(stream.get("status") or "")
+        processing_stream_observed = bool(
+            processing_stream_started > 0
+            or stream_status not in {"", "processing_stream_not_observed"}
+        )
+        stream_completed = stream_status == "project_source_processing_stream_completed"
+        assigned_filename = self._file_source_family_filename(
+            stream.get("assigned_filename") or stream.get("library_file_name")
+        )
+        processed_file_id = self._library_file_record_id(stream.get("processed_file_id"))
+        library_object_id = self._library_file_record_id(stream.get("library_metadata_object_id"))
+        backing_file_ids = [
+            item
+            for item in list(summary.get("backing_file_ids") or [])
+            if self._library_file_record_id(item)
+        ]
+        backing_identity_created = bool(backing_file_ids or processed_file_id or library_object_id)
+        previous_ids = set(previous_backing_file_ids or [])
+        identity_is_new = not bool(processed_file_id and processed_file_id in previous_ids)
+        backend_upload_started = bool(started > 0 or processing_stream_started > 0)
+
+        failure_status: Optional[str] = None
+        if failed > 0 and not saw_commit:
+            failure_status = "source_overwrite_upload_request_failed"
+        elif not backend_upload_started or not saw_commit:
+            failure_status = "source_overwrite_upload_not_started"
+        elif not stream_completed:
+            failure_status = "source_overwrite_processing_stream_not_completed"
+        elif not assigned_filename or not self._file_source_family_member(assigned_filename, canonical_name):
+            failure_status = "source_overwrite_assigned_filename_not_verified"
+        elif not processed_file_id or not library_object_id:
+            failure_status = "source_overwrite_backing_identity_missing"
+        elif not identity_is_new:
+            failure_status = "source_overwrite_backing_identity_not_new"
+
+        return {
+            "ok": failure_status is None,
+            "failure_status": failure_status,
+            "backend_upload_started": backend_upload_started,
+            "upload_commit_observed": saw_commit,
+            "processing_stream_observed": processing_stream_observed,
+            "processing_stream_completed": stream_completed,
+            "backing_file_identity_created": backing_identity_created,
+            "assigned_filename": assigned_filename,
+            "processed_file_id": processed_file_id,
+            "library_metadata_object_id": library_object_id,
+            "backing_identity_is_new": identity_is_new,
+            "request_failure_count": int(summary.get("request_failure_count") or failed),
+            "request_failures": list(summary.get("request_failures") or []),
+        }
+
+    def _staged_overwrite_retry_decision(
+        self,
+        *,
+        evaluation: Optional[dict[str, Any]],
+        original_source_verified: bool,
+        retry_count: int,
+    ) -> dict[str, Any]:
+        state = evaluation if isinstance(evaluation, dict) else {}
+        eligible = bool(
+            retry_count == 0
+            and not state.get("upload_commit_observed")
+            and not state.get("processing_stream_observed")
+            and not state.get("backing_file_identity_created")
+            and original_source_verified
+        )
+        blockers = []
+        if retry_count != 0:
+            blockers.append("retry_already_used")
+        if state.get("upload_commit_observed"):
+            blockers.append("upload_commit_observed")
+        if state.get("processing_stream_observed"):
+            blockers.append("processing_stream_observed")
+        if state.get("backing_file_identity_created"):
+            blockers.append("backing_file_identity_created")
+        if not original_source_verified:
+            blockers.append("original_source_not_verified")
+        return {
+            "eligible": eligible,
+            "retry_count": retry_count,
+            "max_retry_count": 1,
+            "blockers": blockers,
+            "upload_commit_observed": bool(state.get("upload_commit_observed")),
+            "processing_stream_observed": bool(state.get("processing_stream_observed")),
+            "backing_file_identity_created": bool(state.get("backing_file_identity_created")),
+            "original_source_verified": bool(original_source_verified),
+        }
+
+    async def _verify_original_file_source_family_present(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        canonical_name: str,
+        previous_family_sources: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        await self._goto(
+            page,
+            self._project_sources_url(project_url),
+            label="project-source-overwrite-retry-refresh",
+            respect_history_rate_limit_cooldown=False,
+        )
+        await self._open_project_sources_tab(page, project_url=project_url)
+        surface = await self._wait_for_authoritative_project_sources_surface(
+            page,
+            project_url=project_url,
+            label="project-source-overwrite-retry-original-proof",
+            required_stable_observations=2,
+        )
+        current_sources = list(surface.get("sources") or []) if surface.get("ok") else []
+        missing_identities: list[str] = []
+        matched_identities: list[str] = []
+        for source in previous_family_sources:
+            candidates = self._source_card_identity_candidates(source)
+            matched = self._match_source_card(
+                current_sources,
+                candidates,
+                exact_safe=True,
+                anchor_safe=False,
+            )
+            identity = self._preferred_source_card_identity(source) or source.get("text") or canonical_name
+            if matched is None:
+                missing_identities.append(str(identity))
+            else:
+                matched_identities.append(str(identity))
+        verified = bool(surface.get("ok") and previous_family_sources and not missing_identities)
+        return {
+            "ok": verified,
+            "status": "original_source_verified" if verified else (
+                "surface_unresolved" if not surface.get("ok") else "original_source_not_verified"
+            ),
+            "canonical_filename": canonical_name,
+            "previous_family_source_count": len(previous_family_sources),
+            "matched_source_identities": matched_identities,
+            "missing_source_identities": missing_identities,
+            "surface": surface,
         }
 
     def _project_source_mutation_transaction_status(
@@ -29037,6 +29335,87 @@ class ChatGPTBrowserClient:
                 return True
             await page.wait_for_timeout(poll_interval_ms)
         return False
+
+    async def _prove_project_source_removal(
+        self,
+        page: Any,
+        *,
+        project_url: str,
+        source_names: str | list[str],
+        exact: bool,
+        timeout_ms: int = 12_000,
+    ) -> dict[str, Any]:
+        candidates = self._normalize_source_lookup_inputs(source_names)
+        if not candidates:
+            return {
+                "ok": True,
+                "status": "verified_absent",
+                "source_match_candidates": [],
+                "stable_observation_count": 2,
+                "required_stable_observations": 2,
+                "source_surface": None,
+            }
+        try:
+            await self._goto(
+                page,
+                self._project_sources_url(project_url),
+                label="project-source-remove-authoritative-refresh",
+                respect_history_rate_limit_cooldown=False,
+            )
+            await self._open_project_sources_tab(page, project_url=project_url)
+            surface = await self._wait_for_authoritative_project_sources_surface(
+                page,
+                project_url=project_url,
+                label="project-source-remove-final-authority",
+                timeout_ms=timeout_ms,
+                required_stable_observations=2,
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "surface_unresolved",
+                "source_match_candidates": candidates,
+                "stable_observation_count": 0,
+                "required_stable_observations": 2,
+                "source_surface": None,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
+        if not surface.get("ok"):
+            return {
+                "ok": False,
+                "status": "surface_unresolved",
+                "source_match_candidates": candidates,
+                "stable_observation_count": int(surface.get("stable_observations") or 0),
+                "required_stable_observations": 2,
+                "source_surface": surface,
+            }
+        sources = list(surface.get("sources") or [])
+        matched = self._match_source_card(
+            sources,
+            candidates,
+            exact_safe=exact,
+            anchor_safe=not exact,
+        )
+        if matched is not None:
+            return {
+                "ok": False,
+                "status": "still_present",
+                "source_match_candidates": candidates,
+                "matched_source": matched,
+                "stable_observation_count": int(surface.get("stable_observations") or 0),
+                "required_stable_observations": 2,
+                "source_surface": surface,
+            }
+        return {
+            "ok": True,
+            "status": "verified_absent",
+            "source_match_candidates": candidates,
+            "matched_source": None,
+            "stable_observation_count": int(surface.get("stable_observations") or 0),
+            "required_stable_observations": 2,
+            "source_surface": surface,
+        }
 
     async def _wait_for_source_absence(
         self,

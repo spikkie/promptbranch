@@ -767,3 +767,19 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-295 | Controlled correction execution envelope design emits one canonical deterministic envelope containing exact target, file, operation, pre/post state, validation, rollback, limits, timeouts, evidence requirements, and zero correction-execution authority while creating no workspace and executing no command | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/project/controlled-correction-execution-envelope-v0.1.107.json`, `docs/project/promptbranch-plan-v0.1.107.md`, `docs/release-v0.1.107.md` | v0.1.107 |
 
 | DOD-296 | Controlled correction execution-envelope validation reloads and recomputes the canonical v0.1.107 envelope, requires exact object and fingerprint equality, validates all target/operation/validation/rollback/evidence/authority constraints, executes zero commands, creates zero workspaces, mutates zero files, and formally defines v0.1.109 as the PROJECT_SETTINGS.md/AGENTS.md authority-graph definition slice | focused_candidate | `promptbranch_loop.py`, `promptbranch_cli.py`, `tests/test_promptbranch_loop.py`, `tests/test_cli_loop.py`, `docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json`, `docs/project/promptbranch-plan-v0.1.108.md`, `docs/release-v0.1.108.md` | v0.1.108 |
+
+## DOD-297 — v0.1.108.1 Project Source staged-overwrite and removal-proof reliability
+
+- [x] Failed staged-upload requests retain redacted URL, method, and error diagnostics.
+- [x] Upload initiation, commit, processing-stream, assigned filename, and backing identities are evaluated separately.
+- [x] Exactly one retry is allowed only before any commit, processing stream, or backing identity and only while the original source remains verified.
+- [x] The original source is never deleted before the replacement assigned filename and backing identities are verified.
+- [x] Removal proof refreshes the authoritative Project Sources surface and returns exactly `verified_absent`, `still_present`, or `surface_unresolved`.
+- [x] `verified_absent` requires two stable authoritative observations.
+- [x] Deterministic regressions cover retry eligibility, failed-request diagnostics, original-source preservation, and all three removal states.
+- [x] `pb test project-source-file-reliability` runs overwrite and removal as independent scenarios.
+- [ ] Focused direct live profile passes.
+- [ ] Focused localhost live profile passes.
+- [ ] Full `full_direct` and `full_localhost` release gates pass.
+- [ ] Artifact Guardian, evidence-bound adoption, and final current-state verification pass.
+- [x] `v0.1.109` remains planned_after_acceptance and no authority-graph implementation is included.

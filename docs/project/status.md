@@ -7,10 +7,10 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.107
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
-active candidate version: v0.1.108
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
-next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+active candidate version: v0.1.108.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
 next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
@@ -19,53 +19,56 @@ next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md
 ```text
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
-DoD status: in_progress
+DoD status: repair_in_progress
 last accepted/current slice: v0.1.107 — Controlled correction execution envelope design
-active plan slice: v0.1.108 — Controlled correction execution envelope validation gate
-repair mode: false
-scope advance allowed: true
+active plan slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+repair mode: true
+scope advance allowed: false
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.107.zip
-latest candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.108.zip
-release status: v0.1.107 is adopted/current. v0.1.108 is the validation-only execution-envelope candidate.
+failed normal candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
+latest repair candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+release status: v0.1.108 failed strict validation in full_direct and full_localhost and was not adopted. v0.1.108.1 is the narrow Project Source reliability repair.
 plan authority file: docs/project/plan-state.json
-roadmap document: docs/project/promptbranch-plan-v0.1.108.md
-execution-envelope design record: docs/project/controlled-correction-execution-envelope-v0.1.107.json
-execution-envelope validation record: docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json
+roadmap document: docs/project/promptbranch-plan-v0.1.108.1.md
+repair evidence record: docs/project/project-source-staged-overwrite-removal-proof-reliability-v0.1.108.1.json
+focused live profile: pb test project-source-file-reliability
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
 ```
 
 ## Current risks
 
-- Envelope validation could be misread as correction execution authority; every execution and mutation authority flag remains false.
-- Any design-record, target, fingerprint, rollback, evidence, limit, or authority drift must block validation.
-- The historical duplicate v0.1.108 assignment must remain explicitly resolved in favor of the adopted repository control surface.
+- A staged replacement must never cause deletion of the old source before the new assigned filename and both backing identities are verified.
+- A failed upload interaction must not be retried after any commit, processing stream, or backing identity exists.
+- A successful Delete click is not disappearance proof; only a refreshed authoritative surface with two stable observations can return `verified_absent`.
+- The focused reliability profile is development preflight evidence only and cannot replace full release validation.
 
 ## Current blockers
 
-- Strict host release validation and evidence-bound adoption remain pending for v0.1.108.
-- Correction execution and all broader mutation authority remain forbidden.
+- Focused direct and localhost live reliability profiles remain pending for v0.1.108.1.
+- Strict full_direct and full_localhost release gates must both pass before adoption.
+- v0.1.109 implementation remains blocked until this repair is accepted/current.
 
 ## Current unknowns
 
-- Whether strict host validation and adoption will confirm the validation-only gate across all release gates.
-- The exact machine-readable authority-graph schema to be defined in v0.1.109.
+- Whether the current ChatGPT upload surface will complete the one bounded retry after a zero-identity failed request transaction.
+- Whether refreshed source-surface observations provide stable `verified_absent` proof in both transports.
 
 ## Next safe action
 
 ```text
-Run pb loop execution-envelope-validation from an unrelated working directory, prove all 36 checks, exact fingerprint equality, zero commands, zero workspaces, zero mutations, and zero correction execution authority. Then run strict v0.1.108 release validation.
+Run deterministic repair tests, then run `pb test project-source-file-reliability` against direct and localhost using separate disposable projects. Only after both focused profiles pass, run strict v0.1.108.1 release validation requiring full_direct and full_localhost. Do not begin v0.1.109.
 ```
 
 ## Last updated
 
 ```text
-v0.1.108 controlled correction execution envelope validation candidate build
+v0.1.108.1 Project Source staged-overwrite and removal-proof reliability repair candidate build
 ```
 
 ## v0.1.102 candidate status

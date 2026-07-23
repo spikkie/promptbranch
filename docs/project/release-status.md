@@ -7,10 +7,11 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.107
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
-active candidate version: v0.1.108
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
-next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+failed normal candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+active candidate version: v0.1.108.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
 next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
@@ -27,6 +28,14 @@ rejected
 superseded
 repair_required
 ```
+
+## Current repair result
+
+| Version | Type | Slice | Status | Validation | Promotion rule |
+|---|---|---|---|---|---|
+| v0.1.108 | normal | Controlled correction execution envelope validation gate | repair_required | 8/10 strict gates; full_direct staged overwrite and full_localhost removal proof failed; adoption refused | superseded only by accepted v0.1.108.1 repair |
+| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | candidate | deterministic focused tests green; focused live direct/localhost and full release validation pending | require focused direct+localhost, then full_direct+full_localhost, Artifact Guardian, and evidence-bound adoption |
+| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | planned | not started | begin only after v0.1.108.1 is accepted/current |
 
 ## Status rule
 

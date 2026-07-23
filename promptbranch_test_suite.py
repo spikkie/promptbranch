@@ -1971,5 +1971,96 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     }
 
 
+async def run_project_source_file_reliability_async(**kwargs: Any) -> dict[str, Any]:
+    """Run only the live file-source staged-overwrite and removal-proof regressions.
+
+    The scenarios use separate delete-frozen projects so a staged-overwrite
+    failure cannot suppress removal-proof evidence.  This profile is a focused
+    development preflight; it does not replace adoption-grade full_direct and
+    full_localhost validation.
+    """
+
+    repo_path = Path(str(kwargs.pop("path", ".") or ".")).expanduser().resolve()
+    kwargs.pop("package_zip", None)
+    kwargs.pop("profile", None)
+    kwargs.pop("rate_limit_safe", None)
+    requested_project_name = str(kwargs.get("project_name") or "").strip()
+    run_id = str(kwargs.get("run_id") or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))
+    prefix = str(kwargs.get("project_name_prefix") or "itest-pb-source-reliability").strip()
+    base_name = requested_project_name or f"{prefix}-{run_id}"
+
+    scenario_specs = (
+        (
+            "staged_overwrite",
+            ["project_ensure,source_add_file,source_overwrite_file"],
+            False,
+        ),
+        (
+            "removal_proof",
+            ["project_ensure,source_add_file,source_remove_file"],
+            True,
+        ),
+    )
+    scenarios: dict[str, dict[str, Any]] = {}
+    failures: list[dict[str, Any]] = []
+    for scenario_name, only, strict_remove_ui in scenario_specs:
+        scenario_kwargs = dict(kwargs)
+        scenario_kwargs.update({
+            "only": only,
+            "skip": [],
+            "keep_project": True,
+            "strict_remove_ui": strict_remove_ui,
+            "project_name": f"{base_name}-{scenario_name.replace('_', '-')}",
+            "run_id": f"{run_id}-{scenario_name}",
+            "json_out": None,
+            "rate_limit_safe": False,
+        })
+        args = build_test_suite_namespace(**scenario_kwargs)
+        summary = await run_integration(args)
+        _attach_suite_failure_summary(summary, "browser")
+        summary["rate_limit_telemetry"] = extract_rate_limit_telemetry(summary)
+        summary["rate_limit_summary"] = classify_rate_limit_summary(
+            summary["rate_limit_telemetry"],
+            suite_ok=bool(summary.get("ok")),
+        )
+        scenarios[scenario_name] = summary
+        if not summary.get("ok"):
+            failures.extend(
+                [
+                    {**item, "scenario": scenario_name}
+                    for item in list(summary.get("failed_steps") or [])
+                    if isinstance(item, dict)
+                ]
+                or [{
+                    "section": "browser",
+                    "scope": scenario_name,
+                    "name": scenario_name,
+                    "status": "scenario_failed",
+                    "diagnostic": str((summary.get("error") or {}).get("error") if isinstance(summary.get("error"), dict) else summary.get("error") or "focused live scenario failed"),
+                    "scenario": scenario_name,
+                }]
+            )
+
+    ok = all(bool(item.get("ok")) for item in scenarios.values())
+    return {
+        "ok": ok,
+        "action": "test_suite",
+        "profile": "project-source-file-reliability",
+        "status": "passed" if ok else "failed",
+        "version": _read_version(repo_path),
+        "project_name_base": base_name,
+        "scenarios": scenarios,
+        "failure_count": len(failures),
+        "failed_steps": failures,
+        "adoption_grade": False,
+        "full_release_validation_required": True,
+        "next_required_gate": "full_direct_and_full_localhost",
+    }
+
+
+def run_project_source_file_reliability_sync(**kwargs: Any) -> dict[str, Any]:
+    return asyncio.run(run_project_source_file_reliability_async(**kwargs))
+
+
 def run_test_suite_sync(**kwargs: Any) -> dict[str, Any]:
     return asyncio.run(run_test_suite_async(**kwargs))

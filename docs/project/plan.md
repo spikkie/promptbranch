@@ -7,34 +7,35 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.107
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
 last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
-active candidate version: v0.1.108
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.zip
-next normal slice: v0.1.108 — Controlled correction execution envelope validation gate
+active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+active candidate version: v0.1.108.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
 next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 ```
 
 ## Plan summary
 
-`v0.1.108` validates the deterministic controlled-correction execution envelope recorded by accepted/current `v0.1.107`. Validation is structural and deterministic only: no workspace, command, correction, or mutation authority is created.
+`v0.1.108` implemented the validation-only execution-envelope gate but failed strict release validation in the Project Source file lifecycle. `v0.1.108.1` repairs only staged overwrite initiation/diagnostics/retry and authoritative removal proof. It does not alter the validated execution-envelope scope and does not begin v0.1.109.
 
-## Active normal slice — v0.1.108 — Controlled correction execution envelope validation gate
+## Active repair slice — v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
 
 Acceptance scope:
 
-- Add `pb loop execution-envelope-validation --target ... --json`.
-- Load and recompute the canonical `v0.1.107` execution-envelope design.
-- Require exact envelope equality and exact canonical fingerprint equality.
-- Validate target, path, operation, hash, validation, rollback, evidence, limits, timeouts, and authority constraints.
-- Emit a machine-readable validation record.
-- Create no workspace, execute no command, and mutate no file or repository.
-- Preserve all release gates and evidence-bound adoption.
+- Prove that staged file selection initiated a backend upload transaction.
+- Preserve redacted failed-request URL, method, status/error, and transaction evidence when no commit occurs.
+- Permit exactly one retry only when no commit, processing stream, or backing identity exists and the original source remains verified.
+- Preserve the original source until the replacement assigned filename, processed-file ID, and Library metadata ID are verified.
+- Refresh the authoritative Project Sources surface after deletion and classify proof as `verified_absent`, `still_present`, or `surface_unresolved`.
+- Require two stable authoritative observations before returning `verified_absent`.
+- Add deterministic regressions and `pb test project-source-file-reliability` with independent overwrite and removal scenarios.
+- Require green focused direct/localhost profiles before the full release suite; adoption still requires full_direct and full_localhost.
 
-Out of scope: correction execution, disposable- or real-repository mutation, generic shell authority, deployment, Kubernetes mutation, Project Source mutation from the loop, artifact adoption from the loop, ChatGPT Project deletion, and remote ChatGPT Project Settings mutation.
+Out of scope: execution-envelope redesign, correction execution, broader browser lifecycle redesign, Project deletion, generic write authority, deployment, Kubernetes mutation, remote Project Settings mutation, and any v0.1.109 implementation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. The historical conversational `v0.1.108` settings proposal is superseded by the adopted `v0.1.107` control surface. `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` is the sole planned slice after acceptance.
+`docs/project/plan-state.json` is authoritative. `v0.1.108` is `repair_required`; `v0.1.108.1` is the sole active repair; `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` remains the sole planned-after-acceptance normal slice.
 
 ## Release / slice plan
 

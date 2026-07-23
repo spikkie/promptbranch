@@ -1126,3 +1126,60 @@ def test_release_validation_manifest_requires_execution_envelope_validation_gate
         "examples/loop-targets/sandboxed-file-mutation-target.json",
         "--json",
     ]
+
+
+def test_project_source_file_reliability_profile_runs_independent_scenarios(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "VERSION").write_text("v0.1.108.1\n", encoding="utf-8")
+    calls: list[dict] = []
+
+    async def fake_run_integration(args):
+        calls.append({
+            "project_name": args.project_name,
+            "only": list(args.only),
+            "strict_remove_ui": args.strict_remove_ui,
+            "keep_project": args.keep_project,
+        })
+        if args.project_name.endswith("staged-overwrite"):
+            return {
+                "ok": False,
+                "steps": [],
+                "failed_steps": [{
+                    "section": "browser",
+                    "scope": "main",
+                    "name": "project_source_overwrite_file",
+                    "status": "source_overwrite_upload_not_started",
+                }],
+                "failure_count": 1,
+            }
+        return {
+            "ok": True,
+            "steps": [],
+            "failed_steps": [],
+            "failure_count": 0,
+        }
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+
+    result = asyncio.run(
+        suite.run_project_source_file_reliability_async(
+            path=str(tmp_path),
+            project_name="itest-focused",
+            profile_dir=str(tmp_path / ".pb_profile"),
+        )
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["project_name"] == "itest-focused-staged-overwrite"
+    assert calls[0]["only"] == ["project_ensure,source_add_file,source_overwrite_file"]
+    assert calls[0]["keep_project"] is True
+    assert calls[1]["project_name"] == "itest-focused-removal-proof"
+    assert calls[1]["only"] == ["project_ensure,source_add_file,source_remove_file"]
+    assert calls[1]["strict_remove_ui"] is True
+    assert result["ok"] is False
+    assert result["profile"] == "project-source-file-reliability"
+    assert result["scenarios"]["removal_proof"]["ok"] is True
+    assert result["failure_count"] == 1
+    assert result["full_release_validation_required"] is True

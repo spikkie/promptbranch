@@ -140,16 +140,16 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.107"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.107.zip"
-    assert data["active_candidate_version"] == "v0.1.108"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.zip"
-    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.zip"
-    assert data["next_normal_version"] == "v0.1.108"
-    assert data["active_slice"] == "v0.1.108 — Controlled correction execution envelope validation gate"
+    assert data["active_candidate_version"] == "v0.1.108.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.1.zip"
+    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.1.zip"
+    assert data["next_normal_version"] == "v0.1.108.1"
+    assert data["active_slice"] == "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability"
     assert data["next_planned_version_after_acceptance"] == "v0.1.109"
     assert data["next_planned_slice_after_acceptance"] == "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition"
     assert data["repair_must_not_advance_scope"] is True
-    assert data["release_mode"] == "normal"
-    assert data["scope_advance_allowed"] is True
+    assert data["release_mode"] == "repair"
+    assert data["scope_advance_allowed"] is False
     assert data["architecture_goal"] == "controlled problem-solving loop"
     assert len(data["rolling_slice_horizon"]) == 5
 
@@ -158,8 +158,8 @@ def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.107"
-    assert payload["active_candidate_version"] == "v0.1.108"
-    assert payload["next_normal_slice"] == "v0.1.108 — Controlled correction execution envelope validation gate"
+    assert payload["active_candidate_version"] == "v0.1.108.1"
+    assert payload["next_normal_slice"] == "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
     assert len(payload["rolling_slice_horizon"]) == 5
 
@@ -176,7 +176,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.108.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -201,7 +201,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.105.1", "v0.1.106", "v0.1.107", "v0.1.108", "v0.1.109"]:
+    for version in ["v0.1.106", "v0.1.107", "v0.1.108", "v0.1.108.1", "v0.1.109"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -210,8 +210,8 @@ def test_project_next_slice_payload_is_derived_from_validated_control_surface() 
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.107.zip"
-    assert payload["next_normal_version"] == "v0.1.108"
-    assert payload["next_normal_slice"] == "v0.1.108 — Controlled correction execution envelope validation gate"
+    assert payload["next_normal_version"] == "v0.1.108.1"
+    assert payload["next_normal_slice"] == "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.109"
     assert payload["next_slice_after_acceptance"] == "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition"
     assert payload["architecture_invariants_checked"] is True
@@ -230,7 +230,7 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.108"
+    assert payload["next_normal_version"] == "v0.1.108.1"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.109"
 
 
@@ -378,3 +378,21 @@ def test_v0_1_108_controlled_execution_envelope_validation_record_is_validation_
     assert payload["safety"]["workspace_created"] is False
     assert payload["next_slice"]["version"] == "v0.1.109"
     assert payload["next_slice"]["slice"] == "PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition"
+
+
+def test_v0_1_108_1_project_source_reliability_record_is_repair_only() -> None:
+    record_path = PROJECT_DOCS / "project-source-staged-overwrite-removal-proof-reliability-v0.1.108.1.json"
+    assert record_path.is_file()
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+
+    assert payload["schema"] == "promptbranch.project_source.file_reliability_repair"
+    assert payload["repair_version"] == "v0.1.108.1"
+    assert payload["repair_of_version"] == "v0.1.108"
+    assert payload["staged_overwrite"]["maximum_retry_count"] == 1
+    assert payload["staged_overwrite"]["old_source_delete_before_replacement_identity"] is False
+    assert payload["removal_proof"]["required_stable_observations"] == 2
+    assert payload["removal_proof"]["only_success_status"] == "verified_absent"
+    assert payload["focused_live_profile"]["adoption_grade"] is False
+    assert payload["authority"]["scope_advance_allowed"] is False
+    assert payload["authority"]["v0_1_109_implementation_started"] is False
+    assert payload["next_planned_slice_after_acceptance"]["version"] == "v0.1.109"

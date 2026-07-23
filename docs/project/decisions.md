@@ -1025,3 +1025,12 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Validation boundary:** validation recomputes and compares the complete envelope and canonical fingerprint while creating no workspace, executing no command, mutating no file, and granting no correction execution authority.
 - **Roadmap resolution:** the earlier `PROJECT_SETTINGS.md` proposal is renumbered to `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition`.
 - **v0.1.109 boundary:** definition, normalization, conflict detection, and read-only drift verification only; remote ChatGPT Project Settings mutation remains forbidden.
+
+## ADR-PROJ-107 — Repair v0.1.108 before beginning the authority-graph slice
+
+- **Status:** accepted for the active candidate.
+- **Decision:** `v0.1.108` remains not adopted after strict release validation reproduced independent Project Source lifecycle failures. `v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability` is the active repair.
+- **Overwrite rule:** when in-place Replace is unavailable, upload-new/verify/delete-old may retry exactly once only when no upload commit, processing stream, or backing identity exists and the original source remains authoritatively present.
+- **Removal rule:** a delete interaction is not success evidence. The refreshed authoritative Project Sources surface must classify the target as `verified_absent`, `still_present`, or `surface_unresolved`; only two stable absent observations pass.
+- **Scope rule:** the repair does not redesign the v0.1.108 execution-envelope validator and does not begin `v0.1.109`.
+- **Promotion:** focused direct and localhost reliability profiles must pass before full release validation; adoption still requires green `full_direct` and `full_localhost` plus all existing gates.
