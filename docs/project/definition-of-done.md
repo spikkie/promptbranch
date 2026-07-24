@@ -783,3 +783,12 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 - [ ] Full `full_direct` and `full_localhost` release gates pass.
 - [ ] Artifact Guardian, evidence-bound adoption, and final current-state verification pass.
 - [x] `v0.1.109` remains planned_after_acceptance and no authority-graph implementation is included.
+
+## v0.1.109 project authority graph
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-298 | Stable project policy and agent instructions exist without duplicating mutable release state | done | `PROJECT_SETTINGS.md`, `AGENTS.md`, authority policy tests | v0.1.109 |
+| DOD-299 | Every declared project fact domain has exactly one machine-readable authority and fail-closed conflict policy | done | `docs/project/project-authority-graph-v0.1.109.json`, authority graph tests | v0.1.109 |
+| DOD-300 | Read-only authority show/validate commands classify missing authority, ambiguity, and projection drift while performing zero writes | done | `promptbranch_project_authority.py`, `pb project authority show/validate`, deterministic tests | v0.1.109 |
+| DOD-301 | Runtime identity, adopted registry, and external Project Settings are explicit deferred/read-only domains rather than inferred fallbacks | done | authority graph and validation payloads | v0.1.109 |

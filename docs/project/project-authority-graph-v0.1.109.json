@@ -1,0 +1,191 @@
+{
+  "schema": "promptbranch.project.authority_graph",
+  "schema_version": "1.0",
+  "graph_version": "v0.1.109",
+  "repo_id": "chatgpt_claudecode_workflow-2",
+  "validation_mode": "read_only",
+  "default_conflict_policy": "fail_closed",
+  "remote_mutation_allowed": false,
+  "domains": [
+    {
+      "domain": "release.version",
+      "description": "Canonical package and release version.",
+      "authority": {
+        "kind": "repository_file",
+        "path": "VERSION",
+        "selector": "trimmed_text"
+      },
+      "projections": [
+        {
+          "path": "pyproject.toml",
+          "type": "toml_project_version",
+          "expected_from": "authority_text",
+          "normalizer": "strip_v"
+        },
+        {
+          "path": "promptbranch_version.py",
+          "type": "python_constant",
+          "constant": "PACKAGE_VERSION",
+          "expected_from": "authority_text",
+          "normalizer": "strip_v"
+        }
+      ],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
+      "domain": "project.stable_policy",
+      "description": "Stable project principles, authority policy, and mutation boundaries.",
+      "authority": {
+        "kind": "repository_file",
+        "path": "PROJECT_SETTINGS.md",
+        "selector": "document"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
+      "domain": "agent.operating_instructions",
+      "description": "Repository-specific operating instructions for coding and orchestration agents.",
+      "authority": {
+        "kind": "repository_file",
+        "path": "AGENTS.md",
+        "selector": "document"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
+      "domain": "project.plan_state",
+      "description": "Mutable accepted/current, active candidate, slice horizon, and release-mode state.",
+      "authority": {
+        "kind": "repository_file",
+        "path": "docs/project/plan-state.json",
+        "selector": "json_object"
+      },
+      "projections": [
+        {
+          "path": "docs/project/status.md",
+          "type": "markdown_json_tokens",
+          "fields": [
+            "accepted_current_version",
+            "accepted_current_artifact",
+            "active_candidate_version",
+            "active_candidate_artifact",
+            "next_normal_version",
+            "next_normal_slice",
+            "next_planned_version_after_acceptance"
+          ]
+        },
+        {
+          "path": "docs/project/plan.md",
+          "type": "markdown_json_tokens",
+          "fields": [
+            "accepted_current_version",
+            "accepted_current_artifact",
+            "active_candidate_version",
+            "active_candidate_artifact",
+            "next_normal_version",
+            "next_normal_slice",
+            "next_planned_version_after_acceptance"
+          ]
+        },
+        {
+          "path": "docs/project/release-status.md",
+          "type": "markdown_json_tokens",
+          "fields": [
+            "accepted_current_version",
+            "accepted_current_artifact",
+            "active_candidate_version",
+            "active_candidate_artifact",
+            "next_normal_version",
+            "next_normal_slice",
+            "next_planned_version_after_acceptance"
+          ]
+        }
+      ],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
+      "domain": "release.configuration",
+      "description": "Artifact naming, install preservation, release hooks, and release lifecycle settings.",
+      "authority": {
+        "kind": "repository_file",
+        "path": ".promptbranch-release.yml",
+        "selector": "yaml_document"
+      },
+      "projections": [
+        {
+          "path": ".promptbranch-release.yml",
+          "type": "literal_contains",
+          "expected_from": "literal",
+          "expected": null,
+          "tokens": [
+            "version_file: VERSION",
+            "prefix: chatgpt_claudecode_workflow-2_",
+            "suffix: .zip"
+          ]
+        }
+      ],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
+      "domain": "repository.project_identity",
+      "description": "Joined runtime relationship between this repository and a ChatGPT Project.",
+      "authority": {
+        "kind": "runtime_file",
+        "path": ".promptbranch-repo.json",
+        "selector": "json_object"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "deferred_until_runtime",
+      "required_for_runtime_validation": true
+    },
+    {
+      "domain": "artifact.adopted_identity",
+      "description": "Evidence-bound adopted artifact and exact assigned Project Source identity.",
+      "authority": {
+        "kind": "runtime_registry",
+        "selector": "current_adopted_record",
+        "resolver": "project_registry_file(project_id)",
+        "location_contract": "user_state/promptbranch/projects/<project_id>/promptbranch_artifacts.json"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "deferred_until_runtime",
+      "required_for_runtime_validation": true
+    },
+    {
+      "domain": "chatgpt.project_settings",
+      "description": "Remote ChatGPT Project Settings as externally owned observed state.",
+      "authority": {
+        "kind": "external_observation",
+        "system": "ChatGPT",
+        "surface": "Project Settings"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "report_unresolved",
+      "required_for_runtime_validation": false,
+      "observation_policy": "read_only",
+      "mutation_allowed": false
+    },
+    {
+      "domain": "project.authority_graph",
+      "description": "Fact-domain ownership declarations and validation rules.",
+      "authority": {
+        "kind": "repository_file",
+        "path": "docs/project/project-authority-graph-v0.1.109.json",
+        "selector": "json_object"
+      },
+      "projections": [],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    }
+  ]
+}

@@ -3,15 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
-accepted/current version: v0.1.107
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+accepted/current version: v0.1.108.1
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
-last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-active candidate version: v0.1.108.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.zip
+active candidate version: v0.1.109
+next normal target: chatgpt_claudecode_workflow-2_v0.1.109.zip
+next normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
 ```
 
 ## Current MVP state
@@ -19,58 +19,54 @@ next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md
 ```text
 MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
-DoD status: repair_in_progress
-last accepted/current slice: v0.1.107 — Controlled correction execution envelope design
-active plan slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-repair mode: true
-scope advance allowed: false
+DoD status: candidate
+last accepted/current slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+active plan slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+repair mode: false
+scope advance allowed: true
 ```
 
 ## Current release state
 
 ```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.107.zip
-failed normal candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
-latest repair candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-release status: v0.1.108 failed strict validation in full_direct and full_localhost and was not adopted. v0.1.108.1 is the narrow Project Source reliability repair.
+latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.109.zip
+release status: v0.1.108.1 passed the retry release run 10/10 and was adopted/current. v0.1.109 is a local candidate with 279 focused/relevant deterministic tests green; full release validation remains pending.
 plan authority file: docs/project/plan-state.json
-roadmap document: docs/project/promptbranch-plan-v0.1.108.1.md
-repair evidence record: docs/project/project-source-staged-overwrite-removal-proof-reliability-v0.1.108.1.json
-focused live profile: pb test project-source-file-reliability
+stable policy authority: PROJECT_SETTINGS.md
+agent instruction authority: AGENTS.md
+authority graph: docs/project/project-authority-graph-v0.1.109.json
 control-surface validator: pb project validate-control-surface --json
+authority validator: pb project authority validate --json
 next-slice authority command: pb project next-slice --json
 ```
 
 ## Current risks
 
-- A staged replacement must never cause deletion of the old source before the new assigned filename and both backing identities are verified.
-- A failed upload interaction must not be retried after any commit, processing stream, or backing identity exists.
-- A successful Delete click is not disappearance proof; only a refreshed authoritative surface with two stable observations can return `verified_absent`.
-- The focused reliability profile is development preflight evidence only and cannot replace full release validation.
+- A local policy or instruction file can accidentally duplicate mutable release facts and become a competing owner.
+- Runtime identity and adopted-artifact registries may be unavailable in clean package validation and must be reported as deferred rather than silently inferred.
+- External ChatGPT Project Settings remain read-only observations; this slice must not mutate them.
 
 ## Current blockers
 
-- Focused direct and localhost live reliability profiles remain pending for v0.1.108.1.
-- Strict full_direct and full_localhost release gates must both pass before adoption.
-- v0.1.109 implementation remains blocked until this repair is accepted/current.
+- Deterministic authority and control-surface tests must pass.
+- Full direct and full localhost release validation remain required before adoption.
 
 ## Current unknowns
 
-- Whether the current ChatGPT upload surface will complete the one bounded retry after a zero-identity failed request transaction.
-- Whether refreshed source-surface observations provide stable `verified_absent` proof in both transports.
+- Whether later runtime snapshot work should require external Project Settings observations for every release or only for settings-sensitive operations.
 
 ## Next safe action
 
 ```text
-Run deterministic repair tests, then run `pb test project-source-file-reliability` against direct and localhost using separate disposable projects. Only after both focused profiles pass, run strict v0.1.108.1 release validation requiring full_direct and full_localhost. Do not begin v0.1.109.
+Validate the static authority graph and projections, run focused deterministic tests, package v0.1.109, then run the full release-control gate. Do not mutate remote ChatGPT Project Settings or auto-repair drift.
 ```
 
 ## Last updated
 
 ```text
-v0.1.108.1 Project Source staged-overwrite and removal-proof reliability repair candidate build
+v0.1.109 authority-graph definition candidate build
 ```
-
 ## v0.1.102 candidate status
 
 `v0.1.102` is the next normal slice after accepted/current `v0.1.101`. It generates bounded, proposal-only correction-plan evidence from `v0.1.101` diagnosis results while performing no file mutation, retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.

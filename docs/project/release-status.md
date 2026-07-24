@@ -3,16 +3,15 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
-accepted/current version: v0.1.107
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+accepted/current version: v0.1.108.1
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
-last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-failed normal candidate: chatgpt_claudecode_workflow-2_v0.1.108.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-active candidate version: v0.1.108.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.zip
+active candidate version: v0.1.109
+next normal target: chatgpt_claudecode_workflow-2_v0.1.109.zip
+next normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
 ```
 
 ## ZIP status values
@@ -29,18 +28,25 @@ superseded
 repair_required
 ```
 
-## Current repair result
+## Current authority result
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
-| v0.1.108 | normal | Controlled correction execution envelope validation gate | repair_required | 8/10 strict gates; full_direct staged overwrite and full_localhost removal proof failed; adoption refused | superseded only by accepted v0.1.108.1 repair |
-| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | candidate | deterministic focused tests green; focused live direct/localhost and full release validation pending | require focused direct+localhost, then full_direct+full_localhost, Artifact Guardian, and evidence-bound adoption |
-| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | planned | not started | begin only after v0.1.108.1 is accepted/current |
+| v0.1.108 | normal | Controlled correction execution envelope validation gate | repair_required | superseded by the accepted reliability repair | remains historical repair origin |
+| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted_current | focused reliability passed; retry release validation 10/10; release_adopted_and_verified | accepted baseline |
+| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | require authority_consistent, full_direct, full_localhost, Artifact Guardian, and evidence-bound adoption |
+| v0.1.110 | normal | Authority-backed project snapshot and drift report | planned | not started | begin only after v0.1.109 is accepted/current |
+
+## Release evidence table
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted/current | retry validation 10/10 and release_adopted_and_verified | DOD-297 completed | recorded in adopted registry evidence |
+| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | DOD-298 through DOD-301 candidate evidence | pending |
 
 ## Status rule
 
-A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, state artifact, state source, registry current, and consistency alignment.
-
+A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, state artifact, exact assigned source, registry current, and consistency alignment.
 | v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | repair_required | release-control passed validation groups but failed live browser source remove under 120s source-mutation wait | DOD-029 done; DOD-030 required | pending |
 
 | v0.1.74.3 | repair | Full integration source-mutation wait alignment | accepted_current | operator-pinned baseline for v0.1.75 rebase; full adoption JSON not present in this package build context | DOD-030 done; baseline advanced by operator instruction | pending |

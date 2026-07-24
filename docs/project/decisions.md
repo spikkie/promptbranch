@@ -1034,3 +1034,13 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Removal rule:** a delete interaction is not success evidence. The refreshed authoritative Project Sources surface must classify the target as `verified_absent`, `still_present`, or `surface_unresolved`; only two stable absent observations pass.
 - **Scope rule:** the repair does not redesign the v0.1.108 execution-envelope validator and does not begin `v0.1.109`.
 - **Promotion:** focused direct and localhost reliability profiles must pass before full release validation; adoption still requires green `full_direct` and `full_localhost` plus all existing gates.
+
+## ADR-PROJ-108 — v0.1.109 assigns one owner per fact domain without precedence
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.108.1` is accepted/current after focused reliability validation and a 10/10 retry release run ending in `release_adopted_and_verified`.
+- **Decision:** every declared project fact domain has exactly one authority owner. Other representations are projections, runtime observations, or evidence.
+- **Conflict rule:** missing authority, duplicate ownership, forbidden fallback/precedence rules, and projection drift fail closed.
+- **Runtime rule:** `.promptbranch-repo.json` and the project artifact registry remain runtime authorities and are reported as deferred in clean static package validation; they are not inferred from repository prose.
+- **External rule:** ChatGPT Project Settings are externally owned read-only observations. This slice performs no remote settings mutation.
+- **Next:** `v0.1.110` may derive a structured read-only project snapshot from the accepted graph; it may not auto-repair drift without a later explicit authority grant.

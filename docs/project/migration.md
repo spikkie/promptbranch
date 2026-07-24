@@ -1197,3 +1197,9 @@ The historical conversational use of `v0.1.108` for `PROJECT_SETTINGS.md` work i
 `v0.1.108` is not an accepted/current baseline and requires no compatibility migration. Build `v0.1.108.1` from the v0.1.108 candidate implementation while preserving accepted/current `v0.1.107` authority.
 
 The repair introduces structured upload-request failure diagnostics, one invariant-bounded staged-upload retry, and authoritative three-state removal proof. Existing state is not silently upgraded: unresolved or contradictory Project Source evidence fails closed. `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` remains planned and unimplemented until this repair is adopted.
+
+## v0.1.109 authority migration
+
+`v0.1.108.1` is the accepted/current baseline. `v0.1.109` does not migrate runtime identity or artifact registries and does not rewrite remote ChatGPT Project Settings. It introduces explicit owners for stable policy, agent instructions, release version, plan state, release configuration, runtime project identity, adopted artifact identity, and external settings observations.
+
+Existing human-readable plan/status/release documents remain preserved as projections. Any disagreement with their declared owner is reported as projection drift; no last-write-wins or automatic migration fallback is added. `v0.1.110 — Authority-backed project snapshot and drift report` remains planned and unimplemented.

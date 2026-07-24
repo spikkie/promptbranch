@@ -193,6 +193,10 @@ from promptbranch_project import (
     write_repo_identity,
 )
 from promptbranch_project_control import build_project_next_slice_payload, validate_project_control_surface
+from promptbranch_project_authority import (
+    build_project_authority_show_payload,
+    validate_project_authority_graph,
+)
 
 class ProjectRegistryResolutionError(RuntimeError):
     def __init__(self, payload: dict[str, Any]) -> None:
@@ -18567,6 +18571,29 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 for error in payload.get("errors") or []:
                     print(f"error={error}")
         return 0 if payload.get("ok") else 2
+    if args.project_command == "authority":
+        repo_path = getattr(args, "repo_path", ".") or "."
+        if args.project_authority_command == "show":
+            payload = build_project_authority_show_payload(repo_path)
+        elif args.project_authority_command == "validate":
+            payload = validate_project_authority_graph(
+                repo_path,
+                include_runtime=bool(getattr(args, "include_runtime", False)),
+            )
+        else:
+            raise RuntimeError(f"Unknown project authority command: {args.project_authority_command}")
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"graph_path={payload.get('graph_path') or ''}")
+            print(f"domain_count={payload.get('domain_count') if payload.get('domain_count') is not None else ''}")
+            print(f"mutation_performed={str(bool(payload.get('mutation_performed'))).lower()}")
+            for error in payload.get("errors") or []:
+                print(f"error={error}")
+            for warning in payload.get("warnings") or []:
+                print(f"warning={warning}")
+        return 0 if payload.get("ok") else 2
     raise RuntimeError(f"Unknown project command: {args.project_command}")
 
 
@@ -24757,6 +24784,15 @@ def make_parser() -> argparse.ArgumentParser:
     project_next_slice = project_subparsers.add_parser("next-slice", help="Show the next slice derived from the validated project control surface.")
     project_next_slice.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     project_next_slice.add_argument("--json", action="store_true")
+    project_authority = project_subparsers.add_parser("authority", help="Inspect or validate the project authority graph without mutation.")
+    project_authority_subparsers = project_authority.add_subparsers(dest="project_authority_command", required=True)
+    project_authority_show = project_authority_subparsers.add_parser("show", help="Show declared fact-domain owners and projections.")
+    project_authority_show.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    project_authority_show.add_argument("--json", action="store_true")
+    project_authority_validate = project_authority_subparsers.add_parser("validate", help="Validate authority ownership and projections in read-only mode.")
+    project_authority_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
+    project_authority_validate.add_argument("--include-runtime", action="store_true", help="Require runtime identity and registry authority in addition to static repository authority.")
+    project_authority_validate.add_argument("--json", action="store_true")
 
     repo = subparsers.add_parser("repo", help="Project-scoped repo inventory and diagnostics.")
     repo_subparsers = repo.add_subparsers(dest="repo_command", required=True)

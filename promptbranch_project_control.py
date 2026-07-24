@@ -8,6 +8,9 @@ from typing import Any
 VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 PLAN_STATE_REL = Path("docs/project/plan-state.json")
 REQUIRED_DOCS = (
+    Path("PROJECT_SETTINGS.md"),
+    Path("AGENTS.md"),
+    Path("docs/project/project-authority-graph-v0.1.109.json"),
     Path("docs/project/mvp.md"),
     Path("docs/project/definition-of-done.md"),
     Path("docs/project/plan.md"),
@@ -276,8 +279,8 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action", planned_after_version],
         "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version, "Rolling horizon authority"],
         "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version],
-        "docs/project/definition-of-done.md": ["DOD-133", "DOD-135", "project next-slice", "read-only validation command"],
-        "docs/project/decisions.md": ["ADR-PROJ-101", next_normal_version, planned_after_version],
+        "docs/project/definition-of-done.md": ["DOD-298", "DOD-300", "project next-slice", "read-only validation command"],
+        "docs/project/decisions.md": ["ADR-PROJ-108", next_normal_version, planned_after_version],
         "docs/project/migration.md": [next_normal_version, planned_after_version],
         "docs/project/architecture.md": ["controlled problem-solving loop", "Fixed architecture invariants", "Repair releases must not advance scope"],
         "docs/project/slice-horizon.md": horizon_versions + ["Repair horizon rule"],

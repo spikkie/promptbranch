@@ -3,40 +3,39 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.107.zip
-accepted/current version: v0.1.107
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
+accepted/current version: v0.1.108.1
 last completed normal slice: v0.1.107 — Controlled correction execution envelope design
-last completed repair: v0.1.105.1 — target-anchored promotion-readiness repository resolution
-active candidate: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-active candidate version: v0.1.108.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-next normal slice: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-next planned slice after acceptance: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.zip
+active candidate version: v0.1.109
+next normal target: chatgpt_claudecode_workflow-2_v0.1.109.zip
+next normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
 ```
 
 ## Plan summary
 
-`v0.1.108` implemented the validation-only execution-envelope gate but failed strict release validation in the Project Source file lifecycle. `v0.1.108.1` repairs only staged overwrite initiation/diagnostics/retry and authoritative removal proof. It does not alter the validated execution-envelope scope and does not begin v0.1.109.
+`v0.1.108.1` is accepted/current. `v0.1.109` defines stable project policy, repository agent instructions, and one machine-readable authority graph. It adds read-only show/validate commands that reject missing or duplicate ownership and projection drift without mutating repository, registry, Project Source, Project Settings, deployment, or Kubernetes state.
 
-## Active repair slice — v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
+## Active normal slice — v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 
 Acceptance scope:
 
-- Prove that staged file selection initiated a backend upload transaction.
-- Preserve redacted failed-request URL, method, status/error, and transaction evidence when no commit occurs.
-- Permit exactly one retry only when no commit, processing stream, or backing identity exists and the original source remains verified.
-- Preserve the original source until the replacement assigned filename, processed-file ID, and Library metadata ID are verified.
-- Refresh the authoritative Project Sources surface after deletion and classify proof as `verified_absent`, `still_present`, or `surface_unresolved`.
-- Require two stable authoritative observations before returning `verified_absent`.
-- Add deterministic regressions and `pb test project-source-file-reliability` with independent overwrite and removal scenarios.
-- Require green focused direct/localhost profiles before the full release suite; adoption still requires full_direct and full_localhost.
+- Add `PROJECT_SETTINGS.md` for stable project policy only.
+- Add `AGENTS.md` for repository agent operating instructions without pinned mutable release values.
+- Assign exactly one owner to each declared fact domain in `docs/project/project-authority-graph-v0.1.109.json`.
+- Cover release version, stable policy, agent instructions, plan state, release configuration, runtime project identity, adopted artifact identity, and external ChatGPT Project Settings.
+- Add `pb project authority show` and `pb project authority validate` in read-only mode.
+- Detect missing authority, ambiguous ownership, projection drift, and unresolved runtime/external observations.
+- Add deterministic zero-mutation and drift regression tests.
+- Require full direct and full localhost release validation before adoption.
 
-Out of scope: execution-envelope redesign, correction execution, broader browser lifecycle redesign, Project deletion, generic write authority, deployment, Kubernetes mutation, remote Project Settings mutation, and any v0.1.109 implementation.
+Out of scope: remote settings mutation, automatic drift repair, Project Source mutation, registry mutation, artifact adoption from validation, Project deletion, generic precedence chains, deployment, and Kubernetes mutation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.108` is `repair_required`; `v0.1.108.1` is the sole active repair; `v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition` remains the sole planned-after-acceptance normal slice.
-
+`docs/project/plan-state.json` is authoritative. `v0.1.108.1` is completed and accepted/current; `v0.1.109` is the sole active normal slice; `v0.1.110 — Authority-backed project snapshot and drift report` is the sole planned-after-acceptance slice.
 ## Release / slice plan
 
 | Version | Slice | Goal | Scope | Out of scope | Expected validation | Status |

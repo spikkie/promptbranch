@@ -29,6 +29,10 @@ required_entries:
   - "docs/project/release-status.md"
   - "docs/project/decisions.md"
   - "docs/project/migration.md"
+  - "PROJECT_SETTINGS.md"
+  - "AGENTS.md"
+  - "docs/project/project-authority-graph-v0.1.109.json"
+  - "promptbranch_project_authority.py"
 
 forbidden_entries:
   - ".git/"
