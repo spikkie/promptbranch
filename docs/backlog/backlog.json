@@ -1,0 +1,31 @@
+{
+  "schema": "promptbranch.backlog",
+  "schema_version": "1.0",
+  "repo_id": "chatgpt_claudecode_workflow-2",
+  "architectural_invariant": "Promptbranch controls the release lifecycle. Each project defines what must be validated and how its artifact is built.",
+  "tickets": [
+    {
+      "id": "ISSUE-001",
+      "external_ref": "#1",
+      "title": "Add a global release lifecycle engine with repository-specific lifecycle contracts",
+      "status": "open",
+      "priority": 1,
+      "owner": "Promptbranch",
+      "path": "docs/backlog/ISSUE-001-global-release-lifecycle-engine.md",
+      "implementation_order": 1
+    },
+    {
+      "id": "PBAI-001",
+      "external_ref": null,
+      "title": "Validate full AI application architecture in Promptbranch and PB modules",
+      "status": "open",
+      "priority": 2,
+      "owner": "Promptbranch",
+      "path": "docs/backlog/PBAI-001-full-ai-application-architecture.md",
+      "implementation_order": 2,
+      "depends_on": [
+        "ISSUE-001"
+      ]
+    }
+  ]
+}

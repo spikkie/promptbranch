@@ -1,36 +1,35 @@
 # Release Status
 
-<!-- v0.1.109.1.1 current control-surface header -->
-- Accepted/current version: `v0.1.109`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
-- Active candidate version: `v0.1.109.1.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Next normal version: `v0.1.109.1`
-- Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
-- Next planned version after acceptance: `v0.1.110`
-- Next planned slice after acceptance: `v0.1.110 — controlled correction execution envelope validation gate`
+<!-- v0.1.110 current control-surface header -->
+- Accepted/current version: `v0.1.109.1.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
+- Active candidate version: `v0.1.110`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.110.zip`
+- Next normal version: `v0.1.110`
+- Next normal slice: `v0.1.110 — Tracked backlog and architecture ticket intake`
+- Next planned version after acceptance: `v0.1.111`
+- Next planned slice after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
 
-## v0.1.109.1.1 repair candidate
+## v0.1.110 candidate
 
-- Accepted/current: `v0.1.109` / `chatgpt_claudecode_workflow-2_v0.1.109.zip`
-- Failed candidate: `v0.1.109.1` / both full transports failed the same authority-classification test; adoption was refused.
-- Active candidate: `v0.1.109.1.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Normal scope retained: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
-- Planned after acceptance: `v0.1.110 — Authority-backed project snapshot and drift report`
-- Repair: track `.promptbranch-repo.json`, recreate local membership from it, reject mismatches, and keep adoption evidence runtime-only.
+- Accepted/current: `v0.1.109.1.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
+- Active candidate: `v0.1.110` / `chatgpt_claudecode_workflow-2_v0.1.110.zip`
+- Scope: establish a strict tracked backlog and add `ISSUE-001` plus `PBAI-001`.
+- Not implemented: global lifecycle runtime, `.promptbranch-release.json`, PBAI runtime validators, publication, or adoption behaviour.
+- Planned after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-accepted/current version: v0.1.108.1
-last completed normal slice: v0.1.107 — Controlled correction execution envelope design
-last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-active candidate: chatgpt_claudecode_workflow-2_v0.1.109.zip
-active candidate version: v0.1.109
-next normal target: chatgpt_claudecode_workflow-2_v0.1.109.zip
-next normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
+accepted/current version: v0.1.109.1.1
+last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.110.zip
+active candidate version: v0.1.110
+next normal target: chatgpt_claudecode_workflow-2_v0.1.110.zip
+next normal slice: v0.1.110 — Tracked backlog and architecture ticket intake
+next planned slice after acceptance: v0.1.111 — Global release lifecycle contract and read-only planner
 ```
 
 ## ZIP status values

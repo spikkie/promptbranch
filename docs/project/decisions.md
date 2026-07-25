@@ -1059,3 +1059,15 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Recovery rule:** accidental deletion is recoverable from Git or the canonical release ZIP.
 - **Import rule:** candidate ZIP import installs the tracked binding and must not preserve a stale checkout-local copy.
 - **Migration:** other projects follow `docs/migrations/tracked-project-binding-v0.1.109.1.1.md`; there is no silent missing-binding compatibility fallback.
+
+
+## ADR-PROJ-110 — Establish the tracked backlog before implementing ISSUE-001 and PBAI-001
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.109.1.1` is accepted/current after 10/10 validation and `release_adopted_and_verified`.
+- **Decision:** `v0.1.110` creates `docs/backlog/backlog.json` as the machine-readable backlog authority and records exactly two open tickets: `ISSUE-001` followed by `PBAI-001`.
+- **Priority:** ISSUE-001 is implemented first. PBAI-001 depends on ISSUE-001 lifecycle evidence integration.
+- **Invariant:** Promptbranch controls the release lifecycle. Each project defines what must be validated and how its artifact is built.
+- **Classification:** historical DoD rows, failed candidates, repair history, and rolling-horizon slices are not backlog tickets unless explicitly entered in the backlog authority.
+- **Scope boundary:** `v0.1.110` adds tickets and validation only; it does not implement `.promptbranch-release.json`, lifecycle execution/publication/adoption, or PBAI runtime validators.
+- **Next:** `v0.1.111 — Global release lifecycle contract and read-only planner`.

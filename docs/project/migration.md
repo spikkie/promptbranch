@@ -1211,3 +1211,8 @@ The repair introduces structured upload-request failure diagnostics, one invaria
 `v0.1.108.1` is the accepted/current baseline. `v0.1.109` does not migrate runtime identity or artifact registries and does not rewrite remote ChatGPT Project Settings. It introduces explicit owners for stable policy, agent instructions, release version, plan state, release configuration, runtime project identity, adopted artifact identity, and external settings observations.
 
 Existing human-readable plan/status/release documents remain preserved as projections. Any disagreement with their declared owner is reported as projection drift; no last-write-wins or automatic migration fallback is added. `v0.1.110 — Authority-backed project snapshot and drift report` remains planned and unimplemented.
+
+
+## Backlog migration — v0.1.110
+
+`v0.1.110` introduces `docs/backlog/backlog.json` and `docs/backlog/README.md` as the formal Promptbranch backlog. Existing release-plan rows, historical candidates, repair records, and DoD items remain in their current authorities and are not silently migrated into tickets. The first planned implementation slice is `v0.1.111 — Global release lifecycle contract and read-only planner`.

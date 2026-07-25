@@ -802,3 +802,11 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-304 | Behavioral-surface validation fails closed on duplicate IDs, missing owners, unknown skill tools, blocked-tool exposure, tool registry drift, embedded-skill drift, and incomplete prompt contracts while performing zero writes | focused_candidate | `tests/test_behavioral_surface.py`, `pb project behavioral-surface validate` | v0.1.109.1 |
 | DOD-305 | The behavioral registry is an explicit project authority domain with a human-readable projection and is included in mandatory full release-validation groups | focused_candidate | `docs/project/project-authority-graph-v0.1.109.json`, `docs/project/behavioral-surface.md`, `promptbranch_test_suite.py` | v0.1.109.1 |
 
+
+
+## v0.1.110
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-306 | A tracked machine-readable Promptbranch backlog exists with unique IDs, explicit status, priority, implementation order, dependencies, and repository-relative ticket paths | focused_candidate | `docs/backlog/backlog.json`, `tests/test_backlog_contract.py`, project control-surface validation | v0.1.110 |
+| DOD-307 | ISSUE-001 and PBAI-001 are preserved as complete open tickets and are distinguished from release-horizon and historical DoD records | focused_candidate | `docs/backlog/README.md`, both ticket Markdown files | v0.1.110 |

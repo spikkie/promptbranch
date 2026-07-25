@@ -1,54 +1,49 @@
 # Project Plan
 
-<!-- v0.1.109.1.1 current control-surface header -->
-- Accepted/current version: `v0.1.109`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
-- Active candidate version: `v0.1.109.1.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Next normal version: `v0.1.109.1`
-- Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
-- Next planned version after acceptance: `v0.1.110`
-- Next planned slice after acceptance: `v0.1.110 — controlled correction execution envelope validation gate`
+<!-- v0.1.110 current control-surface header -->
+- Accepted/current version: `v0.1.109.1.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
+- Active candidate version: `v0.1.110`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.110.zip`
+- Next normal version: `v0.1.110`
+- Next normal slice: `v0.1.110 — Tracked backlog and architecture ticket intake`
+- Next planned version after acceptance: `v0.1.111`
+- Next planned slice after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.zip
-accepted/current version: v0.1.109
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
+accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-active candidate version: v0.1.109.1.1
-next normal target: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
-next normal slice: v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
-next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
+last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
+active candidate: chatgpt_claudecode_workflow-2_v0.1.110.zip
+active candidate version: v0.1.110
+next normal target: chatgpt_claudecode_workflow-2_v0.1.110.zip
+next normal slice: v0.1.110 — Tracked backlog and architecture ticket intake
+next planned slice after acceptance: v0.1.111 — Global release lifecycle contract and read-only planner
 ```
+
 ## Plan summary
 
-`v0.1.109` is accepted/current. `v0.1.109.1` makes Promptbranch behavior reviewable by assigning stable identities and owners to instructions, skills/agents, tools, and prompts. It also repairs the post-adoption runtime authority false negative by resolving `project_registry_file(project_id)` through `.promptbranch-repo.json` and the authoritative project registry.
+`v0.1.109.1.1` is accepted/current after 10/10 release validation and `release_adopted_and_verified`. `v0.1.110` establishes one tracked Promptbranch backlog and adds the two requested open tickets without implementing their runtime functionality.
 
-## Active repair — v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-
-The `v0.1.109.1` behavioral inventory remains the active normal scope but its candidate was not adopted. This repair tracks `.promptbranch-repo.json` in Git and release ZIPs, derives user-local membership from it, rejects mismatched join arguments, and keeps artifact/source adoption evidence runtime-only. See `docs/migrations/tracked-project-binding-v0.1.109.1.1.md`.
-
-## Active normal slice — v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
+## Active normal slice — v0.1.110 — Tracked backlog and architecture ticket intake
 
 Acceptance scope:
 
-- Add one machine-readable behavioral surface registry and one human-readable review report.
-- Inventory project and agent instructions, operator-instruction families, skills, agents, MCP tools, blocked tool intents, and executable prompts.
-- Add stable IDs, owner paths/symbols, consumers, execution boundaries, risks, mutation authority, tests, and prompt contracts.
-- Validate skill-to-tool references and file-backed versus embedded skill projections.
-- Validate MCP manifest, aliases, input schemas, controlled-process tools, and blocked write intents.
-- Add `pb project behavioral-surface show` and `validate` as read-only commands.
-- Resolve runtime artifact authority through `project_registry_file(project_id)` and prove `--include-runtime` succeeds against an adopted project registry.
-- Require full direct and independent full localhost release validation before adoption.
+- Add `docs/backlog/backlog.json` as the machine-readable backlog authority.
+- Add `docs/backlog/README.md` as its human-readable projection.
+- Add `ISSUE-001` for the global release lifecycle engine and repository-specific lifecycle contracts.
+- Add `PBAI-001` for full AI application architecture validation.
+- Validate unique IDs, open status, deterministic implementation order, dependencies, and referenced ticket files.
+- Record that formal open tickets are distinct from historical DoD rows and rolling-horizon release slices.
 
-Out of scope: prompt rewrites for style, new tools, expanded mutation authority, automatic drift repair, remote Project Settings mutation, Project Source mutation by validation, artifact adoption by validation, deployment, and Kubernetes mutation.
+Out of scope: implementing `.promptbranch-release.json`, executing the global lifecycle engine, implementing PBAI executable/operational validation, Project Source publication, artifact adoption, Git commit/push, deployment, and automatic mutation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.109` is completed and accepted/current; `v0.1.109.1` is the sole active normal slice; `v0.1.110 — Authority-backed project snapshot and drift report` is the sole planned-after-acceptance slice.
+`docs/project/plan-state.json` is authoritative. `v0.1.109.1.1` is completed and accepted/current; `v0.1.110` is the sole active normal slice; `v0.1.111 — Global release lifecycle contract and read-only planner` is the sole planned-after-acceptance slice. The earlier authority-backed snapshot proposal is deferred behind the two explicitly prioritised backlog tickets.
 
 ## Release / slice plan
 

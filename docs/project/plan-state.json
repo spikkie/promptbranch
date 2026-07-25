@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.zip",
-  "accepted_current_version": "v0.1.109",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
-  "active_candidate_version": "v0.1.109.1.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
+  "accepted_current_version": "v0.1.109.1.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.110.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.110.zip",
+  "active_candidate_version": "v0.1.110",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation",
+  "active_slice": "v0.1.110 — Tracked backlog and architecture ticket intake",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -266,8 +266,17 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
       "created_at": "2026-07-25T22:30:00+02:00",
       "slice": "v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation",
+      "status": "accepted_current",
+      "version": "v0.1.109.1.1",
+      "validation": "10/10 GO and release_adopted_and_verified."
+    },
+    {
+      "version": "v0.1.110",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.110.zip",
+      "slice": "v0.1.110 — Tracked backlog and architecture ticket intake",
       "status": "candidate",
-      "version": "v0.1.109.1.1"
+      "created_at": "2026-07-25T18:00:00+02:00",
+      "validation": "Tracked backlog contract and focused validation pending."
     }
   ],
   "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.109.zip",
@@ -631,13 +640,13 @@
   "last_completed_normal_slice": "v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
   "last_completed_normal_slice_version": "v0.1.109",
   "last_completed_repair": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
-  "last_completed_repair_version": "v0.1.108.1",
+  "last_completed_repair_version": "v0.1.109.1.1",
   "last_updated": "2026-07-25T06:45:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
-  "next_normal_slice": "v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment",
-  "next_normal_version": "v0.1.109.1",
-  "next_planned_slice_after_acceptance": "Authority-backed project snapshot and drift report",
-  "next_planned_version_after_acceptance": "v0.1.110",
+  "next_normal_slice": "v0.1.110 — Tracked backlog and architecture ticket intake",
+  "next_normal_version": "v0.1.110",
+  "next_planned_slice_after_acceptance": "v0.1.111 — Global release lifecycle contract and read-only planner",
+  "next_planned_version_after_acceptance": "v0.1.111",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -645,7 +654,10 @@
     "artifact adoption from authority validation",
     "ChatGPT Project deletion",
     "repository, deployment, or Kubernetes mutation from authority validation",
-    "generic precedence chains, timestamp arbitration, or last-write-wins behavior"
+    "generic precedence chains, timestamp arbitration, or last-write-wins behavior",
+    "global release lifecycle runtime implementation in v0.1.110",
+    "PBAI executable or operational validation implementation in v0.1.110",
+    "automatic Git commit, push, Project Source publication, or artifact adoption from backlog validation"
   ],
   "release_history": [
     {
@@ -1189,7 +1201,7 @@
       "summary": "Defines stable project policy, agent instructions, a machine-readable authority graph, and read-only authority validation with fail-closed drift detection."
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -1407,9 +1419,10 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "accepted_current",
       "version": "v0.1.109.1.1",
-      "summary": "Tracks the stable repository-to-Project binding in Git and release ZIPs, derives user-local membership from it, rejects mismatched join arguments, keeps artifact evidence runtime-only, and adds migration and recovery tests."
+      "summary": "Tracks the stable repository-to-Project binding in Git and release ZIPs, derives user-local membership from it, rejects mismatched join arguments, keeps artifact evidence runtime-only, and adds migration and recovery tests.",
+      "validation": "Strict release validation passed 10/10 with full_direct, independent full_localhost, external-live, visual artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1436,24 +1449,19 @@
     "docs/project/plan-state.json",
     "docs/project/architecture.md",
     "docs/project/slice-horizon.md",
-    "docs/migrations/tracked-project-binding-v0.1.109.1.1.md"
+    "docs/migrations/tracked-project-binding-v0.1.109.1.1.md",
+    "docs/backlog/README.md",
+    "docs/backlog/backlog.json",
+    "docs/backlog/ISSUE-001-global-release-lifecycle-engine.md",
+    "docs/backlog/PBAI-001-full-ai-application-architecture.md"
   ],
   "rolling_slice_horizon": [
-    {
-      "version": "v0.1.108",
-      "slice": "v0.1.108 — Controlled correction execution envelope validation gate",
-      "status": "repair_required",
-      "release_mode": "normal",
-      "scope": "historical failed normal candidate; superseded by accepted reliability repair",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.zip"
-    },
     {
       "version": "v0.1.108.1",
       "slice": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
       "status": "completed",
       "release_mode": "repair",
-      "scope": "accepted/current reliability repair before v0.1.109",
+      "scope": "accepted reliability repair before v0.1.109",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.108.1.zip"
     },
@@ -1471,30 +1479,39 @@
       "slice": "v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment",
       "status": "repair_required",
       "release_mode": "normal",
-      "scope": "behavioral inventory implemented; release candidate failed authority classification and requires tracked-binding repair",
+      "scope": "behavioral inventory implemented; original candidate was not adopted",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip"
     },
     {
       "version": "v0.1.109.1.1",
       "slice": "v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation",
-      "status": "active",
+      "status": "completed",
       "release_mode": "repair",
-      "scope": "track stable Project binding in Git/ZIP, derive local membership, preserve runtime adoption evidence separation",
+      "scope": "accepted tracked Project binding and runtime evidence separation",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip"
     },
     {
       "version": "v0.1.110",
-      "slice": "Authority-backed project snapshot and drift report",
+      "slice": "v0.1.110 — Tracked backlog and architecture ticket intake",
+      "status": "active",
+      "release_mode": "normal",
+      "scope": "establish the tracked Promptbranch backlog, add ISSUE-001 and PBAI-001, and validate ticket references without implementing their runtime functionality",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.110.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.110.zip"
+    },
+    {
+      "version": "v0.1.111",
+      "slice": "v0.1.111 — Global release lifecycle contract and read-only planner",
       "status": "planned_after_acceptance",
       "release_mode": "normal",
-      "scope": "derive a structured read-only project snapshot from accepted authorities and behavioral surfaces; no automatic repair"
+      "scope": "implement phase one of ISSUE-001: strict tracked release contract and read-only lifecycle planning only"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1505,5 +1522,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.109.1.1"
+  "updated_for": "v0.1.110"
 }

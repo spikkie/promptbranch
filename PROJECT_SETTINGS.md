@@ -47,3 +47,7 @@ Before a release can be claimed complete:
 6. adopt only after all release gates pass and exact Project Source plus registry identity are verified.
 
 Human-readable status documents are projections. A projection disagreement is drift and must block completion until corrected deliberately.
+
+## Backlog authority
+
+The machine-readable project backlog is `docs/backlog/backlog.json`. Ticket prose is stored under `docs/backlog/`. Only the backlog authority may classify an item as an open ticket.

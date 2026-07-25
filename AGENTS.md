@@ -53,3 +53,7 @@ A completion claim must identify:
 - whether adoption, Project Source mutation, Git commit, or Git push occurred.
 
 Never claim work that evidence does not prove.
+
+## Backlog handling
+
+Read `docs/backlog/backlog.json` before implementing planned ticket work. Do not treat historical DoD entries or release-horizon slices as open tickets unless they are explicitly registered there. Follow `implementation_order` and declared dependencies.

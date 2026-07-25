@@ -23,6 +23,10 @@ REQUIRED_DOCS = (
     PLAN_STATE_REL,
     Path("docs/project/architecture.md"),
     Path("docs/project/slice-horizon.md"),
+    Path("docs/backlog/README.md"),
+    Path("docs/backlog/backlog.json"),
+    Path("docs/backlog/ISSUE-001-global-release-lifecycle-engine.md"),
+    Path("docs/backlog/PBAI-001-full-ai-application-architecture.md"),
 )
 REQUIRED_FIELDS = (
     "schema",
@@ -266,6 +270,41 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         value = state.get(list_field)
         if not isinstance(value, list) or len(value) < 4:
             errors.append(f"plan-state {list_field} must contain at least four entries")
+
+    backlog_path = root / "docs/backlog/backlog.json"
+    if backlog_path.is_file():
+        try:
+            backlog = json.loads(backlog_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"invalid docs/backlog/backlog.json: {exc}")
+        else:
+            if backlog.get("schema") != "promptbranch.backlog":
+                errors.append("backlog schema must be promptbranch.backlog")
+            if backlog.get("schema_version") != "1.0":
+                errors.append("backlog schema_version must be 1.0")
+            if backlog.get("repo_id") != state.get("repo_id"):
+                errors.append("backlog repo_id must match plan-state repo_id")
+            tickets = backlog.get("tickets")
+            if not isinstance(tickets, list) or not tickets:
+                errors.append("backlog tickets must be a non-empty list")
+            else:
+                ids = [str(ticket.get("id") or "") for ticket in tickets if isinstance(ticket, dict)]
+                if len(ids) != len(tickets) or any(not ticket_id for ticket_id in ids):
+                    errors.append("every backlog ticket must have a non-empty id")
+                if len(ids) != len(set(ids)):
+                    errors.append("backlog ticket ids must be unique")
+                if ids != ["ISSUE-001", "PBAI-001"]:
+                    errors.append("v0.1.110 backlog must contain ISSUE-001 then PBAI-001")
+                for ticket in tickets:
+                    if not isinstance(ticket, dict):
+                        continue
+                    if ticket.get("status") != "open":
+                        errors.append(f"backlog ticket {ticket.get('id')!r} must be open")
+                    rel_path = str(ticket.get("path") or "")
+                    if not rel_path or Path(rel_path).is_absolute() or ".." in Path(rel_path).parts:
+                        errors.append(f"backlog ticket {ticket.get('id')!r} has invalid path")
+                    elif not (root / rel_path).is_file():
+                        errors.append(f"backlog ticket {ticket.get('id')!r} path does not exist: {rel_path}")
 
     docs: dict[str, str] = {}
     for rel in ("docs/project/plan.md", "docs/project/status.md", "docs/project/release-status.md", "docs/project/definition-of-done.md", "docs/project/decisions.md", "docs/project/migration.md", "docs/project/architecture.md", "docs/project/slice-horizon.md"):
