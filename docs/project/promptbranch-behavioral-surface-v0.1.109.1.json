@@ -1,0 +1,861 @@
+{
+  "schema": "promptbranch.project.behavioral_surface",
+  "schema_version": "1.0",
+  "registry_version": "v0.1.109.1",
+  "repo_id": "chatgpt_claudecode_workflow-2",
+  "validation_mode": "read_only",
+  "remote_mutation_allowed": false,
+  "scope": {
+    "included": [
+      "authoritative project instructions",
+      "runtime and operator instruction families",
+      "skills and agents",
+      "MCP tools and blocked tool intents",
+      "runtime and release-validation prompts"
+    ],
+    "excluded": [
+      "historical prose that is not executed",
+      "third-party dependency internals",
+      "generated logs and artifacts"
+    ]
+  },
+  "entries": [
+    {
+      "id": "instruction.project.stable-policy",
+      "kind": "instruction",
+      "name": "Project stable operating policy",
+      "category": "project_policy",
+      "owner": {
+        "path": "PROJECT_SETTINGS.md",
+        "symbol": null,
+        "token": "## Authority model"
+      },
+      "consumer": "all_repository_agents",
+      "execution_boundary": "repository_control_surface",
+      "risk": "policy",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "instruction.agent.repository",
+      "kind": "instruction",
+      "name": "Repository agent instructions",
+      "category": "agent_instruction",
+      "owner": {
+        "path": "AGENTS.md",
+        "symbol": null,
+        "token": "## Fail-closed rules"
+      },
+      "consumer": "coding_and_orchestration_agents",
+      "execution_boundary": "repository_control_surface",
+      "risk": "policy",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "instruction.mcp.server-boundary",
+      "kind": "instruction",
+      "name": "MCP server capability instructions",
+      "category": "safety_boundary",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "handle_mcp_jsonrpc_message",
+        "token": "Promptbranch MCP exposes read-only repo/git/state/artifact tools by default."
+      },
+      "consumer": "mcp_hosts",
+      "execution_boundary": "mcp_initialize",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "instruction.loop.operator-contracts",
+      "kind": "instruction",
+      "name": "Loop operator instructions",
+      "category": "operator_instruction",
+      "owner": {
+        "path": "promptbranch_loop.py",
+        "symbol": null,
+        "token": "\"operator_instruction\""
+      },
+      "consumer": "loop_operators",
+      "execution_boundary": "loop_state_results",
+      "risk": "mixed_declared_fail_closed",
+      "mutation_authority": "declared_per_result",
+      "coverage_pattern": "\"operator_instruction\"",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_loop.py"
+      ]
+    },
+    {
+      "id": "instruction.cli.operator-contracts",
+      "kind": "instruction",
+      "name": "CLI operator instructions",
+      "category": "operator_instruction",
+      "owner": {
+        "path": "promptbranch_cli.py",
+        "symbol": null,
+        "token": "\"operator_instruction\""
+      },
+      "consumer": "cli_operators",
+      "execution_boundary": "cli_result_payloads",
+      "risk": "mixed_declared_fail_closed",
+      "mutation_authority": "declared_per_result",
+      "coverage_pattern": "\"operator_instruction\"",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_cli.py"
+      ]
+    },
+    {
+      "id": "instruction.protocol.reply-envelope",
+      "kind": "instruction",
+      "name": "Promptbranch reply-envelope contract",
+      "category": "protocol_instruction",
+      "owner": {
+        "path": "promptbranch_ask_protocol.py",
+        "symbol": "render_protocol_ask_prompt",
+        "token": "Promptbranch protocol request. You MUST answer"
+      },
+      "consumer": "chatgpt_task_executor",
+      "execution_boundary": "protocol_ask",
+      "risk": "external_model",
+      "mutation_authority": "artifact_generation_only_when_explicit",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_ask_protocol.py"
+      ]
+    },
+    {
+      "id": "instruction.release.adoption-fail-closed",
+      "kind": "instruction",
+      "name": "Release adoption fail-closed boundary",
+      "category": "safety_boundary",
+      "owner": {
+        "path": "chatgpt_claudecode_workflow_release_control.sh",
+        "symbol": null,
+        "token": "--adopt-after-validation refused adoption"
+      },
+      "consumer": "release_operator",
+      "execution_boundary": "release_control",
+      "risk": "release_mutation",
+      "mutation_authority": "adopt_only_after_green_validation",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_shell_scripts.py"
+      ]
+    },
+    {
+      "id": "skill.repo-inspection",
+      "kind": "skill",
+      "name": "Repository inspection",
+      "skill_name": "repo-inspection",
+      "owner": {
+        "path": ".promptbranch/skills/repo-inspection/SKILL.md",
+        "symbol": null,
+        "token": "name: repo-inspection"
+      },
+      "projection": {
+        "kind": "builtin_skill_doc",
+        "path": "promptbranch_mcp.py",
+        "symbol": "BUILTIN_SKILL_DOCS"
+      },
+      "consumer": "external_agents",
+      "execution_boundary": "mcp_agent_run",
+      "risk": "read",
+      "mutation_authority": "none",
+      "allowed_tools": [
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary"
+      ],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "skill.release-readiness",
+      "kind": "skill",
+      "name": "Release readiness",
+      "skill_name": "release-readiness",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "BUILTIN_SKILL_DOCS",
+        "token": "\"release-readiness\""
+      },
+      "consumer": "external_agents",
+      "execution_boundary": "mcp_agent_run",
+      "risk": "read",
+      "mutation_authority": "none",
+      "allowed_tools": [
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current"
+      ],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "skill.promptbranch-final-mvp",
+      "kind": "skill",
+      "name": "Promptbranch final MVP inspection",
+      "skill_name": "promptbranch-final-mvp",
+      "owner": {
+        "path": ".promptbranch/skills/promptbranch-final-mvp/SKILL.md",
+        "symbol": null,
+        "token": "name: promptbranch-final-mvp"
+      },
+      "projection": {
+        "kind": "builtin_skill_doc",
+        "path": "promptbranch_mcp.py",
+        "symbol": "BUILTIN_SKILL_DOCS"
+      },
+      "consumer": "external_agents",
+      "execution_boundary": "mcp_agent_run",
+      "risk": "read",
+      "mutation_authority": "none",
+      "allowed_tools": [
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current"
+      ],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "agent.request-planner",
+      "kind": "agent",
+      "name": "Deterministic request planner",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "plan_agent_request",
+        "token": "def plan_agent_request"
+      },
+      "consumer": "promptbranch_agent_cli",
+      "execution_boundary": "local_planning",
+      "risk": "classified",
+      "mutation_authority": "none",
+      "allowed_tools": [],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "agent.read-only-executor",
+      "kind": "agent",
+      "name": "Deterministic read-only agent executor",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "agent_ask",
+        "token": "def agent_ask"
+      },
+      "consumer": "promptbranch_agent_cli",
+      "execution_boundary": "local_read_only_execution",
+      "risk": "read",
+      "mutation_authority": "none",
+      "allowed_tools": [
+        "filesystem.read",
+        "filesystem.list",
+        "git.status",
+        "git.diff.summary",
+        "promptbranch.state.read",
+        "artifact.verify"
+      ],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "agent.ollama-tool-selector",
+      "kind": "agent",
+      "name": "Ollama read-only tool selector",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "_call_ollama_chat_tool_call",
+        "token": "You are a read-only tool selection engine for Promptbranch."
+      },
+      "consumer": "optional_local_llm",
+      "execution_boundary": "ollama_chat_tools",
+      "risk": "read",
+      "mutation_authority": "none",
+      "allowed_tools": [
+        "filesystem.read",
+        "filesystem.list",
+        "git.status",
+        "git.diff.summary",
+        "promptbranch.state.read",
+        "artifact.verify"
+      ],
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ]
+    },
+    {
+      "id": "tool.promptbranch-state-read",
+      "kind": "tool",
+      "name": "promptbranch.state.read",
+      "tool_name": "promptbranch.state.read",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"promptbranch.state.read\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"promptbranch.state.read\""
+      }
+    },
+    {
+      "id": "tool.promptbranch-workspace-current",
+      "kind": "tool",
+      "name": "promptbranch.workspace.current",
+      "tool_name": "promptbranch.workspace.current",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"promptbranch.workspace.current\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"promptbranch.workspace.current\""
+      }
+    },
+    {
+      "id": "tool.promptbranch-task-current",
+      "kind": "tool",
+      "name": "promptbranch.task.current",
+      "tool_name": "promptbranch.task.current",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"promptbranch.task.current\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"promptbranch.task.current\""
+      }
+    },
+    {
+      "id": "tool.filesystem-list",
+      "kind": "tool",
+      "name": "filesystem.list",
+      "tool_name": "filesystem.list",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"filesystem.list\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"filesystem.list\""
+      }
+    },
+    {
+      "id": "tool.filesystem-read",
+      "kind": "tool",
+      "name": "filesystem.read",
+      "tool_name": "filesystem.read",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"filesystem.read\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"filesystem.read\""
+      }
+    },
+    {
+      "id": "tool.git-status",
+      "kind": "tool",
+      "name": "git.status",
+      "tool_name": "git.status",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"git.status\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"git.status\""
+      }
+    },
+    {
+      "id": "tool.git-diff-summary",
+      "kind": "tool",
+      "name": "git.diff.summary",
+      "tool_name": "git.diff.summary",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"git.diff.summary\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"git.diff.summary\""
+      }
+    },
+    {
+      "id": "tool.artifact-registry-current",
+      "kind": "tool",
+      "name": "artifact.registry.current",
+      "tool_name": "artifact.registry.current",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"artifact.registry.current\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"artifact.registry.current\""
+      }
+    },
+    {
+      "id": "tool.artifact-verify",
+      "kind": "tool",
+      "name": "artifact.verify",
+      "tool_name": "artifact.verify",
+      "exposure": "read_only",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "READ_ONLY_MCP_TOOLS",
+        "token": "name=\"artifact.verify\""
+      },
+      "consumer": "mcp_hosts_and_agents",
+      "execution_boundary": "mcp_tools_call",
+      "risk": "read",
+      "mutation_authority": "none",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_read_only_mcp_tool",
+        "token": "if name == \"artifact.verify\""
+      }
+    },
+    {
+      "id": "tool.test-smoke",
+      "kind": "tool",
+      "name": "test.smoke",
+      "tool_name": "test.smoke",
+      "exposure": "controlled_process",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "CONTROLLED_PROCESS_MCP_TOOLS",
+        "token": "name=\"test.smoke\""
+      },
+      "consumer": "mcp_hosts_when_explicitly_enabled",
+      "execution_boundary": "deterministic_process_executor",
+      "risk": "external_process",
+      "mutation_authority": "bounded_test_process",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "call_controlled_process_mcp_tool",
+        "token": "if normalized == \"test.smoke\""
+      }
+    },
+    {
+      "id": "tool.artifact-release-create",
+      "kind": "tool",
+      "name": "artifact.release.create",
+      "tool_name": "artifact.release.create",
+      "exposure": "blocked",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "BLOCKED_WRITE_MCP_TOOL_NAMES",
+        "token": "\"artifact.release.create\""
+      },
+      "consumer": "policy_and_diagnostics_only",
+      "execution_boundary": "not_exposed",
+      "risk": "write",
+      "mutation_authority": "blocked",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "handle_mcp_jsonrpc_message",
+        "token": "write_tool_not_executable_via_mcp_serve"
+      }
+    },
+    {
+      "id": "tool.promptbranch-src-sync",
+      "kind": "tool",
+      "name": "promptbranch.src.sync",
+      "tool_name": "promptbranch.src.sync",
+      "exposure": "blocked",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "BLOCKED_WRITE_MCP_TOOL_NAMES",
+        "token": "\"promptbranch.src.sync\""
+      },
+      "consumer": "policy_and_diagnostics_only",
+      "execution_boundary": "not_exposed",
+      "risk": "write",
+      "mutation_authority": "blocked",
+      "tests": [
+        "tests/test_behavioral_surface.py",
+        "tests/test_promptbranch_mcp.py"
+      ],
+      "dispatcher": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "handle_mcp_jsonrpc_message",
+        "token": "write_tool_not_executable_via_mcp_serve"
+      }
+    },
+    {
+      "id": "prompt.ollama.log-summary",
+      "kind": "prompt",
+      "name": "Ollama log summary",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "agent_summarize_log",
+        "token": "Summarize this Promptbranch/log output for a developer."
+      },
+      "consumer": "ollama_generate",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "ollama_generate",
+      "role": "user",
+      "template_token": "Summarize this Promptbranch/log output for a developer.",
+      "output_contract": "developer_summary",
+      "parser": "deterministic_summary_fallback",
+      "retry_behavior": "non_fatal_ollama_fallback",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.ollama.agent-summary",
+      "kind": "prompt",
+      "name": "Ollama agent result summary",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "agent_ask",
+        "token": "Summarize these read-only Promptbranch MCP tool results"
+      },
+      "consumer": "ollama_generate",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "ollama_generate",
+      "role": "user",
+      "template_token": "Summarize these read-only Promptbranch MCP tool results",
+      "output_contract": "read_only_summary",
+      "parser": "none",
+      "retry_behavior": "non_fatal_ollama_fallback",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.ollama.tool-selector-system",
+      "kind": "prompt",
+      "name": "Ollama tool selector system prompt",
+      "owner": {
+        "path": "promptbranch_mcp.py",
+        "symbol": "_call_ollama_chat_tool_call",
+        "token": "You are a read-only tool selection engine for Promptbranch."
+      },
+      "consumer": "ollama_chat",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "ollama_chat",
+      "role": "system",
+      "template_token": "You are a read-only tool selection engine for Promptbranch.",
+      "output_contract": "exactly_one_tool_call",
+      "parser": "_validate_llm_mcp_tool_call",
+      "retry_behavior": "fail_closed_no_execution",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.integration.exact-token",
+      "kind": "prompt",
+      "name": "Full integration exact-token prompt",
+      "owner": {
+        "path": "promptbranch_full_integration_test.py",
+        "symbol": "make_parser",
+        "token": "Reply with exactly the single token INTEGRATION_OK and nothing else."
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Reply with exactly the single token INTEGRATION_OK and nothing else.",
+      "output_contract": "exact_token",
+      "parser": "integration_response_check",
+      "retry_behavior": "test_failure",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.task-message.exact-token",
+      "kind": "prompt",
+      "name": "Task-message exact-token prompt",
+      "owner": {
+        "path": "promptbranch_full_integration_test.py",
+        "symbol": "run_integration",
+        "token": "Reply with exactly the single token TASK_MESSAGE_OK and nothing else."
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Reply with exactly the single token TASK_MESSAGE_OK and nothing else.",
+      "output_contract": "exact_token",
+      "parser": "task_message_response_check",
+      "retry_behavior": "test_failure",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.release-live.bootstrap",
+      "kind": "prompt",
+      "name": "Release-live bootstrap prompt",
+      "owner": {
+        "path": "promptbranch_cli.py",
+        "symbol": "cmd_test_release_live_continuous",
+        "token": "Reply with exactly the single token"
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Reply with exactly the single token",
+      "output_contract": "exact_token",
+      "parser": "release_live_exact_token_check",
+      "retry_behavior": "bounded_current_flow",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.release-live.ask",
+      "kind": "prompt",
+      "name": "Release-live ask prompt",
+      "owner": {
+        "path": "promptbranch_cli.py",
+        "symbol": "cmd_test_release_live_continuous",
+        "token": "Return exactly the single token"
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Return exactly the single token",
+      "output_contract": "exact_token",
+      "parser": "release_live_exact_token_check",
+      "retry_behavior": "bounded_current_flow",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.visual-artifact-roundtrip",
+      "kind": "prompt",
+      "name": "Visual artifact roundtrip request",
+      "owner": {
+        "path": "promptbranch_cli.py",
+        "symbol": "_visual_artifact_roundtrip_prompt",
+        "token": "Visual artifact roundtrip request"
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Visual artifact roundtrip request",
+      "output_contract": "promptbranch_reply_envelope_with_one_zip",
+      "parser": "parse_promptbranch_reply",
+      "retry_behavior": "one_malformed_envelope_retry",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.visual-artifact-envelope-retry",
+      "kind": "prompt",
+      "name": "Visual artifact envelope correction",
+      "owner": {
+        "path": "promptbranch_cli.py",
+        "symbol": "_visual_artifact_roundtrip_envelope_retry_prompt",
+        "token": "Your previous visual-artifact response is complete"
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Your previous visual-artifact response is complete",
+      "output_contract": "corrected_promptbranch_reply_envelope",
+      "parser": "parse_promptbranch_reply",
+      "retry_behavior": "single_retry",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    },
+    {
+      "id": "prompt.protocol.ask-envelope",
+      "kind": "prompt",
+      "name": "Protocol ask envelope prompt",
+      "owner": {
+        "path": "promptbranch_ask_protocol.py",
+        "symbol": "render_protocol_ask_prompt",
+        "token": "Promptbranch protocol request. You MUST answer"
+      },
+      "consumer": "chatgpt",
+      "execution_boundary": "model_prompt",
+      "risk": "external_model",
+      "mutation_authority": "none_unless_request_contract_explicit",
+      "recipient": "chatgpt",
+      "role": "user",
+      "template_token": "Promptbranch protocol request. You MUST answer",
+      "output_contract": "promptbranch_reply_envelope",
+      "parser": "parse_promptbranch_reply",
+      "retry_behavior": "caller_defined",
+      "tests": [
+        "tests/test_behavioral_surface.py"
+      ]
+    }
+  ],
+  "coverage": {
+    "required_kinds": [
+      "instruction",
+      "skill",
+      "agent",
+      "tool",
+      "prompt"
+    ],
+    "operator_instruction_files": [
+      "promptbranch_cli.py",
+      "promptbranch_loop.py",
+      "promptbranch_parallel_ask.py"
+    ],
+    "system_prompt_files": [
+      "promptbranch_mcp.py",
+      "ollama_mcp_verification_harness/verify_ollama_mcp_trust.py",
+      "ollama_mcp_verification_harness_v2/verify_ollama_mcp_trust_v2.py"
+    ]
+  }
+}

@@ -1,41 +1,50 @@
 # Project Plan
 
+<!-- v0.1.109.1 current control-surface header -->
+- Accepted/current version: `v0.1.109`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
+- Active candidate version: `v0.1.109.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.zip`
+- Next normal version: `v0.1.109.1`
+- Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
+- Next planned version after acceptance: `v0.1.110`
+- Next planned slice after acceptance: `v0.1.110 — controlled correction execution envelope validation gate`
+
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.108.1.zip
-accepted/current version: v0.1.108.1
-last completed normal slice: v0.1.107 — Controlled correction execution envelope design
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.zip
+accepted/current version: v0.1.109
+last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-active candidate: chatgpt_claudecode_workflow-2_v0.1.109.zip
-active candidate version: v0.1.109
-next normal target: chatgpt_claudecode_workflow-2_v0.1.109.zip
-next normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
+active candidate version: v0.1.109.1
+next normal target: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
+next normal slice: v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
 next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
 ```
-
 ## Plan summary
 
-`v0.1.108.1` is accepted/current. `v0.1.109` defines stable project policy, repository agent instructions, and one machine-readable authority graph. It adds read-only show/validate commands that reject missing or duplicate ownership and projection drift without mutating repository, registry, Project Source, Project Settings, deployment, or Kubernetes state.
-
-## Active normal slice — v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+`v0.1.109` is accepted/current. `v0.1.109.1` makes Promptbranch behavior reviewable by assigning stable identities and owners to instructions, skills/agents, tools, and prompts. It also repairs the post-adoption runtime authority false negative by resolving `project_registry_file(project_id)` through `.promptbranch-repo.json` and the authoritative project registry.
+## Active normal slice — v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
 
 Acceptance scope:
 
-- Add `PROJECT_SETTINGS.md` for stable project policy only.
-- Add `AGENTS.md` for repository agent operating instructions without pinned mutable release values.
-- Assign exactly one owner to each declared fact domain in `docs/project/project-authority-graph-v0.1.109.json`.
-- Cover release version, stable policy, agent instructions, plan state, release configuration, runtime project identity, adopted artifact identity, and external ChatGPT Project Settings.
-- Add `pb project authority show` and `pb project authority validate` in read-only mode.
-- Detect missing authority, ambiguous ownership, projection drift, and unresolved runtime/external observations.
-- Add deterministic zero-mutation and drift regression tests.
-- Require full direct and full localhost release validation before adoption.
+- Add one machine-readable behavioral surface registry and one human-readable review report.
+- Inventory project and agent instructions, operator-instruction families, skills, agents, MCP tools, blocked tool intents, and executable prompts.
+- Add stable IDs, owner paths/symbols, consumers, execution boundaries, risks, mutation authority, tests, and prompt contracts.
+- Validate skill-to-tool references and file-backed versus embedded skill projections.
+- Validate MCP manifest, aliases, input schemas, controlled-process tools, and blocked write intents.
+- Add `pb project behavioral-surface show` and `validate` as read-only commands.
+- Resolve runtime artifact authority through `project_registry_file(project_id)` and prove `--include-runtime` succeeds against an adopted project registry.
+- Require full direct and independent full localhost release validation before adoption.
 
-Out of scope: remote settings mutation, automatic drift repair, Project Source mutation, registry mutation, artifact adoption from validation, Project deletion, generic precedence chains, deployment, and Kubernetes mutation.
+Out of scope: prompt rewrites for style, new tools, expanded mutation authority, automatic drift repair, remote Project Settings mutation, Project Source mutation by validation, artifact adoption by validation, deployment, and Kubernetes mutation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.108.1` is completed and accepted/current; `v0.1.109` is the sole active normal slice; `v0.1.110 — Authority-backed project snapshot and drift report` is the sole planned-after-acceptance slice.
+`docs/project/plan-state.json` is authoritative. `v0.1.109` is completed and accepted/current; `v0.1.109.1` is the sole active normal slice; `v0.1.110 — Authority-backed project snapshot and drift report` is the sole planned-after-acceptance slice.
+
 ## Release / slice plan
 
 | Version | Slice | Goal | Scope | Out of scope | Expected validation | Status |

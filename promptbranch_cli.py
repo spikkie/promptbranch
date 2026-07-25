@@ -197,6 +197,10 @@ from promptbranch_project_authority import (
     build_project_authority_show_payload,
     validate_project_authority_graph,
 )
+from promptbranch_behavioral_surface import (
+    build_behavioral_surface_show_payload,
+    validate_behavioral_surface,
+)
 
 class ProjectRegistryResolutionError(RuntimeError):
     def __init__(self, payload: dict[str, Any]) -> None:
@@ -18571,6 +18575,29 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 for error in payload.get("errors") or []:
                     print(f"error={error}")
         return 0 if payload.get("ok") else 2
+    if args.project_command == "behavioral-surface":
+        repo_path = getattr(args, "repo_path", ".") or "."
+        if args.project_behavioral_surface_command == "show":
+            payload = build_behavioral_surface_show_payload(
+                repo_path,
+                kind=getattr(args, "kind", None),
+                consumer=getattr(args, "consumer", None),
+            )
+        elif args.project_behavioral_surface_command == "validate":
+            payload = validate_behavioral_surface(repo_path)
+        else:
+            raise RuntimeError(f"Unknown project behavioral-surface command: {args.project_behavioral_surface_command}")
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"status={payload.get('status')}")
+            print(f"registry_path={payload.get('registry_path') or ''}")
+            print(f"entry_count={payload.get('entry_count') if payload.get('entry_count') is not None else ''}")
+            for error in payload.get("errors") or []:
+                print(f"error={error}")
+            for warning in payload.get("warnings") or []:
+                print(f"warning={warning}")
+        return 0 if payload.get("ok") else 2
     if args.project_command == "authority":
         repo_path = getattr(args, "repo_path", ".") or "."
         if args.project_authority_command == "show":
@@ -24784,6 +24811,16 @@ def make_parser() -> argparse.ArgumentParser:
     project_next_slice = project_subparsers.add_parser("next-slice", help="Show the next slice derived from the validated project control surface.")
     project_next_slice.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     project_next_slice.add_argument("--json", action="store_true")
+    project_behavioral_surface = project_subparsers.add_parser("behavioral-surface", help="Inspect or validate the behavioral surface inventory without mutation.")
+    project_behavioral_surface_subparsers = project_behavioral_surface.add_subparsers(dest="project_behavioral_surface_command", required=True)
+    project_behavioral_surface_show = project_behavioral_surface_subparsers.add_parser("show", help="Show registered instructions, skills, agents, tools, and prompts.")
+    project_behavioral_surface_show.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    project_behavioral_surface_show.add_argument("--kind", choices=["instruction", "skill", "agent", "tool", "prompt"], help="Filter by behavioral surface kind.")
+    project_behavioral_surface_show.add_argument("--consumer", help="Filter by consumer substring.")
+    project_behavioral_surface_show.add_argument("--json", action="store_true")
+    project_behavioral_surface_validate = project_behavioral_surface_subparsers.add_parser("validate", help="Validate behavioral surface ownership and cross-references in read-only mode.")
+    project_behavioral_surface_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
+    project_behavioral_surface_validate.add_argument("--json", action="store_true")
     project_authority = project_subparsers.add_parser("authority", help="Inspect or validate the project authority graph without mutation.")
     project_authority_subparsers = project_authority.add_subparsers(dest="project_authority_command", required=True)
     project_authority_show = project_authority_subparsers.add_parser("show", help="Show declared fact-domain owners and projections.")

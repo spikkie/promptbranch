@@ -1,5 +1,23 @@
 # Release Status
 
+<!-- v0.1.109.1 current control-surface header -->
+- Accepted/current version: `v0.1.109`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
+- Active candidate version: `v0.1.109.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.zip`
+- Next normal version: `v0.1.109.1`
+- Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
+- Next planned version after acceptance: `v0.1.110`
+- Next planned slice after acceptance: `v0.1.110 — controlled correction execution envelope validation gate`
+
+## v0.1.109.1 candidate
+
+- Accepted/current: `v0.1.109` / `chatgpt_claudecode_workflow-2_v0.1.109.zip`
+- Active candidate: `v0.1.109.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.zip`
+- Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
+- Planned after acceptance: `v0.1.110 — Authority-backed project snapshot and drift report`
+- Validation mode: read-only behavioral inventory and runtime authority resolution; full release validation pending.
+
 ## Current baseline
 
 ```text

@@ -11,6 +11,8 @@ REQUIRED_DOCS = (
     Path("PROJECT_SETTINGS.md"),
     Path("AGENTS.md"),
     Path("docs/project/project-authority-graph-v0.1.109.json"),
+    Path("docs/project/promptbranch-behavioral-surface-v0.1.109.1.json"),
+    Path("docs/project/behavioral-surface.md"),
     Path("docs/project/mvp.md"),
     Path("docs/project/definition-of-done.md"),
     Path("docs/project/plan.md"),

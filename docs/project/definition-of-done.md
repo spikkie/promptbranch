@@ -792,3 +792,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-299 | Every declared project fact domain has exactly one machine-readable authority and fail-closed conflict policy | done | `docs/project/project-authority-graph-v0.1.109.json`, authority graph tests | v0.1.109 |
 | DOD-300 | Read-only authority show/validate commands classify missing authority, ambiguity, and projection drift while performing zero writes | done | `promptbranch_project_authority.py`, `pb project authority show/validate`, deterministic tests | v0.1.109 |
 | DOD-301 | Runtime identity, adopted registry, and external Project Settings are explicit deferred/read-only domains rather than inferred fallbacks | done | authority graph and validation payloads | v0.1.109 |
+
+## v0.1.109.1 behavioral surface inventory
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-302 | Runtime authority validation resolves the joined repository identity to the authoritative project-scoped artifact registry and verifies a current adopted release without fallback state | focused_candidate | `promptbranch_project_authority.py`, `tests/test_behavioral_surface.py` | v0.1.109.1 |
+| DOD-303 | Executable instructions, skills, agents, tools, and prompts have stable IDs, one owner, declared consumers, execution boundaries, mutation authority, and tests | focused_candidate | `docs/project/promptbranch-behavioral-surface-v0.1.109.1.json`, `promptbranch_behavioral_surface.py` | v0.1.109.1 |
+| DOD-304 | Behavioral-surface validation fails closed on duplicate IDs, missing owners, unknown skill tools, blocked-tool exposure, tool registry drift, embedded-skill drift, and incomplete prompt contracts while performing zero writes | focused_candidate | `tests/test_behavioral_surface.py`, `pb project behavioral-surface validate` | v0.1.109.1 |
+| DOD-305 | The behavioral registry is an explicit project authority domain with a human-readable projection and is included in mandatory full release-validation groups | focused_candidate | `docs/project/project-authority-graph-v0.1.109.json`, `docs/project/behavioral-surface.md`, `promptbranch_test_suite.py` | v0.1.109.1 |
+

@@ -29,6 +29,8 @@ def _copy_authority_repo(tmp_path: Path) -> Path:
         "docs/project/status.md",
         "docs/project/plan.md",
         "docs/project/release-status.md",
+        "docs/project/promptbranch-behavioral-surface-v0.1.109.1.json",
+        "docs/project/behavioral-surface.md",
         str(AUTHORITY_GRAPH_REL),
     ):
         source = ROOT / rel
@@ -46,7 +48,7 @@ def test_authority_graph_show_lists_declared_domains() -> None:
     payload = build_project_authority_show_payload(ROOT)
     assert payload["ok"] is True
     assert payload["status"] == "authority_graph_loaded"
-    assert payload["domain_count"] == 9
+    assert payload["domain_count"] == 10
     assert payload["remote_mutation_allowed"] is False
     assert payload["mutation_performed"] is False
 
@@ -87,7 +89,7 @@ def test_authority_graph_missing_authority_fails_closed(tmp_path: Path) -> None:
 def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.1.109"', 'version = "9.9.9"'), encoding="utf-8")
+    pyproject.write_text(pyproject.read_text().replace('version = "0.1.109.1"', 'version = "9.9.9"'), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False

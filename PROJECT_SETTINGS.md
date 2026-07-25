@@ -17,7 +17,7 @@ The repository identifier is read from `docs/project/plan-state.json`. Joined Ch
 
 ## Authority model
 
-`docs/project/project-authority-graph-v0.1.109.json` assigns exactly one owner to every declared project fact domain. Other files are projections, instructions, evidence, or runtime observations. There is no generic precedence chain and no last-write-wins rule.
+`docs/project/project-authority-graph-v0.1.109.json` assigns exactly one owner to every declared project fact domain. `docs/project/promptbranch-behavioral-surface-v0.1.109.1.json` assigns stable identities and owners to executable instructions, skills/agents, tools, and prompts. Other files are projections, instructions, evidence, or runtime observations. There is no generic precedence chain and no last-write-wins rule.
 
 Stable policy belongs here. Mutable release state belongs in `VERSION`, `docs/project/plan-state.json`, release configuration, runtime identity state, or the project artifact registry as declared by the authority graph.
 

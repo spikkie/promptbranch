@@ -11,6 +11,7 @@ This file defines the required release-validation groups for `pb test full` and 
 | Group | Required | Purpose | Representative command |
 |---|---:|---|---|
 | `project_control_surface` | yes | Validate `docs/project/` structure, DoD table, release-status table, and next safe action. | `python3 -m pytest -q tests/test_project_control_surface.py` |
+| `project_authority_behavioral_surface` | yes | Validate single-owner authority domains, runtime adopted-registry resolution, and the read-only instruction/skill/agent/tool/prompt inventory. | `python3 -m pytest -q tests/test_project_authority_graph.py tests/test_behavioral_surface.py` |
 | `version_surface` | yes | Validate `VERSION`, `pyproject.toml`, and `promptbranch_version.py` consistency. | `python3 -m pytest -q tests/test_promptbranch_version.py` |
 | `artifact_json_contracts` | yes | Guard artifact adopt/current/baseline JSON contracts and external-repo reporting. | `python3 -m pytest -q tests/test_promptbranch_artifacts.py tests/test_promptbranch_cli.py -k "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status"` |
 | `repo_project_registry` | yes | Guard project-scoped repo registry behavior and repo doctor/list invariants. | `python3 -m pytest -q tests/test_promptbranch_project.py tests/test_promptbranch_repos.py` |
@@ -37,7 +38,7 @@ If a required group is missing or failed, release-control must treat the full-te
 ## Last updated
 
 ```text
-v0.1.108
+v0.1.109.1
 ```
 
 

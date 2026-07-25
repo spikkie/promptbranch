@@ -1,3 +1,7 @@
+
+## ADR-PROJ-109.1 — Behavioral surface ownership
+
+`v0.1.109.1` defines `docs/project/promptbranch-behavioral-surface-v0.1.109.1.json` as the stable inventory for executable instructions, skills/agents, tools, and prompts. Validation is read-only and fail-closed. File-backed skills are authoritative when present; embedded skill documents are projections. The next planned normal slice remains `v0.1.110 — Authority-backed project snapshot and drift report`.
 # Decisions
 
 | ID | Date | Decision | Reason | Consequence |

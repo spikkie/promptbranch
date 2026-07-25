@@ -1,3 +1,7 @@
+
+## v0.1.109.1 behavioral surface migration
+
+`v0.1.109.1` records existing executable instructions, skills/agents, tools, and prompts without changing their intended behavior or mutation authority. It repairs runtime registry authority resolution and preserves `v0.1.110 — Authority-backed project snapshot and drift report` as the next planned slice.
 # Migration to Project Control Surface
 
 ## Migration status

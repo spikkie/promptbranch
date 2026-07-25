@@ -87,6 +87,17 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
         "description": "Project MVP/DoD/Plan control-surface validator.",
         "command": _release_validation_command("-m", "pytest", "-q", "tests/test_project_control_surface.py"),
     },
+    "project_authority_behavioral_surface": {
+        "required": True,
+        "description": "Project authority graph, runtime registry resolver, and behavioral surface inventory contracts.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_project_authority_graph.py",
+            "tests/test_behavioral_surface.py",
+        ),
+    },
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",

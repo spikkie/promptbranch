@@ -6,6 +6,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from promptbranch_artifacts import ArtifactRegistry
+from promptbranch_project import load_repo_identity, project_registry_dir, project_registry_file
+
 AUTHORITY_GRAPH_REL = Path("docs/project/project-authority-graph-v0.1.109.json")
 AUTHORITY_SCHEMA = "promptbranch.project.authority_graph"
 AUTHORITY_SCHEMA_VERSION = "1.0"
@@ -205,6 +208,43 @@ def build_project_authority_show_payload(repo_path: str | Path = ".") -> dict[st
     }
 
 
+
+def _resolve_runtime_authority(root: Path, kind: str, path_value: Any, resolver: Any) -> dict[str, Any]:
+    if kind == "runtime_file":
+        path = root / str(path_value or "")
+        present = bool(path_value) and path.is_file()
+        return {"present": present, "status": "available" if present else "deferred_runtime", "resolved_path": str(path) if path_value else None}
+    if kind == "runtime_registry" and resolver == "project_registry_file(project_id)":
+        try:
+            identity = load_repo_identity(root)
+        except ValueError as exc:
+            return {"present": False, "status": "invalid_runtime", "error": str(exc), "resolved_path": None}
+        if identity is None:
+            return {"present": False, "status": "deferred_runtime", "error": ".promptbranch-repo.json is required", "resolved_path": None}
+        registry_path = project_registry_file(identity.project_id)
+        registry = ArtifactRegistry(project_registry_dir(identity.project_id))
+        inspection = registry.inspect()
+        current = registry.current(repo_id=identity.repo_id) if inspection.get("ok") else None
+        present = bool(inspection.get("ok") and isinstance(current, dict) and current.get("kind") == "adopted_release")
+        return {
+            "present": present,
+            "status": "available" if present else "deferred_runtime",
+            "resolved_path": str(registry_path),
+            "project_id": identity.project_id,
+            "repo_id": identity.repo_id,
+            "registry_exists": bool(inspection.get("registry_exists")),
+            "registry_valid": bool(inspection.get("registry_valid")),
+            "registry_readable": bool(inspection.get("registry_readable")),
+            "current": {
+                "filename": current.get("filename"),
+                "version": current.get("version"),
+                "kind": current.get("kind"),
+                "source_ref": current.get("source_ref"),
+                "repo_id": current.get("repo_id"),
+            } if isinstance(current, dict) else None,
+        }
+    return {"present": False, "status": "unsupported_runtime_resolver", "error": f"unsupported runtime resolver: {resolver}", "resolved_path": None}
+
 def validate_project_authority_graph(repo_path: str | Path = ".", *, include_runtime: bool = False) -> dict[str, Any]:
     root = _root(repo_path)
     errors: list[str] = []
@@ -276,17 +316,25 @@ def validate_project_authority_graph(repo_path: str | Path = ".", *, include_run
                 missing_errors.append(f"{domain}: authority file missing: {path_value}")
         elif kind in {"runtime_file", "runtime_registry"}:
             resolver = authority.get("resolver")
-            present = bool(path_value) and (root / str(path_value)).exists()
+            resolution = _resolve_runtime_authority(root, str(kind), path_value, resolver)
+            present = bool(resolution.get("present"))
             runtime_domains.append({
                 "domain": domain,
                 "kind": kind,
                 "path": path_value,
                 "resolver": resolver,
-                "status": "available" if present else "deferred_runtime",
+                "status": resolution.get("status"),
+                "resolved_path": resolution.get("resolved_path"),
+                "project_id": resolution.get("project_id"),
+                "repo_id": resolution.get("repo_id"),
+                "registry_exists": resolution.get("registry_exists"),
+                "registry_valid": resolution.get("registry_valid"),
+                "registry_readable": resolution.get("registry_readable"),
+                "current": resolution.get("current"),
                 "required_for_static_validation": False,
             })
             if include_runtime and not present:
-                target = path_value or resolver or "unresolved runtime authority"
+                target = resolution.get("error") or path_value or resolver or "unresolved runtime authority"
                 missing_errors.append(f"{domain}: runtime authority unavailable: {target}")
         elif kind == "external_observation":
             external_domains.append({
