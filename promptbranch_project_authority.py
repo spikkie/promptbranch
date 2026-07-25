@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from promptbranch_artifacts import ArtifactRegistry
-from promptbranch_project import load_repo_identity, project_registry_dir, project_registry_file
+from promptbranch_project import load_repo_identity, project_registry_dir, project_registry_file, validate_tracked_repo_identity
 
 AUTHORITY_GRAPH_REL = Path("docs/project/project-authority-graph-v0.1.109.json")
 AUTHORITY_SCHEMA = "promptbranch.project.authority_graph"
@@ -314,6 +314,13 @@ def validate_project_authority_graph(repo_path: str | Path = ".", *, include_run
                 missing_errors.append(f"{domain}: repository authority path is required")
             elif not (root / str(path_value)).is_file():
                 missing_errors.append(f"{domain}: authority file missing: {path_value}")
+            elif domain == "repository.project_identity":
+                identity_errors = validate_tracked_repo_identity(root, expected_repo_id=str(graph.get("repo_id") or ""))
+                for identity_error in identity_errors:
+                    if "missing" in identity_error.lower():
+                        missing_errors.append(f"{domain}: {identity_error}")
+                    else:
+                        projection_errors.append(f"{domain}: {identity_error}")
         elif kind in {"runtime_file", "runtime_registry"}:
             resolver = authority.get("resolver")
             resolution = _resolve_runtime_authority(root, str(kind), path_value, resolver)

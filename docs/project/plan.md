@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.109.1 current control-surface header -->
+<!-- v0.1.109.1.1 current control-surface header -->
 - Accepted/current version: `v0.1.109`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
-- Active candidate version: `v0.1.109.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.zip`
+- Active candidate version: `v0.1.109.1.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
 - Next normal version: `v0.1.109.1`
 - Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
 - Next planned version after acceptance: `v0.1.110`
@@ -17,8 +17,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
-active candidate version: v0.1.109.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
+active candidate version: v0.1.109.1.1
 next normal target: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
 next normal slice: v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
 next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
@@ -26,6 +26,11 @@ next planned slice after acceptance: v0.1.110 — Authority-backed project snaps
 ## Plan summary
 
 `v0.1.109` is accepted/current. `v0.1.109.1` makes Promptbranch behavior reviewable by assigning stable identities and owners to instructions, skills/agents, tools, and prompts. It also repairs the post-adoption runtime authority false negative by resolving `project_registry_file(project_id)` through `.promptbranch-repo.json` and the authoritative project registry.
+
+## Active repair — v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
+
+The `v0.1.109.1` behavioral inventory remains the active normal scope but its candidate was not adopted. This repair tracks `.promptbranch-repo.json` in Git and release ZIPs, derives user-local membership from it, rejects mismatched join arguments, and keeps artifact/source adoption evidence runtime-only. See `docs/migrations/tracked-project-binding-v0.1.109.1.1.md`.
+
 ## Active normal slice — v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
 
 Acceptance scope:

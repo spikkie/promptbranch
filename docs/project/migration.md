@@ -1,3 +1,7 @@
+## v0.1.109.1.1 tracked Project binding migration
+
+`.promptbranch-repo.json` is now committed repository authority and is included in release ZIPs. User-local membership and adoption evidence remain outside Git. Follow `docs/migrations/tracked-project-binding-v0.1.109.1.1.md` for existing repositories, fresh clones, mismatch handling, and deletion recovery.
+
 
 ## v0.1.109.1 behavioral surface migration
 

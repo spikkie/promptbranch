@@ -90,5 +90,3 @@ build/
 promptbranch.egg-info/
 *.egg-info/
 
-# Local authoritative project/repo identity
-.promptbranch-repo.json

@@ -80,7 +80,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "## Next safe action" in text
     assert "accepted/current baseline with adoption evidence:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.109.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.109.1.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip" in text
     assert "standard browser profile default" in text
 
 
@@ -144,28 +144,28 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.109"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.zip"
-    assert data["active_candidate_version"] == "v0.1.109.1"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.zip"
-    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.zip"
+    assert data["active_candidate_version"] == "v0.1.109.1.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip"
+    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip"
     assert data["next_normal_version"] == "v0.1.109.1"
-    assert data["active_slice"] == "v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment"
+    assert data["active_slice"] == "v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation"
     assert data["next_planned_version_after_acceptance"] == "v0.1.110"
     assert data["next_planned_slice_after_acceptance"] == "Authority-backed project snapshot and drift report"
     assert data["repair_must_not_advance_scope"] is True
-    assert data["release_mode"] == "normal"
-    assert data["scope_advance_allowed"] is True
+    assert data["release_mode"] == "repair"
+    assert data["scope_advance_allowed"] is False
     assert data["architecture_goal"] == "controlled problem-solving loop"
-    assert len(data["rolling_slice_horizon"]) == 5
+    assert len(data["rolling_slice_horizon"]) == 6
 
 
 def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.109"
-    assert payload["active_candidate_version"] == "v0.1.109.1"
+    assert payload["active_candidate_version"] == "v0.1.109.1.1"
     assert payload["next_normal_slice"] == "v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
-    assert len(payload["rolling_slice_horizon"]) == 5
+    assert len(payload["rolling_slice_horizon"]) == 6
 
 
 def test_project_control_surface_cli_emits_json() -> None:
@@ -180,7 +180,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -207,7 +207,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.108", "v0.1.108.1", "v0.1.109", "v0.1.109.1", "v0.1.110"]:
+    for version in ["v0.1.108", "v0.1.108.1", "v0.1.109", "v0.1.109.1", "v0.1.109.1.1", "v0.1.110"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -255,7 +255,7 @@ def test_project_control_surface_validator_rejects_short_horizon(tmp_path: Path)
 
     payload = validate_project_control_surface(repo)
     assert payload["ok"] is False
-    assert "plan-state rolling_slice_horizon must contain 4 to 5 slices" in payload["errors"]
+    assert "plan-state rolling_slice_horizon must contain 4 to 6 slices" in payload["errors"]
 
 
 def test_project_control_surface_validator_rejects_missing_active_horizon(tmp_path: Path) -> None:
@@ -408,3 +408,11 @@ def test_v0_1_108_1_project_source_reliability_record_is_repair_only() -> None:
     assert payload["authority"]["scope_advance_allowed"] is False
     assert payload["authority"]["v0_1_109_implementation_started"] is False
     assert payload["next_planned_slice_after_acceptance"]["version"] == "v0.1.109"
+
+
+def test_tracked_project_binding_migration_document_exists() -> None:
+    path = ROOT / "docs" / "migrations" / "tracked-project-binding-v0.1.109.1.1.md"
+    text = path.read_text(encoding="utf-8")
+    assert "pb project join --repo-root . --json" in text
+    assert "git restore .promptbranch-repo.json" in text
+    assert "runtime evidence" in text.lower()

@@ -11,8 +11,9 @@ Before proposing or changing work, read these authorities in order of purpose, n
 3. `docs/project/plan-state.json` for mutable project and slice state.
 4. `VERSION` for the package/release version.
 5. `.promptbranch-release.yml` for release lifecycle configuration.
-6. `.promptbranch-repo.json` and the project artifact registry only when runtime identity or adopted-artifact state is required.
-7. `docs/project/status.md`, `docs/project/plan.md`, and `docs/project/release-status.md` as human-readable projections to verify, never as competing owners.
+6. `.promptbranch-repo.json` for the tracked intended Project binding.
+7. the user-local project repository configuration and project artifact registry only when runtime membership or adopted-artifact evidence is required.
+8. `docs/project/status.md`, `docs/project/plan.md`, and `docs/project/release-status.md` as human-readable projections to verify, never as competing owners.
 
 ## Fail-closed rules
 

@@ -4,7 +4,7 @@
 
 Promptbranch is a deterministic, artifact-first project orchestration and release-control system. Its primary product goal is a controlled problem-solving loop that moves from intent and evidence to bounded execution, validation, adoption, and ownership without granting implicit mutation authority.
 
-The repository identifier is read from `docs/project/plan-state.json`. Joined ChatGPT Project identity is runtime state owned by `.promptbranch-repo.json` when that file exists; it is not duplicated here.
+The repository identifier is read from `docs/project/plan-state.json`. The intended ChatGPT Project binding is tracked in `.promptbranch-repo.json`, committed to Git, and included in release ZIPs. User-local project membership and adopted-artifact evidence remain runtime state derived from that tracked binding.
 
 ## Stable operating policy
 
@@ -19,7 +19,7 @@ The repository identifier is read from `docs/project/plan-state.json`. Joined Ch
 
 `docs/project/project-authority-graph-v0.1.109.json` assigns exactly one owner to every declared project fact domain. `docs/project/promptbranch-behavioral-surface-v0.1.109.1.json` assigns stable identities and owners to executable instructions, skills/agents, tools, and prompts. Other files are projections, instructions, evidence, or runtime observations. There is no generic precedence chain and no last-write-wins rule.
 
-Stable policy belongs here. Mutable release state belongs in `VERSION`, `docs/project/plan-state.json`, release configuration, runtime identity state, or the project artifact registry as declared by the authority graph.
+Stable policy belongs here. Mutable release state belongs in `VERSION`, `docs/project/plan-state.json`, release configuration, or the project artifact registry as declared by the authority graph. `.promptbranch-repo.json` owns stable intended Project binding only and must never contain local paths, credentials, current artifact records, or upload evidence.
 
 ## Mutation boundaries
 

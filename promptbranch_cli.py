@@ -190,6 +190,7 @@ from promptbranch_project import (
     project_registry_dir,
     project_registry_file,
     project_repo_config_path,
+    repo_identity_mismatches,
     write_repo_identity,
 )
 from promptbranch_project_control import build_project_next_slice_payload, validate_project_control_surface
@@ -18484,17 +18485,45 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
     if args.project_command == "join":
         repo_root = Path(getattr(args, "repo_root", ".") or ".").expanduser().resolve()
         try:
-            identity_path = write_repo_identity(
-                repo_root,
-                project_id=args.project_id,
-                project_home_url=args.project_home_url,
-                repo_id=args.repo_id,
-                artifact_pattern=getattr(args, "artifact_pattern", None),
-                role=getattr(args, "role", None),
-            )
             identity = load_repo_identity(repo_root)
+            binding_created = False
             if identity is None:
-                raise ValueError("project identity was not readable after writing")
+                required = {
+                    "project_id": getattr(args, "project_id", None),
+                    "project_home_url": getattr(args, "project_home_url", None),
+                    "repo_id": getattr(args, "repo_id", None),
+                }
+                missing = sorted(key for key, value in required.items() if not value)
+                if missing:
+                    raise ValueError(
+                        f"tracked {REPO_IDENTITY_FILE_NAME} is missing; provide {', '.join('--' + key.replace('_', '-') for key in missing)} once to create it, then commit it"
+                    )
+                identity_path = write_repo_identity(
+                    repo_root,
+                    project_id=str(required["project_id"]),
+                    project_home_url=str(required["project_home_url"]),
+                    repo_id=str(required["repo_id"]),
+                    artifact_pattern=getattr(args, "artifact_pattern", None),
+                    role=getattr(args, "role", None),
+                )
+                binding_created = True
+                identity = load_repo_identity(repo_root)
+                if identity is None:
+                    raise ValueError("project identity was not readable after writing")
+            else:
+                identity_path = identity.path
+                mismatches = repo_identity_mismatches(
+                    identity,
+                    project_id=getattr(args, "project_id", None),
+                    project_home_url=getattr(args, "project_home_url", None),
+                    repo_id=getattr(args, "repo_id", None),
+                    artifact_pattern=getattr(args, "artifact_pattern", None),
+                    role=getattr(args, "role", None),
+                )
+                if mismatches:
+                    raise ValueError(
+                        "tracked project binding mismatch; refusing to rewrite authority: " + "; ".join(mismatches)
+                    )
             repo_config_file = join_local_repo(identity)
             ensure_project_registry(identity.project_id)
             ConversationStateStore(str(project_registry_dir(identity.project_id))).remember_project(identity.project_home_url, project_name=identity.project_id)
@@ -18506,6 +18535,8 @@ async def cmd_project(backend: Any, args: argparse.Namespace) -> int:
                 "project_home_url": identity.project_home_url,
                 "repo_id": identity.repo_id,
                 "identity_file": str(identity_path),
+                "binding_source": "created_from_explicit_arguments" if binding_created else "tracked_repository_file",
+                "binding_created": binding_created,
                 "local_repo_config_file": str(repo_config_file),
                 "registry_file": str(project_registry_file(identity.project_id)),
             }
@@ -24796,11 +24827,11 @@ def make_parser() -> argparse.ArgumentParser:
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
     project_subparsers = project.add_subparsers(dest="project_command", required=True)
     project_join = project_subparsers.add_parser("join", help="Join the current repo to a Promptbranch project registry.")
-    project_join.add_argument("--project-id", required=True, help="Stable Promptbranch project id, for example kubernetes.")
-    project_join.add_argument("--project-home-url", required=True, help="ChatGPT Project home URL.")
-    project_join.add_argument("--repo-id", required=True, help="Portable repo id for this repository.")
+    project_join.add_argument("--project-id", help="Stable Promptbranch project id. Required only when creating a missing tracked binding.")
+    project_join.add_argument("--project-home-url", help="ChatGPT Project home URL. Required only when creating a missing tracked binding.")
+    project_join.add_argument("--repo-id", help="Portable repo id. Required only when creating a missing tracked binding.")
     project_join.add_argument("--artifact-pattern", help="Artifact filename pattern, e.g. my_awx_<version>.zip.")
-    project_join.add_argument("--role", default="member", help="Repo role in the project, e.g. consumer or deployment_dependency.")
+    project_join.add_argument("--role", help="Repo role. Omit to use the tracked binding; defaults to member only when creating it.")
     project_join.add_argument("--repo-root", default=".", help="Repository root to join. Defaults to current directory.")
     project_join.add_argument("--json", action="store_true")
     project_status = project_subparsers.add_parser("status", help="Show current repo project identity and registry paths.")

@@ -1,7 +1,7 @@
 {
   "schema": "promptbranch.project.authority_graph",
   "schema_version": "1.0",
-  "graph_version": "v0.1.109.1",
+  "graph_version": "v0.1.109.1.1",
   "repo_id": "chatgpt_claudecode_workflow-2",
   "validation_mode": "read_only",
   "default_conflict_policy": "fail_closed",
@@ -135,16 +135,15 @@
     },
     {
       "domain": "repository.project_identity",
-      "description": "Joined runtime relationship between this repository and a ChatGPT Project.",
+      "description": "Tracked intended relationship between this repository and its authoritative ChatGPT Project.",
       "authority": {
-        "kind": "runtime_file",
+        "kind": "repository_file",
         "path": ".promptbranch-repo.json",
         "selector": "json_object"
       },
       "projections": [],
       "conflict_policy": "fail_closed",
-      "missing_authority_policy": "deferred_until_runtime",
-      "required_for_runtime_validation": true
+      "missing_authority_policy": "fail_closed"
     },
     {
       "domain": "artifact.adopted_identity",

@@ -360,6 +360,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     (repo / "VERSION").write_text("v0.0.0\n", encoding="utf-8")
     (repo / "stale.txt").write_text("remove me\n", encoding="utf-8")
     (repo / ".env").write_text("LOCAL=1\n", encoding="utf-8")
+    (repo / ".promptbranch-repo.json").write_text(json.dumps({"schema_version": 1, "project_id": "stale", "project_home_url": "https://chatgpt.com/g/g-p-stale/project", "repo_id": "stale", "artifact_pattern": "stale_<version>.zip", "role": "member"}), encoding="utf-8")
     (repo / ".pb_profile").mkdir()
     (repo / ".pb_profile" / "state.json").write_text("{}\n", encoding="utf-8")
     (repo / "debug_artifacts").mkdir()
@@ -374,6 +375,7 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
         archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
         archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("fresh.txt", "installed\n")
         archive.writestr("ollama_mcp_verification_harness/README.md", "tracked harness\n")
         archive.writestr("ollama_mcp_verification_harness_v2/README.md", "tracked harness v2\n")
@@ -446,6 +448,9 @@ def test_release_control_automatically_imports_candidate_zip_without_bcompare(tm
     assert (repo / "fresh.txt").read_text(encoding="utf-8") == "installed\n"
     assert not (repo / "stale.txt").exists()
     assert (repo / ".env").read_text(encoding="utf-8") == "LOCAL=1\n"
+    installed_binding = json.loads((repo / ".promptbranch-repo.json").read_text(encoding="utf-8"))
+    assert installed_binding["project_id"] == "g-p-demo"
+    assert installed_binding["repo_id"] == "chatgpt_claudecode_workflow"
     assert (repo / ".pb_profile" / "state.json").is_file()
     assert (repo / "debug_artifacts" / "trace.zip").read_text(encoding="utf-8") == "preserve debug trace\n"
     assert (repo / "ollama_mcp_verification_harness" / "README.md").read_text(encoding="utf-8") == "tracked harness\n"
@@ -480,6 +485,7 @@ def test_release_control_stage0_delegation_preserves_skip_source_add(tmp_path: P
         archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
         archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("fresh.txt", "installed by delegated candidate\n")
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", release_script.read_text(encoding="utf-8"))
 
@@ -562,6 +568,7 @@ def _write_release_candidate_zip(path: Path, *, version: str, include_version: b
         archive.writestr(f"{prefix}pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
         archive.writestr(f"{prefix}.gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(f"{prefix}.not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(f"{prefix}.promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr(f"{prefix}fresh.txt", "installed\n")
         if include_script:
             archive.writestr(f"{prefix}chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
@@ -745,12 +752,12 @@ def test_release_control_import_preserves_debug_artifacts_in_plan_and_delete_fil
     script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script.read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in text
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in text
     assert '! -name "debug_artifacts"' in text
     assert "--exclude='debug_artifacts/'" in text
     assert "--exclude='.env'" in text
     assert "--exclude='.env.*'" in text
-    assert 'required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]' in text
+    assert 'required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", ".promptbranch-repo.json", script_name]' in text
     assert 'verify_release_import_copied_entries "${download_zip}" "${repo_root}"' in text
     assert 'force_add_intentional_ignored_release_paths' in text
     assert 'assert_release_staging_safe' in text
@@ -962,6 +969,7 @@ def test_release_control_docker_logs_missing_container_is_best_effort(tmp_path: 
         archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
         archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
@@ -1163,7 +1171,7 @@ def test_release_control_accepts_numeric_repair_version_for_adopt_current(tmp_pa
     assert f"pb artifact adopt {artifact}" in call_text
 
 def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp_path: Path):
-    repo = tmp_path / "repo"
+    repo = tmp_path / "chatgpt_claudecode_workflow"
     repo.mkdir()
     version = "v9.9.9.1"
     artifact = f"chatgpt_claudecode_workflow_{version}.zip"
@@ -1177,6 +1185,7 @@ def test_release_control_renames_git_hash_packager_output_for_repair_version(tmp
         archive.writestr("pyproject.toml", f"[project]\nname = 'promptbranch'\nversion = '{version.lstrip('v')}'\n")
         archive.writestr(".gitignore", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
         archive.writestr(".not_to_zip", "*.zip\n.env\n.pb_profile/\ndebug_artifacts/\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     fake_bin = tmp_path / "bin"
@@ -1700,15 +1709,16 @@ def test_release_control_import_plan_preserves_live_seed_and_live_pool():
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
-    assert 'local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in script
+    assert 'local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"' in script
     assert '! -name ".pb_profile_local_debug"' in script
     assert '! -name ".pb_profile_local_debug_pools"' in script
     assert "--exclude='.pb_profile_local_debug/'" in script
     assert "--exclude='.pb_profile_local_debug_pools/'" in script
-    assert 'protected_zip_roots = [".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]' in script
-    assert 'protected_roots = {".git", ".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}' in script
-    assert '! -name ".promptbranch-repo.json"' in script
-    assert "--exclude='.promptbranch-repo.json'" in script
+    assert 'protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]' in script
+    assert 'protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}' in script
+    assert '! -name ".promptbranch-repo.json"' not in script
+    assert "--exclude='.promptbranch-repo.json'" not in script
+    assert '".promptbranch-repo.json", script_name' in script
 
 
 def test_release_control_run_all_defaults_text_source_to_compatibility_probe():
@@ -3759,6 +3769,7 @@ def test_install_sh_rejects_transport_zip_internal_version_mismatch(tmp_path: Pa
         archive.writestr("pyproject.toml", "[project]\nname='promptbranch'\nversion='9.9.80'\n")
         archive.writestr(".gitignore", "*.zip\n")
         archive.writestr(".not_to_zip", "*.zip\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", "#!/usr/bin/env bash\n")
 
     install = Path(__file__).resolve().parents[1] / "install.sh"
@@ -3789,6 +3800,7 @@ def test_release_control_separates_transport_and_canonical_artifact_identity(tmp
         archive.writestr("pyproject.toml", "[project]\nname='promptbranch'\nversion='9.9.81'\n")
         archive.writestr(".gitignore", "*.zip\n")
         archive.writestr(".not_to_zip", "*.zip\n")
+        archive.writestr(".promptbranch-repo.json", json.dumps({"schema_version": 1, "project_id": "g-p-demo", "project_home_url": "https://chatgpt.com/g/g-p-demo/project", "repo_id": "chatgpt_claudecode_workflow", "artifact_pattern": "chatgpt_claudecode_workflow_<version>.zip", "role": "release_authority"}))
         archive.writestr("chatgpt_claudecode_workflow_release_control.sh", release_script.read_text(encoding="utf-8"))
         archive.writestr("fresh.txt", "transport payload\n")
 

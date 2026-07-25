@@ -154,6 +154,77 @@ def write_repo_identity(
     return path
 
 
+
+def repo_identity_mismatches(
+    identity: PromptbranchRepoIdentity,
+    *,
+    project_id: str | None = None,
+    project_home_url: str | None = None,
+    repo_id: str | None = None,
+    artifact_pattern: str | None = None,
+    role: str | None = None,
+) -> list[str]:
+    """Compare supplied join intent with the tracked repository binding.
+
+    Only explicitly supplied values are compared. The tracked file remains the
+    authority; callers must fail closed instead of silently rewriting it.
+    """
+
+    mismatches: list[str] = []
+    if project_id is not None and _safe_project_id(project_id) != identity.project_id:
+        mismatches.append(f"project_id tracked={identity.project_id!r} requested={_safe_project_id(project_id)!r}")
+    if project_home_url is not None:
+        requested_home = project_home_url_from_url(project_home_url) or str(project_home_url).strip()
+        if requested_home != identity.project_home_url:
+            mismatches.append(f"project_home_url tracked={identity.project_home_url!r} requested={requested_home!r}")
+    if repo_id is not None:
+        requested_repo = normalize_repo_id(repo_id)
+        if requested_repo != identity.repo_id:
+            mismatches.append(f"repo_id tracked={identity.repo_id!r} requested={requested_repo!r}")
+    if artifact_pattern is not None and str(artifact_pattern).strip() != identity.artifact_pattern:
+        mismatches.append(f"artifact_pattern tracked={identity.artifact_pattern!r} requested={str(artifact_pattern).strip()!r}")
+    if role is not None and str(role).strip() != identity.role:
+        mismatches.append(f"role tracked={identity.role!r} requested={str(role).strip()!r}")
+    return mismatches
+
+
+def validate_tracked_repo_identity(repo_root: str | Path, *, expected_repo_id: str | None = None) -> list[str]:
+    """Validate the committed Project binding as portable repository authority."""
+
+    root = Path(repo_root).expanduser().resolve()
+    path = root / REPO_IDENTITY_FILE_NAME
+    if not path.is_file():
+        return [f"authority file missing: {REPO_IDENTITY_FILE_NAME}"]
+    try:
+        payload = _read_json(path)
+        identity = load_repo_identity(root)
+    except ValueError as exc:
+        return [str(exc)]
+    if identity is None:
+        return [f"authority file missing: {REPO_IDENTITY_FILE_NAME}"]
+
+    errors: list[str] = []
+    allowed = {"schema_version", "project_id", "project_home_url", "repo_id", "artifact_pattern", "role"}
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} contains unsupported field(s): {unknown}")
+    if payload.get("schema_version") != 1:
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} schema_version must be 1")
+    required = ("project_id", "project_home_url", "repo_id", "artifact_pattern", "role")
+    for key in required:
+        if not isinstance(payload.get(key), str) or not str(payload.get(key)).strip():
+            errors.append(f"{REPO_IDENTITY_FILE_NAME} is missing {key}")
+    home_raw = payload.get("project_home_url") if isinstance(payload.get("project_home_url"), str) else None
+    if home_raw and project_home_url_from_url(home_raw) is None:
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} project_home_url is not a ChatGPT Project URL")
+    if identity.path != path:
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} must be located at repository root")
+    if expected_repo_id and identity.repo_id != normalize_repo_id(expected_repo_id):
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} repo_id {identity.repo_id!r} does not match authority graph repo_id {normalize_repo_id(expected_repo_id)!r}")
+    if not artifact_prefix_matches(identity.repo_id, identity.artifact_pattern):
+        errors.append(f"{REPO_IDENTITY_FILE_NAME} artifact_pattern must be {identity.repo_id}_<version>.zip")
+    return errors
+
 def load_local_repo_registry(project_id: str) -> dict[str, Any]:
     path = project_repo_config_path(project_id)
     if not path.is_file():

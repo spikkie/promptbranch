@@ -203,7 +203,7 @@ Version precedence:
 Automatic ZIP import:
   By default this script installs ${project_name}_VERSION.zip from --downloads-dir
   into the repository before commit/package. This is an overwrite import, not a
-  merge. It preserves .git/, .env, .generated/, .promptbranch-repo.json, .pb_profile/, .pb_profile_local_debug/, .pb_profile_local_debug_pools/, profile/, and debug_artifacts/.
+  merge. It preserves .git/, .env, .generated/, .pb_profile/, .pb_profile_local_debug/, .pb_profile_local_debug_pools/, profile/, and debug_artifacts/. The tracked .promptbranch-repo.json binding is imported from the candidate.
   It requires candidate ZIP control files (.gitignore and .not_to_zip) and
   refuses to stage local secrets or generated artifacts.
 
@@ -883,7 +883,7 @@ release_import_plan_json() {
   local zip_path="$1"
   local expected_version="$2"
   local repo_path="$3"
-  local preserved_csv=".git,.env,.generated,.promptbranch-repo.json,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"
+  local preserved_csv=".git,.env,.generated,.pb_profile,.pb_profile_local_debug,.pb_profile_local_debug_pools,profile,debug_artifacts"
   python3 - "$zip_path" "$expected_version" "$repo_path" "$preserved_csv" <<'INNERPY'
 import json
 import sys
@@ -895,8 +895,8 @@ expected_version = sys.argv[2]
 repo_path = Path(sys.argv[3]).expanduser().resolve()
 preserved_paths = sys.argv[4].split(",")
 script_name = "chatgpt_claudecode_workflow_release_control.sh"
-required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", script_name]
-protected_zip_roots = [".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]
+required_root_files = ["VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", ".promptbranch-repo.json", script_name]
+protected_zip_roots = [".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"]
 payload = {
     "ok": False,
     "action": "release_zip_import_plan",
@@ -1000,7 +1000,7 @@ from pathlib import Path
 
 zip_path = Path(sys.argv[1]).expanduser().resolve()
 repo_path = Path(sys.argv[2]).expanduser().resolve()
-protected_roots = {".git", ".env", ".generated", ".promptbranch-repo.json", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}
+protected_roots = {".git", ".env", ".generated", ".pb_profile", ".pb_profile_local_debug", ".pb_profile_local_debug_pools", "profile", "debug_artifacts"}
 missing = []
 checked = 0
 with zipfile.ZipFile(zip_path) as archive:
@@ -1051,7 +1051,7 @@ assert_release_staging_safe() {
   while IFS=$'\t' read -r status path rest; do
     [[ -n "${status}" && -n "${path}" ]] || continue
     case "${path}" in
-      .env|.env.*|.generated|.generated/*|.promptbranch-repo.json|.pb_profile|.pb_profile/*|.pb_profile_local_debug|.pb_profile_local_debug/*|.pb_profile_local_debug_pools|.pb_profile_local_debug_pools/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
+      .env|.env.*|.generated|.generated/*|.pb_profile|.pb_profile/*|.pb_profile_local_debug|.pb_profile_local_debug/*|.pb_profile_local_debug_pools|.pb_profile_local_debug_pools/*|profile|profile/*|debug_artifacts|debug_artifacts/*|*.zip|*.tar.gz|*.log|*.trace|*.trace.zip|*.pyc|*.pyo|__pycache__|__pycache__/*|.pytest_cache|.pytest_cache/*|.mypy_cache|.mypy_cache/*|.ruff_cache|.ruff_cache/*)
         bad+=("${status}${IFS}${path}")
         ;;
     esac
@@ -1633,9 +1633,9 @@ if [[ ${tests_only} -eq 0 && ${adopt_current} -eq 0 && ${skip_zip_import} -eq 0 
   echo
   echo "== Install ZIP into working tree =="
   normalize_generated_ownership "pre-import"
-  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".promptbranch-repo.json"     ! -name ".pb_profile"     ! -name ".pb_profile_local_debug"     ! -name ".pb_profile_local_debug_pools"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
+  find "${repo_root}" -mindepth 1 -maxdepth 1     ! -name ".git"     ! -name ".env"     ! -name ".generated"     ! -name ".pb_profile"     ! -name ".pb_profile_local_debug"     ! -name ".pb_profile_local_debug_pools"     ! -name "profile"     ! -name "debug_artifacts"     -exec rm -rf {} +
 
-  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.promptbranch-repo.json'     --exclude='.pb_profile/'     --exclude='.pb_profile_local_debug/'     --exclude='.pb_profile_local_debug_pools/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
+  rsync -a     --exclude='.git'     --exclude='.git/'     --exclude='.env'     --exclude='.env.*'     --exclude='.generated/'     --exclude='.pb_profile/'     --exclude='.pb_profile_local_debug/'     --exclude='.pb_profile_local_debug_pools/'     --exclude='profile/'     --exclude='debug_artifacts/'     "${work_dir}/" "${repo_root}/"
 
   verify_release_import_copied_entries "${download_zip}" "${repo_root}"
 
@@ -2445,7 +2445,7 @@ if payload.get("ok") is not True:
     raise SystemExit("pb project join did not return ok:true")
 identity_file = Path(identity_path)
 if not identity_file.is_file():
-    raise SystemExit("pb project join did not create .promptbranch-repo.json")
+    raise SystemExit("pb project join did not resolve tracked .promptbranch-repo.json")
 identity = json.loads(identity_file.read_text(encoding="utf-8"))
 checks = {
     "project_id": identity.get("project_id") == project_id,

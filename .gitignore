@@ -30,8 +30,6 @@ session_*.log
 release_logs/
 pb_*.json
 pb_*.report.json
-# Local authoritative project/repo identity
-.promptbranch-repo.json
 # Local browser/profile state
 .pb_profile/
 .pb_profile_docker/

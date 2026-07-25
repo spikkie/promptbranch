@@ -212,8 +212,8 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
     if not isinstance(horizon, list):
         errors.append("plan-state rolling_slice_horizon must be a list")
         horizon = []
-    elif not (4 <= len(horizon) <= 5):
-        errors.append("plan-state rolling_slice_horizon must contain 4 to 5 slices")
+    elif not (4 <= len(horizon) <= 6):
+        errors.append("plan-state rolling_slice_horizon must contain 4 to 6 slices")
 
     active_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "active"]
     planned_after_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "planned_after_acceptance"]
@@ -223,10 +223,18 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         errors.append("rolling_slice_horizon must contain exactly one planned_after_acceptance slice")
     if active_items:
         active_item = active_items[0]
-        if active_item.get("version") != next_normal_version:
-            errors.append("active horizon item version must equal next_normal_version")
-        if active_item.get("slice") != next_normal_slice:
-            errors.append("active horizon item slice must equal next_normal_slice")
+        if release_mode == "normal":
+            if active_item.get("version") != next_normal_version:
+                errors.append("active horizon item version must equal next_normal_version")
+            if active_item.get("slice") != next_normal_slice:
+                errors.append("active horizon item slice must equal next_normal_slice")
+        elif release_mode == "repair":
+            if active_item.get("version") != active_candidate_version:
+                errors.append("repair active horizon item version must equal active_candidate_version")
+            if active_item.get("slice") != active_slice:
+                errors.append("repair active horizon item slice must equal active_slice")
+            if active_item.get("release_mode") != "repair":
+                errors.append("repair active horizon item release_mode must be repair")
     if planned_after_items:
         planned_item = planned_after_items[0]
         if planned_item.get("version") != state.get("next_planned_version_after_acceptance"):

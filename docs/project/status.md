@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.109.1 current control-surface header -->
+<!-- v0.1.109.1.1 current control-surface header -->
 - Accepted/current version: `v0.1.109`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.zip`
-- Active candidate version: `v0.1.109.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.zip`
+- Active candidate version: `v0.1.109.1.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
 - Next normal version: `v0.1.109.1`
 - Next normal slice: `v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment`
 - Next planned version after acceptance: `v0.1.110`
@@ -17,8 +17,8 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability
-active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
-active candidate version: v0.1.109.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
+active candidate version: v0.1.109.1.1
 next normal target: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
 next normal slice: v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
 next planned slice after acceptance: v0.1.110 — Authority-backed project snapshot and drift report
@@ -30,16 +30,16 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: candidate
 last accepted/current slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-active plan slice: v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment
-repair mode: false
-scope advance allowed: true
+active plan slice: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
+repair mode: true
+scope advance allowed: false
 ```
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.109.zip
-active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.zip
-release status: v0.1.109 passed 10/10 release gates and is adopted/current. v0.1.109.1 is the behavioral-surface inventory candidate.
+active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
+release status: v0.1.109 remains adopted/current. v0.1.109.1 failed both full transports and was not adopted. v0.1.109.1.1 is the tracked-binding repair candidate.
 plan authority file: docs/project/plan-state.json
 stable policy authority: PROJECT_SETTINGS.md
 agent instruction authority: AGENTS.md
@@ -67,12 +67,12 @@ next-slice authority command: pb project next-slice --json
 ## Next safe action
 
 ```text
-Validate the runtime authority resolver and the behavioral surface registry, run focused deterministic tests, package v0.1.109.1, then run full release-control. Do not mutate remote ChatGPT Project Settings during validation.
+Validate the tracked Project binding, recreate local membership from it, verify ZIP inclusion and migration coverage, package v0.1.109.1.1, then run full release-control. Do not mutate remote ChatGPT Project Settings during validation.
 ```
 ## Last updated
 
 ```text
-v0.1.109 authority-graph definition candidate build
+v0.1.109.1.1 tracked Project binding repair candidate build
 ```
 ## v0.1.102 candidate status
 

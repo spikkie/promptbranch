@@ -1048,3 +1048,14 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Runtime rule:** `.promptbranch-repo.json` and the project artifact registry remain runtime authorities and are reported as deferred in clean static package validation; they are not inferred from repository prose.
 - **External rule:** ChatGPT Project Settings are externally owned read-only observations. This slice performs no remote settings mutation.
 - **Next:** `v0.1.110` may derive a structured read-only project snapshot from the accepted graph; it may not auto-repair drift without a later explicit authority grant.
+
+## ADR-PROJ-109 — v0.1.109.1.1 tracks intended Project binding and separates runtime evidence
+
+- **Status:** accepted for repair candidate implementation.
+- **Baseline:** `v0.1.109` remains accepted/current; `v0.1.109.1` was not adopted.
+- **Decision:** `.promptbranch-repo.json` is stable repository authority, committed to Git and included in release ZIPs.
+- **Runtime separation:** checkout membership, project registry storage, adopted artifact records, assigned Project Source names, processed-file IDs, Library metadata IDs, and adoption timestamps remain user-local runtime evidence.
+- **Join rule:** `pb project join` consumes the tracked binding to recreate user-local configuration. Explicit supplied values are verification inputs and must match; mismatch fails closed without rewriting authority.
+- **Recovery rule:** accidental deletion is recoverable from Git or the canonical release ZIP.
+- **Import rule:** candidate ZIP import installs the tracked binding and must not preserve a stale checkout-local copy.
+- **Migration:** other projects follow `docs/migrations/tracked-project-binding-v0.1.109.1.1.md`; there is no silent missing-binding compatibility fallback.

@@ -21,6 +21,7 @@ def _copy_authority_repo(tmp_path: Path) -> Path:
     for rel in (
         "PROJECT_SETTINGS.md",
         "AGENTS.md",
+        ".promptbranch-repo.json",
         "VERSION",
         "pyproject.toml",
         "promptbranch_version.py",
@@ -59,7 +60,7 @@ def test_authority_graph_validate_passes_static_repo() -> None:
     assert payload["status"] == "authority_consistent"
     assert payload["mutation_performed"] is False
     assert payload["writes_attempted"] == 0
-    assert {item["status"] for item in payload["runtime_domains"]} == {"deferred_runtime"}
+    assert {item["domain"]: item["status"] for item in payload["runtime_domains"]} == {"artifact.adopted_identity": "deferred_runtime"}
     assert payload["external_domains"][0]["status"] == "not_observed_read_only"
 
 
@@ -89,7 +90,7 @@ def test_authority_graph_missing_authority_fails_closed(tmp_path: Path) -> None:
 def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.1.109.1"', 'version = "9.9.9"'), encoding="utf-8")
+    pyproject.write_text(pyproject.read_text().replace('version = "0.1.109.1.1"', 'version = "9.9.9"'), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False
@@ -166,3 +167,29 @@ def test_project_authority_cli_show_and_validate_emit_json() -> None:
         assert payload["ok"] is True
         assert payload["status"] == expected_status
         assert payload["mutation_performed"] is False
+
+
+def test_tracked_project_binding_is_required_for_static_validation(tmp_path: Path) -> None:
+    repo = _copy_authority_repo(tmp_path)
+    (repo / ".promptbranch-repo.json").unlink()
+
+    payload = validate_project_authority_graph(repo)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "authority_missing"
+    assert any("repository.project_identity" in error and ".promptbranch-repo.json" in error for error in payload["errors"])
+
+
+def test_tracked_project_binding_must_match_graph_repo_id(tmp_path: Path) -> None:
+    repo = _copy_authority_repo(tmp_path)
+    path = repo / ".promptbranch-repo.json"
+    binding = json.loads(path.read_text(encoding="utf-8"))
+    binding["repo_id"] = "different-repo"
+    binding["artifact_pattern"] = "different-repo_<version>.zip"
+    path.write_text(json.dumps(binding), encoding="utf-8")
+
+    payload = validate_project_authority_graph(repo)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "projection_drift"
+    assert any("does not match authority graph repo_id" in error for error in payload["errors"])

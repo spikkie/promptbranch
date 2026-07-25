@@ -509,3 +509,26 @@ def test_artifact_registry_rejects_partial_project_source_identity_evidence(tmp_
         assert "source_library_metadata_object_id" in str(exc)
     else:
         raise AssertionError("partial Project Source identity evidence should be rejected")
+
+
+def test_repo_snapshot_includes_tracked_project_binding(tmp_path: Path) -> None:
+    repo = tmp_path / "demo-repo"
+    repo.mkdir()
+    (repo / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    (repo / ".not_to_zip").write_text("*.log\n", encoding="utf-8")
+    (repo / ".promptbranch-repo.json").write_text(json.dumps({
+        "schema_version": 1,
+        "project_id": "g-p-demo-project",
+        "project_home_url": "https://chatgpt.com/g/g-p-demo-project/project",
+        "repo_id": "demo-repo",
+        "artifact_pattern": "demo-repo_<version>.zip",
+        "role": "release_authority",
+    }), encoding="utf-8")
+    (repo / "README.md").write_text("demo\n", encoding="utf-8")
+
+    record, entries = create_repo_snapshot(repo, output_dir=tmp_path / "out")
+
+    assert ".promptbranch-repo.json" in entries
+    with zipfile.ZipFile(record.path) as archive:
+        assert ".promptbranch-repo.json" in archive.namelist()
+    assert verify_zip_artifact(record.path)["ok"] is True
