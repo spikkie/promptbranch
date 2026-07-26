@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import tomllib
 from pathlib import Path
 import pytest
 from promptbranch_release_engine import ReleaseContractError, load_contract, plan
@@ -36,3 +37,9 @@ def test_shell_commands_are_rejected(tmp_path: Path):
     (tmp_path/'.promptbranch-release.json').write_text(json.dumps(data))
     with pytest.raises(ReleaseContractError,match='may not invoke a shell'):
         load_contract(tmp_path)
+
+
+def test_release_engine_is_declared_as_installed_module():
+    data=tomllib.loads((ROOT/'pyproject.toml').read_text(encoding='utf-8'))
+    modules=data['tool']['setuptools']['py-modules']
+    assert 'promptbranch_release_engine' in modules

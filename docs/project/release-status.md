@@ -872,3 +872,7 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 | v0.1.107 | normal | Controlled correction execution envelope design | candidate | focused design, CLI, control-surface, sandbox, package, and artifact validation before strict host release-control | DOD-295 focused candidate | pending |
 
 | v0.1.108 | normal | Controlled correction execution envelope validation gate | candidate | focused validation gate, CLI, control-surface, package, and Artifact Guardian validation before strict host release-control | DOD-296 focused candidate; adoption pending | pending |
+
+## v0.1.111.1 repair candidate
+
+Packaging-only repair for the missing installed `promptbranch_release_engine` module. The candidate must pass an isolated installed-CLI smoke before any browser bootstrap or Project Source mutation. Accepted/current remains `v0.1.109.1.1`.

@@ -1248,3 +1248,7 @@ Accepted/current remains `v0.1.103.10.68`. `v0.1.103.10.94` repairs the `10.93` 
 `v0.1.103.10.103` waits for one unique asynchronous Library delete confirmation inside a visible dialog, alertdialog, or native dialog. The row-menu action alone can no longer produce `delete_triggered`; a no-confirmation path is accepted only after exact post-boundary backend mutation proof. Accepted/current remains `v0.1.103.10.68`; canonical release `pbsa` and adoption remain blocked.
 
 Current active repair: `v0.1.104.5 — hermetic release-validation profile isolation`.
+
+## v0.1.111.1 repair candidate
+
+`v0.1.111` failed before Project Source publication because the pipx-installed CLI could not import `promptbranch_release_engine`. `v0.1.111.1` packages that module and makes release control verify the installed CLI and read-only contract planner before browser bootstrap or Project Source mutation. Accepted/current remains `v0.1.109.1.1`.

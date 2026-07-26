@@ -1846,9 +1846,102 @@ PY
 # mutation.  Clean hosts may not have a running Promptbranch service yet, and
 # source-add must therefore be performed by the candidate runtime after the
 # candidate service has been bootstrapped and version-verified.
+installed_candidate_cli_smoke_log="${release_log_dir}/installed_candidate_cli_smoke.${ver}.json"
+
+verify_installed_candidate_cli() {
+  local smoke_dir
+  smoke_dir="$(mktemp -d /tmp/promptbranch-installed-cli-smoke.XXXXXX)"
+  if ! python3 - "${ver#v}" "${repo_root}" "${smoke_dir}" "${installed_candidate_cli_smoke_log}" <<'INNERPY'
+from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+expected_version, repo_root, smoke_dir, output_path = sys.argv[1:5]
+env = dict(os.environ)
+env.pop("PYTHONPATH", None)
+env["PYTHONSAFEPATH"] = "1"
+executable = shutil.which("promptbranch")
+commands = [
+    ["promptbranch", "--version"],
+    ["promptbranch", "release", "contract-plan", "--repo-path", repo_root, "--json"],
+]
+results = []
+ok = executable is not None
+error = None
+for argv in commands:
+    completed = subprocess.run(
+        argv,
+        cwd=smoke_dir,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    row = {
+        "argv": argv,
+        "cwd": smoke_dir,
+        "exit_code": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+    results.append(row)
+    if completed.returncode != 0:
+        ok = False
+        error = f"installed candidate command failed: {' '.join(argv)}"
+        break
+
+if ok:
+    version_output = results[0]["stdout"].strip()
+    if expected_version not in version_output.split():
+        ok = False
+        error = f"installed candidate version mismatch: expected {expected_version}, got {version_output!r}"
+
+if ok:
+    try:
+        plan_payload = json.loads(results[1]["stdout"])
+    except Exception as exc:
+        ok = False
+        error = f"installed candidate contract-plan JSON invalid: {exc}"
+    else:
+        if not (plan_payload.get("ok") is True and plan_payload.get("status") == "planned_read_only"):
+            ok = False
+            error = "installed candidate contract-plan did not report planned_read_only"
+
+payload = {
+    "ok": ok,
+    "status": "installed_candidate_cli_verified" if ok else "installed_candidate_cli_failed",
+    "expected_version": expected_version,
+    "resolved_executable": executable,
+    "smoke_cwd": smoke_dir,
+    "repo_root": repo_root,
+    "commands": results,
+    "error": error,
+    "checked_at": datetime.now(timezone.utc).isoformat(),
+}
+Path(output_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+raise SystemExit(0 if ok else 1)
+INNERPY
+  then
+    rm -rf "${smoke_dir}"
+    echo "ERROR: installed candidate CLI smoke failed" >&2
+    echo "ERROR: inspect installed_candidate_cli_smoke_log=${installed_candidate_cli_smoke_log}" >&2
+    cat "${installed_candidate_cli_smoke_log}" >&2 || true
+    return 1
+  fi
+  rm -rf "${smoke_dir}"
+  echo "Installed candidate CLI and release-contract plan verified: ${ver#v}"
+}
+
 if [[ ${skip_install} -eq 0 ]]; then
   pipx uninstall promptbranch || true
   pipx install "./${artifact_zip}"
+  verify_installed_candidate_cli || fail "installed candidate CLI smoke failed before browser bootstrap and Project Source mutation"
 fi
 
 compose_file="${repo_root}/docker-compose.chatgpt-service.yml"

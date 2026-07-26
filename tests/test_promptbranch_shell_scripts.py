@@ -3053,14 +3053,21 @@ def test_release_control_pre_source_add_docker_build_context_freshness_is_fail_c
     assert "['docker', 'compose', '--project-directory', str(root), '-p', compose_project, '-f', str(compose), 'config']" in script
 
 
-def test_release_control_installs_candidate_before_source_add_bootstrap() -> None:
+def test_release_control_installs_and_smokes_candidate_before_source_add_bootstrap() -> None:
     root = Path(__file__).resolve().parents[1]
     script = (root / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
 
     install_idx = script.index('# Reinstall local CLI from the release ZIP before any service-mediated source')
+    smoke_idx = script.index('verify_installed_candidate_cli || fail "installed candidate CLI smoke failed before browser bootstrap and Project Source mutation"')
     ensure_idx = script.index('ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"')
     source_add_idx = script.index('promptbranch src add "${canonical_artifact_zip}"')
-    assert install_idx < ensure_idx < source_add_idx
+    assert install_idx < smoke_idx < ensure_idx < source_add_idx
+    assert 'installed_candidate_cli_smoke_log="${release_log_dir}/installed_candidate_cli_smoke.${ver}.json"' in script
+    assert '["promptbranch", "--version"]' in script
+    assert '["promptbranch", "release", "contract-plan", "--repo-path", repo_root, "--json"]' in script
+    assert 'env.pop("PYTHONPATH", None)' in script
+    assert 'env["PYTHONSAFEPATH"] = "1"' in script
+    assert '"status": "installed_candidate_cli_verified" if ok else "installed_candidate_cli_failed"' in script
     assert "'source_kind': 'pre_source_add_service_health'" in script
     assert "'source_kind': 'pre_source_add_docker_preflight'" in script
 
