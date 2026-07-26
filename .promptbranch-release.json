@@ -1,0 +1,165 @@
+{
+  "schema": "promptbranch.release.contract",
+  "schema_version": "1.0",
+  "repository": {
+    "repo_id": "chatgpt_claudecode_workflow-2"
+  },
+  "version_authority": {
+    "path": "VERSION",
+    "format": "plain"
+  },
+  "artifact": {
+    "path": "chatgpt_claudecode_workflow-2_v0.1.111.zip",
+    "kind": "zip",
+    "required_root_entries": [
+      "VERSION",
+      "pyproject.toml",
+      ".promptbranch-repo.json",
+      ".promptbranch-release.json"
+    ]
+  },
+  "operations": {
+    "validate": [
+      {
+        "id": "compile",
+        "argv": [
+          "python3",
+          "-m",
+          "compileall",
+          "-q",
+          "."
+        ],
+        "timeout_seconds": 300
+      },
+      {
+        "id": "contract-tests",
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_release_contract.py",
+          "tests/test_backlog_contract.py"
+        ],
+        "timeout_seconds": 600
+      }
+    ],
+    "test": [
+      {
+        "id": "full-local-tests",
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "timeout_seconds": 3600
+      }
+    ],
+    "build": [
+      {
+        "id": "build-release-zip",
+        "argv": [
+          "python3",
+          "scripts/build-release-artifact.py",
+          "--repo",
+          ".",
+          "--output",
+          "chatgpt_claudecode_workflow-2_v0.1.111.zip"
+        ],
+        "timeout_seconds": 600
+      }
+    ],
+    "verify": [
+      {
+        "id": "artifact-guardian",
+        "argv": [
+          "python3",
+          "promptbranch_artifact_guardian.py",
+          "--repo",
+          ".",
+          "--zip",
+          "chatgpt_claudecode_workflow-2_v0.1.111.zip",
+          "--version",
+          "v0.1.111",
+          "--json"
+        ],
+        "timeout_seconds": 600
+      }
+    ],
+    "publish": [
+      {
+        "id": "project-source-publish",
+        "argv": [
+          "pb",
+          "src",
+          "add",
+          "chatgpt_claudecode_workflow-2_v0.1.111.zip",
+          "--json"
+        ],
+        "timeout_seconds": 900
+      }
+    ],
+    "adopt": [
+      {
+        "id": "artifact-adopt",
+        "argv": [
+          "pb",
+          "artifact",
+          "adopt",
+          "chatgpt_claudecode_workflow-2_v0.1.111.zip",
+          "--version",
+          "v0.1.111",
+          "--json"
+        ],
+        "timeout_seconds": 900
+      }
+    ],
+    "verify_current": [
+      {
+        "id": "accepted-current",
+        "argv": [
+          "python3",
+          "scripts/verify-release-adoption-current.py",
+          "--version",
+          "v0.1.111",
+          "--artifact",
+          "chatgpt_claudecode_workflow-2_v0.1.111.zip",
+          "--json"
+        ],
+        "timeout_seconds": 600
+      }
+    ]
+  },
+  "preserve": [
+    ".pb_profile/",
+    ".promptbranch-repo.json"
+  ],
+  "forbid_mutation": [
+    ".git/"
+  ],
+  "environment": [
+    "PATH",
+    "HOME",
+    "LANG",
+    "PROMPTBRANCH_PROFILE_DIR"
+  ],
+  "evidence": {
+    "directory": ".pb_profile/release_runs"
+  },
+  "delegation": {
+    "promptbranch_owns": [
+      "state_machine",
+      "evidence",
+      "publication",
+      "adoption",
+      "accepted_current_verification"
+    ],
+    "repository_owns": [
+      "validation",
+      "tests",
+      "packaging",
+      "domain_gates"
+    ]
+  }
+}

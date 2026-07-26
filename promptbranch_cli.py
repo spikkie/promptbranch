@@ -73,6 +73,7 @@ from promptbranch_test_suite import (
 )
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
+from promptbranch_release_engine import ReleaseContractError, execute as execute_release_contract, load_contract as load_release_contract, plan as plan_release_contract
 from promptbranch_orchestration import (
     accepted_event_example_paths,
     accepted_event_ledger_status,
@@ -18420,7 +18421,34 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+async def cmd_release_contract(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    repo = Path(args.repo_path).resolve()
+    try:
+        contract = load_release_contract(repo, args.config)
+        if args.release_command == "contract-plan":
+            payload = plan_release_contract(repo, contract)
+        else:
+            operation = {
+                "contract-execute": args.operation,
+                "contract-publish": "publish",
+                "contract-adopt": "adopt",
+            }[args.release_command]
+            payload = execute_release_contract(repo, contract, operation)
+    except ReleaseContractError as exc:
+        payload = {"ok": False, "action": args.release_command.replace("-", "_"), "status": "release_contract_invalid", "error": str(exc)}
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(payload.get("status", "unknown"))
+        if payload.get("error"):
+            print(payload["error"], file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command in {"contract-plan", "contract-execute", "contract-publish", "contract-adopt"}:
+        return await cmd_release_contract(backend, args)
     if args.release_command == "baseline-status":
         return await cmd_release_baseline_status(backend, args)
     if args.release_command == "evidence-status":
@@ -24662,6 +24690,27 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
+    release_contract_plan = release_subparsers.add_parser("contract-plan", help="Validate .promptbranch-release.json and emit a read-only repository lifecycle plan.")
+    release_contract_plan.add_argument("--config", default=".promptbranch-release.json")
+    release_contract_plan.add_argument("--repo-path", default=".")
+    release_contract_plan.add_argument("--json", action="store_true")
+
+    release_contract_execute = release_subparsers.add_parser("contract-execute", help="Execute one repository-owned local lifecycle operation with bounded evidence capture; never publishes or adopts.")
+    release_contract_execute.add_argument("operation", choices=["validate", "test", "build", "verify", "verify_current"])
+    release_contract_execute.add_argument("--config", default=".promptbranch-release.json")
+    release_contract_execute.add_argument("--repo-path", default=".")
+    release_contract_execute.add_argument("--json", action="store_true")
+
+    release_contract_publish = release_subparsers.add_parser("contract-publish", help="Execute the separately declared publication operation using hash-bound lifecycle evidence.")
+    release_contract_publish.add_argument("--config", default=".promptbranch-release.json")
+    release_contract_publish.add_argument("--repo-path", default=".")
+    release_contract_publish.add_argument("--json", action="store_true")
+
+    release_contract_adopt = release_subparsers.add_parser("contract-adopt", help="Execute the separately declared adoption operation and preserve accepted/current fail-closed verification.")
+    release_contract_adopt.add_argument("--config", default=".promptbranch-release.json")
+    release_contract_adopt.add_argument("--repo-path", default=".")
+    release_contract_adopt.add_argument("--json", action="store_true")
+
     release_policy_sync = release_subparsers.add_parser("policy-sync", help="Synchronize .promptbranch-project.json to an accepted release baseline; no git commit/push.")
     release_policy_sync.add_argument("--artifact", help="Accepted release ZIP used to set artifact/source policy baseline.")
     release_policy_sync.add_argument("--version", help="Accepted release version such as v0.0.253.")

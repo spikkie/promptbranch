@@ -19,7 +19,9 @@ def test_tracked_backlog_contract_is_valid_and_references_existing_tickets() -> 
     ids = [ticket["id"] for ticket in tickets]
     assert ids == ["ISSUE-001", "PBAI-001"]
     assert len(ids) == len(set(ids))
-    assert all(ticket["status"] == "open" for ticket in tickets)
+    assert tickets[0]["status"] == "implemented_candidate"
+    assert tickets[0]["implemented_in"] == "v0.1.111"
+    assert tickets[1]["status"] == "open"
     assert [ticket["implementation_order"] for ticket in tickets] == [1, 2]
     assert tickets[1]["depends_on"] == ["ISSUE-001"]
     for ticket in tickets:

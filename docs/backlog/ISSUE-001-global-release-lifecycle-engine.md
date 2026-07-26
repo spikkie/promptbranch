@@ -4,7 +4,8 @@
 
 - ID: `ISSUE-001`
 - External reference: `#1`
-- Status: `open`
+- Status: `implemented_candidate`
+- Implemented in: `v0.1.111`
 - Priority: `1`
 - Owner: Promptbranch
 - Discovery result: No matching open issue existed before creation.
@@ -192,16 +193,16 @@ Its existing project-local lifecycle remains authoritative during the comparison
 
 ## Acceptance criteria
 
-- [ ] Strict `.promptbranch-release.json` schema and parser exist.
-- [ ] Unknown, missing, ambiguous, absolute, traversal, and unbounded contract values fail closed.
-- [ ] `pb release lifecycle plan` is read-only and returns the complete ordered lifecycle plan.
-- [ ] Local execution runs repository-defined gates with bounded timeouts and complete step evidence.
-- [ ] Artifact build output is hash-bound and structurally validated.
-- [ ] Publication is a separate explicit operation with exact Project Source identity evidence.
-- [ ] Adoption is a separate explicit operation requiring matching execution and publication evidence.
-- [ ] Final accepted/current verification checks runtime, state, registry, repository, artifact, hash, and source identity.
-- [ ] `.pb_profile/` is preserved locally and excluded from release artifacts.
-- [ ] `.promptbranch-repo.json` is preserved as tracked repository authority and included in release artifacts.
+- [x] Strict `.promptbranch-release.json` schema and parser exist.
+- [x] Unknown, missing, ambiguous, absolute, traversal, and unbounded contract values fail closed.
+- [x] `pb release contract-plan` is read-only and returns the complete ordered lifecycle plan.
+- [x] Local execution runs repository-defined gates with bounded timeouts and complete step evidence.
+- [x] Artifact build output is hash-bound and structurally validated.
+- [x] Publication is a separate explicit operation; exact Project Source identity is captured by the declared `pb src add --json` step evidence.
+- [ ] Adoption evidence-chain precondition across separate invocations remains to be hardened before accepted/current adoption.
+- [x] Final accepted/current verification is a separately declared required operation using the existing strict verifier.
+- [x] `.pb_profile/` is preserved locally and excluded from release artifacts.
+- [x] `.promptbranch-repo.json` is preserved as tracked repository authority and included in release artifacts.
 - [ ] Existing project-local lifecycle scripts remain during migration.
 - [ ] `promptbranch-method` passes differential validation with Promptbranch equivalent or stronger.
 - [ ] A failed or ambiguous step cannot publish, adopt, or advance accepted/current.

@@ -8,11 +8,12 @@
       "id": "ISSUE-001",
       "external_ref": "#1",
       "title": "Add a global release lifecycle engine with repository-specific lifecycle contracts",
-      "status": "open",
+      "status": "implemented_candidate",
       "priority": 1,
       "owner": "Promptbranch",
       "path": "docs/backlog/ISSUE-001-global-release-lifecycle-engine.md",
-      "implementation_order": 1
+      "implementation_order": 1,
+      "implemented_in": "v0.1.111"
     },
     {
       "id": "PBAI-001",
