@@ -3995,3 +3995,16 @@ def test_release_control_progress_eta_and_fail_fast_contract() -> None:
     assert "eta_seconds_approx" in script
     assert "eta_basis" in script
     assert "eta_approx=" in script
+
+
+def test_release_control_idle_handoff_failure_is_one_causal_failure_with_dependency_skips() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert 'run_all_continuous_failure_kind="release_live_idle_handoff_failed"' in script
+    assert 'status: release_live_idle_handoff_failed' in script
+    assert 'record_all_test_dependency_skipped_step "ask_live"' in script
+    assert 'record_all_test_dependency_skipped_step "visual_artifact_roundtrip"' in script
+    assert 'record_all_test_dependency_skipped_step "release_live"' in script
+    assert '"status": "skipped_dependency_failed"' in script
+    assert '"dependency": dependency' in script
+    assert '"skipped_count": len(skipped)' in script
+    assert 'failed = [step for step in steps if not step["ok"] and step.get("skipped") is not True]' in script

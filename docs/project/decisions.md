@@ -1079,3 +1079,12 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 ## v0.1.111.3 browser fail-fast boundary
 
 Expected-result normalisation is part of the browser step transaction and must occur before a terminal progress event. `--fail-fast` stops only on the final normalised result of a main browser step. Expected missing, expected unsupported, and expected skip remain passes. A genuine failure records one failed unit, prevents the next main browser step, and marks all remaining work units skipped. The wider release controller remains continue-on-failure so it can produce a complete release verdict; this repair does not introduce a global release-gate fast-stop option.
+
+## ADR-PROJ-1114 — Trusted external-live conversations are identity-only
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.109.1.1` remains accepted/current; `v0.1.111.3` was not adopted after two complete runs reproduced the same busy trusted-conversation failure.
+- **Decision:** the trusted warmup conversation proves login and exact Project scope but is never the release mutation target. Release-live hands off in the same browser context/profile to the exact Project home and creates a dedicated task conversation only after bounded idle readiness.
+- **Safety:** no automatic Stop action, no typing into a running conversation, no root Project discovery, no profile copy, and no fallback to the operator-owned conversation when the dedicated task does not produce a conversation URL.
+- **Accounting:** one causal idle-handoff failure blocks release; dependent live gates are `skipped_dependency_failed`, not independent defects.
+- **Next repair:** `v0.1.111.5` corrects ETA without changing validation authority or transport independence.

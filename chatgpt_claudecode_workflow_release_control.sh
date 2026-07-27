@@ -4745,6 +4745,7 @@ items = sys.argv[4:]
 tested = len(items)
 succeeded = 0
 failed = 0
+skipped = 0
 steps = []
 for item in items:
     parts = item.split("|", 2)
@@ -4755,12 +4756,22 @@ for item in items:
         rc = int(rc_text)
     except Exception:
         rc = 99
-    ok = rc == 0
-    if ok:
+    step_status = ""
+    try:
+        payload = json.loads(Path(log).read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            step_status = str(payload.get("status") or "")
+    except Exception:
+        step_status = ""
+    is_skipped = step_status == "skipped_dependency_failed"
+    ok = rc == 0 and not is_skipped
+    if is_skipped:
+        skipped += 1
+    elif ok:
         succeeded += 1
     else:
         failed += 1
-    steps.append({"name": name, "log": log, "exit_code": rc, "ok": ok})
+    steps.append({"name": name, "log": log, "exit_code": rc, "ok": ok, "skipped": is_skipped, "status": step_status or None})
 expected = max(expected, tested, 1)
 tested_percent = round((tested / expected) * 100.0, 1)
 success_percent = round((succeeded / tested) * 100.0, 1) if tested else 0.0
@@ -4788,6 +4799,7 @@ payload = {
     "tested_percent_of_expected": tested_percent,
     "succeeded_count": succeeded,
     "failed_count": failed,
+    "skipped_count": skipped,
     "success_percent_of_tested": success_percent,
     "failure_percent_of_tested": failure_percent,
     "elapsed_seconds": elapsed_seconds,
@@ -4799,7 +4811,7 @@ out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding
 print(
     "all_tests_progress: "
     f"tested={tested}/{expected} tested_percent={tested_percent:.1f} "
-    f"succeeded={succeeded} failed={failed} "
+    f"succeeded={succeeded} failed={failed} skipped={skipped} "
     f"success_percent={success_percent:.1f} failure_percent={failure_percent:.1f} "
     f"elapsed={human(elapsed_seconds)} eta_approx={human(eta_seconds_approx)}"
 )
@@ -5266,6 +5278,13 @@ for item in raw_steps:
     ):
         status = "live_bootstrap_guardrail"
     elif name == "live_project_ensure" and (
+        "status: release_live_idle_handoff_failed" in raw_log_lower
+        or '"status": "release_live_idle_handoff_failed"' in raw_log_lower
+        or '"status":"release_live_idle_handoff_failed"' in raw_log_lower
+    ):
+        status = "release_live_idle_handoff_failed"
+        ok = False
+    elif name == "live_project_ensure" and (
         "status: bootstrap_sentinel_missing_after_ask_success" in raw_log_lower
         or '"status": "bootstrap_sentinel_missing_after_ask_success"' in raw_log_lower
         or '"status":"bootstrap_sentinel_missing_after_ask_success"' in raw_log_lower
@@ -5278,10 +5297,12 @@ for item in raw_steps:
     if name == "artifact_guard":
         ok = rc == 0 and payload.get("ok") is True and payload.get("status") == "guard_passed" and error is None
         status = payload.get("status") or status
+    is_skipped = status == "skipped_dependency_failed"
     diagnostics = classify_step_diagnostics(name, payload, raw_log_text, rc, recovered_rate_limit_success, ok)
     steps.append({
         "name": name,
         "ok": ok,
+        "skipped": is_skipped,
         "status": status,
         "exit_code": rc,
         "log": str(path),
@@ -5299,8 +5320,9 @@ for item in raw_steps:
         "diagnostics": diagnostics,
     })
 
-ok = bool(steps) and all(step["ok"] for step in steps)
-failed = [step for step in steps if not step["ok"]]
+skipped = [step for step in steps if step.get("skipped") is True]
+ok = bool(steps) and all(step["ok"] or step.get("skipped") is True for step in steps)
+failed = [step for step in steps if not step["ok"] and step.get("skipped") is not True]
 external_live_not_requested_statuses = {"external_live_not_requested"}
 external_live_statuses = {
     "live_external_browser_challenge",
@@ -5425,6 +5447,8 @@ summary = {
     "continue_on_failure": True,
     "step_count": len(steps),
     "failure_count": len(failed),
+    "skipped_count": len(skipped),
+    "skipped_steps": [step["name"] for step in skipped],
     "service_health_json": service_health_json,
     "diagnostics": diagnostics_summary,
     "validation_reuse": validation_reuse_summary,
@@ -5690,6 +5714,34 @@ record_all_test_nonblocking_skipped_step() {
   local step_log="$2"
   local reason="$3"
   write_all_test_json_step "$step_name" "$step_log" "$reason" "true" "0" "${live_profile_preflight_raw_log}"
+}
+
+record_all_test_dependency_skipped_step() {
+  local step_name="$1"
+  local step_log="$2"
+  local dependency="$3"
+  local reason="$4"
+  python3 - "$step_name" "$step_log" "$dependency" "$reason" <<'INNERPY'
+from __future__ import annotations
+from datetime import datetime, timezone
+from pathlib import Path
+import json
+import sys
+name, log_path, dependency, reason = sys.argv[1:5]
+payload = {
+    "ok": True,
+    "skipped": True,
+    "action": "release_control_all_tests_step",
+    "profile": name,
+    "status": "skipped_dependency_failed",
+    "dependency": dependency,
+    "reason": reason,
+    "exit_code": 0,
+    "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+Path(log_path).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+INNERPY
+  record_all_test_step "$step_name" "$step_log" 0
 }
 
 run_all_extract_project_url_from_log() {
@@ -6025,6 +6077,14 @@ run_all_release_live_continuous_bootstrap_and_ask() {
     return 1
   fi
 
+  if grep -Fq '"status": "release_live_idle_handoff_failed"' "${run_all_project_ensure_log}" || grep -Fq 'status: release_live_idle_handoff_failed' "${run_all_project_ensure_log}"; then
+    run_all_continuous_failure_kind="release_live_idle_handoff_failed"
+    echo "status: release_live_idle_handoff_failed" | tee -a "${run_all_project_ensure_log}" >&2
+    echo "ERROR: release-live could not hand off from the trusted warmup conversation to an idle dedicated Project task; no bootstrap prompt was submitted." | tee -a "${run_all_project_ensure_log}" >&2
+    record_all_test_step "live_project_ensure" "${run_all_project_ensure_log}" 1
+    return 1
+  fi
+
   if run_all_log_has_bootstrap_sentinel_missing_after_ask_success "${run_all_project_ensure_log}"; then
     run_all_continuous_failure_kind="bootstrap_sentinel_missing_after_ask_success"
     echo "status: bootstrap_sentinel_missing_after_ask_success" | tee -a "${run_all_project_ensure_log}" >&2
@@ -6176,6 +6236,11 @@ INNERPY
           record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
           record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_blocked_by_live_bootstrap_guardrail"
           record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_blocked_by_live_bootstrap_guardrail"
+          ;;
+        release_live_idle_handoff_failed)
+          record_all_test_dependency_skipped_step "ask_live" "${ask_live_log}" "live_project_ensure" "release_live_idle_handoff_failed"
+          record_all_test_dependency_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "live_project_ensure" "release_live_idle_handoff_failed"
+          record_all_test_dependency_skipped_step "release_live" "${release_live_log}" "live_project_ensure" "release_live_idle_handoff_failed"
           ;;
         bootstrap_sentinel_missing_after_ask_success)
           record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_bootstrap_sentinel_missing_after_ask_success"

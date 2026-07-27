@@ -1,23 +1,28 @@
 # Release Status
 
-<!-- v0.1.111.3 current control-surface header -->
+<!-- v0.1.111.4 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.3`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
+- Active candidate version: `v0.1.111.4`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.112`
-- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.111.5`
+- Next planned slice after acceptance: `v0.1.111.5 — Named-step ETA planning and stable countdown`
 
-## v0.1.111.3 repair candidate
+## v0.1.111.4 repair candidate
 
+
+- Accepted/current remains `v0.1.109.1.1`.
+- `v0.1.111.3` is `repair_required`: two complete runs reproduced the same busy trusted-conversation external-live failure; adoption was refused.
+- `v0.1.111.4` is candidate-only until strict packaged-byte validation, independent transports, all external-live gates, publication, adoption, and current verification pass.
+- The ETA defect remains intentionally deferred to `v0.1.111.5`.
 - Accepted/current: `v0.1.109.1.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate: `v0.1.111.3` / `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
-- Scope: normalise expected browser outcomes before terminal progress accounting; propagate fail-fast into the browser step boundary; stop before the next main browser step after a genuine failure; mark pending work units skipped.
+- Active candidate: `v0.1.111.4` / `chatgpt_claudecode_workflow-2_v0.1.111.4.zip`
+- Scope: treat the trusted conversation as identity-only, hand off to the exact Project home, require bounded idle readiness, create a dedicated release-live conversation, never click Stop, and classify downstream live gates as dependency skips after one causal failure.
 - Retained: v0.1.110 backlog intake, v0.1.111 lifecycle contract engine, and v0.1.111.1 installed-package repair.
 - Not claimed: full release validation, Project Source publication, adoption, accepted/current verification, or PBAI-001 implementation.
-- Planned after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Planned after acceptance: `v0.1.111.5 — Named-step ETA planning and stable countdown`; next normal remains `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
@@ -26,12 +31,12 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.3.zip
-active candidate version: v0.1.111.3
-active repair slice: v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.zip
+active candidate version: v0.1.111.4
+active repair slice: v0.1.111.4 — Deterministic external-live idle handoff
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
 ```
 
 ## ZIP status values

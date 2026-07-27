@@ -816,3 +816,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | DoD item | Status | Evidence | Last release |
 |---|---|---:|---|---|
 | DOD-308 | Expected browser outcomes are normalised before terminal progress accounting; genuine failed normalised steps stop before the next main browser step; pending browser/agent/validation units become skipped and terminal progress reaches 100%; all release gates remain unchanged | focused_candidate | `promptbranch_full_integration_test.py`, `promptbranch_test_suite.py`, `tests/test_full_integration_harness.py`, `tests/test_promptbranch_test_suite.py`, `docs/repair-v0.1.111.3.md` | v0.1.111.3 |
+
+## v0.1.111.4 deterministic external-live idle handoff
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-309 | The trusted external-live conversation is identity-only; release-live preserves browser/profile scope, hands off to an idle exact Project home, creates a dedicated conversation, never clicks Stop, submits nothing on failed handoff, and reports downstream gates as dependency skips after one causal failure | focused_candidate | `promptbranch_browser_auth/client.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_release_live_continuous_direct_conversation.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.4.md` | v0.1.111.4 |

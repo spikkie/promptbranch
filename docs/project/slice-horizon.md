@@ -19,5 +19,7 @@ Repair releases must not advance normal scope. A normal slice may advance only a
 | v0.1.111 | Global release lifecycle contract and read-only planner | repair_required | normal | installed module packaging failed |
 | v0.1.111.1 | Package and verify the release-contract engine | superseded | repair | retained in v0.1.111.2 |
 | v0.1.111.2 | Full-test progress, ETA, and fail-fast reporting | repair_required | repair | false expected-missing failure accounting; browser fail-fast was only phase-level |
-| v0.1.111.3 | Normalised browser progress and genuine step-level fail-fast | active | repair | no gate weakening; strict host validation pending |
-| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_acceptance | normal | starts only after v0.1.111.3 adoption |
+| v0.1.111.3 | Normalised browser progress and genuine step-level fail-fast | repair_required | repair | product transport proof passed; strict logs exposed idle-handoff and ETA defects |
+| v0.1.111.4 | Deterministic external-live idle handoff | active | repair | trusted conversation identity-only; dedicated Project task; dependency skip accounting |
+| v0.1.111.5 | Named-step ETA planning and stable countdown | planned_after_acceptance | repair | ETA-only observability correction; validation evidence remains independent |
+| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_repair_sequence | normal | starts only after v0.1.111.4 and v0.1.111.5 acceptance |

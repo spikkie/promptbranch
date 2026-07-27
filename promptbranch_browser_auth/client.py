@@ -2188,6 +2188,109 @@ class ChatGPTBrowserClient:
         )
         return last
 
+    @staticmethod
+    def _release_live_idle_handoff_timeout_ms() -> int:
+        raw = (os.getenv("PROMPTBRANCH_RELEASE_LIVE_IDLE_HANDOFF_TIMEOUT_SECONDS") or "30").strip()
+        try:
+            seconds = float(raw)
+        except Exception:
+            seconds = 30.0
+        return int(min(300.0, max(1.0, seconds)) * 1000)
+
+    async def _release_live_pre_bootstrap_idle_handoff(
+        self,
+        page: Any,
+        *,
+        trusted_conversation_url: str,
+        project_url: str,
+    ) -> dict[str, Any]:
+        """Move release-live from the trusted warmup conversation to a fresh Project task.
+
+        The trusted conversation proves authentication and exact Project identity only.
+        Release validation must not type into, stop, or wait indefinitely on that
+        operator-owned conversation.  The handoff navigates once to the exact Project
+        home, requires an idle composer there, and lets the first bootstrap submission
+        create a dedicated release-live conversation in the same browser context.
+        """
+
+        started = time.monotonic()
+        initial_readiness = await self._wait_for_composer_ready_before_fill(
+            page,
+            timeout_ms=1_000,
+            poll_interval_ms=250,
+        )
+        initial_blockers = list(initial_readiness.get("blockers") or []) if isinstance(initial_readiness, dict) else []
+        initial_idle = bool(
+            isinstance(initial_readiness, dict)
+            and initial_readiness.get("status") == "composer_ready"
+            and not initial_blockers
+        )
+        navigation = await self._goto(
+            page,
+            project_url,
+            label="release-live-pre-bootstrap-idle-handoff",
+            respect_history_rate_limit_cooldown=False,
+        )
+        await self._wait_for_challenge_resolution(page, label="release-live-pre-bootstrap-idle-handoff")
+        await self._raise_fail_fast_challenge_if_configured(page, stage="release-live-pre-bootstrap-idle-handoff")
+        current_url = str(
+            (navigation.get("final_url") if isinstance(navigation, dict) else None)
+            or (navigation.get("current_url") if isinstance(navigation, dict) else None)
+            or await self._safe_page_url(page)
+            or ""
+        )
+        scope = self._ask_target_scope_evidence(current_url=current_url, target_url=project_url)
+        timeout_ms = self._release_live_idle_handoff_timeout_ms()
+        final_readiness = await self._wait_for_composer_ready_before_fill(
+            page,
+            timeout_ms=timeout_ms,
+            poll_interval_ms=500,
+        )
+        final_blockers = list(final_readiness.get("blockers") or []) if isinstance(final_readiness, dict) else []
+        final_idle = bool(
+            isinstance(final_readiness, dict)
+            and final_readiness.get("status") == "composer_ready"
+            and not final_blockers
+        )
+        ok = bool(scope.get("matches") is True and final_idle)
+        result = {
+            "ok": ok,
+            "action": "release_live_pre_bootstrap_idle_handoff",
+            "status": "dedicated_release_live_task_ready" if ok else "release_live_idle_handoff_failed",
+            "trusted_conversation_url": trusted_conversation_url,
+            "project_url": project_url,
+            "bootstrap_target_url": project_url,
+            "trusted_conversation_initial_readiness": initial_readiness,
+            "trusted_conversation_initial_blockers": initial_blockers,
+            "trusted_conversation_initial_idle": initial_idle,
+            "trusted_conversation_mutation_avoided": True,
+            "dedicated_release_live_conversation_required": True,
+            "handoff_performed": True,
+            "handoff_navigation": navigation,
+            "handoff_scope": scope,
+            "handoff_timeout_ms": timeout_ms,
+            "handoff_final_readiness": final_readiness,
+            "handoff_final_blockers": final_blockers,
+            "stop_action_attempted": False,
+            "bootstrap_submission_attempted": False,
+            "same_browser_context_preserved": True,
+            "same_physical_profile_preserved": True,
+            "duration_seconds": round(time.monotonic() - started, 3),
+        }
+        self._log(
+            "release-live-continuous",
+            "release-live pre-bootstrap idle handoff completed",
+            ok=ok,
+            status=result["status"],
+            trusted_conversation_initial_blockers=initial_blockers,
+            project_url=project_url,
+            current_url=current_url,
+            scope_matches=scope.get("matches"),
+            final_blockers=final_blockers,
+            stop_action_attempted=False,
+        )
+        return self._attach_rate_limit_telemetry(result)
+
     async def _release_live_post_bootstrap_idle_recovery(
         self,
         page: Any,
@@ -2443,7 +2546,8 @@ class ChatGPTBrowserClient:
                     "duration_seconds": round(time.monotonic() - started, 3),
                 }
 
-        bootstrap_target_url = direct_conversation_url if direct_conversation_mode else project_url
+        bootstrap_target_url = project_url
+        pre_bootstrap_idle_handoff: dict[str, Any] | None = None
         if direct_conversation_mode:
             direct_nav = await self._goto(
                 page,
@@ -2505,41 +2609,72 @@ class ChatGPTBrowserClient:
                     "root_project_discovery_skipped": True,
                     "duration_seconds": round(time.monotonic() - started, 3),
                 }
-        pre_bootstrap_composer_readiness = await self._wait_for_composer_ready_before_fill(
-            page,
-            timeout_ms=5_000,
-            poll_interval_ms=500,
-        )
-        pre_bootstrap_blockers = list(pre_bootstrap_composer_readiness.get("blockers") or []) if isinstance(pre_bootstrap_composer_readiness, dict) else []
-        pre_bootstrap_ready = bool(
-            isinstance(pre_bootstrap_composer_readiness, dict)
-            and pre_bootstrap_composer_readiness.get("status") == "composer_ready"
-            and not pre_bootstrap_blockers
-        )
-        if not pre_bootstrap_ready:
-            return {
-                "ok": False,
-                "action": "test_release_live_continuous",
-                "status": "target_conversation_busy",
-                "failed_phase": "live_conversation_bootstrap",
-                "project_url": project_url,
-                "conversation_url": direct_conversation_url if direct_conversation_mode else None,
-                "project_result": project_result,
-                "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
-                "pre_bootstrap_blockers": pre_bootstrap_blockers,
-                "bootstrap_submission_attempted": False,
-                "post_bootstrap_idle_recovery": {
+            pre_bootstrap_idle_handoff = await self._release_live_pre_bootstrap_idle_handoff(
+                page,
+                trusted_conversation_url=direct_conversation_url,
+                project_url=project_url,
+            )
+            project_result["pre_bootstrap_idle_handoff"] = pre_bootstrap_idle_handoff
+            project_result["trusted_conversation_mutation_avoided"] = True
+            project_result["dedicated_release_live_conversation_required"] = True
+            if not bool(pre_bootstrap_idle_handoff.get("ok")):
+                return {
                     "ok": False,
-                    "status": "post_bootstrap_recovery_not_applicable",
-                    "reason": "bootstrap_not_submitted",
-                    "recovery_attempted": False,
-                    "recovery_count": 0,
-                },
-                "warmup_conversation_url": warmup_conversation_url,
-                "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
-                "trusted_conversation_direct_mode": direct_conversation_mode,
-                "duration_seconds": round(time.monotonic() - started, 3),
-            }
+                    "action": "test_release_live_continuous",
+                    "status": "release_live_idle_handoff_failed",
+                    "failed_phase": "live_conversation_bootstrap",
+                    "project_url": project_url,
+                    "conversation_url": direct_conversation_url,
+                    "project_result": project_result,
+                    "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
+                    "bootstrap_submission_attempted": False,
+                    "ask_submission_attempted": False,
+                    "dependency_failure": "release_live_idle_handoff_failed",
+                    "warmup_conversation_url": warmup_conversation_url,
+                    "warmup_strategy": "trusted_preflight_conversation_url",
+                    "trusted_conversation_direct_mode": True,
+                    "root_project_discovery_skipped": True,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
+            bootstrap_target_url = str(pre_bootstrap_idle_handoff.get("bootstrap_target_url") or project_url)
+            pre_bootstrap_composer_readiness = pre_bootstrap_idle_handoff.get("handoff_final_readiness")
+            pre_bootstrap_blockers = list(pre_bootstrap_idle_handoff.get("handoff_final_blockers") or [])
+        else:
+            pre_bootstrap_composer_readiness = await self._wait_for_composer_ready_before_fill(
+                page,
+                timeout_ms=5_000,
+                poll_interval_ms=500,
+            )
+            pre_bootstrap_blockers = list(pre_bootstrap_composer_readiness.get("blockers") or []) if isinstance(pre_bootstrap_composer_readiness, dict) else []
+            pre_bootstrap_ready = bool(
+                isinstance(pre_bootstrap_composer_readiness, dict)
+                and pre_bootstrap_composer_readiness.get("status") == "composer_ready"
+                and not pre_bootstrap_blockers
+            )
+            if not pre_bootstrap_ready:
+                return {
+                    "ok": False,
+                    "action": "test_release_live_continuous",
+                    "status": "target_conversation_busy",
+                    "failed_phase": "live_conversation_bootstrap",
+                    "project_url": project_url,
+                    "conversation_url": None,
+                    "project_result": project_result,
+                    "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
+                    "pre_bootstrap_blockers": pre_bootstrap_blockers,
+                    "bootstrap_submission_attempted": False,
+                    "post_bootstrap_idle_recovery": {
+                        "ok": False,
+                        "status": "post_bootstrap_recovery_not_applicable",
+                        "reason": "bootstrap_not_submitted",
+                        "recovery_attempted": False,
+                        "recovery_count": 0,
+                    },
+                    "warmup_conversation_url": warmup_conversation_url,
+                    "warmup_strategy": "configured_project_url",
+                    "trusted_conversation_direct_mode": False,
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
 
         pre_bootstrap_event_start = len(self._rate_limit_events)
         pre_bootstrap_telemetry = self._rate_limit_telemetry_snapshot()
@@ -2591,7 +2726,7 @@ class ChatGPTBrowserClient:
         bootstrap_telemetry = bootstrap_result.get("rate_limit_telemetry") if isinstance(bootstrap_result, dict) else None
         conversation_url = bootstrap_result.get("conversation_url") if isinstance(bootstrap_result, dict) else None
         if direct_conversation_mode and not (isinstance(conversation_url, str) and "/c/" in conversation_url):
-            conversation_url = direct_conversation_url
+            conversation_url = None
         bootstrap_guardrail_retry: dict[str, Any] | None = pre_bootstrap_retry_gate
         if self._release_live_telemetry_guardrail_seen_since(bootstrap_telemetry, bootstrap_event_start):
             bootstrap_guardrail_retry = await self._release_live_guardrail_cooldown_and_recheck(
@@ -2623,7 +2758,7 @@ class ChatGPTBrowserClient:
                 retry_telemetry = retry_bootstrap_result.get("rate_limit_telemetry") if isinstance(retry_bootstrap_result, dict) else None
                 retry_conversation_url = retry_bootstrap_result.get("conversation_url") if isinstance(retry_bootstrap_result, dict) else None
                 if direct_conversation_mode and not (isinstance(retry_conversation_url, str) and "/c/" in retry_conversation_url):
-                    retry_conversation_url = direct_conversation_url
+                    retry_conversation_url = None
                 bootstrap_guardrail_retry["retry_attempted"] = True
                 bootstrap_guardrail_retry["retry_result_status"] = str(retry_bootstrap_result.get("status") or "") if isinstance(retry_bootstrap_result, dict) else "non_dict_result"
                 bootstrap_guardrail_retry["retry_conversation_url"] = retry_conversation_url
@@ -2651,6 +2786,7 @@ class ChatGPTBrowserClient:
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
                 "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
                 "rate_limit_telemetry": bootstrap_telemetry,
                 "warmup_conversation_url": warmup_conversation_url,
                 "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
@@ -2667,6 +2803,7 @@ class ChatGPTBrowserClient:
                 "conversation_url": conversation_url,
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
+                "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
                 "warmup_conversation_url": warmup_conversation_url,
                 "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
                 "trusted_conversation_direct_mode": direct_conversation_mode,
@@ -2708,6 +2845,7 @@ class ChatGPTBrowserClient:
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
                 "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
                 "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
                 "bootstrap_submission_succeeded": bootstrap_submission_succeeded,
                 "bootstrap_generation_completed": bootstrap_generation_completed,
@@ -2747,6 +2885,7 @@ class ChatGPTBrowserClient:
                 "project_result": project_result,
                 "bootstrap_result": bootstrap_result,
                 "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+                "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
                 "pre_bootstrap_composer_readiness": pre_bootstrap_composer_readiness,
                 "bootstrap_submission_succeeded": bootstrap_submission_succeeded,
                 "bootstrap_generation_completed": bootstrap_generation_completed,
@@ -2827,6 +2966,7 @@ class ChatGPTBrowserClient:
             "project_result": project_result,
             "bootstrap_result": bootstrap_result,
             "bootstrap_guardrail_retry": bootstrap_guardrail_retry,
+            "pre_bootstrap_idle_handoff": pre_bootstrap_idle_handoff,
             "bootstrap_sentinel_retry": bootstrap_sentinel_retry,
             "post_bootstrap_idle_recovery": post_bootstrap_idle_recovery,
             "ask_submission_attempted": True,
@@ -2836,6 +2976,8 @@ class ChatGPTBrowserClient:
             "warmup_conversation_url": warmup_conversation_url,
             "warmup_strategy": "trusted_preflight_conversation_url" if warmup_conversation_url else "configured_project_url",
             "trusted_conversation_direct_mode": direct_conversation_mode,
+            "trusted_conversation_mutation_avoided": bool(direct_conversation_mode),
+            "dedicated_release_live_conversation": bool(direct_conversation_mode),
             "project_identity_source": "warmup_conversation_url" if direct_conversation_mode else "project_ensure",
             "root_project_discovery_skipped": direct_conversation_mode,
             "bootstrap_completed_with_expected_sentinel": bootstrap_completed_with_expected_token,

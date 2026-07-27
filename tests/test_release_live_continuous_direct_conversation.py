@@ -13,6 +13,7 @@ class DirectConversationClient(ChatGPTBrowserClient):
         self.goto_calls: list[dict] = []
         self.challenge_wait_labels: list[str] = []
         self.fail_fast_stages: list[str] = []
+        self.current_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
         super().__init__(
             ChatGPTBrowserConfig(
                 project_url="https://chatgpt.com/g/g-p-demo/c/warmup",
@@ -28,6 +29,7 @@ class DirectConversationClient(ChatGPTBrowserClient):
         raise AssertionError("trusted conversation mode must not run root project discovery")
 
     async def _goto(self, page, url: str, *, label: str, respect_history_rate_limit_cooldown: bool = True):  # type: ignore[no-untyped-def]
+        self.current_url = url
         self.goto_calls.append({
             "url": url,
             "label": label,
@@ -49,7 +51,7 @@ class DirectConversationClient(ChatGPTBrowserClient):
 
     async def _probe_auth_readiness_state(self, page):  # type: ignore[no-untyped-def]
         return {
-            "current_url": "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources",
+            "current_url": self.current_url,
             "title": "ChatGPT",
             "challenge_detected": False,
             "auth_visible": True,
@@ -73,12 +75,24 @@ class DirectConversationClient(ChatGPTBrowserClient):
             "interrupted_state": {"present": False},
         }
 
+    def _dedicated_result_conversation_url(self, kwargs: dict) -> str:
+        requested = str(kwargs.get("conversation_url") or "")
+        if requested.endswith("/project"):
+            return "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated"
+        return requested
+
     async def _ask_question_operation(self, **kwargs):  # type: ignore[no-untyped-def]
         self.ask_calls.append(dict(kwargs))
+        conversation_url = (
+            "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated"
+            if len(self.ask_calls) == 1
+            else kwargs["conversation_url"]
+        )
+        self.current_url = conversation_url
         return {
             "ok": True,
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": conversation_url,
             "answer": "ASK_SENTINEL" if len(self.ask_calls) == 2 else "BOOTSTRAP_SENTINEL",
         }
 
@@ -118,23 +132,41 @@ def test_release_live_continuous_trusted_conversation_skips_project_discovery(tm
     assert result["root_project_discovery_skipped"] is True
     assert result["project_identity_source"] == "warmup_conversation_url"
     assert result["project_url"] == "https://chatgpt.com/g/g-p-demo/project"
-    assert result["conversation_url"] == warmup_url
+    assert result["conversation_url"] == "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated"
+    assert result["trusted_conversation_mutation_avoided"] is True
+    assert result["dedicated_release_live_conversation"] is True
+    assert result["pre_bootstrap_idle_handoff"]["status"] == "dedicated_release_live_task_ready"
+    assert result["pre_bootstrap_idle_handoff"]["stop_action_attempted"] is False
     assert result["project_result"]["status"] == "trusted_conversation_url"
     assert result["project_result"]["project_discovery_skipped"] is True
-    assert len(client.goto_calls) == 1
+    assert len(client.goto_calls) == 2
     assert client.goto_calls[0] == {
         "url": warmup_url,
         "label": "release-live-continuous-trusted-conversation",
         "respect_history_rate_limit_cooldown": False,
     }
-    assert client.challenge_wait_labels == ["release-live-continuous-trusted-conversation"]
-    assert client.fail_fast_stages == ["release-live-continuous-trusted-conversation"]
+    assert client.goto_calls[1] == {
+        "url": "https://chatgpt.com/g/g-p-demo/project",
+        "label": "release-live-pre-bootstrap-idle-handoff",
+        "respect_history_rate_limit_cooldown": False,
+    }
+    assert client.challenge_wait_labels == [
+        "release-live-continuous-trusted-conversation",
+        "release-live-pre-bootstrap-idle-handoff",
+    ]
+    assert client.fail_fast_stages == [
+        "release-live-continuous-trusted-conversation",
+        "release-live-pre-bootstrap-idle-handoff",
+    ]
     assert result["project_result"]["trusted_conversation_ready"] is True
     assert result["project_result"]["trusted_conversation_readiness"]["composer_visible"] is True
     assert result["project_result"]["trusted_conversation_readiness"]["logged_in"] is True
     assert result["project_result"]["trusted_conversation_scope"]["matches"] is True
     assert len(client.ask_calls) == 2
-    assert [call["conversation_url"] for call in client.ask_calls] == [warmup_url, warmup_url]
+    assert [call["conversation_url"] for call in client.ask_calls] == [
+        "https://chatgpt.com/g/g-p-demo/project",
+        "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated",
+    ]
     assert client.ask_calls[0]["reuse_current_page_if_ready"] is True
     assert client.ask_calls[1]["reuse_current_page_if_ready"] is True
 
@@ -145,7 +177,12 @@ def test_release_live_continuous_direct_conversation_static_guard() -> None:
     assert "root_project_discovery_skipped" in source
     assert "project_identity_source\": \"warmup_conversation_url" in source
     assert "direct_conversation_mode = bool" in source
-    assert "bootstrap_target_url = direct_conversation_url if direct_conversation_mode else project_url" in source
+    assert "bootstrap_target_url = project_url" in source
+    assert "_release_live_pre_bootstrap_idle_handoff" in source
+    assert "release-live-pre-bootstrap-idle-handoff" in source
+    assert "dedicated_release_live_task_ready" in source
+    assert '"stop_action_attempted": False' in source
+    assert 'conversation_url = None' in source
     assert "release-live-continuous-trusted-conversation" in source
     assert "trusted conversation page readiness checked before bootstrap ask" in source
     assert "trusted_conversation_not_ready" in source
@@ -190,7 +227,7 @@ class CompletedSentinelClient(DirectConversationClient):
         self.ask_calls.append(dict(kwargs))
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "ASK_SENTINEL" if len(self.ask_calls) == 2 else "BOOTSTRAP_SENTINEL",
         }
 
@@ -250,12 +287,12 @@ class BootstrapGuardrailRetryClient(DirectConversationClient):
             )
             return {
                 "status": "completed",
-                "conversation_url": kwargs["conversation_url"],
+                "conversation_url": self._dedicated_result_conversation_url(kwargs),
                 "answer": "BOOTSTRAP_SENTINEL",
             }
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "ASK_SENTINEL" if len(self.ask_calls) == 3 else "BOOTSTRAP_SENTINEL",
         }
 
@@ -284,7 +321,11 @@ def test_release_live_continuous_retries_bootstrap_once_after_guardrail_when_rea
     assert result["bootstrap_guardrail_retry"]["retry_attempted"] is True
     assert result["bootstrap_guardrail_retry"]["retry_guardrail_persisted"] is not True if "retry_guardrail_persisted" in result["bootstrap_guardrail_retry"] else True
     assert len(client.ask_calls) == 3
-    assert [call["conversation_url"] for call in client.ask_calls] == [warmup_url, warmup_url, warmup_url]
+    assert [call["conversation_url"] for call in client.ask_calls] == [
+        "https://chatgpt.com/g/g-p-demo/project",
+        "https://chatgpt.com/g/g-p-demo/project",
+        "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated",
+    ]
     assert result["bootstrap_result"]["answer"] == "BOOTSTRAP_SENTINEL"
     assert result["ask_result"]["answer"] == "ASK_SENTINEL"
 
@@ -307,18 +348,18 @@ class BootstrapSentinelMissingRetrySuccessClient(DirectConversationClient):
         if len(self.ask_calls) == 1:
             return {
                 "status": "completed",
-                "conversation_url": kwargs["conversation_url"],
+                "conversation_url": self._dedicated_result_conversation_url(kwargs),
                 "answer": "WRONG_BOOTSTRAP_SENTINEL",
             }
         if len(self.ask_calls) == 2:
             return {
                 "status": "completed",
-                "conversation_url": kwargs["conversation_url"],
+                "conversation_url": self._dedicated_result_conversation_url(kwargs),
                 "answer": "ASK_SENTINEL",
             }
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "BOOTSTRAP_SENTINEL",
         }
 
@@ -329,12 +370,12 @@ class BootstrapSentinelMissingRetryFailureClient(DirectConversationClient):
         if len(self.ask_calls) == 2:
             return {
                 "status": "completed",
-                "conversation_url": kwargs["conversation_url"],
+                "conversation_url": self._dedicated_result_conversation_url(kwargs),
                 "answer": "ASK_SENTINEL",
             }
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "WRONG_BOOTSTRAP_SENTINEL",
         }
 
@@ -410,7 +451,7 @@ class VisibleThinkingPreambleCompletedSentinelClient(DirectConversationClient):
         self.ask_calls.append(dict(kwargs))
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": (
                 "Thought for a few seconds\nASK_SENTINEL"
                 if len(self.ask_calls) == 2
@@ -425,12 +466,12 @@ class ArbitraryPrefixCompletedSentinelClient(DirectConversationClient):
         if len(self.ask_calls) == 2:
             return {
                 "status": "completed",
-                "conversation_url": kwargs["conversation_url"],
+                "conversation_url": self._dedicated_result_conversation_url(kwargs),
                 "answer": "ASK_SENTINEL",
             }
         return {
             "status": "completed",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "Here is the token:\nBOOTSTRAP_SENTINEL",
         }
 
@@ -721,7 +762,7 @@ class BootstrapIncompleteNoRecoveryClient(DirectConversationClient):
         return {
             "ok": False,
             "status": "target_conversation_busy",
-            "conversation_url": kwargs["conversation_url"],
+            "conversation_url": self._dedicated_result_conversation_url(kwargs),
             "answer": "",
         }
 
@@ -815,3 +856,100 @@ def test_release_live_current_turn_interruption_scope_static_contract() -> None:
     assert "post_bootstrap_recovery_eligible" in source
     assert '"reason": "bootstrap_not_completed_with_expected_sentinel"' in source
     assert "_release_live_wait_for_conversation_hydration" in source
+
+
+class BusyTrustedConversationHandoffClient(DirectConversationClient):
+    def __init__(self, tmp_path: Path, *, final_ready: bool) -> None:
+        super().__init__(tmp_path)
+        self.final_ready = final_ready
+        self.handoff_readiness_calls = 0
+
+    async def _wait_for_composer_ready_before_fill(self, page, *, timeout_ms: int = 20_000, poll_interval_ms: int = 500):  # type: ignore[no-untyped-def]
+        self.handoff_readiness_calls += 1
+        if self.handoff_readiness_calls == 1:
+            return {
+                "status": "composer_not_ready_before_fill",
+                "blockers": ["stop_button_visible"],
+                "send_ready": False,
+                "stop_visible": True,
+                "idle_visible": False,
+                "thinking_state": {"visible": False},
+                "interrupted_state": {"present": False},
+            }
+        if self.final_ready:
+            return {
+                "status": "composer_ready",
+                "blockers": [],
+                "send_ready": False,
+                "stop_visible": False,
+                "idle_visible": True,
+                "thinking_state": {"visible": False},
+                "interrupted_state": {"present": False},
+            }
+        return {
+            "status": "composer_not_ready_before_fill",
+            "blockers": ["stop_button_visible"],
+            "send_ready": False,
+            "stop_visible": True,
+            "idle_visible": False,
+            "thinking_state": {"visible": False},
+            "interrupted_state": {"present": False},
+        }
+
+
+def test_release_live_busy_trusted_conversation_hands_off_to_dedicated_project_task(tmp_path: Path) -> None:
+    client = BusyTrustedConversationHandoffClient(tmp_path, final_ready=True)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Reply with exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is True
+    handoff = result["pre_bootstrap_idle_handoff"]
+    assert handoff["trusted_conversation_initial_blockers"] == ["stop_button_visible"]
+    assert handoff["trusted_conversation_initial_idle"] is False
+    assert handoff["status"] == "dedicated_release_live_task_ready"
+    assert handoff["bootstrap_target_url"] == "https://chatgpt.com/g/g-p-demo/project"
+    assert handoff["stop_action_attempted"] is False
+    assert handoff["trusted_conversation_mutation_avoided"] is True
+    assert client.ask_calls[0]["conversation_url"] == "https://chatgpt.com/g/g-p-demo/project"
+    assert result["conversation_url"] == "https://chatgpt.com/g/g-p-demo/c/release-live-dedicated"
+
+
+def test_release_live_idle_handoff_failure_stops_before_bootstrap_submission(tmp_path: Path) -> None:
+    client = BusyTrustedConversationHandoffClient(tmp_path, final_ready=False)
+    warmup_url = "https://chatgpt.com/g/g-p-demo/c/warmup?tab=sources"
+
+    result = asyncio.run(
+        client._release_live_bootstrap_and_ask_operation(
+            context=object(),
+            page=object(),
+            project_name="promptbranch3",
+            bootstrap_prompt="Reply with exactly the single token BOOTSTRAP_SENTINEL and nothing else.",
+            ask_prompt="Reply with exactly the single token ASK_SENTINEL and nothing else.",
+            icon=None,
+            color=None,
+            memory_mode="project-only",
+            warmup_conversation_url=warmup_url,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "release_live_idle_handoff_failed"
+    assert result["failed_phase"] == "live_conversation_bootstrap"
+    assert result["bootstrap_submission_attempted"] is False
+    assert result["ask_submission_attempted"] is False
+    assert result["pre_bootstrap_idle_handoff"]["handoff_final_blockers"] == ["stop_button_visible"]
+    assert result["pre_bootstrap_idle_handoff"]["stop_action_attempted"] is False
+    assert client.ask_calls == []

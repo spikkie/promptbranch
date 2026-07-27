@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
   "accepted_current_version": "v0.1.109.1.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-  "active_candidate_version": "v0.1.111.3",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+  "active_candidate_version": "v0.1.111.4",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
+  "active_slice": "v0.1.111.4 — Deterministic external-live idle handoff",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -306,12 +306,20 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
       "created_at": "2026-07-27T10:00:00+02:00",
       "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
-      "status": "candidate",
-      "validation": "focused normalisation, true browser fail-fast, progress completion, package, and strict host validation pending",
+      "status": "repair_required",
+      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5.",
       "version": "v0.1.111.3"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+      "created_at": "2026-07-27T22:30:00+02:00",
+      "slice": "v0.1.111.4 — Deterministic external-live idle handoff",
+      "status": "candidate",
+      "validation": "Focused idle-handoff, no-submit, dependency-skip, package, and strict host validation pending.",
+      "version": "v0.1.111.4"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -672,21 +680,29 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
       "created_at": "2026-07-27T10:00:00+02:00",
       "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
-      "status": "candidate",
-      "validation": "focused normalisation, true browser fail-fast, progress completion, package, and strict host validation pending",
+      "status": "repair_required",
+      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5.",
       "version": "v0.1.111.3"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+      "created_at": "2026-07-27T22:30:00+02:00",
+      "slice": "v0.1.111.4 — Deterministic external-live idle handoff",
+      "status": "candidate",
+      "validation": "Focused idle-handoff, no-submit, dependency-skip, package, and strict host validation pending.",
+      "version": "v0.1.111.4"
     }
   ],
   "last_completed_normal_slice": "v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
   "last_completed_normal_slice_version": "v0.1.109",
   "last_completed_repair": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
   "last_completed_repair_version": "v0.1.109.1.1",
-  "last_updated": "2026-07-27T10:00:00+02:00",
+  "last_updated": "2026-07-27T22:30:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
   "next_normal_slice": "v0.1.112 — PBAI-001 declaration and structural validation",
   "next_normal_version": "v0.1.112",
-  "next_planned_slice_after_acceptance": "v0.1.112 — PBAI-001 declaration and structural validation",
-  "next_planned_version_after_acceptance": "v0.1.112",
+  "next_planned_slice_after_acceptance": "v0.1.111.5 — Named-step ETA planning and stable countdown",
+  "next_planned_version_after_acceptance": "v0.1.111.5",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1242,11 +1258,21 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "repair_required",
       "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
       "version": "v0.1.111.3",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast"
+      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
+      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5.",
+      "scope": "normalised browser progress passed; reproducible external-live idle-handoff blocker and ETA defect remain"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+      "kind": "repair",
+      "slice": "v0.1.111.4 — Deterministic external-live idle handoff",
+      "status": "candidate",
+      "summary": "Use the trusted conversation only for authenticated Project identity, hand off to the exact Project home, require an idle composer, create a dedicated release-live conversation, never click Stop, and report downstream live gates as dependency skips after one causal failure.",
+      "version": "v0.1.111.4"
     }
   ],
   "release_mode": "repair",
@@ -1474,9 +1500,16 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "repair_required",
       "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
-      "version": "v0.1.111.3"
+      "version": "v0.1.111.3",
+      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5."
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "version": "v0.1.111.4",
+      "summary": "Use the trusted conversation only for authenticated Project identity, hand off to the exact Project home, require an idle composer, create a dedicated release-live conversation, never click Stop, and report downstream live gates as dependency skips after one causal failure."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1511,56 +1544,36 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
-      "release_mode": "normal",
-      "scope": "behavioral inventory implemented; original candidate was not adopted",
-      "slice": "v0.1.109.1 — Behavioral surface inventory and runtime authority resolver alignment",
-      "status": "repair_required",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
-      "version": "v0.1.109.1"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
-      "release_mode": "repair",
-      "scope": "accepted tracked Project binding and runtime evidence separation",
-      "slice": "v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation",
-      "status": "completed",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
-      "version": "v0.1.109.1.1"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.zip",
-      "release_mode": "normal",
-      "scope": "ISSUE-001 phase-one implementation; installed package omitted promptbranch_release_engine",
-      "slice": "v0.1.111 — Global release lifecycle contract and read-only planner",
-      "status": "repair_required",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.zip",
-      "version": "v0.1.111"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
-      "release_mode": "repair",
-      "scope": "progress and ETA implemented, but expected-missing was recorded failed and fail-fast was phase-level rather than browser step-level",
-      "slice": "v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting",
-      "status": "repair_required",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
-      "version": "v0.1.111.2"
-    },
-    {
+      "version": "v0.1.111.3",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-      "release_mode": "repair",
-      "scope": "normalise expected results before progress, stop on first genuine browser-step failure, and mark pending browser/agent/validation units skipped without weakening release gates",
       "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
-      "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-      "version": "v0.1.111.3"
+      "status": "repair_required",
+      "release_mode": "repair",
+      "scope": "browser progress/fail-fast repair passed focused validation; strict logs exposed reproducible external-live idle-handoff and ETA defects",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip"
     },
     {
-      "release_mode": "normal",
-      "scope": "implement the first PBAI-001 tracked declaration and fail-closed structural validator",
-      "slice": "v0.1.112 — PBAI-001 declaration and structural validation",
+      "version": "v0.1.111.4",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
+      "slice": "v0.1.111.4 — Deterministic external-live idle handoff",
+      "status": "active",
+      "release_mode": "repair",
+      "scope": "trusted conversation is identity-only; dedicated Project task handoff; no automatic Stop; one causal failure plus dependency skips",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip"
+    },
+    {
+      "version": "v0.1.111.5",
+      "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
       "status": "planned_after_acceptance",
-      "version": "v0.1.112"
+      "release_mode": "repair",
+      "scope": "replace elapsed/completed ETA with named-step timing, known-skip exclusion, and confidence-labelled countdown"
+    },
+    {
+      "version": "v0.1.112",
+      "slice": "v0.1.112 — PBAI-001 declaration and structural validation",
+      "status": "planned_after_repair_sequence",
+      "release_mode": "normal",
+      "scope": "implement the first PBAI-001 tracked declaration and fail-closed structural validator"
     }
   ],
   "schema": "promptbranch.project.plan_state",
@@ -1576,5 +1589,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.111.3"
+  "updated_for": "v0.1.111.4"
 }
