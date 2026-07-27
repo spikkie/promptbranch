@@ -155,8 +155,20 @@ class IntegrationAssertionError(RuntimeError):
     pass
 
 
+class IntegrationFailFastStop(IntegrationAssertionError):
+    """Terminal browser-step failure raised only after final result normalisation."""
+
+    def __init__(self, step_name: str, details: Any) -> None:
+        self.step_name = step_name
+        self.details = details
+        super().__init__(f"fail-fast stopped after browser step {step_name!r}")
+
+
 _PROGRESS_CALLBACK: ContextVar[Optional[Callable[..., None]]] = ContextVar(
     "promptbranch_integration_progress_callback", default=None
+)
+_FAIL_FAST_ENABLED: ContextVar[bool] = ContextVar(
+    "promptbranch_integration_fail_fast_enabled", default=False
 )
 
 
@@ -346,6 +358,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service-token", default=os.getenv("CHATGPT_SERVICE_TOKEN") or os.getenv("CHATGPT_API_TOKEN"), help="Optional bearer token for the Docker service.")
     parser.add_argument("--service-timeout-seconds", type=float, default=float(os.getenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", "300.0")), help="HTTP timeout when running against the Docker service.")
     parser.add_argument("--clear-singleton-locks", action="store_true", help="Clear stale Chrome Singleton* lock artifacts from the profile before launching a persistent browser context. Useful when reusing the same profile across host and Docker runs.")
+    parser.add_argument("--fail-fast", action="store_true", help="Stop after the first genuinely failed normalised browser step; expected missing/unsupported/skip states remain non-failures.")
     return parser
 
 
@@ -814,40 +827,53 @@ def build_service(args: argparse.Namespace, *, project_url: str):
     return ChatGPTAutomationService(build_settings(args, project_url=project_url))
 
 
-async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seconds: float = 0.0) -> Any:
+async def _run_step(
+    steps: list[StepResult],
+    name: str,
+    coro,
+    *,
+    step_delay_seconds: float = 0.0,
+    result_normalizer: Optional[Callable[[Any], Any]] = None,
+    defer_fail_fast: bool = False,
+) -> Any:
     if steps and step_delay_seconds > 0:
         await asyncio.sleep(step_delay_seconds)
     _emit_progress("started", name)
     started = time.perf_counter()
     try:
-        result = await coro
-        result_ok = not (isinstance(result, dict) and result.get("ok") is False)
-        duration = round(time.perf_counter() - started, 3)
-        steps.append(
-            StepResult(
-                name=name,
-                ok=result_ok,
-                duration_seconds=duration,
-                details=result,
-            )
-        )
-        _emit_progress("finished", name, ok=result_ok, duration_seconds=duration)
-        return result
+        raw_result = await coro
     except Exception as exc:
         duration = round(time.perf_counter() - started, 3)
+        details = {
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
         steps.append(
             StepResult(
                 name=name,
                 ok=False,
                 duration_seconds=duration,
-                details={
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
+                details=details,
             )
         )
         _emit_progress("finished", name, ok=False, duration_seconds=duration)
         raise
+
+    result = result_normalizer(raw_result) if result_normalizer is not None else raw_result
+    result_ok = not (isinstance(result, dict) and result.get("ok") is False)
+    duration = round(time.perf_counter() - started, 3)
+    steps.append(
+        StepResult(
+            name=name,
+            ok=result_ok,
+            duration_seconds=duration,
+            details=result,
+        )
+    )
+    _emit_progress("finished", name, ok=result_ok, duration_seconds=duration)
+    if _FAIL_FAST_ENABLED.get() and not result_ok and not defer_fail_fast:
+        raise IntegrationFailFastStop(name, result)
+    return result
 
 
 async def _attach_project_source_failure_diagnostic(
@@ -2075,6 +2101,7 @@ async def _wait_for_task_visible_in_list(
 
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
     progress_token = _PROGRESS_CALLBACK.set(getattr(args, "_progress_callback", None))
+    fail_fast_token = _FAIL_FAST_ENABLED.set(bool(getattr(args, "fail_fast", False)))
     selection = resolve_step_selection(
         only_values=args.only,
         skip_values=args.skip,
@@ -2174,19 +2201,16 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["project_id"] = project_id
 
         if should_run("project_resolve_before_create"):
-            initial_resolve_raw = await _run_step(
+            initial_resolve = await _run_step(
                 steps,
                 "project_resolve_before_create",
                 base_service.resolve_project(name=project_name, keep_open=args.keep_open),
                 step_delay_seconds=args.step_delay_seconds,
+                result_normalizer=_normalize_expected_missing_resolve_result,
             )
-            initial_resolve = _normalize_expected_missing_resolve_result(initial_resolve_raw)
-            if steps and steps[-1].name == "project_resolve_before_create":
-                steps[-1].details = initial_resolve
-                steps[-1].ok = bool(isinstance(initial_resolve, dict) and initial_resolve.get("ok") is True)
-            _require(initial_resolve_raw.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve_raw}")
+            _require(initial_resolve.get("match_count") in {0, 1}, f"unexpected pre-create resolve result: {initial_resolve}")
             _require(
-                initial_resolve_raw.get("match_count") == 0 or bool(args.project_name),
+                initial_resolve.get("match_count") == 0 or bool(args.project_name),
                 (
                     "generated project name already exists before test start; refusing to continue because the run would not be isolated. "
                     "Pass --project-name only when you intentionally want to reuse an existing project."
@@ -2356,6 +2380,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                     keep_open=args.keep_open,
                 ),
                 step_delay_seconds=args.step_delay_seconds,
+                defer_fail_fast=True,
             )
             if isinstance(text_add, dict) and text_add.get("ok") is False:
                 await _attach_project_source_failure_diagnostic(
@@ -2605,6 +2630,17 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             )
 
         summary["ok"] = True
+    except IntegrationFailFastStop as exc:
+        summary["ok"] = False
+        summary["status"] = "failed_fast"
+        summary["fail_fast_triggered"] = True
+        summary["fail_fast_step"] = exc.step_name
+        summary["error"] = {
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "step_name": exc.step_name,
+            "details": exc.details,
+        }
     except Exception as exc:
         summary["ok"] = False
         summary["error"] = {
@@ -2678,6 +2714,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["cleanup_failed_steps"] = [asdict(step) for step in cleanup_failures]
         summary["cleanup_steps"] = [asdict(step) for step in cleanup_steps]
 
+    _FAIL_FAST_ENABLED.reset(fail_fast_token)
     _PROGRESS_CALLBACK.reset(progress_token)
     return summary
 

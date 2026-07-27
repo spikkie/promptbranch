@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip",
   "accepted_current_version": "v0.1.109.1.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
-  "active_candidate_version": "v0.1.111.2",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+  "active_candidate_version": "v0.1.111.3",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting",
+  "active_slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -298,12 +298,20 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
       "created_at": "2026-07-26T22:00:00+02:00",
       "slice": "v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting",
-      "status": "candidate",
-      "validation": "focused progress, fail-fast, control-surface, package, and artifact validation pending",
+      "status": "repair_required",
+      "validation": "Strict release validation log was incomplete and contained no terminal suite JSON, release verdict, or adoption result. It exposed a false failed progress event for expected project_not_found and proved browser fail-fast was not propagated into the integration step loop.",
       "version": "v0.1.111.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+      "created_at": "2026-07-27T10:00:00+02:00",
+      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
+      "status": "candidate",
+      "validation": "focused normalisation, true browser fail-fast, progress completion, package, and strict host validation pending",
+      "version": "v0.1.111.3"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.109.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -659,14 +667,22 @@
       "status": "candidate",
       "validation": "279 focused/relevant deterministic tests passed; authority_consistent; clean-extraction control and installed-module smoke passed; full release validation pending.",
       "version": "v0.1.109"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+      "created_at": "2026-07-27T10:00:00+02:00",
+      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
+      "status": "candidate",
+      "validation": "focused normalisation, true browser fail-fast, progress completion, package, and strict host validation pending",
+      "version": "v0.1.111.3"
     }
   ],
   "last_completed_normal_slice": "v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
   "last_completed_normal_slice_version": "v0.1.109",
   "last_completed_repair": "v0.1.108.1 — Project Source staged-overwrite and removal-proof reliability",
   "last_completed_repair_version": "v0.1.109.1.1",
-  "last_updated": "2026-07-25T06:45:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
+  "last_updated": "2026-07-27T10:00:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
   "next_normal_slice": "v0.1.112 — PBAI-001 declaration and structural validation",
   "next_normal_version": "v0.1.112",
   "next_planned_slice_after_acceptance": "v0.1.112 — PBAI-001 declaration and structural validation",
@@ -1223,6 +1239,14 @@
       "status": "candidate",
       "summary": "Defines stable project policy, agent instructions, a machine-readable authority graph, and read-only authority validation with fail-closed drift detection.",
       "version": "v0.1.109"
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
+      "version": "v0.1.111.3",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast"
     }
   ],
   "release_mode": "repair",
@@ -1447,6 +1471,12 @@
       "summary": "Tracks the stable repository-to-Project binding in Git and release ZIPs, derives user-local membership from it, rejects mismatched join arguments, keeps artifact evidence runtime-only, and adds migration and recovery tests.",
       "validation": "Strict release validation passed 10/10 with full_direct, independent full_localhost, external-live, visual artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.",
       "version": "v0.1.109.1.1"
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
+      "version": "v0.1.111.3"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1481,15 +1511,6 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.zip",
-      "release_mode": "normal",
-      "scope": "accepted precedence-free authority ownership and read-only drift validation",
-      "slice": "v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
-      "status": "completed",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.109.zip",
-      "version": "v0.1.109"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.109.1.zip",
       "release_mode": "normal",
       "scope": "behavioral inventory implemented; original candidate was not adopted",
@@ -1519,11 +1540,20 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
       "release_mode": "repair",
-      "scope": "add live work-unit progress, pass/fail/skip counts, percentage complete, approximate ETA, and bounded fail-fast reporting without changing test assertions",
+      "scope": "progress and ETA implemented, but expected-missing was recorded failed and fail-fast was phase-level rather than browser step-level",
       "slice": "v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting",
-      "status": "active",
+      "status": "repair_required",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.2.zip",
       "version": "v0.1.111.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+      "release_mode": "repair",
+      "scope": "normalise expected results before progress, stop on first genuine browser-step failure, and mark pending browser/agent/validation units skipped without weakening release gates",
+      "slice": "v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
+      "version": "v0.1.111.3"
     },
     {
       "release_mode": "normal",
@@ -1546,5 +1576,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.111.2"
+  "updated_for": "v0.1.111.3"
 }

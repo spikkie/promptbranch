@@ -1220,3 +1220,7 @@ Existing human-readable plan/status/release documents remain preserved as projec
 ## v0.1.111.2 progress-output migration
 
 Automation consuming `pb test full --json` must tolerate preceding `pb_test_progress:` lines, as full-profile logs already contain validation-group progress before the terminal JSON object. Use `--no-progress` for a quieter stream. Release control accepts `--fail-fast` and `--no-fail-fast`. Next planned version: `v0.1.112`.
+
+## v0.1.111.3 fail-fast migration
+
+No state or registry migration is required. Consumers of `pb_test_progress:` should treat `expected_missing`, `expected_unsupported`, and `expected_skip` as passed units. With `pb test full --fail-fast`, a genuine browser-step failure now terminates the browser loop before the next main step and marks remaining work units skipped. The outer release-control workflow continues collecting its configured gate evidence unless a future explicit global release-fail-fast option is introduced. Accepted/current remains `v0.1.109.1.1`.

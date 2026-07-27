@@ -810,3 +810,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 |---|---|---|---|---|
 | DOD-306 | A tracked machine-readable Promptbranch backlog exists with unique IDs, explicit status, priority, implementation order, dependencies, and repository-relative ticket paths | focused_candidate | `docs/backlog/backlog.json`, `tests/test_backlog_contract.py`, project control-surface validation | v0.1.110 |
 | DOD-307 | ISSUE-001 and PBAI-001 are preserved as complete open tickets and are distinguished from release-horizon and historical DoD records | focused_candidate | `docs/backlog/README.md`, both ticket Markdown files | v0.1.110 |
+
+## v0.1.111.3 normalised progress and browser fail-fast
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---:|---|---|
+| DOD-308 | Expected browser outcomes are normalised before terminal progress accounting; genuine failed normalised steps stop before the next main browser step; pending browser/agent/validation units become skipped and terminal progress reaches 100%; all release gates remain unchanged | focused_candidate | `promptbranch_full_integration_test.py`, `promptbranch_test_suite.py`, `tests/test_full_integration_harness.py`, `tests/test_promptbranch_test_suite.py`, `docs/repair-v0.1.111.3.md` | v0.1.111.3 |

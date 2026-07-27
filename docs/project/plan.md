@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.111.2 current control-surface header -->
+<!-- v0.1.111.3 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Active candidate version: `v0.1.111.3`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -17,9 +17,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
-active candidate version: v0.1.111.2
-active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.3.zip
+active candidate version: v0.1.111.3
+active repair slice: v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
@@ -27,25 +27,25 @@ next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and struc
 
 ## Plan summary
 
-`v0.1.109.1.1` remains accepted/current. `v0.1.110` was not adopted separately; its backlog changes were carried into `v0.1.111`. `v0.1.111` implemented ISSUE-001 but failed installed-package validation, `v0.1.111.1` repaired packaging, and `v0.1.111.2` adds observable progress and bounded fail-fast control without changing release assertions.
+`v0.1.109.1.1` remains accepted/current. `v0.1.111.2` added progress output, but its partial strict log exposed two control defects: expected `project_not_found` was counted as failed before normalisation, and `--fail-fast` was checked only after the complete browser phase. `v0.1.111.3` repairs those defects without weakening any browser, transport, external-live, publication, or adoption gate.
 
-## Active repair slice — v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+## Active repair slice — v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
 
 Acceptance scope:
 
-- Emit the active test step before long-running work.
-- Report passed, failed, skipped, and completed work-unit counts.
-- Report percentage complete and approximate ETA from observed durations.
-- Add `pb test full --fail-fast` and release-control `--fail-fast` aliases.
-- Stop after a failed browser phase or required release-validation group when fail-fast is enabled.
-- Preserve complete JSON evidence and all existing release gates.
+- Normalise expected missing/unsupported/skip results before the step result and progress event become terminal.
+- Propagate `--fail-fast` into `run_integration()`.
+- Stop before the next main browser step after the first genuinely failed normalised browser result.
+- Preserve bounded source-add failure diagnostics before terminating that browser phase.
+- Mark every pending browser, agent, and release-validation work unit `skipped_fail_fast` so terminal progress reaches 100%.
+- Preserve complete terminal JSON and every existing release/adoption gate.
 - Keep ISSUE-001 as `implemented_candidate`; keep PBAI-001 open.
 
-Out of scope: weakening assertions, skipping direct or localhost validation, skipping external-live validation required for adoption, adopting the candidate, or starting PBAI-001 implementation.
+Out of scope: global release-controller stop-on-first-gate behaviour, assertion weakening, skipping direct or localhost validation, skipping required external-live validation, adoption, or PBAI-001 implementation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.111.2` is the sole active repair candidate. `v0.1.112 — PBAI-001 declaration and structural validation` is the sole planned normal slice after acceptance.
+`docs/project/plan-state.json` is authoritative. `v0.1.111.3` is the sole active repair candidate. `v0.1.112 — PBAI-001 declaration and structural validation` is the sole planned normal slice after acceptance.
 
 ## Release / slice plan
 

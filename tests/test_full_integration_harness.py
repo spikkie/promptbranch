@@ -20,8 +20,97 @@ from promptbranch_full_integration_test import (
     IntegrationAssertionError,
     make_parser,
     resolve_step_selection,
+    run_integration,
     _write_changed_file_source_replacement,
 )
+
+
+def test_parser_accepts_browser_fail_fast() -> None:
+    args = make_parser().parse_args(["--fail-fast"])
+    assert args.fail_fast is True
+
+
+def test_run_integration_normalises_expected_missing_before_progress_and_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"resolve": 0, "ensure": 0}
+    events: list[dict[str, Any]] = []
+
+    class FakeService:
+        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None) -> dict[str, Any]:
+            calls["resolve"] += 1
+            return {"ok": False, "error": "project_not_found", "match_count": 0}
+
+        async def ensure_project(self, **kwargs: Any) -> dict[str, Any]:
+            calls["ensure"] += 1
+            return {
+                "ok": True,
+                "created": True,
+                "project_url": "https://chatgpt.com/g/g-p-abc123/project",
+            }
+
+    service = FakeService()
+    monkeypatch.setattr("promptbranch_full_integration_test.build_service", lambda *args, **kwargs: service)
+    args = make_parser().parse_args([
+        "--only",
+        "project_resolve_before_create,project_ensure_create_or_reuse",
+        "--project-name",
+        "itest-normalised-missing",
+        "--keep-project",
+        "--fail-fast",
+        "--step-delay-seconds",
+        "0",
+    ])
+    setattr(args, "_progress_callback", lambda **event: events.append(dict(event)))
+
+    result = asyncio.run(run_integration(args))
+
+    assert result["ok"] is True
+    assert calls == {"resolve": 1, "ensure": 1}
+    assert result["steps"][0]["name"] == "project_resolve_before_create"
+    assert result["steps"][0]["ok"] is True
+    assert result["steps"][0]["details"]["status"] == "expected_missing"
+    resolve_finished = [event for event in events if event["event"] == "finished" and event["step_name"] == "project_resolve_before_create"]
+    assert resolve_finished == [{
+        "event": "finished",
+        "step_name": "project_resolve_before_create",
+        "ok": True,
+        "duration_seconds": resolve_finished[0]["duration_seconds"],
+    }]
+
+
+def test_run_integration_fail_fast_stops_before_next_browser_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"resolve": 0, "ensure": 0}
+
+    class FakeService:
+        async def resolve_project(self, *, name: str, keep_open: bool = False, project_url: str | None = None) -> dict[str, Any]:
+            calls["resolve"] += 1
+            return {"ok": False, "error": "backend_unavailable", "match_count": None}
+
+        async def ensure_project(self, **kwargs: Any) -> dict[str, Any]:
+            calls["ensure"] += 1
+            raise AssertionError("next browser step must not run after a genuine fail-fast failure")
+
+    service = FakeService()
+    monkeypatch.setattr("promptbranch_full_integration_test.build_service", lambda *args, **kwargs: service)
+    args = make_parser().parse_args([
+        "--only",
+        "project_resolve_before_create,project_ensure_create_or_reuse",
+        "--project-name",
+        "itest-real-failure",
+        "--keep-project",
+        "--fail-fast",
+        "--step-delay-seconds",
+        "0",
+    ])
+
+    result = asyncio.run(run_integration(args))
+
+    assert result["ok"] is False
+    assert result["status"] == "failed_fast"
+    assert result["fail_fast_triggered"] is True
+    assert result["fail_fast_step"] == "project_resolve_before_create"
+    assert calls == {"resolve": 1, "ensure": 0}
+    assert [step["name"] for step in result["steps"]] == ["project_resolve_before_create"]
+    assert result["steps"][0]["ok"] is False
 
 
 def test_parser_accepts_skip_only_keep_project_and_strict_remove_ui() -> None:

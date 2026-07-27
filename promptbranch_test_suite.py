@@ -1087,6 +1087,7 @@ def build_test_suite_namespace(
     path: str = ".",
     package_zip: Optional[str] = None,
     rate_limit_safe: Optional[bool] = None,
+    fail_fast: bool = False,
 ) -> argparse.Namespace:
     parser = make_integration_parser()
     args = parser.parse_args([])
@@ -1131,6 +1132,7 @@ def build_test_suite_namespace(
         'service_timeout_seconds': service_timeout_seconds,
         'clear_singleton_locks': clear_singleton_locks,
         'rate_limit_safe': rate_limit_safe,
+        'fail_fast': fail_fast,
     }
     for key, value in overrides.items():
         if value is not None:
@@ -2151,7 +2153,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
         return summary
 
-    browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
+    browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe, fail_fast=fail_fast)
     selection = resolve_step_selection(
         only_values=browser_args.only,
         skip_values=browser_args.skip,
@@ -2194,6 +2196,8 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     if profile == "browser":
         browser_summary.setdefault("profile", "browser")
         browser_summary.setdefault("version", _read_version(Path(repo_path).expanduser().resolve()))
+        if fail_fast and not bool(browser_summary.get("ok")):
+            progress.skip_pending(reason="browser_failure")
         progress.finish_summary()
         browser_summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
         return browser_summary

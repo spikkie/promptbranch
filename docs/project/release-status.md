@@ -1,20 +1,20 @@
 # Release Status
 
-<!-- v0.1.111.2 current control-surface header -->
+<!-- v0.1.111.3 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Active candidate version: `v0.1.111.3`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
 - Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
-## v0.1.111.2 repair candidate
+## v0.1.111.3 repair candidate
 
 - Accepted/current: `v0.1.109.1.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate: `v0.1.111.2` / `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
-- Scope: live full-test work-unit progress, pass/fail/skip counts, percentage complete, approximate ETA, and fail-fast controls.
+- Active candidate: `v0.1.111.3` / `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
+- Scope: normalise expected browser outcomes before terminal progress accounting; propagate fail-fast into the browser step boundary; stop before the next main browser step after a genuine failure; mark pending work units skipped.
 - Retained: v0.1.110 backlog intake, v0.1.111 lifecycle contract engine, and v0.1.111.1 installed-package repair.
 - Not claimed: full release validation, Project Source publication, adoption, accepted/current verification, or PBAI-001 implementation.
 - Planned after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
@@ -26,9 +26,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
-active candidate version: v0.1.111.2
-active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.3.zip
+active candidate version: v0.1.111.3
+active repair slice: v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
@@ -878,3 +878,6 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 ## v0.1.111.1 repair candidate
 
 Packaging-only repair for the missing installed `promptbranch_release_engine` module. The candidate must pass an isolated installed-CLI smoke before any browser bootstrap or Project Source mutation. Accepted/current remains `v0.1.109.1.1`.
+
+| v0.1.111.2 | repair | Full-test progress, ETA, and fail-fast reporting | repair_required | partial strict log exposed false expected-missing failure accounting and phase-level rather than step-level browser fail-fast; no terminal verdict or adoption evidence | DOD-308 predecessor defect; no normal scope advanced | rejected/not adopted |
+| v0.1.111.3 | repair | Normalised browser progress and genuine step-level fail-fast | candidate | normalise before terminal progress; stop before next main browser step on genuine failure; pending work units skipped; all gates preserved | DOD-308 focused candidate; strict host validation pending | pending |

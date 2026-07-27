@@ -1075,3 +1075,7 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 ## ADR-PROJ-1112 — Observable full-test progress and bounded fail-fast
 
 `v0.1.111.2` reports current work, pass/fail/skip counts, percentage complete, elapsed time, and approximate ETA. Fail-fast stops only after a failed browser phase or required validation group; it does not weaken any gate. Next normal version: `v0.1.112`.
+
+## v0.1.111.3 browser fail-fast boundary
+
+Expected-result normalisation is part of the browser step transaction and must occur before a terminal progress event. `--fail-fast` stops only on the final normalised result of a main browser step. Expected missing, expected unsupported, and expected skip remain passes. A genuine failure records one failed unit, prevents the next main browser step, and marks all remaining work units skipped. The wider release controller remains continue-on-failure so it can produce a complete release verdict; this repair does not introduce a global release-gate fast-stop option.

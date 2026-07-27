@@ -1271,3 +1271,38 @@ def test_full_profile_fail_fast_skips_agent_after_browser_failure(monkeypatch, t
     assert result["progress"]["percent_complete"] == 100.0
     assert result["progress"]["failed_units"] == 1
     assert result["progress"]["skipped_units"] > 0
+
+def test_browser_profile_fail_fast_marks_remaining_browser_units_skipped(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.12\n", encoding="utf-8")
+
+    async def fake_run_integration(args):
+        args._progress_callback(event="started", step_name="mcp_smoke", ok=None, duration_seconds=0.0)
+        args._progress_callback(event="finished", step_name="mcp_smoke", ok=False, duration_seconds=0.1)
+        return {
+            "ok": False,
+            "status": "failed_fast",
+            "fail_fast_triggered": True,
+            "fail_fast_step": "mcp_smoke",
+            "steps": [{"name": "mcp_smoke", "ok": False, "details": {"status": "failed"}}],
+        }
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+
+    result = asyncio.run(
+        suite.run_test_suite_async(
+            profile="browser",
+            path=tmp_path,
+            profile_dir=tmp_path / ".pb_profile",
+            only=["mcp_smoke,login_check"],
+            fail_fast=True,
+            progress=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["progress"]["percent_complete"] == 100.0
+    assert result["progress"]["failed_units"] == 1
+    assert result["progress"]["skipped_units"] == 1
+    assert result["progress"]["states"]["browser.mcp_smoke"] == "failed"
+    assert result["progress"]["states"]["browser.login_check"] == "skipped:browser_failure"
+

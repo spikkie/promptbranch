@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.111.2 current control-surface header -->
+<!-- v0.1.111.3 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Active candidate version: `v0.1.111.3`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.3.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -17,9 +17,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
-active candidate version: v0.1.111.2
-active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.3.zip
+active candidate version: v0.1.111.3
+active repair slice: v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
@@ -32,7 +32,7 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: focused candidate
 last accepted/current slice: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active plan slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+active plan slice: v0.1.111.3 — Normalised browser progress and genuine step-level fail-fast
 repair mode: true
 scope advance allowed: false
 ```
@@ -41,8 +41,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
-release status: v0.1.109.1.1 is adopted/current; v0.1.111.2 is an unadopted repair candidate
+active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.3.zip
+release status: v0.1.109.1.1 is adopted/current; v0.1.111.3 is an unadopted repair candidate
 backlog authority: docs/backlog/backlog.json
 backlog status: ISSUE-001 implemented_candidate in v0.1.111; PBAI-001 open
 plan authority file: docs/project/plan-state.json
@@ -58,7 +58,7 @@ next-slice authority command: pb project next-slice --json
 
 ## Current blockers
 
-- Full direct, localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.2` can become current.
+- Focused and packaged-byte validation, then full direct, independent localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.3` can become current.
 
 ## Current unknowns
 
@@ -67,13 +67,13 @@ next-slice authority command: pb project next-slice --json
 ## Next safe action
 
 ```text
-Install chatgpt_claudecode_workflow-2_v0.1.111.2.zip, verify live progress and fail-fast output, then run the full release-control adoption gate once. Do not start v0.1.112 until v0.1.111.2 is accepted/current.
+Validate the `v0.1.111.3` candidate from packaged bytes, then run one strict host release-control workflow. Confirm expected-missing reports passed, a genuine browser failure prevents the next step, remaining work units become skipped, and adoption occurs only after every mandatory gate is green. Do not start v0.1.112 until acceptance is proven.
 ```
 
 ## Last updated
 
 ```text
-v0.1.110 tracked backlog candidate build
+v0.1.111.3 normalised progress and genuine browser fail-fast candidate build
 ```
 
 ## v0.1.102 candidate status

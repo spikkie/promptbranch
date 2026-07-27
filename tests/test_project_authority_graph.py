@@ -90,7 +90,7 @@ def test_authority_graph_missing_authority_fails_closed(tmp_path: Path) -> None:
 def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.1.111.2"', 'version = "9.9.9"'), encoding="utf-8")
+    pyproject.write_text(pyproject.read_text().replace('version = "0.1.111.3"', 'version = "9.9.9"'), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False
