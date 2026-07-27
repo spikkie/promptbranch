@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     tomllib = None  # type: ignore[assignment]
 
-from promptbranch_full_integration_test import make_parser as make_integration_parser, run_integration
+from promptbranch_full_integration_test import make_parser as make_integration_parser, resolve_step_selection, run_integration
 from promptbranch_mcp import (
     agent_run,
     agent_summarize_log,
@@ -46,6 +46,152 @@ EXPECTED_NON_FAILURE_STATUSES = {
     "expected_unsupported",
     "expected_skip",
 }
+
+
+AGENT_PROGRESS_STEP_NAMES: tuple[str, ...] = (
+    "agent_host_smoke",
+    "agent_mcp_read_version",
+    "agent_run_readonly",
+    "skill_list",
+    "skill_show_repo_inspection",
+    "skill_validate_repo_inspection",
+    "agent_run_skill_repo_inspection",
+    "agent_tool_call_test_smoke",
+    "agent_run_smoke_tests",
+    "agent_summarize_log",
+    "agent_summarize_log_path_escape",
+    "agent_reject_sync_sources",
+    "agent_reject_artifact_release",
+    "agent_reject_arbitrary_pytest",
+    "version_consistency",
+    "package_import_metadata",
+    "package_import_smoke",
+    "artifact_roundtrip",
+    "src_sync_dry_run_plan",
+    "src_sync_upload_preflight_plan",
+    "package_hygiene",
+)
+
+
+def _human_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    total = max(0, int(round(float(seconds))))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+class TestProgressLedger:
+    """Observational progress ledger for long-running full validation.
+
+    Percent complete is work-unit based. ETA is a rolling approximation derived
+    from elapsed wall time per completed unit; it is intentionally labelled
+    approximate because browser and external-service steps have variable latency.
+    """
+
+    def __init__(self, units: Sequence[str], *, enabled: bool = True) -> None:
+        self.units = tuple(dict.fromkeys(str(unit) for unit in units))
+        self.enabled = bool(enabled)
+        self.started_monotonic = time.monotonic()
+        self.states: dict[str, str] = {unit: "pending" for unit in self.units}
+        self.current: str | None = None
+
+    def _counts(self) -> tuple[int, int, int, int]:
+        passed = sum(1 for value in self.states.values() if value == "passed")
+        failed = sum(1 for value in self.states.values() if value == "failed")
+        skipped = sum(1 for value in self.states.values() if value.startswith("skipped"))
+        completed = passed + failed + skipped
+        return completed, passed, failed, skipped
+
+    def _emit(self, *, status: str, current: str | None = None) -> None:
+        if not self.enabled:
+            return
+        completed, passed, failed, skipped = self._counts()
+        total = len(self.units)
+        elapsed = max(0.0, time.monotonic() - self.started_monotonic)
+        percent = 100.0 if total == 0 else round((completed / total) * 100.0, 1)
+        eta: float | None = None
+        if completed > 0 and completed < total:
+            eta = (elapsed / completed) * (total - completed)
+        elif completed >= total:
+            eta = 0.0
+        active = current or self.current or "none"
+        print(
+            "pb_test_progress: "
+            f"status={status} current={active} completed={completed}/{total} "
+            f"passed={passed} failed={failed} skipped={skipped} percent={percent:.1f} "
+            f"elapsed={_human_duration(elapsed)} eta_approx={_human_duration(eta)}",
+            flush=True,
+        )
+
+    def announce(self, current: str) -> None:
+        self.current = current
+        self._emit(status="running", current=current)
+
+    def start(self, unit: str) -> None:
+        if unit not in self.states or self.states[unit] != "pending":
+            return
+        self.current = unit
+        self.states[unit] = "running"
+        self._emit(status="running", current=unit)
+
+    def finish(self, unit: str, *, ok: bool, skipped: bool = False, skip_reason: str | None = None) -> None:
+        if unit not in self.states:
+            return
+        if self.states[unit] in {"passed", "failed"} or self.states[unit].startswith("skipped"):
+            return
+        if skipped:
+            self.states[unit] = f"skipped:{skip_reason or 'requested'}"
+            status = "skipped"
+        else:
+            self.states[unit] = "passed" if ok else "failed"
+            status = self.states[unit]
+        self.current = None
+        self._emit(status=status, current=unit)
+
+    def skip_pending(self, *, reason: str) -> None:
+        for unit, state in list(self.states.items()):
+            if state in {"pending", "running"}:
+                self.states[unit] = f"skipped:{reason}"
+        self.current = None
+        self._emit(status="fail_fast_stopped")
+
+    def snapshot(self) -> dict[str, Any]:
+        completed, passed, failed, skipped = self._counts()
+        total = len(self.units)
+        percent = 100.0 if total == 0 else round((completed / total) * 100.0, 1)
+        return {
+            "total_units": total,
+            "completed_units": completed,
+            "passed_units": passed,
+            "failed_units": failed,
+            "skipped_units": skipped,
+            "percent_complete": percent,
+            "states": dict(self.states),
+        }
+
+    def finish_summary(self) -> None:
+        completed, _passed, failed, _skipped = self._counts()
+        status = "completed" if completed == len(self.units) and failed == 0 else "failed" if failed else "incomplete"
+        self._emit(status=status)
+
+
+class ProgressStepList(list[dict[str, Any]]):
+    def __init__(self, *, progress: TestProgressLedger | None, prefix: str) -> None:
+        super().__init__()
+        self.progress = progress
+        self.prefix = prefix
+
+    def append(self, item: dict[str, Any]) -> None:
+        super().append(item)
+        if self.progress is None or not isinstance(item, dict):
+            return
+        name = str(item.get("name") or "")
+        unit = f"{self.prefix}.{name}"
+        self.progress.finish(unit, ok=bool(item.get("ok")))
 
 
 def utc_now() -> str:
@@ -818,9 +964,22 @@ def _run_release_validation_group(group_name: str, spec: dict[str, Any], *, repo
         }
 
 
-def run_release_validation_groups(*, repo_path: Path | str = ".") -> dict[str, Any]:
+def run_release_validation_groups(
+    *,
+    repo_path: Path | str = ".",
+    progress: TestProgressLedger | None = None,
+    fail_fast: bool = False,
+) -> dict[str, Any]:
     root = Path(repo_path).expanduser().resolve()
     if os.environ.get(RELEASE_VALIDATION_SKIP_DUPLICATE_ENV) == "1":
+        if progress is not None:
+            for group_name in RELEASE_VALIDATION_GROUPS:
+                progress.finish(
+                    f"validation.{group_name}",
+                    ok=True,
+                    skipped=True,
+                    skip_reason="duplicate_already_passed",
+                )
         groups = {
             group_name: {
                 "ok": True,
@@ -844,8 +1003,34 @@ def run_release_validation_groups(*, repo_path: Path | str = ".") -> dict[str, A
             "groups": groups,
         }
     groups: dict[str, dict[str, Any]] = {}
-    for group_name, spec in RELEASE_VALIDATION_GROUPS.items():
-        groups[group_name] = _run_release_validation_group(group_name, spec, repo_path=root)
+    group_items = list(RELEASE_VALIDATION_GROUPS.items())
+    for index, (group_name, spec) in enumerate(group_items):
+        unit = f"validation.{group_name}"
+        if progress is not None:
+            progress.start(unit)
+        result = _run_release_validation_group(group_name, spec, repo_path=root)
+        groups[group_name] = result
+        if progress is not None:
+            progress.finish(unit, ok=bool(result.get("ok")))
+        if fail_fast and bool(spec.get("required")) and not bool(result.get("ok")):
+            for remaining_name, remaining_spec in group_items[index + 1:]:
+                groups[remaining_name] = {
+                    "ok": False,
+                    "action": "release_validation_group",
+                    "status": "skipped_fail_fast",
+                    "group": remaining_name,
+                    "required": bool(remaining_spec.get("required")),
+                    "description": remaining_spec.get("description"),
+                    "skip_reason": f"required group {group_name} failed",
+                }
+                if progress is not None:
+                    progress.finish(
+                        f"validation.{remaining_name}",
+                        ok=False,
+                        skipped=True,
+                        skip_reason="fail_fast",
+                    )
+            break
     missing_required = [name for name, payload in groups.items() if bool(payload.get("required")) and not bool(payload.get("ok"))]
     return {
         "ok": not missing_required,
@@ -1844,9 +2029,9 @@ def _attach_suite_failure_summary(summary: dict[str, Any], section_name: str) ->
     summary["failed_steps"] = failures
     return summary
 
-def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None, package_zip: str | None = None) -> dict[str, Any]:
+def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | Path | None = None, package_zip: str | None = None, progress: TestProgressLedger | None = None, fail_fast: bool = False) -> dict[str, Any]:
     root = Path(repo_path).expanduser().resolve()
-    steps: list[dict[str, Any]] = []
+    steps: list[dict[str, Any]] = ProgressStepList(progress=progress, prefix="agent")
     artifacts: dict[str, Any] = {}
 
     steps.append(_step("agent_host_smoke", mcp_host_smoke(repo_path=root, profile_dir=profile_dir)))
@@ -1875,10 +2060,25 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     steps.append(_step("artifact_roundtrip", artifact_roundtrip_smoke(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_dry_run_plan", _src_sync_dry_run_plan(repo_path=root, profile_dir=profile_dir)))
     steps.append(_step("src_sync_upload_preflight_plan", _src_sync_upload_preflight_plan(repo_path=root, profile_dir=profile_dir)))
-    release_validation = run_release_validation_groups(repo_path=root)
+    release_validation = run_release_validation_groups(repo_path=root, progress=progress, fail_fast=fail_fast)
     steps.append(_step("release_validation_groups", release_validation))
     steps.append(_step("compileall", release_validation.get("groups", {}).get("compileall", {})))
-    steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
+    if fail_fast and not bool(release_validation.get("ok")):
+        if progress is not None:
+            progress.finish(
+                "agent.package_hygiene",
+                ok=False,
+                skipped=True,
+                skip_reason="fail_fast",
+            )
+        steps.append(_step("package_hygiene", {
+            "ok": False,
+            "action": "package_hygiene",
+            "status": "skipped_fail_fast",
+            "skip_reason": "required release-validation group failed",
+        }))
+    else:
+        steps.append(_step("package_hygiene", _package_hygiene(package_zip, repo_path=root)))
 
     ok = all(bool(step.get("ok")) for step in steps)
     return {
@@ -1905,6 +2105,8 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     profile = str(kwargs.pop("profile", "browser") or "browser").strip().lower()
     repo_path = kwargs.pop("path", ".")
     package_zip = kwargs.pop("package_zip", None)
+    fail_fast = bool(kwargs.pop("fail_fast", False))
+    progress_enabled = bool(kwargs.pop("progress", True))
     requested_rate_limit_safe = kwargs.pop("rate_limit_safe", None)
     rate_limit_safe = (profile == "full") if requested_rate_limit_safe is None else bool(requested_rate_limit_safe)
     if profile not in TEST_SUITE_PROFILES:
@@ -1930,13 +2132,53 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "operator_message": "If ChatGPT shows 'You're making requests too quickly', the live browser profile will honor persisted cooldowns and report rate-limit telemetry in the suite JSON.",
     }
 
+    validation_units = tuple(f"validation.{name}" for name in RELEASE_VALIDATION_GROUPS)
+    agent_units = tuple(f"agent.{name}" for name in AGENT_PROGRESS_STEP_NAMES)
+
     if profile == "agent":
-        summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+        progress = TestProgressLedger((*agent_units, *validation_units), enabled=progress_enabled)
+        progress.announce("agent")
+        summary = _run_agent_profile_sync(
+            repo_path=repo_path,
+            profile_dir=kwargs.get("profile_dir"),
+            package_zip=package_zip,
+            progress=progress,
+            fail_fast=fail_fast,
+        )
         _attach_suite_failure_summary(summary, "agent")
         summary["rate_limit_strategy"] = {**rate_limit_strategy, "browser_required": False}
+        progress.finish_summary()
+        summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
         return summary
 
     browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe)
+    selection = resolve_step_selection(
+        only_values=browser_args.only,
+        skip_values=browser_args.skip,
+        keep_project=browser_args.keep_project,
+    )
+    browser_units = tuple(f"browser.{name}" for name in selection.enabled_steps)
+    all_units = browser_units if profile == "browser" else (*browser_units, *agent_units, *validation_units)
+    progress = TestProgressLedger(all_units, enabled=progress_enabled)
+
+    def browser_progress_callback(*, event: str, step_name: str, ok: bool | None = None, duration_seconds: float = 0.0) -> None:
+        canonical = "task_message_flow" if step_name.startswith("task_message_flow.") else step_name
+        unit = f"browser.{canonical}"
+        if unit not in progress.states:
+            return
+        if event == "started":
+            progress.start(unit)
+            return
+        if event != "finished":
+            return
+        if ok is False:
+            progress.finish(unit, ok=False)
+            return
+        if step_name == canonical:
+            progress.finish(unit, ok=True)
+
+    setattr(browser_args, "_progress_callback", browser_progress_callback)
+    progress.announce("browser")
     browser_summary = await run_integration(browser_args)
     _attach_suite_failure_summary(browser_summary, "browser")
     browser_summary["rate_limit_telemetry"] = extract_rate_limit_telemetry(browser_summary)
@@ -1952,12 +2194,45 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     if profile == "browser":
         browser_summary.setdefault("profile", "browser")
         browser_summary.setdefault("version", _read_version(Path(repo_path).expanduser().resolve()))
+        progress.finish_summary()
+        browser_summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
         return browser_summary
 
-    agent_summary = _run_agent_profile_sync(repo_path=repo_path, profile_dir=kwargs.get("profile_dir"), package_zip=package_zip)
+    if fail_fast and not bool(browser_summary.get("ok")):
+        progress.skip_pending(reason="browser_failure")
+        agent_summary = {
+            "ok": False,
+            "action": "test_suite",
+            "profile": "agent",
+            "status": "skipped_fail_fast",
+            "failure_count": 0,
+            "failed_steps": [],
+            "steps": [],
+            "release_validation_groups": {
+                "ok": False,
+                "status": "skipped_fail_fast",
+                "groups": {},
+                "missing_required_groups": list(RELEASE_VALIDATION_GROUPS),
+            },
+            "safety": {
+                "write_tools_blocked": True,
+                "model_has_execution_authority": False,
+                "source_or_artifact_mutation_allowed": False,
+            },
+        }
+    else:
+        progress.announce("agent")
+        agent_summary = _run_agent_profile_sync(
+            repo_path=repo_path,
+            profile_dir=kwargs.get("profile_dir"),
+            package_zip=package_zip,
+            progress=progress,
+            fail_fast=fail_fast,
+        )
     _attach_suite_failure_summary(agent_summary, "agent")
     full_failures = list(browser_summary.get("failed_steps") or []) + list(agent_summary.get("failed_steps") or [])
     full_ok = bool(browser_summary.get("ok")) and bool(agent_summary.get("ok"))
+    progress.finish_summary()
     return {
         "ok": full_ok,
         "action": "test_suite",
@@ -1974,6 +2249,12 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
             browser_summary.get("rate_limit_telemetry", _empty_rate_limit_telemetry()),
             suite_ok=full_ok,
         ),
+        "progress": {
+            "enabled": progress_enabled,
+            "fail_fast": fail_fast,
+            "eta_basis": "observed_average_per_completed_work_unit",
+            **progress.snapshot(),
+        },
         "safety": {
             "write_tools_blocked": bool(agent_summary.get("safety", {}).get("write_tools_blocked")),
             "model_has_execution_authority": False,

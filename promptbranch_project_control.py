@@ -298,8 +298,16 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
                 for ticket in tickets:
                     if not isinstance(ticket, dict):
                         continue
-                    if ticket.get("status") != "open":
-                        errors.append(f"backlog ticket {ticket.get('id')!r} must be open")
+                    status = str(ticket.get("status") or "")
+                    allowed_statuses = {"open", "in_progress", "implemented_candidate", "closed"}
+                    if status not in allowed_statuses:
+                        errors.append(
+                            f"backlog ticket {ticket.get('id')!r} has unsupported status {status!r}"
+                        )
+                    if status == "implemented_candidate" and not str(ticket.get("implemented_in") or "").strip():
+                        errors.append(
+                            f"backlog ticket {ticket.get('id')!r} implemented_candidate requires implemented_in"
+                        )
                     rel_path = str(ticket.get("path") or "")
                     if not rel_path or Path(rel_path).is_absolute() or ".." in Path(rel_path).parts:
                         errors.append(f"backlog ticket {ticket.get('id')!r} has invalid path")

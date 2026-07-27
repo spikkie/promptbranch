@@ -1,22 +1,23 @@
 # Release Status
 
-<!-- v0.1.110 current control-surface header -->
+<!-- v0.1.111.2 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.110`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.110.zip`
-- Next normal version: `v0.1.110`
-- Next normal slice: `v0.1.110 — Tracked backlog and architecture ticket intake`
-- Next planned version after acceptance: `v0.1.111`
-- Next planned slice after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
+- Active candidate version: `v0.1.111.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Next normal version: `v0.1.112`
+- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
-## v0.1.110 candidate
+## v0.1.111.2 repair candidate
 
 - Accepted/current: `v0.1.109.1.1` / `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate: `v0.1.110` / `chatgpt_claudecode_workflow-2_v0.1.110.zip`
-- Scope: establish a strict tracked backlog and add `ISSUE-001` plus `PBAI-001`.
-- Not implemented: global lifecycle runtime, `.promptbranch-release.json`, PBAI runtime validators, publication, or adoption behaviour.
-- Planned after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
+- Active candidate: `v0.1.111.2` / `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Scope: live full-test work-unit progress, pass/fail/skip counts, percentage complete, approximate ETA, and fail-fast controls.
+- Retained: v0.1.110 backlog intake, v0.1.111 lifecycle contract engine, and v0.1.111.1 installed-package repair.
+- Not claimed: full release validation, Project Source publication, adoption, accepted/current verification, or PBAI-001 implementation.
+- Planned after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
@@ -25,11 +26,12 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.110.zip
-active candidate version: v0.1.110
-next normal target: chatgpt_claudecode_workflow-2_v0.1.110.zip
-next normal slice: v0.1.110 — Tracked backlog and architecture ticket intake
-next planned slice after acceptance: v0.1.111 — Global release lifecycle contract and read-only planner
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
+active candidate version: v0.1.111.2
+active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
+next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## ZIP status values

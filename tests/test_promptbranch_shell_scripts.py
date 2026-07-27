@@ -125,7 +125,7 @@ def test_release_control_tests_only_skips_release_mutation_steps(tmp_path: Path)
     assert "service_start: skipped" in result.stdout
     assert "service_pid:   skipped" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --fail-fast --json", call_text)
     assert f"pb test report {log_dir / 'pb_test.full.v9.9.9.log'} --json" in call_text
     assert "promptbranch src add" not in call_text
 
@@ -193,7 +193,7 @@ def test_release_control_test_transport_localhost_sets_service_base_url_and_writ
     assert "test_transport: localhost" in result.stdout
     assert f"localhost_log: {localhost_log}" in result.stdout
     call_text = calls.read_text(encoding="utf-8")
-    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8123", call_text)
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --fail-fast --json CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8123", call_text)
     assert f"pb test report {localhost_log} --json CHATGPT_SERVICE_BASE_URL=" in call_text
 
 
@@ -247,7 +247,7 @@ def test_release_control_test_transport_both_runs_direct_and_localhost(tmp_path:
     assert (log_dir / "pb_test.full.localhost.v9.9.9.log").is_file()
     assert (log_dir / "pb_test.full.localhost.v9.9.9.report.json").is_file()
     call_text = calls.read_text(encoding="utf-8")
-    assert len(re.findall(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)) == 2
+    assert len(re.findall(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --fail-fast --json", call_text)) == 2
     assert "CHATGPT_SERVICE_BASE_URL=http://127.0.0.1:8000" in call_text
 
 def _write_release_control_fake_commands(fake_bin: Path, calls: Path, *, version: str = "v9.9.9") -> None:
@@ -1544,7 +1544,7 @@ def test_release_control_accepts_multi_segment_repair_versions(tmp_path: Path):
     assert (log_dir / "pb_test.full.v0.1.78.2.1.log").is_file()
     assert (log_dir / "pb_test.full.v0.1.78.2.1.report.json").is_file()
     call_text = calls.read_text(encoding="utf-8")
-    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --json", call_text)
+    assert re.search(r"pb test full --project-name itest-promptbranch-v9-9-9-[0-9]{8}T[0-9]{6}Z-[0-9]+ --keep-project --fail-fast --json", call_text)
     assert "promptbranch src add" not in call_text
 
 
@@ -1553,6 +1553,11 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     repo.mkdir()
     (repo / ".pb_profile_local_debug").mkdir()
     (repo / "VERSION").write_text("v9.9.9\n", encoding="utf-8")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "verify-sandbox-mutation-rollback-release-gate.py").write_text(
+        "import json\nprint(json.dumps({'ok': True, 'status': 'sandbox_mutation_rollback_verified'}))\n",
+        encoding="utf-8",
+    )
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     calls = tmp_path / "calls.log"
@@ -1610,6 +1615,7 @@ def test_release_control_run_all_tests_continues_and_writes_final_report(tmp_pat
     assert [step["name"] for step in summary["steps"]] == [
         "full_direct",
         "full_localhost",
+        "sandbox_mutation_rollback_gate",
         "live_profile_preflight",
         "live_project_ensure",
         "ask_live",
@@ -1667,7 +1673,7 @@ def test_release_control_run_all_reuses_one_shared_live_project_url() -> None:
     assert '--keep-open --json 2>&1 | tee -a ${run_all_project_ensure_log}' not in script
     assert 'pb test ask-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' in script
     assert '--conversation-url "${run_all_shared_conversation_url}"' in script
-    assert '--project-name "${release_test_project_name}" --keep-project --json' not in script.split("run_all_live_validation_steps", 1)[1]
+    assert '--project-name "${release_test_project_name}" --keep-project --fail-fast --json' not in script.split("run_all_live_validation_steps", 1)[1]
 
 
 def test_release_control_docker_probe_json_writers_have_valid_python_newline_literals():
@@ -1729,7 +1735,8 @@ def test_release_control_run_all_defaults_text_source_to_compatibility_probe():
     assert "PROMPTBRANCH_RUN_ALL_STRICT_SOURCE_KIND_MATRIX" in script
     assert "--strict-source-kind-matrix" in script
     assert "--skip source_add_text,source_remove_text" in script
-    assert "text_source_compatibility: skipped_by_default_use_--strict-source-kind-matrix" in script
+    assert "text_source_compatibility: skipped_non_blocking" in script
+    assert "text_source_compatibility_enable: --strict-source-kind-matrix" in script
 
 
 def test_release_control_run_failing_tests_is_focused_text_source_mode():
@@ -2730,7 +2737,7 @@ def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audi
                 "service_base": "http://localhost:8000",
                 "runtime_mode": "single_default",
                 "strict_source_kind_matrix": True,
-                "command_signature": "pb test full --keep-project --json --source-kind-matrix=strict --run-failing-tests=0 --duplicate-release-validation-groups-skip=0",
+                "command_signature": "pb test full --keep-project --fail-fast --json --source-kind-matrix=strict --run-failing-tests=0 --duplicate-release-validation-groups-skip=0",
                 "test_exit_code": 0,
                 "report_exit_code": 0,
                 "release_validation_groups_ok": True,
@@ -3429,7 +3436,7 @@ def test_release_control_run_all_live_steps_use_conversation_url_not_project_pag
     assert 'pb --profile-dir "${live_profile_pool_slot_dir}" use "${run_all_shared_project_url}" --json' in script
     assert 'pb --profile-dir "${live_profile_pool_slot_dir}" ask --new-task --retries 0' in script
     assert '--conversation-url "${run_all_shared_conversation_url}"' in script
-    assert '--conversation-url "${run_all_shared_project_url}" --keep-project --json' not in script
+    assert '--conversation-url "${run_all_shared_project_url}" --keep-project --fail-fast --json' not in script
     assert 'pb test ask-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' in script
     assert 'pb test visual-artifact-roundtrip --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' in script
     assert 'pb test release-live --profile-dir "${live_profile_pool_slot_dir}" --profile-lease' in script
@@ -3977,3 +3984,14 @@ def test_release_control_rate_limit_retry_requires_structured_true_evidence(tmp_
 
     assert passive.returncode == 1, passive.stderr
     assert positive.returncode == 0, positive.stderr
+
+
+def test_release_control_progress_eta_and_fail_fast_contract() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "--fail-fast|--test-fail-fast" in script
+    assert "--no-fail-fast|--no-test-fail-fast" in script
+    assert '_out_args+=(--fail-fast)' in script
+    assert "all_tests_current:" in script
+    assert "eta_seconds_approx" in script
+    assert "eta_basis" in script
+    assert "eta_approx=" in script

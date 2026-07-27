@@ -1071,3 +1071,7 @@ Decision: offline release-validation subprocesses must own explicit temporary HO
 - **Classification:** historical DoD rows, failed candidates, repair history, and rolling-horizon slices are not backlog tickets unless explicitly entered in the backlog authority.
 - **Scope boundary:** `v0.1.110` adds tickets and validation only; it does not implement `.promptbranch-release.json`, lifecycle execution/publication/adoption, or PBAI runtime validators.
 - **Next:** `v0.1.111 — Global release lifecycle contract and read-only planner`.
+
+## ADR-PROJ-1112 — Observable full-test progress and bounded fail-fast
+
+`v0.1.111.2` reports current work, pass/fail/skip counts, percentage complete, elapsed time, and approximate ETA. Fail-fast stops only after a failed browser phase or required validation group; it does not weaken any gate. Next normal version: `v0.1.112`.

@@ -882,6 +882,16 @@ def test_parser_accepts_rate_limit_safe_flags_for_test_full() -> None:
     assert disabled.rate_limit_safe is False
 
 
+def test_parser_accepts_progress_and_fail_fast_flags_for_test_full() -> None:
+    parser = make_parser()
+    enabled = parser.parse_args(["test", "full", "--fail-fast", "--progress"])
+    assert enabled.fail_fast is True
+    assert enabled.progress is True
+    disabled = parser.parse_args(["test", "full", "--no-progress"])
+    assert disabled.fail_fast is False
+    assert disabled.progress is False
+
+
 def test_parser_accepts_test_report_command() -> None:
     parser = make_parser()
     args = parser.parse_args(['test', 'report', 'pb_test.full.log', '--service-log', 'service.log', '--json'])

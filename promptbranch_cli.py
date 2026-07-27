@@ -8405,6 +8405,8 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'path': getattr(args, 'path', '.'),
         'package_zip': getattr(args, 'package_zip', None),
         'rate_limit_safe': getattr(args, 'rate_limit_safe', None),
+        'fail_fast': getattr(args, 'fail_fast', False),
+        'progress': getattr(args, 'progress', True),
     }
     try:
         summary = await run_test_suite_async(**payload)
@@ -24331,6 +24333,9 @@ def _normalize_global_options(argv: list[str]) -> list[str]:
 def _add_test_suite_profile_options(parser: argparse.ArgumentParser) -> None:
     """Attach the shared options used by pb test-suite profile aliases."""
     parser.add_argument("--json", action="store_true", help="Emit the full test-suite summary as JSON.")
+    parser.add_argument("--fail-fast", action="store_true", help="Stop the full profile after the first failed browser phase or required release-validation group.")
+    parser.add_argument("--progress", dest="progress", action="store_true", default=True, help="Emit live work-unit progress, completion percentage, and approximate ETA. Enabled by default.")
+    parser.add_argument("--no-progress", dest="progress", action="store_false", help="Suppress live progress lines and emit only normal test output.")
     parser.add_argument("--path", default=".", help="Repo path used by agent/full profiles. Defaults to current directory.")
     parser.add_argument("--package-zip", help="Optional release ZIP path for package hygiene checks in agent/full profiles.")
     parser.add_argument("--keep-open", action="store_true", help="Keep the browser open between steps where supported.")

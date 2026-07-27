@@ -1183,3 +1183,91 @@ def test_project_source_file_reliability_profile_runs_independent_scenarios(
     assert result["scenarios"]["removal_proof"]["ok"] is True
     assert result["failure_count"] == 1
     assert result["full_release_validation_required"] is True
+
+
+def test_progress_ledger_reports_counts_percent_and_eta(capsys) -> None:
+    ledger = suite.TestProgressLedger(("browser.one", "browser.two"), enabled=True)
+    ledger.start("browser.one")
+    ledger.finish("browser.one", ok=True)
+    output = capsys.readouterr().out
+    assert "pb_test_progress:" in output
+    assert "current=browser.one" in output
+    assert "completed=1/2" in output
+    assert "passed=1" in output
+    assert "failed=0" in output
+    assert "percent=50.0" in output
+    assert "eta_approx=" in output
+    snapshot = ledger.snapshot()
+    assert snapshot["completed_units"] == 1
+    assert snapshot["percent_complete"] == 50.0
+
+
+def test_release_validation_groups_fail_fast_skips_remaining(monkeypatch, tmp_path: Path) -> None:
+    manifest = {
+        "first": {"required": True, "description": "first", "command": ["python3", "-V"]},
+        "second": {"required": True, "description": "second", "command": ["python3", "-V"]},
+        "third": {"required": True, "description": "third", "command": ["python3", "-V"]},
+    }
+    calls: list[str] = []
+
+    def fake_run(group_name, spec, *, repo_path, timeout_seconds=600.0):
+        calls.append(group_name)
+        return {
+            "ok": False,
+            "status": "failed",
+            "group": group_name,
+            "required": True,
+        }
+
+    monkeypatch.setattr(suite, "RELEASE_VALIDATION_GROUPS", manifest)
+    monkeypatch.setattr(suite, "_run_release_validation_group", fake_run)
+    progress = suite.TestProgressLedger(tuple(f"validation.{name}" for name in manifest), enabled=False)
+    result = suite.run_release_validation_groups(repo_path=tmp_path, progress=progress, fail_fast=True)
+
+    assert calls == ["first"]
+    assert result["ok"] is False
+    assert result["groups"]["first"]["status"] == "failed"
+    assert result["groups"]["second"]["status"] == "skipped_fail_fast"
+    assert result["groups"]["third"]["status"] == "skipped_fail_fast"
+    snapshot = progress.snapshot()
+    assert snapshot["failed_units"] == 1
+    assert snapshot["skipped_units"] == 2
+    assert snapshot["percent_complete"] == 100.0
+
+
+def test_full_profile_fail_fast_skips_agent_after_browser_failure(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v9.9.11\n", encoding="utf-8")
+
+    async def fake_run_integration(args):
+        args._progress_callback(event="started", step_name="mcp_smoke", ok=None, duration_seconds=0.0)
+        args._progress_callback(event="finished", step_name="mcp_smoke", ok=False, duration_seconds=0.1)
+        return {
+            "ok": False,
+            "action": "test_suite",
+            "profile": "browser",
+            "steps": [{"name": "mcp_smoke", "ok": False, "details": {"status": "failed"}}],
+        }
+
+    def forbidden_agent(**kwargs):
+        raise AssertionError("agent profile must not run after browser failure in fail-fast mode")
+
+    monkeypatch.setattr(suite, "run_integration", fake_run_integration)
+    monkeypatch.setattr(suite, "_run_agent_profile_sync", forbidden_agent)
+
+    result = asyncio.run(
+        suite.run_test_suite_async(
+            profile="full",
+            path=tmp_path,
+            profile_dir=tmp_path / ".pb_profile",
+            only=["mcp_smoke"],
+            fail_fast=True,
+            progress=False,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["agent"]["status"] == "skipped_fail_fast"
+    assert result["progress"]["fail_fast"] is True
+    assert result["progress"]["percent_complete"] == 100.0
+    assert result["progress"]["failed_units"] == 1
+    assert result["progress"]["skipped_units"] > 0

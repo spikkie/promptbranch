@@ -105,6 +105,7 @@ run_failing_tests=0
 service_mode="${PROMPTBRANCH_SERVICE_MODE:-detached}"
 service_timeout_seconds="${PROMPTBRANCH_SERVICE_TIMEOUT_SECONDS:-90}"
 test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
+test_fail_fast="${PROMPTBRANCH_TEST_FAIL_FAST:-1}"
 workflow_rc=0
 run_all_browser_guardrail_seen=0
 
@@ -147,6 +148,10 @@ Options:
                               detached mode starts ./run_chatgpt_service.sh with nohup and continues.
       --service-timeout SEC   Seconds to wait for service readiness. Default: 90.
       --test-timeout SEC      Max seconds for pb test full. Default: 3600.
+      --fail-fast, --test-fail-fast
+                              Stop pb test full after the first browser-phase or required validation-group failure. Default.
+      --no-fail-fast, --no-test-fail-fast
+                              Continue remaining pb test full phases after a failure.
       --test-transport MODE   Test transport: direct, localhost, or both. Default: direct.
       --localhost-base-url URL Base URL for localhost test transport. Default: http://localhost:${service_port}.
       --run-tests             Run pb test full/report. Disabled by default.
@@ -557,6 +562,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --test-timeout=*) test_timeout_seconds="${1#*=}"; shift ;;
+    --fail-fast|--test-fail-fast) test_fail_fast=1; shift ;;
+    --no-fail-fast|--no-test-fail-fast) test_fail_fast=0; shift ;;
     --test-transport)
       [[ $# -ge 2 ]] || fail "--test-transport requires direct, localhost, or both"
       test_transport="$2"
@@ -658,6 +665,7 @@ case "${test_transport}" in
 esac
 [[ "${service_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--service-timeout must be an integer number of seconds"
 [[ "${test_timeout_seconds}" =~ ^[0-9]+$ ]] || fail "--test-timeout must be an integer number of seconds"
+[[ "${test_fail_fast}" =~ ^[01]$ ]] || fail "PROMPTBRANCH_TEST_FAIL_FAST must be 0 or 1"
 [[ "${release_log_keep}" =~ ^[0-9]+$ ]] || fail "--release-log-keep must be an integer number of version directories"
 if (( release_log_keep < 1 )); then
   fail "--release-log-keep must be at least 1 so the current release log directory is retained"
@@ -1589,6 +1597,7 @@ printf 'log_keep:       %s\n' "${release_log_keep}"
 printf 'service_mode:   %s\n' "${service_mode}"
 printf 'service_wait:   %ss\n' "${service_timeout_seconds}"
 printf 'test_timeout:   %ss\n' "${test_timeout_seconds}"
+printf 'test_fail_fast: %s\n' "${test_fail_fast}"
 printf 'tests_only:     %s\n' "${tests_only}"
 printf 'test_transport: %s\n' "${test_transport}"
 printf 'run_all_tests:  %s\n' "${run_all_tests}"
@@ -4255,7 +4264,7 @@ release_validation_full_test_command_signature() {
   elif [[ ${run_all_tests} -eq 1 ]]; then
     source_kind_mode="release_blocking_file_paths_only"
   fi
-  printf 'pb test full --keep-project --json --source-kind-matrix=%s --run-failing-tests=%s --duplicate-release-validation-groups-skip=%s --release-validation-manifest-sha256=%s --fresh-full-transport-evidence=%s' "${source_kind_mode}" "${run_failing_tests}" "${duplicate_skip}" "${manifest_sha}" "${force_fresh_full_transport_evidence}"
+  printf 'pb test full --keep-project --json --source-kind-matrix=%s --run-failing-tests=%s --duplicate-release-validation-groups-skip=%s --release-validation-manifest-sha256=%s --fresh-full-transport-evidence=%s --fail-fast=%s' "${source_kind_mode}" "${run_failing_tests}" "${duplicate_skip}" "${manifest_sha}" "${force_fresh_full_transport_evidence}" "${test_fail_fast}"
 }
 
 write_release_validation_evidence() {
@@ -4545,6 +4554,9 @@ INNERPY
 build_run_all_full_test_args() {
   local -n _out_args="$1"
   _out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)
+  if [[ ${test_fail_fast} -eq 1 ]]; then
+    _out_args+=(--fail-fast)
+  fi
   if [[ ${run_failing_tests} -eq 1 ]]; then
     _out_args+=(--only project_ensure,source_add_text)
   elif [[ ${run_all_tests} -eq 1 && "${run_all_strict_source_kind_matrix}" != "1" ]]; then
@@ -4580,6 +4592,7 @@ run_full_test_transport() {
   local -a full_test_cmd=()
   build_run_all_full_test_args full_test_cmd
 
+  run_all_emit_current_step "full_${label}"
   echo "== pb test transport: ${label} =="
   echo "release_test_project_name: ${release_test_project_name}"
   echo "cleanup_policy: unique_project_delete_frozen_retained"
@@ -4587,7 +4600,8 @@ run_full_test_transport() {
     echo "focused_failing_tests: text_source_add_compatibility"
   elif [[ ${run_all_tests} -eq 1 && "${run_all_strict_source_kind_matrix}" != "1" ]]; then
     echo "source_kind_matrix: release_blocking_file_paths_only"
-    echo "text_source_compatibility: skipped_by_default_use_--strict-source-kind-matrix"
+    echo "text_source_compatibility: skipped_non_blocking"
+    echo "text_source_compatibility_enable: --strict-source-kind-matrix"
   fi
   : > "${selected_full_log}"
   local release_validation_duplicate_skip=0
@@ -4689,6 +4703,7 @@ run_full_test_transport() {
 
 
 all_test_step_specs=()
+run_all_progress_started_epoch="$(date +%s)"
 
 run_all_expected_step_count() {
   local total=0
@@ -4711,7 +4726,7 @@ run_all_emit_progress() {
   [[ ${run_all_tests} -eq 1 ]] || return 0
   local expected
   expected="$(run_all_expected_step_count)"
-  python3 - "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${all_test_step_specs[@]}" <<'INNERPY'
+  python3 - "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${run_all_progress_started_epoch}" "${all_test_step_specs[@]}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
@@ -4722,7 +4737,11 @@ try:
     expected = int(sys.argv[2])
 except Exception:
     expected = 1
-items = sys.argv[3:]
+try:
+    started_epoch = int(sys.argv[3])
+except Exception:
+    started_epoch = int(datetime.now(timezone.utc).timestamp())
+items = sys.argv[4:]
 tested = len(items)
 succeeded = 0
 failed = 0
@@ -4746,6 +4765,20 @@ expected = max(expected, tested, 1)
 tested_percent = round((tested / expected) * 100.0, 1)
 success_percent = round((succeeded / tested) * 100.0, 1) if tested else 0.0
 failure_percent = round((failed / tested) * 100.0, 1) if tested else 0.0
+now_epoch = int(datetime.now(timezone.utc).timestamp())
+elapsed_seconds = max(0, now_epoch - started_epoch)
+eta_seconds_approx = None
+if tested > 0 and tested < expected:
+    eta_seconds_approx = round((elapsed_seconds / tested) * (expected - tested), 1)
+elif tested >= expected:
+    eta_seconds_approx = 0.0
+def human(seconds):
+    if seconds is None:
+        return "unknown"
+    total = max(0, int(round(seconds)))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
 payload = {
     "schema": "promptbranch.release_control.all_tests_progress",
     "schema_version": "1.0",
@@ -4757,6 +4790,9 @@ payload = {
     "failed_count": failed,
     "success_percent_of_tested": success_percent,
     "failure_percent_of_tested": failure_percent,
+    "elapsed_seconds": elapsed_seconds,
+    "eta_seconds_approx": eta_seconds_approx,
+    "eta_basis": "observed_average_per_completed_release_step",
     "steps": steps,
 }
 out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
@@ -4764,7 +4800,8 @@ print(
     "all_tests_progress: "
     f"tested={tested}/{expected} tested_percent={tested_percent:.1f} "
     f"succeeded={succeeded} failed={failed} "
-    f"success_percent={success_percent:.1f} failure_percent={failure_percent:.1f}"
+    f"success_percent={success_percent:.1f} failure_percent={failure_percent:.1f} "
+    f"elapsed={human(elapsed_seconds)} eta_approx={human(eta_seconds_approx)}"
 )
 INNERPY
 }
@@ -4777,6 +4814,14 @@ record_all_test_step() {
   run_all_emit_progress
 }
 
+run_all_emit_current_step() {
+  [[ ${run_all_tests} -eq 1 ]] || return 0
+  local step_name="$1"
+  local expected
+  expected="$(run_all_expected_step_count)"
+  echo "all_tests_current: step=${step_name} completed=${#all_test_step_specs[@]}/${expected} fail_fast=${test_fail_fast}"
+}
+
 run_all_json_step() {
   local step_name="$1"
   local step_log="$2"
@@ -4784,6 +4829,7 @@ run_all_json_step() {
   local step_rc=0
   local attempt=0
   : > "${step_log}"
+  run_all_emit_current_step "${step_name}"
   echo "== pb test-all step: ${step_name} =="
   echo "+ $* 2>&1 | tee -a ${step_log}"
   "$@" 2>&1 | tee -a "${step_log}"

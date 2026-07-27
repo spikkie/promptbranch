@@ -1216,3 +1216,7 @@ Existing human-readable plan/status/release documents remain preserved as projec
 ## Backlog migration — v0.1.110
 
 `v0.1.110` introduces `docs/backlog/backlog.json` and `docs/backlog/README.md` as the formal Promptbranch backlog. Existing release-plan rows, historical candidates, repair records, and DoD items remain in their current authorities and are not silently migrated into tickets. The first planned implementation slice is `v0.1.111 — Global release lifecycle contract and read-only planner`.
+
+## v0.1.111.2 progress-output migration
+
+Automation consuming `pb test full --json` must tolerate preceding `pb_test_progress:` lines, as full-profile logs already contain validation-group progress before the terminal JSON object. Use `--no-progress` for a quieter stream. Release control accepts `--fail-fast` and `--no-fail-fast`. Next planned version: `v0.1.112`.

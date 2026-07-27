@@ -1,14 +1,14 @@
 # Project Plan
 
-<!-- v0.1.110 current control-surface header -->
+<!-- v0.1.111.2 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.110`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.110.zip`
-- Next normal version: `v0.1.110`
-- Next normal slice: `v0.1.110 — Tracked backlog and architecture ticket intake`
-- Next planned version after acceptance: `v0.1.111`
-- Next planned slice after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
+- Active candidate version: `v0.1.111.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Next normal version: `v0.1.112`
+- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
@@ -17,33 +17,35 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.110.zip
-active candidate version: v0.1.110
-next normal target: chatgpt_claudecode_workflow-2_v0.1.110.zip
-next normal slice: v0.1.110 — Tracked backlog and architecture ticket intake
-next planned slice after acceptance: v0.1.111 — Global release lifecycle contract and read-only planner
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
+active candidate version: v0.1.111.2
+active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
+next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## Plan summary
 
-`v0.1.109.1.1` is accepted/current after 10/10 release validation and `release_adopted_and_verified`. `v0.1.110` establishes one tracked Promptbranch backlog and adds the two requested open tickets without implementing their runtime functionality.
+`v0.1.109.1.1` remains accepted/current. `v0.1.110` was not adopted separately; its backlog changes were carried into `v0.1.111`. `v0.1.111` implemented ISSUE-001 but failed installed-package validation, `v0.1.111.1` repaired packaging, and `v0.1.111.2` adds observable progress and bounded fail-fast control without changing release assertions.
 
-## Active normal slice — v0.1.110 — Tracked backlog and architecture ticket intake
+## Active repair slice — v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
 
 Acceptance scope:
 
-- Add `docs/backlog/backlog.json` as the machine-readable backlog authority.
-- Add `docs/backlog/README.md` as its human-readable projection.
-- Add `ISSUE-001` for the global release lifecycle engine and repository-specific lifecycle contracts.
-- Add `PBAI-001` for full AI application architecture validation.
-- Validate unique IDs, open status, deterministic implementation order, dependencies, and referenced ticket files.
-- Record that formal open tickets are distinct from historical DoD rows and rolling-horizon release slices.
+- Emit the active test step before long-running work.
+- Report passed, failed, skipped, and completed work-unit counts.
+- Report percentage complete and approximate ETA from observed durations.
+- Add `pb test full --fail-fast` and release-control `--fail-fast` aliases.
+- Stop after a failed browser phase or required release-validation group when fail-fast is enabled.
+- Preserve complete JSON evidence and all existing release gates.
+- Keep ISSUE-001 as `implemented_candidate`; keep PBAI-001 open.
 
-Out of scope: implementing `.promptbranch-release.json`, executing the global lifecycle engine, implementing PBAI executable/operational validation, Project Source publication, artifact adoption, Git commit/push, deployment, and automatic mutation.
+Out of scope: weakening assertions, skipping direct or localhost validation, skipping external-live validation required for adoption, adopting the candidate, or starting PBAI-001 implementation.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.109.1.1` is completed and accepted/current; `v0.1.110` is the sole active normal slice; `v0.1.111 — Global release lifecycle contract and read-only planner` is the sole planned-after-acceptance slice. The earlier authority-backed snapshot proposal is deferred behind the two explicitly prioritised backlog tickets.
+`docs/project/plan-state.json` is authoritative. `v0.1.111.2` is the sole active repair candidate. `v0.1.112 — PBAI-001 declaration and structural validation` is the sole planned normal slice after acceptance.
 
 ## Release / slice plan
 

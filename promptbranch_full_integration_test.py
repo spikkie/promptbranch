@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextvars import ContextVar
 import hashlib
 import json
 import os
@@ -154,15 +155,38 @@ class IntegrationAssertionError(RuntimeError):
     pass
 
 
+_PROGRESS_CALLBACK: ContextVar[Optional[Callable[..., None]]] = ContextVar(
+    "promptbranch_integration_progress_callback", default=None
+)
+
+
+def _emit_progress(event: str, step_name: str, *, ok: Optional[bool] = None, duration_seconds: float = 0.0) -> None:
+    callback = _PROGRESS_CALLBACK.get()
+    if callback is None:
+        return
+    try:
+        callback(
+            event=event,
+            step_name=step_name,
+            ok=ok,
+            duration_seconds=round(float(duration_seconds), 3),
+        )
+    except Exception:
+        # Progress reporting is observational and must never alter test semantics.
+        return
+
+
 def _record_step(steps: list[StepResult], name: str, *, ok: bool, details: Any, duration_seconds: float = 0.0) -> Any:
+    duration = round(duration_seconds, 3)
     steps.append(
         StepResult(
             name=name,
             ok=ok,
-            duration_seconds=round(duration_seconds, 3),
+            duration_seconds=duration,
             details=details,
         )
     )
+    _emit_progress("finished", name, ok=ok, duration_seconds=duration)
     return details
 
 
@@ -793,31 +817,36 @@ def build_service(args: argparse.Namespace, *, project_url: str):
 async def _run_step(steps: list[StepResult], name: str, coro, *, step_delay_seconds: float = 0.0) -> Any:
     if steps and step_delay_seconds > 0:
         await asyncio.sleep(step_delay_seconds)
+    _emit_progress("started", name)
     started = time.perf_counter()
     try:
         result = await coro
         result_ok = not (isinstance(result, dict) and result.get("ok") is False)
+        duration = round(time.perf_counter() - started, 3)
         steps.append(
             StepResult(
                 name=name,
                 ok=result_ok,
-                duration_seconds=round(time.perf_counter() - started, 3),
+                duration_seconds=duration,
                 details=result,
             )
         )
+        _emit_progress("finished", name, ok=result_ok, duration_seconds=duration)
         return result
     except Exception as exc:
+        duration = round(time.perf_counter() - started, 3)
         steps.append(
             StepResult(
                 name=name,
                 ok=False,
-                duration_seconds=round(time.perf_counter() - started, 3),
+                duration_seconds=duration,
                 details={
                     "error_type": type(exc).__name__,
                     "error": str(exc),
                 },
             )
         )
+        _emit_progress("finished", name, ok=False, duration_seconds=duration)
         raise
 
 
@@ -2045,6 +2074,7 @@ async def _wait_for_task_visible_in_list(
 
 
 async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
+    progress_token = _PROGRESS_CALLBACK.set(getattr(args, "_progress_callback", None))
     selection = resolve_step_selection(
         only_values=args.only,
         skip_values=args.skip,
@@ -2648,6 +2678,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         summary["cleanup_failed_steps"] = [asdict(step) for step in cleanup_failures]
         summary["cleanup_steps"] = [asdict(step) for step in cleanup_steps]
 
+    _PROGRESS_CALLBACK.reset(progress_token)
     return summary
 
 

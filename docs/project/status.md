@@ -1,14 +1,14 @@
 # Project Status
 
-<!-- v0.1.110 current control-surface header -->
+<!-- v0.1.111.2 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.110`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.110.zip`
-- Next normal version: `v0.1.110`
-- Next normal slice: `v0.1.110 — Tracked backlog and architecture ticket intake`
-- Next planned version after acceptance: `v0.1.111`
-- Next planned slice after acceptance: `v0.1.111 — Global release lifecycle contract and read-only planner`
+- Active candidate version: `v0.1.111.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.2.zip`
+- Next normal version: `v0.1.112`
+- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
@@ -17,11 +17,12 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.110.zip
-active candidate version: v0.1.110
-next normal target: chatgpt_claudecode_workflow-2_v0.1.110.zip
-next normal slice: v0.1.110 — Tracked backlog and architecture ticket intake
-next planned slice after acceptance: v0.1.111 — Global release lifecycle contract and read-only planner
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
+active candidate version: v0.1.111.2
+active repair slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
+next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## Current MVP state
@@ -31,19 +32,19 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: focused candidate
 last accepted/current slice: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active plan slice: v0.1.110 — Tracked backlog and architecture ticket intake
-repair mode: false
-scope advance allowed: true
+active plan slice: v0.1.111.2 — Full-test progress, ETA, and fail-fast reporting
+repair mode: true
+scope advance allowed: false
 ```
 
 ## Current release state
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.110.zip
-release status: v0.1.109.1.1 is adopted/current; v0.1.110 is a docs-and-validation candidate only
+active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.2.zip
+release status: v0.1.109.1.1 is adopted/current; v0.1.111.2 is an unadopted repair candidate
 backlog authority: docs/backlog/backlog.json
-open backlog tickets: ISSUE-001, PBAI-001
+backlog status: ISSUE-001 implemented_candidate in v0.1.111; PBAI-001 open
 plan authority file: docs/project/plan-state.json
 control-surface validator: pb project validate-control-surface --json
 next-slice authority command: pb project next-slice --json
@@ -57,7 +58,7 @@ next-slice authority command: pb project next-slice --json
 
 ## Current blockers
 
-- Full release validation and adoption are still required before `v0.1.110` can become accepted/current.
+- Full direct, localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.2` can become current.
 
 ## Current unknowns
 
@@ -66,7 +67,7 @@ next-slice authority command: pb project next-slice --json
 ## Next safe action
 
 ```text
-Validate the tracked backlog contract, package chatgpt_claudecode_workflow-2_v0.1.110.zip, and run full release-control. Do not implement ISSUE-001 or PBAI-001 runtime functionality in this slice.
+Install chatgpt_claudecode_workflow-2_v0.1.111.2.zip, verify live progress and fail-fast output, then run the full release-control adoption gate once. Do not start v0.1.112 until v0.1.111.2 is accepted/current.
 ```
 
 ## Last updated
