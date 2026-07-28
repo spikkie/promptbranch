@@ -1,7 +1,9 @@
+# Migration to Project Control Surface
 
-## v0.1.111.4.1 repair sequencing
+## v0.1.111.5 ETA-history migration
 
-`v0.1.109.1.1` remains accepted/current. `v0.1.111.4` retains deterministic release-live idle handoff but is repair-required after its strict retry exposed false full-capacity final-count verification. `v0.1.111.4.1` repairs only transaction-derived Project Source capacity and identity verification. `v0.1.111.5 — Named-step ETA planning and stable countdown` remains the immediately following repair. `v0.1.112 — PBAI-001 declaration and structural validation` remains the next normal slice only after the repair sequence is accepted.
+`v0.1.111.4.1` is accepted/current. `v0.1.111.5` adds only bounded observational timing state under `.pb_profile/eta-history.json`. No repository, artifact registry, Project Source, browser profile, user data, or accepted-current migration is required. Missing or malformed timing history is treated as no history and reports unknown ETA. `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until this repair is accepted.
+
 ## v0.1.109.1.1 tracked Project binding migration
 
 `.promptbranch-repo.json` is now committed repository authority and is included in release ZIPs. User-local membership and adoption evidence remain outside Git. Follow `docs/migrations/tracked-project-binding-v0.1.109.1.1.md` for existing repositories, fresh clones, mismatch handling, and deletion recovery.

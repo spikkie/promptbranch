@@ -9,7 +9,7 @@
     "format": "plain"
   },
   "artifact": {
-    "path": "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
+    "path": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
     "kind": "zip",
     "required_root_entries": [
       "VERSION",
@@ -65,7 +65,7 @@
           "--repo",
           ".",
           "--output",
-          "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip"
+          "chatgpt_claudecode_workflow-2_v0.1.111.5.zip"
         ],
         "timeout_seconds": 600
       }
@@ -79,9 +79,9 @@
           "--repo",
           ".",
           "--zip",
-          "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
           "--version",
-          "v0.1.111.4.1",
+          "v0.1.111.5",
           "--json"
         ],
         "timeout_seconds": 600
@@ -94,7 +94,7 @@
           "pb",
           "src",
           "add",
-          "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
           "--json"
         ],
         "timeout_seconds": 900
@@ -107,9 +107,9 @@
           "pb",
           "artifact",
           "adopt",
-          "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
           "--version",
-          "v0.1.111.4.1",
+          "v0.1.111.5",
           "--json"
         ],
         "timeout_seconds": 900
@@ -122,9 +122,9 @@
           "python3",
           "scripts/verify-release-adoption-current.py",
           "--version",
-          "v0.1.111.4.1",
+          "v0.1.111.5",
           "--artifact",
-          "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
           "--json"
         ],
         "timeout_seconds": 600

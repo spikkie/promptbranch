@@ -1,37 +1,31 @@
 # Release Status
 
-<!-- v0.1.111.4.1 current control-surface header -->
-- Accepted/current version: `v0.1.109.1.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.4.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+<!-- v0.1.111.5 current control-surface header -->
+- Accepted/current version: `v0.1.111.4.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+- Active candidate version: `v0.1.111.5`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.111.5`
-- Next planned slice after acceptance: `v0.1.111.5 — Named-step ETA planning and stable countdown`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
-## v0.1.111.4.1 corrective candidate
+## v0.1.111.5 corrective candidate
 
-- Accepted/current remains `v0.1.109.1.1`.
-- `v0.1.111.4` is `repair_required`: its strict retry stopped before tests because successful full-capacity prune/upload/delete-old replacement ended at 24 sources while the final verifier incorrectly required the hard limit of 25.
-- `v0.1.111.4.1` preserves the external-live idle-handoff repair and replaces the false assertion with exact transaction-delta and identity-multiset verification.
-- The ETA defect remains intentionally deferred to `v0.1.111.5`.
-- `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until the repair sequence is accepted.
-- Not claimed: full release validation, Project Source publication, adoption, accepted/current verification, or PBAI-001 implementation.
+- `v0.1.111.4.1` is accepted/current after `tested=10/10`, `all_tests_final_verdict: GO`, and `release_adopted_and_verified`.
+- `v0.1.111.5` replaces ETA-only elapsed/completed extrapolation with named-step and phase timing distributions.
+- Direct timing may inform localhost ETA only; localhost validation evidence remains independent and mandatory.
+- Known skips are excluded before ETA computation.
+- ETA state and output cannot change validation status, fail-fast, release verdict, publication, or adoption.
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-accepted/current version: v0.1.109.1.1
-last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-active candidate version: v0.1.111.4.1
-active repair slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
-next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
-next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+active candidate version: v0.1.111.5
+active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
+next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## ZIP status values

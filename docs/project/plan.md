@@ -1,48 +1,51 @@
 # Project Plan
 
-<!-- v0.1.111.4.1 current control-surface header -->
-- Accepted/current version: `v0.1.109.1.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.4.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+<!-- v0.1.111.5 current control-surface header -->
+- Accepted/current version: `v0.1.111.4.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+- Active candidate version: `v0.1.111.5`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.111.5`
-- Next planned slice after acceptance: `v0.1.111.5 — Named-step ETA planning and stable countdown`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-accepted/current version: v0.1.109.1.1
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+accepted/current version: v0.1.111.4.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-active candidate version: v0.1.111.4.1
-active repair slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
+last completed repair: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+active candidate version: v0.1.111.5
+active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
+next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## Plan summary
 
-`v0.1.109.1.1` remains accepted/current. `v0.1.111.4` retains the deterministic external-live idle handoff but its strict retry stopped before tests after a successful full-capacity Project Source replacement produced 24 sources and the verifier incorrectly required 25. `v0.1.111.4.1` is the narrow corrective. The ETA defect remains queued as `v0.1.111.5`.
+`v0.1.111.4.1` is accepted/current after 10/10 strict validation, deterministic external-live idle handoff, evidence-bound adoption, and final current verification. `v0.1.111.5` is the final queued observability repair: replace misleading elapsed/completed extrapolation with named-step, transport-aware, confidence-labelled ETA planning. `v0.1.112` remains blocked until this repair is accepted.
 
-## Active repair slice — v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
+## Active repair slice — v0.1.111.5 — Named-step ETA planning and stable countdown
 
 Scope:
 
-1. Preserve the `v0.1.111.4` external-live idle-handoff implementation unchanged.
-2. Derive the expected final Project Source count from proven transaction deltas: pre-count, one verified prune, one verified upload, and verified previous-family removals.
-3. Verify the exact final identity multiset, not merely `final_count <= capacity_limit`.
-4. Require exactly one assigned candidate family member, zero previous family members, and zero residual pruned source cards.
-5. Fail closed on count drift, identity drift, missing assignment, residual prior family state, residual pruned state, or any unexpected disappearance.
-6. Keep accepted/current at `v0.1.109.1.1`; do not advance ETA or PBAI-001 scope.
+1. Replace elapsed/completed extrapolation in `pb test` and release-control progress with named-step estimates.
+2. Prefer successful same-step, same-transport historical medians.
+3. Permit direct timing as an ETA-only localhost prior without reusing validation evidence.
+4. Fall back to same-phase timing only when named-step history is unavailable.
+5. Exclude steps known to be skipped before ETA calculation.
+6. Emit `active_remaining`, `eta_approx`, `eta_range`, `eta_confidence`, and `eta_basis` in progress text and JSON.
+7. Keep a stable or narrowing countdown when the active plan only shrinks; retain a non-zero tail for an overrun step that is still visibly running.
+8. Persist bounded timing observations under `.pb_profile`; malformed or unavailable ETA state fails soft and never changes pass/fail, fail-fast, transport independence, adoption, or release authority.
+9. Keep `v0.1.112` out of scope.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.4` is `repair_required`; `v0.1.111.4.1` is active; `v0.1.111.5` remains immediately after acceptance; `v0.1.112` remains the next normal slice.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.4.1` is accepted/current, `v0.1.111.5` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
 
 ## Release / slice plan
 

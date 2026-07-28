@@ -34,6 +34,7 @@ from promptbranch_mcp import (
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRegistryStateError, build_source_sync_preflight, plan_repo_snapshot, release_entry_hygiene_violations, sha256_file, verify_zip_artifact
 from promptbranch_version import PACKAGE_VERSION, normalize_version, version_tag
 from promptbranch_ask_protocol import BEGIN_REPLY_MARKER, END_REPLY_MARKER, classify_artifact_candidates, parse_promptbranch_reply
+from promptbranch_eta import append_eta_observation, estimate_named_step_eta, load_eta_history
 
 
 DEFAULT_ONLY: tuple[str, ...] = ()
@@ -85,19 +86,51 @@ def _human_duration(seconds: float | None) -> str:
 
 
 class TestProgressLedger:
-    """Observational progress ledger for long-running full validation.
+    """Observational named-step progress and ETA ledger.
 
-    Percent complete is work-unit based. ETA is a rolling approximation derived
-    from elapsed wall time per completed unit; it is intentionally labelled
-    approximate because browser and external-service steps have variable latency.
+    Validation authority remains entirely in the step outcomes. ETA is derived
+    only from successful timing observations, prefers same-step/same-transport
+    medians, and falls back to phase medians. Direct timings may be used as an
+    ETA-only localhost prior; they never satisfy localhost validation.
     """
 
-    def __init__(self, units: Sequence[str], *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        units: Sequence[str],
+        *,
+        enabled: bool = True,
+        transport: str | None = None,
+        history_path: str | Path | None = None,
+        known_skipped_units: Sequence[str] = (),
+        clock: Any = time.monotonic,
+    ) -> None:
         self.units = tuple(dict.fromkeys(str(unit) for unit in units))
         self.enabled = bool(enabled)
-        self.started_monotonic = time.monotonic()
+        self.transport = str(transport or os.environ.get("PROMPTBRANCH_ETA_TRANSPORT") or "direct")
+        explicit_history = history_path or os.environ.get("PROMPTBRANCH_ETA_HISTORY_PATH")
+        if explicit_history:
+            self.history_path: Path | None = Path(explicit_history).expanduser()
+        else:
+            profile_dir = os.environ.get("PROMPTBRANCH_PROFILE_DIR")
+            self.history_path = Path(profile_dir).expanduser() / "eta-history.json" if profile_dir else None
+        self.known_skipped_units = {str(unit) for unit in known_skipped_units}
+        self._clock = clock
+        self.started_monotonic = float(self._clock())
         self.states: dict[str, str] = {unit: "pending" for unit in self.units}
         self.current: str | None = None
+        self._unit_started: dict[str, float] = {}
+        self._history_records = load_eta_history(self.history_path)
+        self._last_eta: dict[str, Any] = {
+            "active_remaining": len([unit for unit in self.units if unit not in self.known_skipped_units]),
+            "eta_seconds_approx": None,
+            "eta_seconds_range": {"low": None, "high": None},
+            "eta_approx": "unknown",
+            "eta_range": "unknown",
+            "eta_confidence": "unknown",
+            "eta_basis": "insufficient_named_step_history",
+            "active_steps": [unit for unit in self.units if unit not in self.known_skipped_units],
+            "unresolved_steps": [unit for unit in self.units if unit not in self.known_skipped_units],
+        }
 
     def _counts(self) -> tuple[int, int, int, int]:
         passed = sum(1 for value in self.states.values() if value == "passed")
@@ -106,24 +139,41 @@ class TestProgressLedger:
         completed = passed + failed + skipped
         return completed, passed, failed, skipped
 
+    def _estimate(self) -> dict[str, Any]:
+        now = float(self._clock())
+        current_elapsed = 0.0
+        if self.current and self.current in self._unit_started:
+            current_elapsed = max(0.0, now - self._unit_started[self.current])
+        estimate = estimate_named_step_eta(
+            units=self.units,
+            states=self.states,
+            current=self.current,
+            current_elapsed_seconds=current_elapsed,
+            history_records=self._history_records,
+            transport=self.transport,
+            known_skipped_units=tuple(self.known_skipped_units),
+            previous_eta_seconds=self._last_eta.get("eta_seconds_approx"),
+            previous_active_steps=self._last_eta.get("active_steps") or (),
+        )
+        self._last_eta = estimate
+        return estimate
+
     def _emit(self, *, status: str, current: str | None = None) -> None:
         if not self.enabled:
             return
         completed, passed, failed, skipped = self._counts()
         total = len(self.units)
-        elapsed = max(0.0, time.monotonic() - self.started_monotonic)
+        elapsed = max(0.0, float(self._clock()) - self.started_monotonic)
         percent = 100.0 if total == 0 else round((completed / total) * 100.0, 1)
-        eta: float | None = None
-        if completed > 0 and completed < total:
-            eta = (elapsed / completed) * (total - completed)
-        elif completed >= total:
-            eta = 0.0
+        estimate = self._estimate()
         active = current or self.current or "none"
         print(
             "pb_test_progress: "
             f"status={status} current={active} completed={completed}/{total} "
             f"passed={passed} failed={failed} skipped={skipped} percent={percent:.1f} "
-            f"elapsed={_human_duration(elapsed)} eta_approx={_human_duration(eta)}",
+            f"elapsed={_human_duration(elapsed)} active_remaining={estimate['active_remaining']} "
+            f"eta_approx={estimate['eta_approx']} eta_range={estimate['eta_range']} "
+            f"eta_confidence={estimate['eta_confidence']} eta_basis={estimate['eta_basis']}",
             flush=True,
         )
 
@@ -136,19 +186,49 @@ class TestProgressLedger:
             return
         self.current = unit
         self.states[unit] = "running"
+        self._unit_started[unit] = float(self._clock())
         self._emit(status="running", current=unit)
 
-    def finish(self, unit: str, *, ok: bool, skipped: bool = False, skip_reason: str | None = None) -> None:
+    def finish(
+        self,
+        unit: str,
+        *,
+        ok: bool,
+        skipped: bool = False,
+        skip_reason: str | None = None,
+        duration_seconds: float | None = None,
+    ) -> None:
         if unit not in self.states:
             return
         if self.states[unit] in {"passed", "failed"} or self.states[unit].startswith("skipped"):
             return
+        now = float(self._clock())
+        started = self._unit_started.pop(unit, None)
+        observed_duration = duration_seconds
+        if observed_duration is None and started is not None:
+            observed_duration = max(0.0, now - started)
         if skipped:
             self.states[unit] = f"skipped:{skip_reason or 'requested'}"
             status = "skipped"
         else:
             self.states[unit] = "passed" if ok else "failed"
             status = self.states[unit]
+            if observed_duration is not None and float(observed_duration) >= 0.0:
+                record = append_eta_observation(
+                    self.history_path,
+                    step=unit,
+                    transport=self.transport,
+                    duration_seconds=float(observed_duration),
+                    outcome=status,
+                )
+                if record is None:
+                    record = {
+                        "step": unit,
+                        "transport": self.transport,
+                        "duration_seconds": float(observed_duration),
+                        "outcome": status,
+                    }
+                self._history_records.append(record)
         self.current = None
         self._emit(status=status, current=unit)
 
@@ -156,6 +236,7 @@ class TestProgressLedger:
         for unit, state in list(self.states.items()):
             if state in {"pending", "running"}:
                 self.states[unit] = f"skipped:{reason}"
+        self._unit_started.clear()
         self.current = None
         self._emit(status="fail_fast_stopped")
 
@@ -163,6 +244,7 @@ class TestProgressLedger:
         completed, passed, failed, skipped = self._counts()
         total = len(self.units)
         percent = 100.0 if total == 0 else round((completed / total) * 100.0, 1)
+        estimate = self._estimate()
         return {
             "total_units": total,
             "completed_units": completed,
@@ -171,6 +253,8 @@ class TestProgressLedger:
             "skipped_units": skipped,
             "percent_complete": percent,
             "states": dict(self.states),
+            "transport": self.transport,
+            **estimate,
         }
 
     def finish_summary(self) -> None:
@@ -184,14 +268,18 @@ class ProgressStepList(list[dict[str, Any]]):
         super().__init__()
         self.progress = progress
         self.prefix = prefix
+        self._last_append_monotonic = float(progress._clock()) if progress is not None else 0.0
 
     def append(self, item: dict[str, Any]) -> None:
+        now = float(self.progress._clock()) if self.progress is not None else 0.0
+        duration = max(0.0, now - self._last_append_monotonic) if self.progress is not None else None
+        self._last_append_monotonic = now
         super().append(item)
         if self.progress is None or not isinstance(item, dict):
             return
         name = str(item.get("name") or "")
         unit = f"{self.prefix}.{name}"
-        self.progress.finish(unit, ok=bool(item.get("ok")))
+        self.progress.finish(unit, ok=bool(item.get("ok")), duration_seconds=duration)
 
 
 def utc_now() -> str:
@@ -2136,9 +2224,16 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
 
     validation_units = tuple(f"validation.{name}" for name in RELEASE_VALIDATION_GROUPS)
     agent_units = tuple(f"agent.{name}" for name in AGENT_PROGRESS_STEP_NAMES)
+    known_validation_skips = (
+        validation_units if os.environ.get(RELEASE_VALIDATION_SKIP_DUPLICATE_ENV) == "1" else ()
+    )
 
     if profile == "agent":
-        progress = TestProgressLedger((*agent_units, *validation_units), enabled=progress_enabled)
+        progress = TestProgressLedger(
+            (*agent_units, *validation_units),
+            enabled=progress_enabled,
+            known_skipped_units=known_validation_skips,
+        )
         progress.announce("agent")
         summary = _run_agent_profile_sync(
             repo_path=repo_path,
@@ -2150,7 +2245,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         _attach_suite_failure_summary(summary, "agent")
         summary["rate_limit_strategy"] = {**rate_limit_strategy, "browser_required": False}
         progress.finish_summary()
-        summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
+        summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, **progress.snapshot()}
         return summary
 
     browser_args = build_test_suite_namespace(**kwargs, rate_limit_safe=rate_limit_safe, fail_fast=fail_fast)
@@ -2161,7 +2256,11 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     )
     browser_units = tuple(f"browser.{name}" for name in selection.enabled_steps)
     all_units = browser_units if profile == "browser" else (*browser_units, *agent_units, *validation_units)
-    progress = TestProgressLedger(all_units, enabled=progress_enabled)
+    progress = TestProgressLedger(
+        all_units,
+        enabled=progress_enabled,
+        known_skipped_units=known_validation_skips,
+    )
 
     def browser_progress_callback(*, event: str, step_name: str, ok: bool | None = None, duration_seconds: float = 0.0) -> None:
         canonical = "task_message_flow" if step_name.startswith("task_message_flow.") else step_name
@@ -2174,10 +2273,10 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         if event != "finished":
             return
         if ok is False:
-            progress.finish(unit, ok=False)
+            progress.finish(unit, ok=False, duration_seconds=duration_seconds)
             return
         if step_name == canonical:
-            progress.finish(unit, ok=True)
+            progress.finish(unit, ok=True, duration_seconds=duration_seconds)
 
     setattr(browser_args, "_progress_callback", browser_progress_callback)
     progress.announce("browser")
@@ -2199,7 +2298,7 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         if fail_fast and not bool(browser_summary.get("ok")):
             progress.skip_pending(reason="browser_failure")
         progress.finish_summary()
-        browser_summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, "eta_basis": "observed_average_per_completed_work_unit", **progress.snapshot()}
+        browser_summary["progress"] = {"enabled": progress_enabled, "fail_fast": fail_fast, **progress.snapshot()}
         return browser_summary
 
     if fail_fast and not bool(browser_summary.get("ok")):
@@ -2256,7 +2355,6 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         "progress": {
             "enabled": progress_enabled,
             "fail_fast": fail_fast,
-            "eta_basis": "observed_average_per_completed_work_unit",
             **progress.snapshot(),
         },
         "safety": {

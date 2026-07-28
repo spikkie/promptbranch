@@ -1,79 +1,61 @@
 # Project Status
 
-<!-- v0.1.111.4.1 current control-surface header -->
-- Accepted/current version: `v0.1.109.1.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.4.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+<!-- v0.1.111.5 current control-surface header -->
+- Accepted/current version: `v0.1.111.4.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
+- Active candidate version: `v0.1.111.5`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.111.5`
-- Next planned slice after acceptance: `v0.1.111.5 — Named-step ETA planning and stable countdown`
+- Next planned version after acceptance: `v0.1.112`
+- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-accepted/current version: v0.1.109.1.1
-last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-active candidate version: v0.1.111.4.1
-active repair slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
-next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+accepted/current version: v0.1.111.4.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+active candidate version: v0.1.111.5
+active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
+next normal version: v0.1.112
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
 ```
 
 ## Current MVP state
 
-```text
-MVP status: active
-active MVP: MVP-1 loop-based problem-solving engine
-DoD status: focused candidate
-last accepted/current slice: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active plan slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
-repair mode: true
-scope advance allowed: false
-```
+Promptbranch remains in the loop-based problem-solving MVP. This repair changes progress observability only; execution, safety, mutation, Project Source, artifact, and adoption authority are unchanged.
 
 ## Current release state
 
-```text
-latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-release status: v0.1.109.1.1 is adopted/current; v0.1.111.4 is repair_required; v0.1.111.4.1 is an unadopted corrective candidate
-backlog authority: docs/backlog/backlog.json
-backlog status: ISSUE-001 implemented_candidate in v0.1.111; PBAI-001 open
-plan authority file: docs/project/plan-state.json
-control-surface validator: pb project validate-control-surface --json
-next-slice authority command: pb project next-slice --json
-```
+- `v0.1.111.4.1` passed all 10 strict release gates and is adopted/current.
+- `v0.1.111.5` is an unadopted candidate.
+- Named-step timing history is informational and stored under `.pb_profile`.
+- Direct and localhost validation remain independently executed even when direct timing is used as a localhost ETA prior.
 
 ## Current risks
 
-- Final Project Source verification must not confuse the hard capacity limit with the transaction-derived expected count.
-- Every destructive source mutation remains identity-bound and fail-closed.
-- PBAI-001 must not begin before the repair sequence is accepted.
+- A first run or a new phase can correctly report `eta_approx=unknown` until relevant successful timing exists.
+- External UI latency can exceed historical ranges; a running overrun step therefore retains a bounded non-zero tail.
+- Timing history corruption or write failure must degrade ETA to unknown without affecting validation.
 
 ## Current blockers
 
-- Focused and packaged-byte validation, then full direct, independent localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.4.1` can become current.
+Strict host release validation, publication, adoption, and accepted/current verification are still required for `v0.1.111.5`.
 
 ## Current unknowns
 
-- No additional formal Promptbranch backlog tickets are currently recorded.
+Operational ETA accuracy and confidence distribution after several direct, localhost, local, and external-live runs remain to be measured.
 
 ## Next safe action
 
-```text
-Validate the v0.1.111.4.1 packaged candidate, then run one strict host release-control workflow. Confirm full-capacity replacement reports expected_final=24 for prune + upload + delete-old, the assigned family is a singleton, the pruned and previous sources are absent, and all mandatory release gates pass before adoption. After acceptance, implement v0.1.111.5 ETA correction before beginning v0.1.112.
-```
+Run focused and packaged-byte tests, then one strict all/all host release workflow. Require all 10 gates, adoption, and final current verification before opening `v0.1.112`.
 
 ## Last updated
 
 ```text
-v0.1.111.4.1 capacity-aware Project Source replacement verification candidate build
+2026-07-28
+v0.1.111.5 named-step ETA planning and stable countdown candidate build
 ```
 
 ## v0.1.102 candidate status

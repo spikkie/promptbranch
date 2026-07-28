@@ -4635,7 +4635,7 @@ run_full_test_transport() {
   print_command_line "${full_test_cmd[@]}"
   printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-  CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+  PROMPTBRANCH_ETA_TRANSPORT="${label}" PROMPTBRANCH_ETA_HISTORY_PATH="${release_eta_history_path}" CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
   test_rc=${PIPESTATUS[0]}
   if [[ ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403 "${selected_full_log}"; then
     echo "status: browser_backend_403_guardrail" | tee -a "${selected_full_log}" >&2
@@ -4652,7 +4652,7 @@ run_full_test_transport() {
       print_command_line "${full_test_cmd[@]}"
       printf ' 2>&1 | tee -a %q
 ' "${selected_full_log}"
-      CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
+      PROMPTBRANCH_ETA_TRANSPORT="${label}" PROMPTBRANCH_ETA_HISTORY_PATH="${release_eta_history_path}" CHATGPT_SERVICE_BASE_URL="${base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE="${release_validation_duplicate_skip}" timeout --foreground "${test_timeout_seconds}" "${full_test_cmd[@]}" 2>&1 | tee -a "${selected_full_log}"
       test_rc=${PIPESTATUS[0]}
     else
       echo "WARN: suppressing rate-limit retry for full_${label}; browser cooldown retry is forbidden for localhost/offline validation groups." | tee -a "${selected_full_log}" >&2
@@ -4703,46 +4703,147 @@ run_full_test_transport() {
 
 
 all_test_step_specs=()
+declare -A all_test_step_started_epoch=()
 run_all_progress_started_epoch="$(date +%s)"
+release_eta_history_path="${repo_root}/.pb_profile/eta-history.json"
 
-run_all_expected_step_count() {
-  local total=0
+run_all_planned_step_names() {
   case "${test_transport}" in
-    direct) total=1 ;;
-    localhost) total=1 ;;
-    both) total=2 ;;
-    *) total=0 ;;
+    direct) printf '%s\n' "full_direct" ;;
+    localhost) printf '%s\n' "full_localhost" ;;
+    both) printf '%s\n' "full_direct" "full_localhost" ;;
   esac
   if [[ ${run_all_tests} -eq 1 && ${run_failing_tests} -eq 0 ]]; then
-    total=$((total + 8))
+    printf '%s\n' \
+      "sandbox_mutation_rollback_gate" \
+      "live_profile_preflight" \
+      "live_project_ensure" \
+      "ask_live" \
+      "visual_artifact_roundtrip" \
+      "release_live" \
+      "import_smoke" \
+      "artifact_guard"
   fi
-  if [[ ${total} -le 0 ]]; then
+}
+
+run_all_known_eta_skip_steps() {
+  if [[ ${run_all_tests} -eq 1 && ${run_failing_tests} -eq 0 && ${run_external_live_tests} -eq 0 ]]; then
+    printf '%s\n' \
+      "live_profile_preflight" \
+      "live_project_ensure" \
+      "ask_live" \
+      "visual_artifact_roundtrip" \
+      "release_live"
+  fi
+}
+
+run_all_step_eta_transport() {
+  case "$1" in
+    full_direct) printf '%s' "direct" ;;
+    full_localhost) printf '%s' "localhost" ;;
+    live_profile_preflight|live_project_ensure|ask_live|visual_artifact_roundtrip|release_live) printf '%s' "live" ;;
+    *) printf '%s' "local" ;;
+  esac
+}
+
+run_all_expected_step_count() {
+  local total
+  total="$(run_all_planned_step_names | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ -z "${total}" || ${total} -le 0 ]]; then
     total=1
   fi
   printf '%s' "${total}"
 }
 
+run_all_append_eta_observation() {
+  local step_name="$1"
+  local step_log="$2"
+  local step_rc="$3"
+  local started_epoch="${all_test_step_started_epoch[${step_name}]:-}"
+  [[ -n "${started_epoch}" ]] || return 0
+  local finished_epoch duration transport
+  finished_epoch="$(date +%s)"
+  duration=$((finished_epoch - started_epoch))
+  if [[ ${duration} -lt 0 ]]; then duration=0; fi
+  transport="$(run_all_step_eta_transport "${step_name}")"
+  if ! python3 - "${repo_root}" "${release_eta_history_path}" "${step_name}" "${transport}" "${duration}" "${step_rc}" "${step_log}" <<'INNERPY'
+from pathlib import Path
+import json
+import sys
+repo_root, history_path, step, transport, duration_text, rc_text, log_path = sys.argv[1:8]
+sys.path.insert(0, repo_root)
+from promptbranch_eta import append_eta_observation
+try:
+    duration = float(duration_text)
+except Exception:
+    raise SystemExit(0)
+try:
+    rc = int(rc_text)
+except Exception:
+    rc = 99
+status = ""
+skipped = False
+try:
+    payload = json.loads(Path(log_path).read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        status = str(payload.get("status") or "")
+        skipped = payload.get("skipped") is True or status.startswith("skipped") or status == "external_live_not_requested"
+except Exception:
+    pass
+if skipped:
+    raise SystemExit(0)
+append_eta_observation(
+    history_path,
+    step=step,
+    transport=transport,
+    duration_seconds=duration,
+    outcome="passed" if rc == 0 else "failed",
+)
+INNERPY
+  then
+    echo "WARN: ETA history update failed for ${step_name}; validation outcome is unchanged." >&2
+  fi
+  unset 'all_test_step_started_epoch['"${step_name}"']'
+}
+
 run_all_emit_progress() {
   [[ ${run_all_tests} -eq 1 ]] || return 0
-  local expected
+  local current_step="${1:-}"
+  local expected planned_csv known_skip_csv current_started
   expected="$(run_all_expected_step_count)"
-  python3 - "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${run_all_progress_started_epoch}" "${all_test_step_specs[@]}" <<'INNERPY'
+  planned_csv="$(run_all_planned_step_names | paste -sd, -)"
+  known_skip_csv="$(run_all_known_eta_skip_steps | paste -sd, -)"
+  current_started="${all_test_step_started_epoch[${current_step}]:-0}"
+  if ! python3 - "${repo_root}" "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${run_all_progress_started_epoch}" "${current_step}" "${current_started}" "${release_eta_history_path}" "${planned_csv}" "${known_skip_csv}" "${all_test_step_specs[@]}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import json
 import sys
-out = Path(sys.argv[1])
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root)
+from promptbranch_eta import estimate_named_step_eta, load_eta_history
+out = Path(sys.argv[2])
 try:
-    expected = int(sys.argv[2])
+    expected = int(sys.argv[3])
 except Exception:
     expected = 1
 try:
-    started_epoch = int(sys.argv[3])
+    started_epoch = int(sys.argv[4])
 except Exception:
     started_epoch = int(datetime.now(timezone.utc).timestamp())
-items = sys.argv[4:]
-tested = len(items)
+current_step = str(sys.argv[5] or "")
+try:
+    current_started_epoch = int(sys.argv[6])
+except Exception:
+    current_started_epoch = 0
+history_path = sys.argv[7]
+planned = [item for item in sys.argv[8].split(",") if item]
+known_skips = [item for item in sys.argv[9].split(",") if item]
+items = sys.argv[10:]
+if not planned:
+    planned = [f"step_{index + 1}" for index in range(max(1, expected))]
+states = {name: "pending" for name in planned}
 succeeded = 0
 failed = 0
 skipped = 0
@@ -4757,42 +4858,66 @@ for item in items:
     except Exception:
         rc = 99
     step_status = ""
+    explicit_skipped = False
     try:
         payload = json.loads(Path(log).read_text(encoding="utf-8"))
         if isinstance(payload, dict):
             step_status = str(payload.get("status") or "")
+            explicit_skipped = payload.get("skipped") is True
     except Exception:
-        step_status = ""
-    is_skipped = step_status == "skipped_dependency_failed"
+        pass
+    is_skipped = explicit_skipped or step_status.startswith("skipped") or step_status == "external_live_not_requested" or name in known_skips
     ok = rc == 0 and not is_skipped
     if is_skipped:
         skipped += 1
+        states[name] = "skipped:known_or_recorded"
     elif ok:
         succeeded += 1
+        states[name] = "passed"
     else:
         failed += 1
+        states[name] = "failed"
     steps.append({"name": name, "log": log, "exit_code": rc, "ok": ok, "skipped": is_skipped, "status": step_status or None})
-expected = max(expected, tested, 1)
+if current_step and current_step in states and states[current_step] == "pending":
+    states[current_step] = "running"
+now_epoch = int(datetime.now(timezone.utc).timestamp())
+elapsed_seconds = max(0, now_epoch - started_epoch)
+current_elapsed = max(0, now_epoch - current_started_epoch) if current_step and current_started_epoch > 0 else 0
+transport_by_step = {}
+for name in planned:
+    if name == "full_direct":
+        transport_by_step[name] = "direct"
+    elif name == "full_localhost":
+        transport_by_step[name] = "localhost"
+    elif name in {"live_profile_preflight", "live_project_ensure", "ask_live", "visual_artifact_roundtrip", "release_live"}:
+        transport_by_step[name] = "live"
+    else:
+        transport_by_step[name] = "local"
+previous = {}
+try:
+    previous = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {}
+except Exception:
+    previous = {}
+estimate = estimate_named_step_eta(
+    units=planned,
+    states=states,
+    current=current_step or None,
+    current_elapsed_seconds=current_elapsed,
+    history_records=load_eta_history(history_path),
+    transport=transport_by_step.get(current_step, "local"),
+    known_skipped_units=known_skips,
+    transport_by_step=transport_by_step,
+    previous_eta_seconds=previous.get("eta_seconds_approx") if isinstance(previous, dict) else None,
+    previous_active_steps=previous.get("active_steps") if isinstance(previous, dict) else (),
+)
+tested = len(items)
+expected = max(expected, len(planned), tested, 1)
 tested_percent = round((tested / expected) * 100.0, 1)
 success_percent = round((succeeded / tested) * 100.0, 1) if tested else 0.0
 failure_percent = round((failed / tested) * 100.0, 1) if tested else 0.0
-now_epoch = int(datetime.now(timezone.utc).timestamp())
-elapsed_seconds = max(0, now_epoch - started_epoch)
-eta_seconds_approx = None
-if tested > 0 and tested < expected:
-    eta_seconds_approx = round((elapsed_seconds / tested) * (expected - tested), 1)
-elif tested >= expected:
-    eta_seconds_approx = 0.0
-def human(seconds):
-    if seconds is None:
-        return "unknown"
-    total = max(0, int(round(seconds)))
-    hours, remainder = divmod(total, 3600)
-    minutes, secs = divmod(remainder, 60)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
 payload = {
     "schema": "promptbranch.release_control.all_tests_progress",
-    "schema_version": "1.0",
+    "schema_version": "1.1",
     "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     "expected_step_count": expected,
     "tested_count": tested,
@@ -4803,25 +4928,42 @@ payload = {
     "success_percent_of_tested": success_percent,
     "failure_percent_of_tested": failure_percent,
     "elapsed_seconds": elapsed_seconds,
-    "eta_seconds_approx": eta_seconds_approx,
-    "eta_basis": "observed_average_per_completed_release_step",
+    "current_step": current_step or None,
+    "current_step_elapsed_seconds": current_elapsed if current_step else None,
+    "known_eta_skipped_steps": known_skips,
+    "eta_history_path": history_path,
     "steps": steps,
+    **estimate,
 }
 out.write_text(json.dumps(payload, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
+if current_step:
+    print(
+        "all_tests_current: "
+        f"step={current_step} completed={tested}/{expected} active_remaining={estimate['active_remaining']} "
+        f"eta_approx={estimate['eta_approx']} eta_range={estimate['eta_range']} "
+        f"eta_confidence={estimate['eta_confidence']} eta_basis={estimate['eta_basis']}"
+    )
 print(
     "all_tests_progress: "
     f"tested={tested}/{expected} tested_percent={tested_percent:.1f} "
     f"succeeded={succeeded} failed={failed} skipped={skipped} "
     f"success_percent={success_percent:.1f} failure_percent={failure_percent:.1f} "
-    f"elapsed={human(elapsed_seconds)} eta_approx={human(eta_seconds_approx)}"
+    f"elapsed={elapsed_seconds}s active_remaining={estimate['active_remaining']} "
+    f"eta_approx={estimate['eta_approx']} eta_range={estimate['eta_range']} "
+    f"eta_confidence={estimate['eta_confidence']} eta_basis={estimate['eta_basis']}"
 )
 INNERPY
+  then
+    echo "WARN: named-step ETA calculation failed; validation continues unchanged." >&2
+    echo "all_tests_progress: tested=${#all_test_step_specs[@]}/${expected} active_remaining=unknown eta_approx=unknown eta_range=unknown eta_confidence=unknown eta_basis=eta_calculation_failed"
+  fi
 }
 
 record_all_test_step() {
   local name="$1"
   local log_path="$2"
   local rc="$3"
+  run_all_append_eta_observation "${name}" "${log_path}" "${rc}"
   all_test_step_specs+=("${name}|${log_path}|${rc}")
   run_all_emit_progress
 }
@@ -4829,9 +4971,10 @@ record_all_test_step() {
 run_all_emit_current_step() {
   [[ ${run_all_tests} -eq 1 ]] || return 0
   local step_name="$1"
-  local expected
-  expected="$(run_all_expected_step_count)"
-  echo "all_tests_current: step=${step_name} completed=${#all_test_step_specs[@]}/${expected} fail_fast=${test_fail_fast}"
+  if [[ -z "${all_test_step_started_epoch[${step_name}]:-}" ]]; then
+    all_test_step_started_epoch[${step_name}]="$(date +%s)"
+  fi
+  run_all_emit_progress "${step_name}"
 }
 
 run_all_json_step() {
@@ -5645,6 +5788,7 @@ run_all_recreate_service_for_live_slot_profile() {
 
 run_all_live_profile_preflight() {
   local rc=0
+  run_all_emit_current_step "live_profile_preflight"
   echo "== pb test-all step: live_profile_preflight =="
   echo "live_profile_seed_dir: ${live_profile_seed_display}"
   echo "live_profile_pool_name: ${live_profile_pool_name}"
@@ -6019,6 +6163,7 @@ run_all_release_live_continuous_bootstrap_and_ask() {
   local bootstrap_sentinel="LIVE_CONVERSATION_BOOTSTRAP_${ver_plain//./_}"
   local ask_sentinel="ASK_LIVE_PLAIN_${ver_plain//./_}"
   run_all_continuous_failure_kind=""
+  run_all_emit_current_step "live_project_ensure"
   echo "== pb test-all step: live_project_ensure =="
   echo "release_test_project_name: ${release_test_project_name}"
   echo "reuse_policy: one_continuous_release_live_slot_session_for_project_bootstrap_and_first_ask"

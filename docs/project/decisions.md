@@ -1088,3 +1088,15 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Safety:** no automatic Stop action, no typing into a running conversation, no root Project discovery, no profile copy, and no fallback to the operator-owned conversation when the dedicated task does not produce a conversation URL.
 - **Accounting:** one causal idle-handoff failure blocks release; dependent live gates are `skipped_dependency_failed`, not independent defects.
 - **Next repair:** `v0.1.111.5` corrects ETA without changing validation authority or transport independence.
+
+## ADR-PROJ-1115 — ETA is named-step observability, never validation authority
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.111.4.1` is accepted/current after 10/10 strict validation and `release_adopted_and_verified`.
+- **Decision:** progress ETA is calculated from successful named-step timing observations, preferring same-step/same-transport medians and using same-phase fallback only when necessary.
+- **Transport boundary:** direct timing may be used as an ETA-only prior for localhost; it cannot satisfy, replace, reuse, or weaken localhost validation evidence.
+- **Skip boundary:** steps known to be skipped are excluded before ETA calculation.
+- **Stability:** while the active plan only shrinks, the countdown cannot increase; a visibly running overrun step retains a bounded non-zero tail.
+- **Persistence:** bounded timing history is atomically stored under `.pb_profile`; missing, malformed, or unwritable history degrades ETA to unknown.
+- **Authority:** ETA cannot change pass/fail, fail-fast, release verdict, publication, adoption, or accepted/current verification.
+- **Next:** after acceptance, open `v0.1.112 — PBAI-001 declaration and structural validation`.

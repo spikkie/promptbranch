@@ -824,3 +824,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Version |
 |---|---|---|---|---|
 | DOD-309 | The trusted external-live conversation is identity-only; release-live preserves browser/profile scope, hands off to an idle exact Project home, creates a dedicated conversation, never clicks Stop, submits nothing on failed handoff, and reports downstream gates as dependency skips after one causal failure | focused_candidate | `promptbranch_browser_auth/client.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_release_live_continuous_direct_conversation.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.4.md` | v0.1.111.4 |
+
+## v0.1.111.5 named-step ETA planning and stable countdown
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-311 | Progress ETA uses successful named-step/transport medians, direct-to-localhost ETA-only priors, phase fallback, known-skip exclusion, confidence-labelled ranges, stable countdown clamping, and bounded atomic history while remaining unable to alter validation authority | focused_candidate | `promptbranch_eta.py`, `promptbranch_test_suite.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.md` | v0.1.111.5 |

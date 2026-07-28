@@ -3993,8 +3993,14 @@ def test_release_control_progress_eta_and_fail_fast_contract() -> None:
     assert '_out_args+=(--fail-fast)' in script
     assert "all_tests_current:" in script
     assert "eta_seconds_approx" in script
+    assert "active_remaining" in script
+    assert "eta_range" in script
+    assert "eta_confidence" in script
     assert "eta_basis" in script
     assert "eta_approx=" in script
+    assert "observed_average_per_completed_release_step" not in script
+    assert 'PROMPTBRANCH_ETA_TRANSPORT="${label}"' in script
+    assert "direct_same_step_eta_prior" in (Path(__file__).resolve().parents[1] / "promptbranch_eta.py").read_text(encoding="utf-8")
 
 
 def test_release_control_idle_handoff_failure_is_one_causal_failure_with_dependency_skips() -> None:

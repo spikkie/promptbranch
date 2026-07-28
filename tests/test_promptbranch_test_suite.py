@@ -1196,7 +1196,11 @@ def test_progress_ledger_reports_counts_percent_and_eta(capsys) -> None:
     assert "passed=1" in output
     assert "failed=0" in output
     assert "percent=50.0" in output
+    assert "active_remaining=" in output
     assert "eta_approx=" in output
+    assert "eta_range=" in output
+    assert "eta_confidence=" in output
+    assert "eta_basis=" in output
     snapshot = ledger.snapshot()
     assert snapshot["completed_units"] == 1
     assert snapshot["percent_complete"] == 50.0

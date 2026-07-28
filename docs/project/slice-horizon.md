@@ -21,6 +21,6 @@ Repair releases must not advance normal scope. A normal slice may advance only a
 | v0.1.111.2 | Full-test progress, ETA, and fail-fast reporting | repair_required | repair | false expected-missing failure accounting; browser fail-fast was only phase-level |
 | v0.1.111.3 | Normalised browser progress and genuine step-level fail-fast | repair_required | repair | product transport proof passed; strict logs exposed idle-handoff and ETA defects |
 | v0.1.111.4 | Deterministic external-live idle handoff | repair_required | repair | idle-handoff retained; strict retry exposed false full-capacity final-count verification |
-| v0.1.111.4.1 | Capacity-aware Project Source family replacement verification | active | repair | exact prune/upload/delete-old deltas and final identity multiset; fail closed on drift |
-| v0.1.111.5 | Named-step ETA planning and stable countdown | planned_after_acceptance | repair | ETA-only observability correction; validation evidence remains independent |
-| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_repair_sequence | normal | starts only after v0.1.111.4.1 and v0.1.111.5 acceptance |
+| v0.1.111.4.1 | Capacity-aware Project Source family replacement verification | accepted_current | repair | 10/10 strict validation, adoption, and final current verification passed |
+| v0.1.111.5 | Named-step ETA planning and stable countdown | active | repair | named-step/transport medians, phase fallback, known-skip exclusion, confidence range, stable countdown |
+| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_acceptance | normal | starts only after v0.1.111.5 acceptance |
