@@ -2230,6 +2230,11 @@ def test_add_project_source_operation_prunes_lowest_same_family_release_at_sourc
     assert result["capacity_before"] == 25
     assert result["capacity_after_prune"] == 24
     assert result["capacity_after_upload"] == 25
+    assert result["capacity_expected_final_count"] == 25
+    assert result["capacity_final_count"] == 25
+    assert result["capacity_final_count_verified"] is True
+    assert result["capacity_final_identity_set_verified"] is True
+    assert result["capacity_final_contract"]["status"] == "source_capacity_final_transaction_verified"
     assert result["upload_started"] is True
 
 
@@ -6825,3 +6830,158 @@ def test_staged_overwrite_retries_once_and_preserves_old_source_until_retry_is_v
     assert result["replacement_retry_first_attempt"]["status"] == "source_overwrite_upload_request_failed"
     assert result["replacement_retry_first_attempt"]["evaluation"]["request_failure_count"] == 1
     assert result["final_family_source_count"] == 1
+
+
+def _capacity_contract_card(filename: str) -> dict[str, str]:
+    return {
+        "title": filename,
+        "identity": f"{filename} Zip Archive" if filename.endswith(".zip") else f"{filename} Document",
+        "text": f"{filename}\n" + ("Zip Archive" if filename.endswith(".zip") else "Document"),
+        "subtitle": "Zip Archive" if filename.endswith(".zip") else "Document",
+    }
+
+
+def test_capacity_final_contract_accepts_full_capacity_indexed_family_replacement_after_prune(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    canonical = "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip"
+    previous = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.111.4.1(1).zip")
+    pruned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.103.10.111(2).zip")
+    accepted = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.109.1.1(3).zip")
+    before = [previous, pruned, accepted]
+    before.extend(_capacity_contract_card(f"docs-{index}.md") for index in range(22))
+    assert len(before) == 25
+
+    assigned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.111.4.1(2).zip")
+    final = [source for source in before if source is not previous and source is not pruned]
+    final.append(assigned)
+    assert len(final) == 24
+
+    result = browser_client._project_source_capacity_final_contract(
+        capacity_limit=25,
+        capacity_before_sources=before,
+        capacity_after_prune=24,
+        final_sources=final,
+        pruned_filename=pruned["title"],
+        canonical_name=canonical,
+        assigned_filename=assigned["title"],
+        previous_family_sources=[previous],
+        family_replacement_result={
+            "ok": True,
+            "performed": True,
+            "verified": True,
+            "removed_source_count": 1,
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "source_capacity_final_transaction_verified"
+    assert result["capacity_before"] == 25
+    assert result["capacity_pruned_count"] == 1
+    assert result["capacity_uploaded_count"] == 1
+    assert result["capacity_family_removed_count"] == 1
+    assert result["capacity_expected_final_count"] == 24
+    assert result["capacity_final_count"] == 24
+    assert result["capacity_final_count_verified"] is True
+    assert result["capacity_final_identity_set_verified"] is True
+    assert result["assigned_source_final_count"] == 1
+    assert result["previous_family_source_final_count"] == 0
+    assert result["pruned_source_final_count"] == 0
+
+
+def test_capacity_final_contract_keeps_limit_for_new_family_after_prune(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    canonical = "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip"
+    pruned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.103.10.111(2).zip")
+    before = [pruned]
+    before.extend(_capacity_contract_card(f"docs-{index}.md") for index in range(24))
+    assigned = _capacity_contract_card(canonical)
+    final = [source for source in before if source is not pruned]
+    final.append(assigned)
+
+    result = browser_client._project_source_capacity_final_contract(
+        capacity_limit=25,
+        capacity_before_sources=before,
+        capacity_after_prune=24,
+        final_sources=final,
+        pruned_filename=pruned["title"],
+        canonical_name=canonical,
+        assigned_filename=assigned["title"],
+        previous_family_sources=[],
+        family_replacement_result={
+            "ok": True,
+            "performed": False,
+            "verified": True,
+            "removed_source_count": 0,
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["capacity_expected_final_count"] == 25
+    assert result["capacity_final_count"] == 25
+
+
+def test_capacity_final_contract_blocks_unexpected_extra_disappearance(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    canonical = "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip"
+    previous = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.111.4.1(1).zip")
+    pruned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.103.10.111(2).zip")
+    before = [previous, pruned]
+    before.extend(_capacity_contract_card(f"docs-{index}.md") for index in range(23))
+    assigned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.111.4.1(2).zip")
+    extra_removed = before[-1]
+    final = [
+        source
+        for source in before
+        if source is not previous and source is not pruned and source is not extra_removed
+    ]
+    final.append(assigned)
+
+    result = browser_client._project_source_capacity_final_contract(
+        capacity_limit=25,
+        capacity_before_sources=before,
+        capacity_after_prune=24,
+        final_sources=final,
+        pruned_filename=pruned["title"],
+        canonical_name=canonical,
+        assigned_filename=assigned["title"],
+        previous_family_sources=[previous],
+        family_replacement_result={"removed_source_count": 1},
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "source_capacity_final_count_not_verified"
+    assert "capacity_final_count_mismatch" in result["errors"]
+    assert "capacity_final_identity_set_mismatch" in result["errors"]
+
+
+def test_capacity_final_contract_blocks_residual_pruned_source_and_missing_assignment(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    canonical = "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip"
+    previous = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.111.4.1(1).zip")
+    pruned = _capacity_contract_card("chatgpt_claudecode_workflow-2_v0.1.103.10.111(2).zip")
+    before = [previous, pruned]
+    before.extend(_capacity_contract_card(f"docs-{index}.md") for index in range(23))
+    assigned_name = "chatgpt_claudecode_workflow-2_v0.1.111.4.1(2).zip"
+    final = [source for source in before if source is not previous]
+
+    result = browser_client._project_source_capacity_final_contract(
+        capacity_limit=25,
+        capacity_before_sources=before,
+        capacity_after_prune=24,
+        final_sources=final,
+        pruned_filename=pruned["title"],
+        canonical_name=canonical,
+        assigned_filename=assigned_name,
+        previous_family_sources=[previous],
+        family_replacement_result={"removed_source_count": 1},
+    )
+
+    assert result["ok"] is False
+    assert "assigned_source_family_not_singleton" in result["errors"]
+    assert "pruned_source_still_present" in result["errors"]
+    assert result["assigned_source_final_count"] == 0
+    assert result["pruned_source_final_count"] == 1

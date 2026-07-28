@@ -8000,6 +8000,145 @@ class ChatGPTBrowserClient:
             ],
         }
 
+    def _project_source_capacity_final_contract(
+        self,
+        *,
+        capacity_limit: int,
+        capacity_before_sources: list[dict[str, Any]],
+        capacity_after_prune: int,
+        final_sources: list[dict[str, Any]],
+        pruned_filename: str,
+        canonical_name: str,
+        assigned_filename: str,
+        previous_family_sources: list[dict[str, Any]],
+        family_replacement_result: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Verify Project Source capacity by exact transaction deltas and identities.
+
+        A full-capacity replacement can legitimately finish below the hard limit:
+        prune one unrelated source, upload one new family member, then remove the
+        previous family member.  The final authority check must therefore prove
+        the calculated identity set, not blindly require ``final == limit``.
+        """
+
+        def identity(source: Optional[dict[str, Any]]) -> str:
+            if not isinstance(source, dict):
+                return ""
+            return str(
+                self._project_source_card_assigned_filename(source)
+                or self._preferred_source_card_identity(source)
+                or source.get("text")
+                or ""
+            ).strip().casefold()
+
+        before_identities = [item for item in (identity(source) for source in capacity_before_sources) if item]
+        final_identities = [item for item in (identity(source) for source in final_sources) if item]
+        pruned_identity = self._file_source_family_filename(pruned_filename).casefold()
+        assigned_identity = self._file_source_family_filename(assigned_filename).casefold()
+        previous_family_identities = [
+            item
+            for item in (identity(source) for source in previous_family_sources)
+            if item and item != assigned_identity
+        ]
+
+        expected_identities = list(before_identities)
+        missing_expected_removals: list[str] = []
+        for removal_identity in [pruned_identity, *previous_family_identities]:
+            if not removal_identity:
+                continue
+            try:
+                expected_identities.remove(removal_identity)
+            except ValueError:
+                missing_expected_removals.append(removal_identity)
+        if assigned_identity:
+            expected_identities.append(assigned_identity)
+
+        capacity_before = len(capacity_before_sources)
+        capacity_pruned_count = capacity_before - int(capacity_after_prune)
+        capacity_uploaded_count = 1 if assigned_identity else 0
+        capacity_family_removed_count = int(
+            (family_replacement_result or {}).get("removed_source_count") or 0
+        )
+        capacity_expected_final_count = (
+            capacity_before
+            - capacity_pruned_count
+            + capacity_uploaded_count
+            - capacity_family_removed_count
+        )
+        capacity_final_count = len(final_sources)
+
+        final_family_sources = self._match_file_source_family_cards(final_sources, canonical_name)
+        final_assigned_sources = [
+            source
+            for source in final_family_sources
+            if (self._project_source_card_assigned_filename(source) or "").casefold()
+            == assigned_identity
+        ]
+        final_identity_counts_match = sorted(final_identities) == sorted(expected_identities)
+        residual_previous_family_identities = sorted(
+            identity(source)
+            for source in final_sources
+            if identity(source) in set(previous_family_identities)
+        )
+        residual_pruned_source_identities = sorted(
+            identity(source)
+            for source in final_sources
+            if identity(source) == pruned_identity
+        )
+
+        errors: list[str] = []
+        if capacity_pruned_count != 1:
+            errors.append("capacity_pruned_count_must_equal_one")
+        if capacity_uploaded_count != 1:
+            errors.append("capacity_uploaded_count_must_equal_one")
+        if capacity_family_removed_count != len(previous_family_identities):
+            errors.append("capacity_family_removed_count_mismatch")
+        if missing_expected_removals:
+            errors.append("expected_removed_identity_missing_from_pre_transaction_surface")
+        if capacity_expected_final_count != len(expected_identities):
+            errors.append("calculated_count_and_identity_set_disagree")
+        if capacity_final_count != capacity_expected_final_count:
+            errors.append("capacity_final_count_mismatch")
+        if capacity_final_count > capacity_limit:
+            errors.append("capacity_limit_exceeded")
+        if len(final_family_sources) != 1 or len(final_assigned_sources) != 1:
+            errors.append("assigned_source_family_not_singleton")
+        if residual_previous_family_identities:
+            errors.append("previous_family_source_still_present")
+        if residual_pruned_source_identities:
+            errors.append("pruned_source_still_present")
+        if not final_identity_counts_match:
+            errors.append("capacity_final_identity_set_mismatch")
+
+        return {
+            "ok": not errors,
+            "status": (
+                "source_capacity_final_transaction_verified"
+                if not errors
+                else "source_capacity_final_count_not_verified"
+            ),
+            "errors": errors,
+            "capacity_limit": capacity_limit,
+            "capacity_before": capacity_before,
+            "capacity_after_prune": capacity_after_prune,
+            "capacity_pruned_count": capacity_pruned_count,
+            "capacity_uploaded_count": capacity_uploaded_count,
+            "capacity_family_removed_count": capacity_family_removed_count,
+            "capacity_expected_final_count": capacity_expected_final_count,
+            "capacity_final_count": capacity_final_count,
+            "capacity_final_count_verified": capacity_final_count == capacity_expected_final_count,
+            "capacity_final_identity_set_verified": final_identity_counts_match,
+            "assigned_source_final_count": len(final_assigned_sources),
+            "final_family_source_count": len(final_family_sources),
+            "previous_family_source_final_count": len(residual_previous_family_identities),
+            "pruned_source_final_count": len(residual_pruned_source_identities),
+            "missing_expected_removals": missing_expected_removals,
+            "expected_final_source_identities": sorted(expected_identities),
+            "actual_final_source_identities": sorted(final_identities),
+            "residual_previous_family_identities": residual_previous_family_identities,
+            "residual_pruned_source_identities": residual_pruned_source_identities,
+        }
+
     async def _replace_previous_file_source_family_members(
         self,
         *,
@@ -13922,6 +14061,8 @@ class ChatGPTBrowserClient:
         capacity_after_prune: Optional[int] = None
         capacity_after_upload: Optional[int] = None
         capacity_pruned_source: Optional[str] = None
+        capacity_before_sources: list[dict[str, Any]] = []
+        capacity_final_contract: Optional[dict[str, Any]] = None
         library_reconciliation_preflight: Optional[dict[str, Any]] = None
         library_reconciliation_result: Optional[dict[str, Any]] = (
             {"ok": True, "status": "library_reconciliation_test_double_noop"}
@@ -14273,6 +14414,7 @@ class ChatGPTBrowserClient:
                 release_source_limit = 25
                 requested_release_source = self._parse_release_source_filename(canonical_display_name or file_path)
                 capacity_before = len(before_sources)
+                capacity_before_sources = list(before_sources)
                 if requested_release_source is not None and capacity_before >= release_source_limit:
                     prune_candidate = self._select_project_source_capacity_prune_candidate(
                         requested_filename=canonical_display_name or file_path,
@@ -15662,7 +15804,18 @@ class ChatGPTBrowserClient:
                     }
                 final_capacity_sources = list(final_capacity_surface.get("sources") or [])
                 capacity_after_upload = len(final_capacity_sources)
-                if capacity_after_upload != capacity_limit:
+                capacity_final_contract = self._project_source_capacity_final_contract(
+                    capacity_limit=capacity_limit,
+                    capacity_before_sources=capacity_before_sources,
+                    capacity_after_prune=int(capacity_after_prune or 0),
+                    final_sources=final_capacity_sources,
+                    pruned_filename=capacity_pruned_source or "",
+                    canonical_name=canonical_display_name or requested_match or "",
+                    assigned_filename=verified_assigned_filename,
+                    previous_family_sources=replacement_previous_family_sources,
+                    family_replacement_result=family_replacement_result,
+                )
+                if not capacity_final_contract.get("ok"):
                     return {
                         "ok": False,
                         "action": "add",
@@ -15683,6 +15836,11 @@ class ChatGPTBrowserClient:
                         "capacity_after_prune": capacity_after_prune,
                         "upload_started": True,
                         "capacity_after_upload": capacity_after_upload,
+                        "capacity_expected_final_count": capacity_final_contract.get("capacity_expected_final_count"),
+                        "capacity_final_count": capacity_final_contract.get("capacity_final_count"),
+                        "capacity_final_count_verified": capacity_final_contract.get("capacity_final_count_verified"),
+                        "capacity_final_identity_set_verified": capacity_final_contract.get("capacity_final_identity_set_verified"),
+                        "capacity_final_contract": capacity_final_contract,
                         "capacity_prune_result": capacity_prune_result,
                         "current_source_count": capacity_after_upload,
                         "current_source_identities": [
@@ -15752,6 +15910,27 @@ class ChatGPTBrowserClient:
                 if capacity_prune_result is not None
                 else (len(success_sources) if normalized_kind == "file" else None)
             ),
+            "capacity_expected_final_count": (
+                capacity_final_contract.get("capacity_expected_final_count")
+                if isinstance(capacity_final_contract, dict)
+                else None
+            ),
+            "capacity_final_count": (
+                capacity_final_contract.get("capacity_final_count")
+                if isinstance(capacity_final_contract, dict)
+                else None
+            ),
+            "capacity_final_count_verified": (
+                capacity_final_contract.get("capacity_final_count_verified")
+                if isinstance(capacity_final_contract, dict)
+                else None
+            ),
+            "capacity_final_identity_set_verified": (
+                capacity_final_contract.get("capacity_final_identity_set_verified")
+                if isinstance(capacity_final_contract, dict)
+                else None
+            ),
+            "capacity_final_contract": capacity_final_contract,
             "protected_release_version": protected_release_version,
             "protected_release_filename": protected_release_filename,
             "already_exists": bool(

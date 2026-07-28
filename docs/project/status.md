@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.111.4 current control-surface header -->
+<!-- v0.1.111.4.1 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.4`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.zip`
+- Active candidate version: `v0.1.111.4.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.111.5`
@@ -17,9 +17,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.zip
-active candidate version: v0.1.111.4
-active repair slice: v0.1.111.4 — Deterministic external-live idle handoff
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+active candidate version: v0.1.111.4.1
+active repair slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
@@ -32,7 +32,7 @@ MVP status: active
 active MVP: MVP-1 loop-based problem-solving engine
 DoD status: focused candidate
 last accepted/current slice: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active plan slice: v0.1.111.4 — Deterministic external-live idle handoff
+active plan slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
 repair mode: true
 scope advance allowed: false
 ```
@@ -41,8 +41,8 @@ scope advance allowed: false
 
 ```text
 latest accepted/current ZIP: chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip
-active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.4.zip
-release status: v0.1.109.1.1 is adopted/current; v0.1.111.4 is an unadopted repair candidate
+active candidate ZIP: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+release status: v0.1.109.1.1 is adopted/current; v0.1.111.4 is repair_required; v0.1.111.4.1 is an unadopted corrective candidate
 backlog authority: docs/backlog/backlog.json
 backlog status: ISSUE-001 implemented_candidate in v0.1.111; PBAI-001 open
 plan authority file: docs/project/plan-state.json
@@ -52,13 +52,13 @@ next-slice authority command: pb project next-slice --json
 
 ## Current risks
 
-- Backlog tickets must not be mistaken for implemented capability.
-- ISSUE-001 must preserve the boundary between Promptbranch lifecycle ownership and repository-specific validation/build ownership.
-- PBAI-001 depends on lifecycle evidence integration and must never overclaim its proven validation level.
+- Final Project Source verification must not confuse the hard capacity limit with the transaction-derived expected count.
+- Every destructive source mutation remains identity-bound and fail-closed.
+- PBAI-001 must not begin before the repair sequence is accepted.
 
 ## Current blockers
 
-- Focused and packaged-byte validation, then full direct, independent localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.4` can become current.
+- Focused and packaged-byte validation, then full direct, independent localhost, external-live, publication, adoption, and accepted/current verification are required before `v0.1.111.4.1` can become current.
 
 ## Current unknowns
 
@@ -67,13 +67,13 @@ next-slice authority command: pb project next-slice --json
 ## Next safe action
 
 ```text
-Validate the `v0.1.111.4` candidate from packaged bytes, then run one strict host release-control workflow. Confirm the trusted development conversation is never mutated, exact Project-home idle handoff succeeds, bootstrap creates a dedicated release-live conversation, dependency failures are accounted once, and adoption occurs only after every mandatory gate is green. After v0.1.111.4 acceptance, implement v0.1.111.5 ETA correction before beginning v0.1.112.
+Validate the v0.1.111.4.1 packaged candidate, then run one strict host release-control workflow. Confirm full-capacity replacement reports expected_final=24 for prune + upload + delete-old, the assigned family is a singleton, the pruned and previous sources are absent, and all mandatory release gates pass before adoption. After acceptance, implement v0.1.111.5 ETA correction before beginning v0.1.112.
 ```
 
 ## Last updated
 
 ```text
-v0.1.111.4 deterministic external-live idle-handoff candidate build
+v0.1.111.4.1 capacity-aware Project Source replacement verification candidate build
 ```
 
 ## v0.1.102 candidate status

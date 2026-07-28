@@ -49,6 +49,8 @@
 
 | DOD-058 | Text Project Source add verifies the save trigger and applies bounded fallback triggers before persistence verification | done | `promptbranch_browser_auth/client.py`, `chatgpt_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.78.2.12.md` | v0.1.78.2.12 |
 
+| DOD-310 | Full-capacity Project Source replacement derives its authoritative final count and identity multiset from one verified prune, one upload, and verified previous-family removals; exact assigned singleton, pruned absence, previous-family absence, and no unexpected disappearance are release-gated | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.111.4.1.md` | v0.1.111.4.1 |
+
 ## Status values
 
 Use only:

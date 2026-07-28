@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.111.4 current control-surface header -->
+<!-- v0.1.111.4.1 current control-surface header -->
 - Accepted/current version: `v0.1.109.1.1`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.109.1.1.zip`
-- Active candidate version: `v0.1.111.4`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.zip`
+- Active candidate version: `v0.1.111.4.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.111.5`
@@ -17,9 +17,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.109.1.1
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.109.1.1 — Tracked repository Project binding and runtime evidence separation
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.zip
-active candidate version: v0.1.111.4
-active repair slice: v0.1.111.4 — Deterministic external-live idle handoff
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
+active candidate version: v0.1.111.4.1
+active repair slice: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and stable countdown
@@ -27,26 +27,22 @@ next planned slice after acceptance: v0.1.111.5 — Named-step ETA planning and 
 
 ## Plan summary
 
-`v0.1.109.1.1` remains accepted/current. `v0.1.111.3` repaired progress normalisation and step-level browser fail-fast, but two complete strict release runs reproduced a release-live idle-handoff blocker: the trusted development conversation remained busy and exposed `Stop answering`. Adoption was refused. `v0.1.111.4` is the narrow deterministic repair; the independently proven ETA defect remains queued as `v0.1.111.5`.
+`v0.1.109.1.1` remains accepted/current. `v0.1.111.4` retains the deterministic external-live idle handoff but its strict retry stopped before tests after a successful full-capacity Project Source replacement produced 24 sources and the verifier incorrectly required 25. `v0.1.111.4.1` is the narrow corrective. The ETA defect remains queued as `v0.1.111.5`.
 
-## Active repair slice — v0.1.111.4 — Deterministic external-live idle handoff
-
-`v0.1.109.1.1` remains accepted/current. Two complete `v0.1.111.3` strict release runs passed the product transports and reproduced the same external-live bootstrap failure: the trusted development conversation was busy and exposed `Stop answering`. `v0.1.111.4` uses that conversation only for authenticated Project identity, hands off to the exact Project home, requires an idle composer, and lets the bootstrap create a dedicated release-live conversation.
+## Active repair slice — v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
 
 Scope:
 
-1. Never type into or stop the trusted operator-owned warmup conversation.
-2. Preserve the same browser context, physical profile, and exact Project scope.
-3. Navigate once to the exact Project home and require bounded idle readiness.
-4. Submit bootstrap only after the dedicated Project task surface is idle.
-5. Fail closed without bootstrap or ask submission when the handoff cannot prove readiness.
-6. Record one causal `live_project_ensure` failure; record `ask_live`, `visual_artifact_roundtrip`, and `release_live` as `skipped_dependency_failed`.
-7. Keep ETA behaviour unchanged in this repair. `v0.1.111.5` is the immediately following repair for named-step ETA and stable countdown.
-8. Preserve all direct, localhost, sandbox, external-live, publication, adoption, and accepted/current gates.
+1. Preserve the `v0.1.111.4` external-live idle-handoff implementation unchanged.
+2. Derive the expected final Project Source count from proven transaction deltas: pre-count, one verified prune, one verified upload, and verified previous-family removals.
+3. Verify the exact final identity multiset, not merely `final_count <= capacity_limit`.
+4. Require exactly one assigned candidate family member, zero previous family members, and zero residual pruned source cards.
+5. Fail closed on count drift, identity drift, missing assignment, residual prior family state, residual pruned state, or any unexpected disappearance.
+6. Keep accepted/current at `v0.1.109.1.1`; do not advance ETA or PBAI-001 scope.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.111.4` is the sole active repair candidate. `v0.1.111.5 — Named-step ETA planning and stable countdown` is the immediate repair after acceptance. `v0.1.112 — PBAI-001 declaration and structural validation` remains the next normal slice only after both repairs are accepted.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.4` is `repair_required`; `v0.1.111.4.1` is active; `v0.1.111.5` remains immediately after acceptance; `v0.1.112` remains the next normal slice.
 
 ## Release / slice plan
 
