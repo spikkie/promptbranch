@@ -4912,7 +4912,7 @@ estimate = estimate_named_step_eta(
     transport_by_step=transport_by_step,
     previous_eta_seconds=previous.get("eta_seconds_approx") if isinstance(previous, dict) else None,
     previous_eta_high_seconds=(previous.get("eta_seconds_range") or {}).get("high") if isinstance(previous, dict) and isinstance(previous.get("eta_seconds_range"), dict) else None,
-    previous_active_steps=previous.get("active_steps") if isinstance(previous, dict) else (),
+    previous_active_steps=(previous.get("active_steps") or ()) if isinstance(previous, dict) else (),
 )
 tested = len(items)
 expected = max(expected, len(planned), tested, 1)

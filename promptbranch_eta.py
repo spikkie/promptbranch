@@ -279,7 +279,7 @@ def estimate_named_step_eta(
     phase_resolver: Callable[[str], str] = default_phase_for_step,
     previous_eta_seconds: float | None = None,
     previous_eta_high_seconds: float | None = None,
-    previous_active_steps: Sequence[str] = (),
+    previous_active_steps: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     known_skips = {str(unit) for unit in known_skipped_units}
     active_steps = [
@@ -363,7 +363,7 @@ def estimate_named_step_eta(
             "active_steps": active_steps,
         }
 
-    prior_active = {str(step) for step in previous_active_steps}
+    prior_active = {str(step) for step in (previous_active_steps or ())}
     current_active = set(active_steps)
     monotonic_clamped = False
     if previous_eta_seconds is not None and current_active.issubset(prior_active):

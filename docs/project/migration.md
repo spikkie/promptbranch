@@ -1,5 +1,9 @@
 # Migration to Project Control Surface
 
+## v0.1.111.5.2 ETA null-state corrective migration
+
+`v0.1.111.5` remains accepted/current. `v0.1.111.5.2` changes only defensive ETA progress-state normalisation and requires no repository, registry, Project Source, browser profile, user-data, or accepted-current migration. Existing `.pb_profile/eta-history.json` and progress snapshots remain valid; missing or null `active_steps` is treated as an empty sequence. `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until this corrective is accepted.
+
 ## v0.1.111.5.1 ETA corrective migration
 
 `v0.1.111.5` is accepted/current. `v0.1.111.5.1` changes only progress calculation and requires no repository, registry, Project Source, browser profile, user-data, or accepted-current migration. Existing `.pb_profile/eta-history.json` remains valid. Missing range-high state is handled conservatively from the previous midpoint. `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until this corrective is accepted.

@@ -23,5 +23,6 @@ Repair releases must not advance normal scope. A normal slice may advance only a
 | v0.1.111.4 | Deterministic external-live idle handoff | repair_required | repair | idle-handoff retained; strict retry exposed false full-capacity final-count verification |
 | v0.1.111.4.1 | Capacity-aware Project Source family replacement verification | accepted_current | repair | 10/10 strict validation, adoption, and final current verification passed |
 | v0.1.111.5 | Named-step ETA planning and stable countdown | accepted_current | repair | 10/10 strict validation, adoption, and current verification passed; informational defects queued for corrective |
-| v0.1.111.5.1 | Empty-step-safe ETA progress and stable range countdown | active | repair | empty-current-step safety plus midpoint/high-bound monotonic clamp |
-| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_acceptance | normal | starts only after v0.1.111.5.1 acceptance |
+| v0.1.111.5.1 | Empty-step-safe ETA progress and stable range countdown | repair_required | repair | strict run exposed null previous active-step TypeError; not adopted |
+| v0.1.111.5.2 | Null-safe previous active-step ETA state | active | repair | defensive caller and estimator normalisation for missing/null prior state |
+| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_acceptance | normal | starts only after v0.1.111.5.2 acceptance |

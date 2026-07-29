@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from promptbranch_eta import append_eta_observation
+
 
 def test_promptbranch_statusline_uses_nearest_pb_profile(tmp_path: Path):
     root = tmp_path / "repo"
@@ -2874,11 +2876,72 @@ run_all_emit_progress
     assert "bad array subscript" not in result.stderr
 
 
+
+def test_release_control_progress_executes_with_null_previous_active_steps(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "chatgpt_claudecode_workflow_release_control.sh"
+    script = script_path.read_text(encoding="utf-8")
+    function_text = script[
+        script.index("run_all_emit_progress() {") : script.index("\nrecord_all_test_step() {")
+    ]
+    history_path = tmp_path / "eta-history.json"
+    append_eta_observation(
+        history_path,
+        step="full_direct",
+        transport="direct",
+        duration_seconds=30.0,
+    )
+    progress_path = tmp_path / "pb_test.all.v0.0.0.progress.json"
+    progress_path.write_text(
+        json.dumps(
+            {
+                "eta_seconds_approx": 15.0,
+                "eta_seconds_range": {"low": 10.0, "high": 20.0},
+                "active_steps": None,
+            }
+        ) + "\n",
+        encoding="utf-8",
+    )
+    harness = f"""
+set -euo pipefail
+run_all_tests=1
+repo_root={str(root)!r}
+release_log_dir={str(tmp_path)!r}
+ver=v0.0.0
+release_eta_history_path={str(history_path)!r}
+run_all_progress_started_epoch=0
+all_test_step_specs=()
+declare -A all_test_step_started_epoch=([full_direct]=0)
+run_all_expected_step_count() {{ printf '%s' 1; }}
+run_all_planned_step_names() {{ printf '%s\n' full_direct; }}
+run_all_known_eta_skip_steps() {{ :; }}
+{function_text}
+run_all_emit_progress full_direct
+"""
+    result = subprocess.run(["bash", "-c", harness], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert "TypeError" not in result.stderr
+    assert "eta_calculation_failed" not in result.stderr
+    payload = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert payload["eta_basis"] != "eta_calculation_failed"
+    assert payload["active_steps"] == ["full_direct"]
+
 def test_release_control_progress_passes_previous_eta_range_high_to_estimator() -> None:
     script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     assert 'current_started=0\n  if [[ -n "${current_step}" ]]; then' in script
     assert 'previous_eta_high_seconds=(previous.get("eta_seconds_range") or {}).get("high")' in script
 
+
+
+def test_release_control_progress_normalises_missing_or_null_previous_active_steps() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert 'previous_active_steps=(previous.get("active_steps") or ()) if isinstance(previous, dict) else ()' in script
+
+
+def test_release_control_eta_estimator_normalises_none_previous_active_steps() -> None:
+    script = (Path(__file__).resolve().parents[1] / "promptbranch_eta.py").read_text(encoding="utf-8")
+    assert 'previous_active_steps: Sequence[str] | None = None' in script
+    assert 'prior_active = {str(step) for step in (previous_active_steps or ())}' in script
 
 def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_contract():
     script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"

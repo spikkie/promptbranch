@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.111.5.1 current control-surface header -->
+<!-- v0.1.111.5.2 current control-surface header -->
 - Accepted/current version: `v0.1.111.5`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
-- Active candidate version: `v0.1.111.5.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip`
+- Active candidate version: `v0.1.111.5.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -17,9 +17,9 @@ accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_
 accepted/current version: v0.1.111.5
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
 last completed repair: v0.1.111.5 — Named-step ETA planning and stable countdown
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip
-active candidate version: v0.1.111.5.1
-active repair slice: v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
+active candidate version: v0.1.111.5.2
+active repair slice: v0.1.111.5.2 — Null-safe previous active-step ETA state
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
@@ -27,23 +27,23 @@ next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and struc
 
 ## Plan summary
 
-`v0.1.111.5` is accepted/current after 10/10 strict validation, evidence-bound adoption, and final current verification. `v0.1.111.5.1` is a narrow post-adoption corrective: prevent empty associative-array indexing when no top-level step is active and clamp the ETA high range together with the midpoint while the active plan is unchanged or shrinking. `v0.1.112` remains blocked until this repair is accepted.
+`v0.1.111.5` remains accepted/current. `v0.1.111.5.1` repaired empty-step shell indexing and range clamping but strict host validation exposed a null previous-active-step TypeError. `v0.1.111.5.2` normalises that state at both caller and estimator boundaries. `v0.1.112` remains blocked until this repair is accepted.
 
-## Active repair slice — v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
+## Active repair slice — v0.1.111.5.2 — Null-safe previous active-step ETA state
 
 Scope:
 
-1. Initialise top-level current-step start time to zero and index the associative array only for a non-empty step name.
-2. Pass the previous ETA high bound into the named-step estimator.
-3. Clamp both ETA midpoint and high bound while the active plan is unchanged or shrinking.
-4. Preserve `low <= midpoint <= high` after clamping.
-5. Permit range expansion only when the active plan genuinely expands or transitions from unknown to known.
-6. Keep all ETA state informational and unable to alter pass/fail, fail-fast, transport independence, publication, adoption, or accepted/current verification.
-7. Keep `v0.1.112` out of scope.
+1. Treat omitted or null previous `active_steps` as an empty sequence in release-control progress.
+2. Apply the same defensive normalisation inside `estimate_named_step_eta`.
+3. Preserve empty-current-step safety and stable midpoint/high-bound countdown clamping.
+4. Add direct and shell contract regressions for missing and null prior state.
+5. Preserve informational-only ETA authority and transport independence.
+
+Acceptance requires strict 10/10 validation, zero `TypeError`, zero `eta_calculation_failed`, zero `bad array subscript`, evidence-bound adoption, and final current verification.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5` is accepted/current, `v0.1.111.5.1` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5` is accepted/current, `v0.1.111.5.2` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
 
 ## Release / slice plan
 

@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.111.5.1 current control-surface header -->
+<!-- v0.1.111.5.2 current control-surface header -->
 - Accepted/current version: `v0.1.111.5`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
-- Active candidate version: `v0.1.111.5.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip`
+- Active candidate version: `v0.1.111.5.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -15,9 +15,9 @@
 ```text
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
 accepted/current version: v0.1.111.5
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip
-active candidate version: v0.1.111.5.1
-active repair slice: v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
+active candidate version: v0.1.111.5.2
+active repair slice: v0.1.111.5.2 — Null-safe previous active-step ETA state
 next normal version: v0.1.112
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 ```
@@ -29,7 +29,8 @@ Promptbranch remains in the loop-based problem-solving MVP. This corrective chan
 ## Current release state
 
 - `v0.1.111.5` passed all 10 strict release gates and is adopted/current.
-- `v0.1.111.5.1` is an unadopted corrective candidate.
+- `v0.1.111.5.1` is repair-required after strict host validation exposed null previous active-step state.
+- `v0.1.111.5.2` is the unadopted corrective candidate.
 - The accepted ETA implementation remains informational, but strict-log review exposed ten empty associative-array key errors after completed top-level steps.
 - The accepted countdown midpoint remained informational and validation stayed green, but its high range could expand while the active plan shrank.
 
@@ -41,7 +42,7 @@ Promptbranch remains in the loop-based problem-solving MVP. This corrective chan
 
 ## Current blockers
 
-Strict host release validation, publication, adoption, and accepted/current verification are required for `v0.1.111.5.1` before opening `v0.1.112`.
+Strict host release validation, publication, adoption, and accepted/current verification are required for `v0.1.111.5.2` before opening `v0.1.112`.
 
 ## Current unknowns
 
@@ -55,7 +56,7 @@ Run focused and packaged-byte tests, then one strict all/all host release workfl
 
 ```text
 2026-07-29
-v0.1.111.5.1 empty-step-safe ETA progress and stable range countdown candidate build
+v0.1.111.5.2 null-safe previous active-step ETA state candidate build
 ```
 
 ## v0.1.102 candidate status

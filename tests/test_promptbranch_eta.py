@@ -168,6 +168,40 @@ def test_expanding_active_plan_may_expand_eta_range() -> None:
     assert result["monotonic_clamped"] is False
 
 
+
+def test_previous_active_steps_none_is_normalised_to_empty_sequence() -> None:
+    history = [record("browser.one", 10)]
+    result = estimate_named_step_eta(
+        units=("browser.one",),
+        states={"browser.one": "pending"},
+        current=None,
+        current_elapsed_seconds=0,
+        history_records=history,
+        transport="direct",
+        previous_eta_seconds=5.0,
+        previous_eta_high_seconds=6.0,
+        previous_active_steps=None,
+    )
+    assert result["eta_seconds_approx"] == 10.0
+    assert result["eta_seconds_range"]["high"] > 6.0
+    assert result["monotonic_clamped"] is False
+
+
+def test_missing_previous_active_steps_remains_backward_compatible() -> None:
+    history = [record("browser.one", 10)]
+    result = estimate_named_step_eta(
+        units=("browser.one",),
+        states={"browser.one": "pending"},
+        current=None,
+        current_elapsed_seconds=0,
+        history_records=history,
+        transport="direct",
+        previous_eta_seconds=5.0,
+        previous_eta_high_seconds=6.0,
+    )
+    assert result["eta_seconds_approx"] == 10.0
+    assert result["monotonic_clamped"] is False
+
 def test_direct_history_is_eta_only_localhost_prior() -> None:
     history = [record("browser.one", 40, transport="direct")]
     result = estimate_named_step_eta(

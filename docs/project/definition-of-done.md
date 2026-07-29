@@ -835,4 +835,11 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 
 | ID | Requirement | Status | Evidence | Version |
 |---|---|---|---|---|
-| DOD-312 | Top-level ETA progress handles an empty current step without associative-array errors and, while the active plan is unchanged or shrinking, clamps both ETA midpoint and high bound without affecting validation authority | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_eta.py`, `promptbranch_test_suite.py`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.1.md` | v0.1.111.5.1 |
+| DOD-312 | Top-level ETA progress handles an empty current step without associative-array errors and, while the active plan is unchanged or shrinking, clamps both ETA midpoint and high bound without affecting validation authority | repair_required | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_eta.py`, `promptbranch_test_suite.py`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.1.md` | v0.1.111.5.1 |
+
+
+## v0.1.111.5.2 null-safe previous active-step ETA state
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-313 | Missing, omitted, or null previous active-step progress state is normalised to an empty sequence at both release-controller and estimator boundaries while retaining empty-step safety, stable range countdown, and informational-only ETA authority | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_eta.py`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.2.md` | v0.1.111.5.2 |
