@@ -63,6 +63,7 @@ def test_release_status_has_allowed_table_and_current_baseline() -> None:
     assert "accepted/current" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.113.zip" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.114.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.114.1.zip" in text
     assert "v0.1.104" in text
     assert "standard browser profile default" in text
     assert "candidate" in text
@@ -82,7 +83,7 @@ def test_status_has_next_safe_action_and_accepted_baseline() -> None:
     assert "accepted/current artifact:" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.113.zip" in text
     assert "chatgpt_claudecode_workflow-2_v0.1.114.zip" in text
-    assert "chatgpt_claudecode_workflow-2_v0.1.114.zip" in text
+    assert "chatgpt_claudecode_workflow-2_v0.1.114.1.zip" in text
     assert "standard browser profile default" in text
 
 
@@ -149,28 +150,28 @@ def test_plan_state_is_machine_readable_next_slice_authority() -> None:
     assert data["schema_version"] == "1.0"
     assert data["accepted_current_version"] == "v0.1.113"
     assert data["accepted_current_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.113.zip"
-    assert data["active_candidate_version"] == "v0.1.114"
-    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.zip"
-    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.zip"
-    assert data["next_normal_version"] == "v0.1.114"
-    assert data["active_slice"] == "v0.1.114 — PBAI-001 executable validation and SkillRun evidence"
+    assert data["active_candidate_version"] == "v0.1.114.1"
+    assert data["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.1.zip"
+    assert data["active_candidate_transport_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.1.zip"
+    assert data["next_normal_version"] == "v0.1.115"
+    assert data["active_slice"] == "v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair"
     assert data["next_planned_version_after_acceptance"] == "v0.1.115"
     assert data["next_planned_slice_after_acceptance"] == "v0.1.115 — PBAI-001 operational validation and lifecycle evidence"
     assert data["repair_must_not_advance_scope"] is True
-    assert data["release_mode"] == "normal"
-    assert data["scope_advance_allowed"] is True
+    assert data["release_mode"] == "repair"
+    assert data["scope_advance_allowed"] is False
     assert data["architecture_goal"] == "controlled problem-solving loop"
-    assert len(data["rolling_slice_horizon"]) == 4
+    assert len(data["rolling_slice_horizon"]) == 5
 
 
 def test_project_control_surface_validator_passes_current_repo() -> None:
     payload = validate_project_control_surface(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["accepted_current_version"] == "v0.1.113"
-    assert payload["active_candidate_version"] == "v0.1.114"
-    assert payload["next_normal_slice"] == "v0.1.114 — PBAI-001 executable validation and SkillRun evidence"
+    assert payload["active_candidate_version"] == "v0.1.114.1"
+    assert payload["next_normal_slice"] == "v0.1.115 — PBAI-001 operational validation and lifecycle evidence"
     assert payload["architecture_goal"] == "controlled problem-solving loop"
-    assert len(payload["rolling_slice_horizon"]) == 4
+    assert len(payload["rolling_slice_horizon"]) == 5
 
 
 def test_project_control_surface_cli_emits_json() -> None:
@@ -185,7 +186,7 @@ def test_project_control_surface_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "passed"
-    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.zip"
+    assert payload["active_candidate_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.114.1.zip"
 
 
 def test_project_control_surface_validator_rejects_drifted_status(tmp_path: Path) -> None:
@@ -212,7 +213,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.111", "v0.1.111.2", "v0.1.111.3", "v0.1.111.4", "v0.1.111.5", "v0.1.111.5.2", "v0.1.112", "v0.1.113", "v0.1.114", "v0.1.115"]:
+    for version in ["v0.1.111", "v0.1.111.2", "v0.1.111.3", "v0.1.111.4", "v0.1.111.5", "v0.1.111.5.2", "v0.1.112", "v0.1.113", "v0.1.114", "v0.1.114.1", "v0.1.115"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -221,8 +222,8 @@ def test_project_next_slice_payload_is_derived_from_validated_control_surface() 
     payload = build_project_next_slice_payload(ROOT)
     assert payload["ok"] is True, payload.get("errors")
     assert payload["baseline_artifact"] == "chatgpt_claudecode_workflow-2_v0.1.113.zip"
-    assert payload["next_normal_version"] == "v0.1.114"
-    assert payload["next_normal_slice"] == "v0.1.114 — PBAI-001 executable validation and SkillRun evidence"
+    assert payload["next_normal_version"] == "v0.1.115"
+    assert payload["next_normal_slice"] == "v0.1.115 — PBAI-001 operational validation and lifecycle evidence"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.115"
     assert payload["next_slice_after_acceptance"] == "v0.1.115 — PBAI-001 operational validation and lifecycle evidence"
     assert payload["architecture_invariants_checked"] is True
@@ -241,7 +242,7 @@ def test_project_next_slice_cli_emits_json() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["status"] == "next_slice_ready"
-    assert payload["next_normal_version"] == "v0.1.114"
+    assert payload["next_normal_version"] == "v0.1.115"
     assert payload["next_slice_after_acceptance_version"] == "v0.1.115"
 
 

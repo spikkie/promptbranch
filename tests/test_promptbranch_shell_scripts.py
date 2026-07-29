@@ -856,7 +856,7 @@ def test_release_control_uses_single_default_runtime_identity() -> None:
     assert 'compose_project_name="${PROMPTBRANCH_DEFAULT_COMPOSE_PROJECT_NAME:-${project_name}}"' in script
     assert 'service_port="${PROMPTBRANCH_DEFAULT_SERVICE_PORT:-8000}"' in script
     assert 'service_base_url="http://localhost:${service_port}"' in script
-    assert '_out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)' in script
+    assert '_out_args=("${candidate_pb:-pb}" test full --project-name "${release_test_project_name}" --keep-project)' in script
     assert 'name: chatgpt_claudecode_workflow' in compose
     assert 'image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_VERSION:-local}}' in compose
     assert '      - "8000:8000"' in compose
@@ -3167,8 +3167,10 @@ def test_release_control_installs_and_smokes_candidate_before_source_add_bootstr
     source_add_idx = script.index('promptbranch src add "${canonical_artifact_zip}"')
     assert install_idx < smoke_idx < ensure_idx < source_add_idx
     assert 'installed_candidate_cli_smoke_log="${release_log_dir}/installed_candidate_cli_smoke.${ver}.json"' in script
-    assert '["promptbranch", "--version"]' in script
-    assert '["promptbranch", "release", "contract-plan", "--repo-path", repo_root, "--json"]' in script
+    assert '[executable, "--version"]' in script
+    assert '[executable, "release", "contract-plan", "--repo-path", repo_root, "--json"]' in script
+    assert 'executable = str(Path(candidate_promptbranch).resolve())' in script
+    assert 'python_executable = str(Path(candidate_python).resolve())' in script
     assert 'env.pop("PYTHONPATH", None)' in script
     assert 'env["PYTHONSAFEPATH"] = "1"' in script
     assert '"status": "installed_candidate_cli_verified" if ok else "installed_candidate_cli_failed"' in script
@@ -4111,3 +4113,55 @@ def test_release_control_idle_handoff_failure_is_one_causal_failure_with_depende
     assert '"dependency": dependency' in script
     assert '"skipped_count": len(skipped)' in script
     assert 'failed = [step for step in steps if not step["ok"] and step.get("skipped") is not True]' in script
+
+
+def test_release_control_binds_installed_candidate_runtime_before_validation() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert "bind_installed_candidate_runtime" in script
+    assert 'candidate_pipx_home="$(pipx environment --value PIPX_HOME' in script
+    assert 'candidate_pb="${candidate_bin_dir}/pb"' in script
+    assert 'candidate_python="${candidate_bin_dir}/python"' in script
+    assert 'export PATH="${candidate_bin_dir}:${PATH}"' in script
+    assert 'ambient PATH still shadows candidate pb' in script
+    assert '_out_args=("${candidate_pb:-pb}" test full' in script
+    assert 'import_cmd=("${candidate_pb:-pb}" test import-smoke)' in script
+    assert 'import_cmd+=(--python-executable "${candidate_python}")' in script
+
+
+def test_import_smoke_explicit_candidate_python_ignores_shadow_path(monkeypatch, tmp_path: Path) -> None:
+    import promptbranch_test_suite as suite
+
+    (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.setuptools]\npy-modules = ["promptbranch_version"]\n',
+        encoding="utf-8",
+    )
+    candidate_python = tmp_path / "candidate" / "bin" / "python"
+    shadow_bin = tmp_path / "shadow" / "bin"
+    candidate_python.parent.mkdir(parents=True)
+    shadow_bin.mkdir(parents=True)
+    candidate_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    candidate_python.chmod(0o755)
+    (shadow_bin / "python").write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    (shadow_bin / "python").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shadow_bin}:{os.environ.get('PATH', '')}")
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"candidate","actual_python":"candidate","expected_prefix":"candidate","actual_prefix":"candidate"},"dependency_consistency":{"ok":true,"expected":{},"observations":[],"mismatches":[]}}'
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        return Completed()
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable=str(candidate_python))
+
+    assert result["ok"] is True
+    assert captured["cmd"][0] == str(candidate_python)
+    assert str(shadow_bin) in str(captured["env"]["PATH"])

@@ -74,3 +74,13 @@ python3 -m pytest -q \
   tests/test_promptbranch_loop.py \
   tests/test_cli_loop.py
 ```
+
+## v0.1.114.1
+
+| Surface | Required evidence |
+|---|---|
+| Candidate runtime binding | exact pipx venv Python/`pb`/`promptbranch`, version and prefix verified, ambient shadow rejected |
+| Dependency compatibility | `fastapi==0.128.2`, `starlette==0.50.0`, import-smoke runtime parity |
+| PBAI | structural, registry, and executable release groups plus valid SkillRun evidence |
+| Packaging | source and clean-extraction parity, compileall, shell syntax, Artifact Guardian |
+| Release | strict direct and localhost transports, live gates, exact adoption/current identity |

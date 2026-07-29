@@ -74,3 +74,14 @@ Required agent behavior:
 - never infer operational proof, mutation authority, Project Source authority, release authority, publication authority, or adoption authority from executable evidence;
 - keep domain modules dependent on Promptbranch generic runtime capabilities rather than duplicating them;
 - record explicit migration requirements for repositories without a declaration instead of adding silent fallback behavior.
+
+## Candidate runtime repair work
+
+For candidate installation and release validation:
+
+- never trust ambient `pb`, `promptbranch`, or Python resolution after pipx installation;
+- derive and verify the exact candidate pipx venv executables;
+- fail closed when PATH shadowing or interpreter-prefix drift is observed;
+- run import-smoke with the exact candidate Python and require FastAPI/Starlette version parity with the tracked dependency contract;
+- preserve all PBAI structural, registry, executable, SkillRun, publication, adoption, and accepted/current gates;
+- do not advance to the next normal slice until the active repair candidate passes strict host validation and adoption.

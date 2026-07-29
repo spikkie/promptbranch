@@ -1254,3 +1254,7 @@ Automation consuming `pb test full --json` must tolerate preceding `pb_test_prog
 ## v0.1.111.3 fail-fast migration
 
 No state or registry migration is required. Consumers of `pb_test_progress:` should treat `expected_missing`, `expected_unsupported`, and `expected_skip` as passed units. With `pb test full --fail-fast`, a genuine browser-step failure now terminates the browser loop before the next main step and marks remaining work units skipped. The outer release-control workflow continues collecting its configured gate evidence unless a future explicit global release-fail-fast option is introduced. Accepted/current remains `v0.1.109.1.1`.
+
+## v0.1.114.1 candidate-runtime and dependency compatibility repair
+
+`v0.1.114` was not adopted. Existing installations must not treat its Project Source upload or Git commit as accepted/current state. `v0.1.114.1` requires release control to bind commands to the exact pipx candidate runtime and requires the tracked FastAPI/Starlette pair `0.128.2`/`0.50.0`. Ambient virtual environments may remain on the operator PATH, but they cannot satisfy candidate validation. No PBAI schema or SkillRun migration is introduced by this repair. After acceptance, the next normal slice remains `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.

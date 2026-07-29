@@ -109,6 +109,16 @@ test_fail_fast="${PROMPTBRANCH_TEST_FAIL_FAST:-1}"
 workflow_rc=0
 run_all_browser_guardrail_seen=0
 
+# Bound after pipx installation. When populated, all release-critical candidate
+# commands resolve to the exact pipx virtual environment rather than ambient PATH.
+candidate_runtime_bound=0
+candidate_pipx_home=""
+candidate_venv_dir=""
+candidate_bin_dir=""
+candidate_python=""
+candidate_pb=""
+candidate_promptbranch=""
+
 default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
 packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 
@@ -1857,10 +1867,86 @@ PY
 # candidate service has been bootstrapped and version-verified.
 installed_candidate_cli_smoke_log="${release_log_dir}/installed_candidate_cli_smoke.${ver}.json"
 
+bind_installed_candidate_runtime() {
+  local expected_version="${ver#v}"
+  local resolved_pb resolved_promptbranch actual_version distribution_version
+
+  candidate_pipx_home="$(pipx environment --value PIPX_HOME 2>/dev/null | tail -n 1)"
+  [[ -n "${candidate_pipx_home}" && "${candidate_pipx_home}" == /* ]] || {
+    echo "ERROR: unable to resolve absolute pipx home" >&2
+    return 1
+  }
+  candidate_venv_dir="${candidate_pipx_home}/venvs/promptbranch"
+  candidate_bin_dir="${candidate_venv_dir}/bin"
+  candidate_python="${candidate_bin_dir}/python"
+  candidate_pb="${candidate_bin_dir}/pb"
+  candidate_promptbranch="${candidate_bin_dir}/promptbranch"
+
+  local required
+  for required in "${candidate_python}" "${candidate_pb}" "${candidate_promptbranch}"; do
+    [[ -x "${required}" ]] || {
+      echo "ERROR: installed candidate runtime executable missing: ${required}" >&2
+      return 1
+    }
+  done
+  for required in "${candidate_pb}" "${candidate_promptbranch}"; do
+    case "$(readlink -f "${required}")" in
+      "$(readlink -f "${candidate_venv_dir}")"/*) ;;
+      *)
+        echo "ERROR: candidate runtime executable escaped pipx venv: ${required}" >&2
+        return 1
+        ;;
+    esac
+  done
+  local candidate_python_prefix
+  candidate_python_prefix="$("${candidate_python}" -c 'import sys; print(sys.prefix)')"
+  [[ "$(readlink -f "${candidate_python_prefix}")" == "$(readlink -f "${candidate_venv_dir}")" ]] || {
+    echo "ERROR: candidate Python prefix mismatch: expected ${candidate_venv_dir}, got ${candidate_python_prefix}" >&2
+    return 1
+  }
+
+  actual_version="$("${candidate_pb}" --version 2>/dev/null | awk '{print $NF}')"
+  [[ "${actual_version#v}" == "${expected_version}" ]] || {
+    echo "ERROR: candidate pb version mismatch: expected ${expected_version}, got ${actual_version}" >&2
+    return 1
+  }
+  distribution_version="$("${candidate_python}" -c 'from importlib import metadata; print(metadata.version("promptbranch"))')"
+  [[ "${distribution_version#v}" == "${expected_version}" ]] || {
+    echo "ERROR: candidate distribution version mismatch: expected ${expected_version}, got ${distribution_version}" >&2
+    return 1
+  }
+
+  export PATH="${candidate_bin_dir}:${PATH}"
+  hash -r
+  resolved_pb="$(command -v pb || true)"
+  resolved_promptbranch="$(command -v promptbranch || true)"
+  [[ "$(readlink -f "${resolved_pb}")" == "$(readlink -f "${candidate_pb}")" ]] || {
+    echo "ERROR: ambient PATH still shadows candidate pb: ${resolved_pb}" >&2
+    return 1
+  }
+  [[ "$(readlink -f "${resolved_promptbranch}")" == "$(readlink -f "${candidate_promptbranch}")" ]] || {
+    echo "ERROR: ambient PATH still shadows candidate promptbranch: ${resolved_promptbranch}" >&2
+    return 1
+  }
+
+  candidate_runtime_bound=1
+  export PROMPTBRANCH_CANDIDATE_PIPX_HOME="${candidate_pipx_home}"
+  export PROMPTBRANCH_CANDIDATE_VENV="${candidate_venv_dir}"
+  export PROMPTBRANCH_CANDIDATE_PYTHON="${candidate_python}"
+  export PROMPTBRANCH_CANDIDATE_PB="${candidate_pb}"
+  export PROMPTBRANCH_CANDIDATE_PROMPTBRANCH="${candidate_promptbranch}"
+
+  echo "Candidate runtime bound:"
+  echo "  pipx_venv: ${candidate_venv_dir}"
+  echo "  python:    ${candidate_python}"
+  echo "  pb:        ${candidate_pb}"
+  echo "  version:   ${expected_version}"
+}
+
 verify_installed_candidate_cli() {
   local smoke_dir
   smoke_dir="$(mktemp -d /tmp/promptbranch-installed-cli-smoke.XXXXXX)"
-  if ! python3 - "${ver#v}" "${repo_root}" "${smoke_dir}" "${installed_candidate_cli_smoke_log}" <<'INNERPY'
+  if ! "${candidate_python}" - "${ver#v}" "${repo_root}" "${smoke_dir}" "${installed_candidate_cli_smoke_log}" "${candidate_promptbranch}" "${candidate_python}" <<'INNERPY'
 from __future__ import annotations
 import json
 import os
@@ -1870,14 +1956,15 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-expected_version, repo_root, smoke_dir, output_path = sys.argv[1:5]
+expected_version, repo_root, smoke_dir, output_path, candidate_promptbranch, candidate_python = sys.argv[1:7]
 env = dict(os.environ)
 env.pop("PYTHONPATH", None)
 env["PYTHONSAFEPATH"] = "1"
-executable = shutil.which("promptbranch")
+executable = str(Path(candidate_promptbranch).resolve())
+python_executable = str(Path(candidate_python).resolve())
 commands = [
-    ["promptbranch", "--version"],
-    ["promptbranch", "release", "contract-plan", "--repo-path", repo_root, "--json"],
+    [executable, "--version"],
+    [executable, "release", "contract-plan", "--repo-path", repo_root, "--json"],
 ]
 results = []
 ok = executable is not None
@@ -1927,6 +2014,8 @@ payload = {
     "status": "installed_candidate_cli_verified" if ok else "installed_candidate_cli_failed",
     "expected_version": expected_version,
     "resolved_executable": executable,
+    "resolved_python": python_executable,
+    "candidate_venv": str(Path(candidate_python).resolve().parent.parent),
     "smoke_cwd": smoke_dir,
     "repo_root": repo_root,
     "commands": results,
@@ -1950,6 +2039,7 @@ INNERPY
 if [[ ${skip_install} -eq 0 ]]; then
   pipx uninstall promptbranch || true
   pipx install "./${artifact_zip}"
+  bind_installed_candidate_runtime || fail "installed candidate runtime binding failed before browser bootstrap and Project Source mutation"
   verify_installed_candidate_cli || fail "installed candidate CLI smoke failed before browser bootstrap and Project Source mutation"
 fi
 
@@ -4553,7 +4643,7 @@ INNERPY
 
 build_run_all_full_test_args() {
   local -n _out_args="$1"
-  _out_args=(pb test full --project-name "${release_test_project_name}" --keep-project)
+  _out_args=("${candidate_pb:-pb}" test full --project-name "${release_test_project_name}" --keep-project)
   if [[ ${test_fail_fast} -eq 1 ]]; then
     _out_args+=(--fail-fast)
   fi
@@ -6312,6 +6402,15 @@ run_all_finalize_summary() {
   run_all_finalize_summary
 }
 
+run_all_import_smoke_step() {
+  local -a import_cmd=("${candidate_pb:-pb}" test import-smoke)
+  if [[ -n "${candidate_python}" ]]; then
+    import_cmd+=(--python-executable "${candidate_python}")
+  fi
+  import_cmd+=(--json)
+  run_all_json_step "import_smoke" "${import_smoke_log}" "${import_cmd[@]}"
+}
+
 run_all_live_validation_steps() {
   local guard_zip="${artifact_zip}"
   if [[ ! -f "${guard_zip}" && -n "${download_zip:-}" && -f "${download_zip}" ]]; then
@@ -6333,7 +6432,7 @@ run_all_live_validation_steps() {
     record_all_test_nonblocking_skipped_step "ask_live" "${ask_live_log}" "external_live_not_requested"
     record_all_test_nonblocking_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "external_live_not_requested"
     record_all_test_nonblocking_skipped_step "release_live" "${release_live_log}" "external_live_not_requested"
-    run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+    run_all_import_smoke_step
     run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
     write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"
     if ! python3 - "${all_tests_summary_json}" <<'INNERPY'
@@ -6356,7 +6455,7 @@ INNERPY
     record_all_test_skipped_step "ask_live" "${ask_live_log}" "skipped_browser_backend_403_guardrail"
     record_all_test_skipped_step "visual_artifact_roundtrip" "${visual_artifact_roundtrip_log}" "skipped_browser_backend_403_guardrail"
     record_all_test_skipped_step "release_live" "${release_live_log}" "skipped_browser_backend_403_guardrail"
-    run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+    run_all_import_smoke_step
     run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
     write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"
     if ! python3 - "${all_tests_summary_json}" <<'INNERPY'
@@ -6428,7 +6527,7 @@ INNERPY
         ;;
     esac
   fi
-  run_all_json_step "import_smoke" "${import_smoke_log}" pb test import-smoke --json
+  run_all_import_smoke_step
   run_all_json_step "artifact_guard" "${artifact_guard_log}" pb artifact guard --zip "${guard_zip}" --version "${ver}" --json
 
   write_all_tests_summary "${all_tests_summary_json}" "${all_test_step_specs[@]}"

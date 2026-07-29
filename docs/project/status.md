@@ -1,12 +1,12 @@
 # Project Status
 
-<!-- v0.1.114 current control-surface header -->
+<!-- v0.1.114.1 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.zip`
-- Next normal version: `v0.1.114`
-- Next normal slice: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+- Active candidate version: `v0.1.114.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Next normal version: `v0.1.115`
+- Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
 - Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
@@ -15,49 +15,42 @@
 ```text
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.113.zip
 accepted/current version: v0.1.113
-active candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active candidate version: v0.1.114
-active normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-next planned version after acceptance: v0.1.115
-next planned slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
+rejected candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
+active repair candidate: chatgpt_claudecode_workflow-2_v0.1.114.1.zip
+active candidate version: v0.1.114.1
+active repair slice: v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair
+next normal slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
-
-## Current MVP state
-
-`v0.1.113` is accepted/current and proves PBAI-001 through registry resolution. `v0.1.114` executes one tracked proof skill through the real Promptbranch MCP stdio boundary, enforces an exact read-only tool order and step/time bounds, and returns validated self-hashed `promptbranch.ai.skill_run` evidence.
 
 ## Current release state
 
-- `v0.1.113` passed strict 10/10 release validation and exact evidence-bound adoption.
-- `v0.1.114` is the one unadopted normal candidate.
-- The executable proof skill is `promptbranch.skill.application-architecture-proof`.
-- Its ordered tools are `filesystem.read` then `filesystem.list`.
-- No repository, Project Source, release, publication, or adoption state is mutated.
-- Operational proof remains unimplemented and fails closed at `proven_level=executable`.
+- `v0.1.114` proved PBAI structural, registry, and executable gates but failed strict host validation in `package_import_smoke`.
+- Ambient PATH selected `/home/spikkie/git/ai-aip/py_env/bin/pb` instead of the freshly installed pipx candidate.
+- That environment contained an incompatible FastAPI/Starlette pair and `promptbranch_container_api` failed to import.
+- Adoption was refused; `v0.1.113` remains accepted/current.
+- `v0.1.114.1` is scope-neutral and preserves all executable PBAI and SkillRun behavior.
 
-## Current risks
+## Repair scope
 
-- A SkillRun claim without a matching canonical evidence hash is invalid.
-- Tool order, step bounds, result digests, validator outcomes, and safety flags must all validate.
-- Executable proof must not be promoted to operational proof.
+1. Bind release-critical commands to the exact pipx candidate venv and fail closed on PATH shadowing.
+2. Pass the exact candidate Python to import-smoke and verify interpreter prefix.
+3. Pin `fastapi==0.128.2` with `starlette==0.50.0` in package and service dependency contracts.
+4. Verify runtime dependency versions during import-smoke.
+5. Retain structural, registry, executable, SkillRun, transport, Artifact Guardian, publication, and adoption gates unchanged.
 
 ## Current blockers
 
-Strict host release validation, Project Source publication, adoption, and accepted/current verification remain required before `v0.1.114` can be called complete.
-
-## Current unknowns
-
-Real project lifecycle correction, publication, adoption/current verification, recovery evidence, template migration, and the first domain-module proof remain deferred.
+Strict host release validation and evidence-bound adoption remain required for `v0.1.114.1`.
 
 ## Next safe action
 
-Run source-tree and clean-extraction validation, package `chatgpt_claudecode_workflow-2_v0.1.114.zip`, and require strict 10/10 host release evidence plus exact adoption identity before opening `v0.1.115`.
+Validate and package `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`, then rerun the strict 10/10 host workflow. Do not open `v0.1.115` until this repair is adopted.
 
 ## Last updated
 
 ```text
 2026-07-29
-v0.1.114 PBAI-001 executable validation and SkillRun evidence candidate build
+v0.1.114.1 candidate runtime and dependency compatibility repair
 ```
 
 ## v0.1.102 candidate status

@@ -1142,3 +1142,13 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Evidence:** `promptbranch.ai.skill_run` version `1.0` records full step results plus argument/result digests and a canonical evidence hash.
 - **Authority:** executable proof grants no mutation, release, publication, or adoption authority.
 - **Next:** after acceptance, open `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.
+
+## ADR-PROJ-1141 — Candidate runtime identity is explicit release evidence
+
+- **Status:** accepted for corrective candidate implementation.
+- **Baseline:** `v0.1.113` remains accepted/current; `v0.1.114` is repair-required after strict host validation failed package import in an ambient shadow environment.
+- **Decision:** release control resolves the pipx candidate venv after installation and treats its exact Python, `pb`, and `promptbranch` paths as release evidence.
+- **Fail-closed boundary:** PATH shadowing, distribution-version drift, interpreter-prefix drift, or missing candidate executables stops before Project Source mutation or tests.
+- **Dependency boundary:** FastAPI and Starlette are pinned as one tested compatibility pair and import-smoke verifies the installed versions.
+- **Scope:** no PBAI capability, SkillRun behavior, lifecycle authority, publication authority, or adoption authority is added.
+- **Next:** after repair acceptance, open `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.

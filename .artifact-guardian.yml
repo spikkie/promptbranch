@@ -32,6 +32,7 @@ required_entries:
   - "PROJECT_SETTINGS.md"
   - "AGENTS.md"
   - "docs/project/project-authority-graph-v0.1.109.json"
+  - "docs/release-v0.1.114.1.md"
   - "promptbranch_project_authority.py"
   - ".promptbranch-ai.json"
   - "promptbranch_application_architecture.py"

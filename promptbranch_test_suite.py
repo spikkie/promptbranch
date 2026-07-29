@@ -1556,6 +1556,25 @@ def _declared_py_modules(repo_path: Path) -> list[str]:
         return []
 
 
+def _declared_exact_dependency_versions(repo_path: Path, names: Sequence[str]) -> dict[str, str]:
+    try:
+        data = _load_pyproject_from_text((repo_path / "pyproject.toml").read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    dependencies = ((data.get("project") or {}).get("dependencies") or []) if isinstance(data, dict) else []
+    wanted = {str(name).strip().lower() for name in names if str(name).strip()}
+    resolved: dict[str, str] = {}
+    for raw in dependencies:
+        text = str(raw).strip()
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+!-]+)", text)
+        if not match:
+            continue
+        name = match.group(1).lower()
+        if name in wanted:
+            resolved[name] = match.group(2)
+    return resolved
+
+
 def _promptbranch_imports_from_source(source: str) -> set[str]:
     modules: set[str] = set()
     try:
@@ -1664,6 +1683,7 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     declared = _declared_py_modules(root)
     modules = sorted({"promptbranch", "promptbranch.cli", *declared})
     expected_version = normalize_version(_read_version(root))
+    expected_dependencies = _declared_exact_dependency_versions(root, ("fastapi", "starlette"))
     if not declared:
         return {"ok": False, "action": "package_import_smoke", "status": "pyproject_missing_or_unreadable", "repo_path": str(root), "modules": modules}
     executable = python_executable or sys.executable
@@ -1672,9 +1692,12 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "import importlib",
         "import io",
         "import json",
+        "import os",
         "import sys",
         "modules = json.loads(sys.argv[1])",
         "expected_version = sys.argv[2] or None",
+        "expected_python = os.path.abspath(sys.argv[3])",
+        "expected_dependencies = json.loads(sys.argv[4])",
         "results = []",
         "for module in modules:",
         "    try:",
@@ -1726,9 +1749,28 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "missing = [item['name'] for item in observations if not item.get('normalized')]",
         "mismatches = [item for item in observations if item.get('normalized') and expected_version and item.get('normalized') != expected_version]",
         "version_consistency = {'ok': bool(expected_version) and not missing and not mismatches, 'expected_version': expected_version, 'observations': observations, 'missing': missing, 'mismatches': mismatches}",
-        "payload = {'imports': results, 'version_consistency': version_consistency}",
+        "actual_python = os.path.abspath(sys.executable)",
+        "expected_prefix = os.path.dirname(os.path.dirname(expected_python))",
+        "runtime_identity = {'ok': actual_python == expected_python and os.path.realpath(sys.prefix) == os.path.realpath(expected_prefix), 'expected_python': expected_python, 'actual_python': actual_python, 'expected_prefix': expected_prefix, 'actual_prefix': sys.prefix}",
+        "dependency_observations = []",
+        "dependency_mismatches = []",
+        "try:",
+        "    from importlib import metadata as dependency_metadata",
+        "    for dependency_name, dependency_expected in sorted(expected_dependencies.items()):",
+        "        try:",
+        "            dependency_actual = dependency_metadata.version(dependency_name)",
+        "        except Exception:",
+        "            dependency_actual = None",
+        "        row = {'name': dependency_name, 'expected': dependency_expected, 'actual': dependency_actual}",
+        "        dependency_observations.append(row)",
+        "        if dependency_actual != dependency_expected:",
+        "            dependency_mismatches.append(row)",
+        "except Exception as exc:",
+        "    dependency_mismatches.append({'name': 'metadata', 'expected': expected_dependencies, 'actual': None, 'error': str(exc)})",
+        "dependency_consistency = {'ok': not dependency_mismatches, 'expected': expected_dependencies, 'observations': dependency_observations, 'mismatches': dependency_mismatches}",
+        "payload = {'imports': results, 'version_consistency': version_consistency, 'runtime_identity': runtime_identity, 'dependency_consistency': dependency_consistency}",
         "print(json.dumps(payload, ensure_ascii=False))",
-        "sys.exit(0 if all(item.get('ok') for item in results) and version_consistency.get('ok') else 1)",
+        "sys.exit(0 if all(item.get('ok') for item in results) and version_consistency.get('ok') and runtime_identity.get('ok') and dependency_consistency.get('ok') else 1)",
     ])
     env = dict(os.environ)
     kept = []
@@ -1747,7 +1789,7 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     else:
         env.pop("PYTHONPATH", None)
     with tempfile.TemporaryDirectory(prefix="promptbranch-import-smoke-") as tmp:
-        completed = subprocess.run([executable, "-c", code, json.dumps(modules), expected_version or ""], cwd=tmp, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+        completed = subprocess.run([executable, "-c", code, json.dumps(modules), expected_version or "", str(Path(executable).expanduser().absolute()), json.dumps(expected_dependencies, sort_keys=True)], cwd=tmp, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
     try:
         subprocess_payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError:
@@ -1759,7 +1801,13 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     version_consistency = subprocess_payload.get("version_consistency") if isinstance(subprocess_payload, dict) else None
     if not isinstance(version_consistency, dict):
         version_consistency = {"ok": False, "expected_version": expected_version, "observations": [], "missing": ["runtime_version_payload"], "mismatches": []}
-    ok = completed.returncode == 0 and not failures and bool(version_consistency.get("ok"))
+    runtime_identity = subprocess_payload.get("runtime_identity") if isinstance(subprocess_payload, dict) else None
+    if not isinstance(runtime_identity, dict):
+        runtime_identity = {"ok": False, "expected_python": str(Path(executable).expanduser().absolute()), "actual_python": None, "expected_prefix": None, "actual_prefix": None}
+    dependency_consistency = subprocess_payload.get("dependency_consistency") if isinstance(subprocess_payload, dict) else None
+    if not isinstance(dependency_consistency, dict):
+        dependency_consistency = {"ok": False, "expected": expected_dependencies, "observations": [], "mismatches": [{"name": "dependency_runtime_payload", "expected": expected_dependencies, "actual": None}]}
+    ok = completed.returncode == 0 and not failures and bool(version_consistency.get("ok")) and bool(runtime_identity.get("ok")) and bool(dependency_consistency.get("ok"))
     return {
         "ok": ok,
         "action": "package_import_smoke",
@@ -1770,6 +1818,9 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
         "modules": modules,
         "failures": failures,
         "version_consistency": version_consistency,
+        "runtime_identity": runtime_identity,
+        "dependency_consistency": dependency_consistency,
+        "expected_dependency_versions": expected_dependencies,
         "returncode": completed.returncode,
         "stdout_bytes": len(completed.stdout or ""),
         "stderr": completed.stderr[-4000:] if completed.stderr else "",

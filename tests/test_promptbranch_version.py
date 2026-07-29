@@ -49,3 +49,21 @@ def test_version_surface_tests_do_not_pin_stale_repair_candidate_literals() -> N
     literals = set(REPAIR_VERSION_LITERAL_RE.findall(text))
     stale_literals = sorted(literal for literal in literals if literal not in allowed)
     assert stale_literals == []
+
+
+def test_fastapi_starlette_compatibility_pair_is_exact_and_consistent() -> None:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project_dependencies = {
+        item.split("==", 1)[0].strip().lower(): item.split("==", 1)[1].strip()
+        for item in data["project"]["dependencies"]
+        if "==" in item
+    }
+    requirements_dependencies = {
+        item.split("==", 1)[0].strip().lower(): item.split("==", 1)[1].strip()
+        for raw in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        if (item := raw.strip()) and not item.startswith("#") and "==" in item
+    }
+
+    expected = {"fastapi": "0.128.2", "starlette": "0.50.0"}
+    assert {name: project_dependencies.get(name) for name in expected} == expected
+    assert {name: requirements_dependencies.get(name) for name in expected} == expected

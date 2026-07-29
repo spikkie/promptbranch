@@ -1,5 +1,10 @@
 # Slice Horizon
 
+## Active repair
+
+- `v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair` is the sole active repair.
+- `v0.1.115 — PBAI-001 operational validation and lifecycle evidence` remains the next normal slice after repair acceptance.
+
 ## Current rolling horizon
 
 | Version | Slice | Status | Release mode | Scope |

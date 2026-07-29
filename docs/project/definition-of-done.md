@@ -875,3 +875,12 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-327 | Failed tools, excessive steps, evidence tampering, missing validators, or mutation/authority flags fail closed at `proven_level=registry` | focused_candidate | negative executable and SkillRun regressions | v0.1.114 |
 | DOD-328 | Operational proof remains unimplemented and cannot be inferred from executable evidence | focused_candidate | operational fail-closed test and CLI result | v0.1.114 |
 | DOD-329 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114 |
+
+## v0.1.114.1 candidate runtime and FastAPI/Starlette compatibility repair
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-330 | Release control binds all release-critical candidate validation to the exact pipx venv and fails closed on ambient PATH shadowing or interpreter-prefix drift | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, shell/runtime regressions | v0.1.114.1 |
+| DOD-331 | Package import validation verifies the exact candidate Python plus the tracked FastAPI `0.128.2` and Starlette `0.50.0` runtime versions | focused_candidate | `promptbranch_test_suite.py`, dependency and identity regressions | v0.1.114.1 |
+| DOD-332 | The repair preserves PBAI structural, registry, executable, SkillRun, operational fail-closed, publication, adoption, and current-verification semantics | focused_candidate | existing PBAI/SkillRun/release groups | v0.1.114.1 |
+| DOD-333 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114.1 |

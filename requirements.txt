@@ -10,7 +10,7 @@ cryptography
 distlib
 ecdsa
 exceptiongroup
-fastapi
+fastapi==0.128.2
 filelock
 greenlet
 h11
@@ -48,7 +48,7 @@ rsa
 six
 sniffio
 SQLAlchemy
-starlette
+starlette==0.50.0
 tomli
 typing-inspection
 typing_extensions
@@ -56,4 +56,3 @@ urllib3
 uvicorn
 watchfiles
 virtualenv
-python-dotenv

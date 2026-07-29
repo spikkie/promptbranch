@@ -1,40 +1,40 @@
 # Release Status
 
-<!-- v0.1.114 current control-surface header -->
+<!-- v0.1.114.1 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.zip`
-- Next normal version: `v0.1.114`
-- Next normal slice: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+- Active candidate version: `v0.1.114.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Next normal version: `v0.1.115`
+- Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
 - Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
-## v0.1.114 normal candidate
+## v0.1.114.1 repair candidate
 
-- Baseline `v0.1.113` is adopted/current after strict 10/10 validation and structural plus registry PBAI proof.
-- The candidate adds bounded executable validation, a tracked proof skill, typed SkillRun evidence, canonical evidence hashing, CLI evidence output, and a required release gate.
-- The proof executes two repository-bounded read-only MCP tools in exact order.
-- Operational proof remains fail-closed and unimplemented.
-- PBAI-001 remains `in_progress`.
-
-## Current baseline
-
-```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.113.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active candidate version: v0.1.114
-active normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-next planned slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
-```
+- `v0.1.114` failed strict host validation with one common package-import defect in direct, localhost, and standalone import-smoke.
+- The release process used an ambient `ai-aip` virtual environment because it appeared before pipx on PATH.
+- `v0.1.114.1` binds candidate execution to the exact pipx venv and pins the FastAPI/Starlette pair.
+- PBAI executable and SkillRun behavior are unchanged.
+- Adoption remains pending.
 
 ## Current authority result
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
-| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | accepted_current | strict host validation 10/10; structural and registry gates; release_adopted_and_verified | accepted baseline |
-| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | candidate | source and packaged executable proof required; strict host release pending | adopt only after executable gate, full transports, live evidence, and exact identity verification |
-| v0.1.115 | normal | PBAI-001 operational validation and lifecycle evidence | planned | not started | begin only after v0.1.114 acceptance |
+| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | accepted_current | strict host validation 10/10 and exact adoption | accepted baseline |
+| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | repair_required | PBAI gates passed; package import failed under shadow runtime; adoption refused | never adopt these bytes |
+| v0.1.114.1 | repair | Candidate runtime resolution and FastAPI/Starlette compatibility repair | candidate | deterministic and strict host validation pending | no scope advance; adopt only after 10/10 and exact identity verification |
+| v0.1.115 | normal | PBAI-001 operational validation and lifecycle evidence | planned | not started | begin only after repair acceptance |
+
+## Current baseline
+
+```text
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.113.zip
+rejected candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
+active repair: chatgpt_claudecode_workflow-2_v0.1.114.1.zip
+next normal: v0.1.115
+```
 
 ## ZIP status values
 

@@ -1,57 +1,50 @@
 # Project Plan
 
-<!-- v0.1.114 current control-surface header -->
+<!-- v0.1.114.1 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.zip`
-- Next normal version: `v0.1.114`
-- Next normal slice: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+- Active candidate version: `v0.1.114.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Next normal version: `v0.1.115`
+- Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
 - Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.113.zip
-accepted/current version: v0.1.113
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.113.zip
 last completed normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
-last completed repair: v0.1.111.5.2 — Null-safe previous active-step ETA state
-active candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active candidate version: v0.1.114
-active normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-next planned slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
+failed candidate: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+active repair: v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair
+next normal slice after repair acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
 
-## Plan summary
+## Active repair slice — v0.1.114.1
 
-`v0.1.114` advances PBAI-001 from registry proof to executable proof. It adds an explicit proof-skill execution contract, uses the real MCP stdio boundary, enforces exact read-only tool order and step/time limits, emits a typed SkillRun record with per-step argument/result digests and a canonical evidence hash, and validates that evidence before reporting `proven_level=executable`.
-
-## Active normal slice — v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+The normal-slice implementation is retained unchanged. This repair corrects only the strict validation runtime boundary and dependency compatibility contract.
 
 Scope:
 
-1. Add `promptbranch.ai.skill_run` schema `1.0` and `promptbranch_skillrun.py`.
-2. Advance the application declaration to schema `1.2` and registry to schema `1.1`.
-3. Add a sole tracked executable proof skill with explicit request, ordered tools, validators, evidence contract, maximum steps, and timeout.
-4. Execute the proof through Promptbranch MCP stdio using only `filesystem.read` and `filesystem.list`.
-5. Record ordered step inputs/results, per-step SHA-256 digests, validator outcomes, safety boundaries, run ID, and canonical evidence SHA-256.
-6. Fail closed on wrong order, failed tool results, excessive steps, tampering, missing validators, or mutation/authority flags.
-7. Add `pb application architecture evidence --json` and a required `application_architecture_executable` release gate.
-8. Keep operational validation recognised but unimplemented.
+1. Resolve the pipx home after candidate installation and derive exact `python`, `pb`, and `promptbranch` paths.
+2. Verify candidate distribution/version identity before Project Source mutation.
+3. Prepend the candidate venv to PATH, clear shell command hashing, and fail closed if ambient executables still win.
+4. Run full tests and import-smoke with the exact candidate runtime.
+5. Pin FastAPI and Starlette to one tested compatible pair and verify both versions at import time.
+6. Add regressions for shadow PATH, interpreter drift, and dependency drift.
 
 Out of scope:
 
-- Real correction, release, publication, adoption, or recovery execution.
-- Project Source mutation by the architecture validator.
-- Template migration and `promptbranch-method` domain-module proof.
-- Closing PBAI-001.
+- Any new PBAI capability or operational proof.
+- Changes to SkillRun semantics or evidence authority.
+- Relaxing package import, release, publication, adoption, or current-verification gates.
+- Starting `v0.1.115`.
 
-Acceptance requires executable validation and SkillRun evidence to pass from source and clean packaged bytes, negative tamper/order/boundary tests to fail closed, the new release group to pass, strict host validation to reach 10/10, and exact adoption/current identity to verify.
+Acceptance requires source-tree and clean-extraction parity, installed candidate-runtime proof, all three PBAI gates, import-smoke dependency/interpreter identity, strict direct and localhost transports, live gates, Artifact Guardian, and exact evidence-bound adoption.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.113` is accepted/current, `v0.1.114` is the one active normal slice, and `v0.1.115 — PBAI-001 operational validation and lifecycle evidence` is planned only after acceptance.
+`docs/project/plan-state.json` is authoritative. `v0.1.113` remains accepted/current, `v0.1.114` is repair-required, `v0.1.114.1` is the sole active repair candidate, and scope advancement is disabled until adoption.
 
 ## Release / slice plan
 

@@ -130,7 +130,7 @@ def test_package_import_smoke_runs_outside_repo(monkeypatch, tmp_path: Path) -> 
 
     class Completed:
         returncode = 0
-        stdout = '{"imports":[{"module":"promptbranch_cli","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.test","observations":[],"missing":[],"mismatches":[]}}'
+        stdout = '{"imports":[{"module":"promptbranch_cli","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.test","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":true,"expected":{},"observations":[],"mismatches":[]}}'
         stderr = ''
 
     def fake_run(cmd, cwd, env, text, stdout, stderr, timeout, check):
@@ -149,6 +149,47 @@ def test_package_import_smoke_runs_outside_repo(monkeypatch, tmp_path: Path) -> 
     assert captured["cmd"][0] == "python-test"
     assert str(tmp_path) not in captured["env"].get("PYTHONPATH", "")
     assert captured["cwd"] != str(tmp_path)
+    assert result["runtime_identity"]["ok"] is True
+    assert result["dependency_consistency"]["ok"] is True
+
+
+def test_package_import_smoke_fails_on_candidate_python_identity_drift(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[tool.setuptools]\npy-modules = ["promptbranch_version"]\n', encoding="utf-8")
+
+    class Completed:
+        returncode = 1
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":false,"expected_python":"/candidate/bin/python","actual_python":"/shadow/bin/python","expected_prefix":"/candidate","actual_prefix":"/shadow"},"dependency_consistency":{"ok":true,"expected":{},"observations":[],"mismatches":[]}}'
+        stderr = ""
+
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable="/candidate/bin/python")
+
+    assert result["ok"] is False
+    assert result["runtime_identity"]["ok"] is False
+    assert result["runtime_identity"]["actual_python"] == "/shadow/bin/python"
+
+
+def test_package_import_smoke_fails_on_fastapi_starlette_drift(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["fastapi==0.128.2", "starlette==0.50.0"]\n\n[tool.setuptools]\npy-modules = ["promptbranch_version"]\n',
+        encoding="utf-8",
+    )
+
+    class Completed:
+        returncode = 1
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":false,"expected":{"fastapi":"0.128.2","starlette":"0.50.0"},"observations":[{"name":"fastapi","expected":"0.128.2","actual":"0.128.2"},{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}],"mismatches":[{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}]}}'
+        stderr = ""
+
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable="python-test")
+
+    assert result["ok"] is False
+    assert result["expected_dependency_versions"] == {"fastapi": "0.128.2", "starlette": "0.50.0"}
+    assert result["dependency_consistency"]["mismatches"][0]["name"] == "starlette"
 
 
 def test_agent_profile_reports_rate_limit_strategy_without_browser(monkeypatch, tmp_path: Path) -> None:
@@ -370,7 +411,7 @@ def test_package_import_smoke_fails_on_runtime_version_drift(monkeypatch, tmp_pa
 
     class Completed:
         returncode = 1
-        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":false,"expected_version":"0.0.166","observations":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}],"missing":[],"mismatches":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}]}}'
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":false,"expected_version":"0.0.166","observations":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}],"missing":[],"mismatches":[{"name":"mcp server_info.version","value":"0.0.164","normalized":"0.0.164"}]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":true,"expected":{},"observations":[],"mismatches":[]}}'
         stderr = ""
 
     monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())

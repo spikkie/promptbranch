@@ -2,7 +2,7 @@
 
 - Status: `in_progress`
 - Started in: `v0.1.112`
-- Current phase: tracked registry validation and reference resolution
+- Current phase: executable proof implemented; candidate-runtime repair pending strict adoption
 
 ## Goal
 
