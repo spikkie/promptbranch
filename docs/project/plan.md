@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.111.5 current control-surface header -->
-- Accepted/current version: `v0.1.111.4.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
-- Active candidate version: `v0.1.111.5`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+<!-- v0.1.111.5.1 current control-surface header -->
+- Accepted/current version: `v0.1.111.5`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+- Active candidate version: `v0.1.111.5.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -13,13 +13,13 @@
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-accepted/current version: v0.1.111.4.1
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+accepted/current version: v0.1.111.5
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.111.4.1 — Capacity-aware Project Source family replacement verification
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
-active candidate version: v0.1.111.5
-active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
+last completed repair: v0.1.111.5 — Named-step ETA planning and stable countdown
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip
+active candidate version: v0.1.111.5.1
+active repair slice: v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
 next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
@@ -27,25 +27,23 @@ next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and struc
 
 ## Plan summary
 
-`v0.1.111.4.1` is accepted/current after 10/10 strict validation, deterministic external-live idle handoff, evidence-bound adoption, and final current verification. `v0.1.111.5` is the final queued observability repair: replace misleading elapsed/completed extrapolation with named-step, transport-aware, confidence-labelled ETA planning. `v0.1.112` remains blocked until this repair is accepted.
+`v0.1.111.5` is accepted/current after 10/10 strict validation, evidence-bound adoption, and final current verification. `v0.1.111.5.1` is a narrow post-adoption corrective: prevent empty associative-array indexing when no top-level step is active and clamp the ETA high range together with the midpoint while the active plan is unchanged or shrinking. `v0.1.112` remains blocked until this repair is accepted.
 
-## Active repair slice — v0.1.111.5 — Named-step ETA planning and stable countdown
+## Active repair slice — v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
 
 Scope:
 
-1. Replace elapsed/completed extrapolation in `pb test` and release-control progress with named-step estimates.
-2. Prefer successful same-step, same-transport historical medians.
-3. Permit direct timing as an ETA-only localhost prior without reusing validation evidence.
-4. Fall back to same-phase timing only when named-step history is unavailable.
-5. Exclude steps known to be skipped before ETA calculation.
-6. Emit `active_remaining`, `eta_approx`, `eta_range`, `eta_confidence`, and `eta_basis` in progress text and JSON.
-7. Keep a stable or narrowing countdown when the active plan only shrinks; retain a non-zero tail for an overrun step that is still visibly running.
-8. Persist bounded timing observations under `.pb_profile`; malformed or unavailable ETA state fails soft and never changes pass/fail, fail-fast, transport independence, adoption, or release authority.
-9. Keep `v0.1.112` out of scope.
+1. Initialise top-level current-step start time to zero and index the associative array only for a non-empty step name.
+2. Pass the previous ETA high bound into the named-step estimator.
+3. Clamp both ETA midpoint and high bound while the active plan is unchanged or shrinking.
+4. Preserve `low <= midpoint <= high` after clamping.
+5. Permit range expansion only when the active plan genuinely expands or transitions from unknown to known.
+6. Keep all ETA state informational and unable to alter pass/fail, fail-fast, transport independence, publication, adoption, or accepted/current verification.
+7. Keep `v0.1.112` out of scope.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.4.1` is accepted/current, `v0.1.111.5` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5` is accepted/current, `v0.1.111.5.1` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
 
 ## Release / slice plan
 

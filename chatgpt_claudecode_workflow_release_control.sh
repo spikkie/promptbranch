@@ -4813,7 +4813,10 @@ run_all_emit_progress() {
   expected="$(run_all_expected_step_count)"
   planned_csv="$(run_all_planned_step_names | paste -sd, -)"
   known_skip_csv="$(run_all_known_eta_skip_steps | paste -sd, -)"
-  current_started="${all_test_step_started_epoch[${current_step}]:-0}"
+  current_started=0
+  if [[ -n "${current_step}" ]]; then
+    current_started="${all_test_step_started_epoch[${current_step}]:-0}"
+  fi
   if ! python3 - "${repo_root}" "${release_log_dir}/pb_test.all.${ver}.progress.json" "${expected}" "${run_all_progress_started_epoch}" "${current_step}" "${current_started}" "${release_eta_history_path}" "${planned_csv}" "${known_skip_csv}" "${all_test_step_specs[@]}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
@@ -4908,6 +4911,7 @@ estimate = estimate_named_step_eta(
     known_skipped_units=known_skips,
     transport_by_step=transport_by_step,
     previous_eta_seconds=previous.get("eta_seconds_approx") if isinstance(previous, dict) else None,
+    previous_eta_high_seconds=(previous.get("eta_seconds_range") or {}).get("high") if isinstance(previous, dict) and isinstance(previous.get("eta_seconds_range"), dict) else None,
     previous_active_steps=previous.get("active_steps") if isinstance(previous, dict) else (),
 )
 tested = len(items)

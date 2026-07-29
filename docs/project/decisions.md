@@ -1100,3 +1100,13 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Persistence:** bounded timing history is atomically stored under `.pb_profile`; missing, malformed, or unwritable history degrades ETA to unknown.
 - **Authority:** ETA cannot change pass/fail, fail-fast, release verdict, publication, adoption, or accepted/current verification.
 - **Next:** after acceptance, open `v0.1.112 — PBAI-001 declaration and structural validation`.
+
+## ADR-PROJ-11151 — Stable ETA includes an empty-step-safe shell boundary and monotonic high range
+
+- **Status:** accepted for corrective candidate implementation.
+- **Baseline:** `v0.1.111.5` is accepted/current after 10/10 strict validation and `release_adopted_and_verified`.
+- **Shell boundary:** progress emitted after a completed top-level step may have no active current step; the associative array is indexed only when the step name is non-empty.
+- **Range boundary:** while the active plan is unchanged or shrinking, both the ETA midpoint and high bound are non-increasing.
+- **Expansion boundary:** the range may expand only when the active plan genuinely expands or an unknown estimate becomes known.
+- **Authority:** ETA remains informational and cannot change pass/fail, fail-fast, transport independence, release verdict, publication, adoption, or accepted/current verification.
+- **Next:** after acceptance, open `v0.1.112 — PBAI-001 declaration and structural validation`.

@@ -1,30 +1,30 @@
 # Release Status
 
-<!-- v0.1.111.5 current control-surface header -->
-- Accepted/current version: `v0.1.111.4.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
-- Active candidate version: `v0.1.111.5`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+<!-- v0.1.111.5.1 current control-surface header -->
+- Accepted/current version: `v0.1.111.5`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+- Active candidate version: `v0.1.111.5.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
 - Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
 
-## v0.1.111.5 corrective candidate
+## v0.1.111.5.1 corrective candidate
 
-- `v0.1.111.4.1` is accepted/current after `tested=10/10`, `all_tests_final_verdict: GO`, and `release_adopted_and_verified`.
-- `v0.1.111.5` replaces ETA-only elapsed/completed extrapolation with named-step and phase timing distributions.
-- Direct timing may inform localhost ETA only; localhost validation evidence remains independent and mandatory.
-- Known skips are excluded before ETA computation.
-- ETA state and output cannot change validation status, fail-fast, release verdict, publication, or adoption.
+- `v0.1.111.5` is accepted/current after `tested=10/10`, `all_tests_final_verdict: GO`, and `release_adopted_and_verified`.
+- `v0.1.111.5.1` prevents empty associative-array indexing when progress is emitted with no active current step.
+- The stable countdown clamp now constrains both the midpoint and the high bound while the active plan only shrinks.
+- Range expansion remains allowed when the active plan genuinely expands or transitions from unknown to known.
+- ETA state and output remain unable to change validation status, fail-fast, release verdict, publication, or adoption.
 
 ## Current baseline
 
 ```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
-active candidate version: v0.1.111.5
-active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip
+active candidate version: v0.1.111.5.1
+active repair slice: v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
 next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
@@ -46,6 +46,8 @@ repair_required
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
+| v0.1.111.5 | repair | Named-step ETA planning and stable countdown | accepted_current | strict host validation 10/10; release_adopted_and_verified; informational post-adoption defects queued for v0.1.111.5.1 | accepted baseline |
+| v0.1.111.5.1 | repair | Empty-step-safe ETA progress and stable range countdown | candidate | focused regression and package validation pending strict host release workflow | no normal scope advance |
 | v0.1.108 | normal | Controlled correction execution envelope validation gate | repair_required | superseded by the accepted reliability repair | remains historical repair origin |
 | v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted_current | focused reliability passed; retry release validation 10/10; release_adopted_and_verified | accepted baseline |
 | v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | require authority_consistent, full_direct, full_localhost, Artifact Guardian, and evidence-bound adoption |

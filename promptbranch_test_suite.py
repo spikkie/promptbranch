@@ -153,6 +153,7 @@ class TestProgressLedger:
             transport=self.transport,
             known_skipped_units=tuple(self.known_skipped_units),
             previous_eta_seconds=self._last_eta.get("eta_seconds_approx"),
+            previous_eta_high_seconds=(self._last_eta.get("eta_seconds_range") or {}).get("high"),
             previous_active_steps=self._last_eta.get("active_steps") or (),
         )
         self._last_eta = estimate

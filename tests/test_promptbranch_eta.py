@@ -126,6 +126,48 @@ def test_same_active_plan_countdown_does_not_increase() -> None:
     assert second["monotonic_clamped"] is True
 
 
+def test_shrinking_plan_clamps_range_high_even_when_midpoint_already_decreases() -> None:
+    history = [
+        record("validation.one", 4),
+        record("validation.two", 1000),
+    ]
+    result = estimate_named_step_eta(
+        units=("validation.new",),
+        states={"validation.new": "pending"},
+        current=None,
+        current_elapsed_seconds=0,
+        history_records=history,
+        transport="direct",
+        previous_eta_seconds=12.0,
+        previous_eta_high_seconds=15.0,
+        previous_active_steps=("validation.new", "validation.finished"),
+    )
+    assert result["eta_seconds_approx"] <= 12.0
+    assert result["eta_seconds_range"]["high"] <= 15.0
+    assert result["eta_seconds_range"]["low"] <= result["eta_seconds_approx"]
+    assert result["eta_seconds_approx"] <= result["eta_seconds_range"]["high"]
+    assert result["monotonic_clamped"] is True
+    assert result["eta_basis"].endswith("+stable_countdown_clamp")
+
+
+def test_expanding_active_plan_may_expand_eta_range() -> None:
+    history = [record("browser.one", 10), record("browser.two", 20)]
+    result = estimate_named_step_eta(
+        units=("browser.one", "browser.two"),
+        states={"browser.one": "pending", "browser.two": "pending"},
+        current=None,
+        current_elapsed_seconds=0,
+        history_records=history,
+        transport="direct",
+        previous_eta_seconds=5.0,
+        previous_eta_high_seconds=6.0,
+        previous_active_steps=("browser.one",),
+    )
+    assert result["eta_seconds_approx"] > 5.0
+    assert result["eta_seconds_range"]["high"] > 6.0
+    assert result["monotonic_clamped"] is False
+
+
 def test_direct_history_is_eta_only_localhost_prior() -> None:
     history = [record("browser.one", 40, transport="direct")]
     result = estimate_named_step_eta(

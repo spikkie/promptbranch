@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
-  "accepted_current_version": "v0.1.111.4.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
-  "active_candidate_version": "v0.1.111.5",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
+  "accepted_current_version": "v0.1.111.5",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+  "active_candidate_version": "v0.1.111.5.1",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
+  "active_slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -330,12 +330,20 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
       "created_at": "2026-07-28T14:15:00+02:00",
       "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
-      "status": "candidate",
-      "validation": "Focused named-step ETA, progress, package, and control-surface validation pending strict host release validation.",
+      "status": "accepted_current",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects.",
       "version": "v0.1.111.5"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "created_at": "2026-07-29T08:05:00+02:00",
+      "slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
+      "status": "candidate",
+      "validation": "Focused empty-step and stable-range regressions pass; strict host release validation remains pending.",
+      "version": "v0.1.111.5.1"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -720,16 +728,24 @@
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
       "created_at": "2026-07-28T14:15:00+02:00",
       "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
-      "status": "candidate",
-      "validation": "Focused named-step ETA, progress, package, and control-surface validation pending strict host release validation.",
+      "status": "accepted_current",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects.",
       "version": "v0.1.111.5"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "created_at": "2026-07-29T08:05:00+02:00",
+      "slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
+      "status": "candidate",
+      "validation": "Focused empty-step and stable-range regressions pass; strict host release validation remains pending.",
+      "version": "v0.1.111.5.1"
     }
   ],
   "last_completed_normal_slice": "v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition",
   "last_completed_normal_slice_version": "v0.1.109",
-  "last_completed_repair": "v0.1.111.4.1 — Capacity-aware Project Source family replacement verification",
-  "last_completed_repair_version": "v0.1.111.4.1",
-  "last_updated": "2026-07-28T14:15:00+02:00",
+  "last_completed_repair": "v0.1.111.5 — Named-step ETA planning and stable countdown",
+  "last_completed_repair_version": "v0.1.111.5",
+  "last_updated": "2026-07-29T08:05:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
   "next_normal_slice": "v0.1.112 — PBAI-001 declaration and structural validation",
   "next_normal_version": "v0.1.112",
@@ -1316,11 +1332,20 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "accepted_current",
       "version": "v0.1.111.5",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
       "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
-      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority."
+      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects."
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "version": "v0.1.111.5.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
+      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority."
     }
   ],
   "release_mode": "repair",
@@ -1569,11 +1594,20 @@
     },
     {
       "kind": "repair",
-      "status": "candidate",
+      "status": "accepted_current",
       "version": "v0.1.111.5",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
       "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
-      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority."
+      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects."
+    },
+    {
+      "kind": "repair",
+      "status": "candidate",
+      "version": "v0.1.111.5.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
+      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1608,15 +1642,6 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.111.4",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
-      "slice": "v0.1.111.4 — Deterministic external-live idle handoff",
-      "status": "repair_required",
-      "release_mode": "repair",
-      "scope": "external-live idle handoff retained; superseded by capacity-aware corrective",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip"
-    },
-    {
       "version": "v0.1.111.4.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip",
       "slice": "v0.1.111.4.1 — Capacity-aware Project Source family replacement verification",
@@ -1629,10 +1654,20 @@
       "version": "v0.1.111.5",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
       "slice": "v0.1.111.5 — Named-step ETA planning and stable countdown",
+      "status": "accepted_current",
+      "release_mode": "repair",
+      "scope": "10/10 strict validation, adoption, and current verification passed; informational ETA defects queued for corrective",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects."
+    },
+    {
+      "version": "v0.1.111.5.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "slice": "v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown",
       "status": "active",
       "release_mode": "repair",
-      "scope": "ETA-only named-step history, transport medians, phase fallback, known-skip exclusion, ranges, confidence, and stable countdown",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip"
+      "scope": "empty-current-step-safe progress plus midpoint/high-bound stable countdown clamping",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip"
     },
     {
       "version": "v0.1.112",
@@ -1655,5 +1690,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.111.5"
+  "updated_for": "v0.1.111.5.1"
 }

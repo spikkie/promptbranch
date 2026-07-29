@@ -2846,6 +2846,40 @@ def test_release_control_run_all_emits_percent_progress_contract():
     assert "run_all_emit_progress" in script
     assert 'all_test_step_specs+=("${name}|${log_path}|${rc}")\n  run_all_emit_progress' in script
 
+def test_release_control_progress_without_active_step_avoids_empty_associative_array_key(tmp_path: Path) -> None:
+    script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    script = script_path.read_text(encoding="utf-8")
+    function_text = script[
+        script.index("run_all_emit_progress() {") : script.index("\nrecord_all_test_step() {")
+    ]
+    harness = f"""
+set -euo pipefail
+run_all_tests=1
+repo_root={str(tmp_path)!r}
+release_log_dir={str(tmp_path)!r}
+ver=v0.0.0
+release_eta_history_path={str(tmp_path / 'eta-history.json')!r}
+run_all_progress_started_epoch=0
+all_test_step_specs=("done|{tmp_path / 'missing.json'}|0")
+declare -A all_test_step_started_epoch=()
+run_all_expected_step_count() {{ printf '%s' 1; }}
+run_all_planned_step_names() {{ printf '%s\\n' done; }}
+run_all_known_eta_skip_steps() {{ :; }}
+python3() {{ cat >/dev/null; return 0; }}
+{function_text}
+run_all_emit_progress
+"""
+    result = subprocess.run(["bash", "-c", harness], text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert "bad array subscript" not in result.stderr
+
+
+def test_release_control_progress_passes_previous_eta_range_high_to_estimator() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert 'current_started=0\n  if [[ -n "${current_step}" ]]; then' in script
+    assert 'previous_eta_high_seconds=(previous.get("eta_seconds_range") or {}).get("high")' in script
+
+
 def test_release_control_all_tests_summary_reports_localhost_cooldown_audit_contract():
     script_path = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
     text = script_path.read_text(encoding="utf-8")

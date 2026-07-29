@@ -278,6 +278,7 @@ def estimate_named_step_eta(
     transport_by_step: Mapping[str, str] | None = None,
     phase_resolver: Callable[[str], str] = default_phase_for_step,
     previous_eta_seconds: float | None = None,
+    previous_eta_high_seconds: float | None = None,
     previous_active_steps: Sequence[str] = (),
 ) -> dict[str, Any]:
     known_skips = {str(unit) for unit in known_skipped_units}
@@ -366,12 +367,21 @@ def estimate_named_step_eta(
     current_active = set(active_steps)
     monotonic_clamped = False
     if previous_eta_seconds is not None and current_active.issubset(prior_active):
-        previous = max(0.0, float(previous_eta_seconds))
-        if total_middle > previous:
-            total_middle = previous
-            total_high = max(total_middle, min(total_high, previous * 1.25))
-            total_low = min(total_low, total_middle)
+        previous_middle = max(0.0, float(previous_eta_seconds))
+        previous_high = _safe_float(previous_eta_high_seconds)
+        if total_middle > previous_middle:
+            total_middle = previous_middle
             monotonic_clamped = True
+        if previous_high is not None and total_high > previous_high:
+            total_high = previous_high
+            monotonic_clamped = True
+        elif previous_high is None and total_high > previous_middle * 1.25:
+            # Backward-compatible protection for callers that persisted only
+            # the previous midpoint before the range became part of state.
+            total_high = previous_middle * 1.25
+            monotonic_clamped = True
+        total_high = max(total_middle, total_high)
+        total_low = min(total_low, total_middle, total_high)
 
     basis_names = sorted(basis_counts)
     eta_basis = "+".join(basis_names) if basis_names else "unknown"

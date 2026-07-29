@@ -829,4 +829,10 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 
 | ID | Requirement | Status | Evidence | Version |
 |---|---|---|---|---|
-| DOD-311 | Progress ETA uses successful named-step/transport medians, direct-to-localhost ETA-only priors, phase fallback, known-skip exclusion, confidence-labelled ranges, stable countdown clamping, and bounded atomic history while remaining unable to alter validation authority | focused_candidate | `promptbranch_eta.py`, `promptbranch_test_suite.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.md` | v0.1.111.5 |
+| DOD-311 | Progress ETA uses successful named-step/transport medians, direct-to-localhost ETA-only priors, phase fallback, known-skip exclusion, confidence-labelled ranges, stable countdown clamping, and bounded atomic history while remaining unable to alter validation authority | done | `promptbranch_eta.py`, `promptbranch_test_suite.py`, `chatgpt_claudecode_workflow_release_control.sh`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.md` | v0.1.111.5 |
+
+## v0.1.111.5.1 empty-step-safe ETA and stable range countdown
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-312 | Top-level ETA progress handles an empty current step without associative-array errors and, while the active plan is unchanged or shrinking, clamps both ETA midpoint and high bound without affecting validation authority | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_eta.py`, `promptbranch_test_suite.py`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.1.md` | v0.1.111.5.1 |

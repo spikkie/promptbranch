@@ -1,5 +1,9 @@
 # Migration to Project Control Surface
 
+## v0.1.111.5.1 ETA corrective migration
+
+`v0.1.111.5` is accepted/current. `v0.1.111.5.1` changes only progress calculation and requires no repository, registry, Project Source, browser profile, user-data, or accepted-current migration. Existing `.pb_profile/eta-history.json` remains valid. Missing range-high state is handled conservatively from the previous midpoint. `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until this corrective is accepted.
+
 ## v0.1.111.5 ETA-history migration
 
 `v0.1.111.4.1` is accepted/current. `v0.1.111.5` adds only bounded observational timing state under `.pb_profile/eta-history.json`. No repository, artifact registry, Project Source, browser profile, user data, or accepted-current migration is required. Missing or malformed timing history is treated as no history and reports unknown ETA. `v0.1.112 — PBAI-001 declaration and structural validation` remains blocked until this repair is accepted.

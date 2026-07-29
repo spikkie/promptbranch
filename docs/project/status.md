@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.111.5 current control-surface header -->
-- Accepted/current version: `v0.1.111.4.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip`
-- Active candidate version: `v0.1.111.5`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+<!-- v0.1.111.5.1 current control-surface header -->
+- Accepted/current version: `v0.1.111.5`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
+- Active candidate version: `v0.1.111.5.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
 - Next planned version after acceptance: `v0.1.112`
@@ -13,49 +13,49 @@
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.111.4.1.zip
-accepted/current version: v0.1.111.4.1
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
-active candidate version: v0.1.111.5
-active repair slice: v0.1.111.5 — Named-step ETA planning and stable countdown
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
+accepted/current version: v0.1.111.5
+active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip
+active candidate version: v0.1.111.5.1
+active repair slice: v0.1.111.5.1 — Empty-step-safe ETA progress and stable range countdown
 next normal version: v0.1.112
 next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 ```
 
 ## Current MVP state
 
-Promptbranch remains in the loop-based problem-solving MVP. This repair changes progress observability only; execution, safety, mutation, Project Source, artifact, and adoption authority are unchanged.
+Promptbranch remains in the loop-based problem-solving MVP. This corrective changes ETA observability only; execution, safety, mutation, Project Source, artifact, and adoption authority are unchanged.
 
 ## Current release state
 
-- `v0.1.111.4.1` passed all 10 strict release gates and is adopted/current.
-- `v0.1.111.5` is an unadopted candidate.
-- Named-step timing history is informational and stored under `.pb_profile`.
-- Direct and localhost validation remain independently executed even when direct timing is used as a localhost ETA prior.
+- `v0.1.111.5` passed all 10 strict release gates and is adopted/current.
+- `v0.1.111.5.1` is an unadopted corrective candidate.
+- The accepted ETA implementation remains informational, but strict-log review exposed ten empty associative-array key errors after completed top-level steps.
+- The accepted countdown midpoint remained informational and validation stayed green, but its high range could expand while the active plan shrank.
 
 ## Current risks
 
-- A first run or a new phase can correctly report `eta_approx=unknown` until relevant successful timing exists.
-- External UI latency can exceed historical ranges; a running overrun step therefore retains a bounded non-zero tail.
-- Timing history corruption or write failure must degrade ETA to unknown without affecting validation.
+- Empty current-step progress must not index the step-start associative array.
+- A shrinking active plan must not increase either the ETA midpoint or high bound.
+- Missing or malformed ETA history must still degrade to unknown without affecting validation.
 
 ## Current blockers
 
-Strict host release validation, publication, adoption, and accepted/current verification are still required for `v0.1.111.5`.
+Strict host release validation, publication, adoption, and accepted/current verification are required for `v0.1.111.5.1` before opening `v0.1.112`.
 
 ## Current unknowns
 
-Operational ETA accuracy and confidence distribution after several direct, localhost, local, and external-live runs remain to be measured.
+Operational ETA accuracy after several completed runs remains observational and is not release authority.
 
 ## Next safe action
 
-Run focused and packaged-byte tests, then one strict all/all host release workflow. Require all 10 gates, adoption, and final current verification before opening `v0.1.112`.
+Run focused and packaged-byte tests, then one strict all/all host release workflow. Require all 10 gates, zero `bad array subscript` diagnostics, adoption, and final current verification before opening `v0.1.112`.
 
 ## Last updated
 
 ```text
-2026-07-28
-v0.1.111.5 named-step ETA planning and stable countdown candidate build
+2026-07-29
+v0.1.111.5.1 empty-step-safe ETA progress and stable range countdown candidate build
 ```
 
 ## v0.1.102 candidate status
