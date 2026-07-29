@@ -581,6 +581,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         "project_control_surface",
         "application_architecture_structural",
         "application_architecture_registry",
+        "application_architecture_executable",
         "version_surface",
         "artifact_json_contracts",
         "repo_project_registry",

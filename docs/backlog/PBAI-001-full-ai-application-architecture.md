@@ -159,3 +159,17 @@ Registry, executable, operational, template migration, and `promptbranch-method`
 - read-only registry validation and a required release gate.
 
 Executable, operational, template migration, and the first domain-module proof remain open.
+
+## v0.1.114 implementation phase
+
+`v0.1.114` adds executable proof while preserving the operational boundary:
+
+- declaration schema `1.2` and registry schema `1.1`;
+- one tracked portable proof skill with exact ordered read-only tools, validators, maximum steps, timeout, and evidence contract;
+- real execution through Promptbranch MCP stdio;
+- `promptbranch.ai.skill_run` schema `1.0` with full step results, per-step digests, validator outcomes, safety flags, run identity, and canonical evidence hash;
+- `pb application architecture evidence --json`;
+- required `application_architecture_executable` release gate;
+- fail-closed operational proof at `proven_level=executable`.
+
+Operational lifecycle proof, template migration, and the first domain-module proof remain open. PBAI-001 remains `in_progress`.

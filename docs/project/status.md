@@ -1,62 +1,63 @@
 # Project Status
 
-<!-- v0.1.113 current control-surface header -->
-- Accepted/current version: `v0.1.112`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
-- Active candidate version: `v0.1.113`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Next normal version: `v0.1.113`
-- Next normal slice: `v0.1.113 — PBAI-001 registry validation and reference resolution`
-- Next planned version after acceptance: `v0.1.114`
-- Next planned slice after acceptance: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+<!-- v0.1.114 current control-surface header -->
+- Accepted/current version: `v0.1.113`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
+- Active candidate version: `v0.1.114`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.zip`
+- Next normal version: `v0.1.114`
+- Next normal slice: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+- Next planned version after acceptance: `v0.1.115`
+- Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.112.zip
-accepted/current version: v0.1.112
-active candidate: chatgpt_claudecode_workflow-2_v0.1.113.zip
-active candidate version: v0.1.113
-active normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
-next planned version after acceptance: v0.1.114
-next planned slice after acceptance: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.113.zip
+accepted/current version: v0.1.113
+active candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
+active candidate version: v0.1.114
+active normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+next planned version after acceptance: v0.1.115
+next planned slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
 
 ## Current MVP state
 
-Promptbranch remains the generic controlled problem-solving runtime. `v0.1.112` is accepted/current and proves PBAI-001 through the structural level. `v0.1.113` adds a tracked AI object registry and read-only registry proof without advancing to execution or operational lifecycle proof.
+`v0.1.113` is accepted/current and proves PBAI-001 through registry resolution. `v0.1.114` executes one tracked proof skill through the real Promptbranch MCP stdio boundary, enforces an exact read-only tool order and step/time bounds, and returns validated self-hashed `promptbranch.ai.skill_run` evidence.
 
 ## Current release state
 
-- `v0.1.112` passed all 10 strict release gates and is adopted/current.
-- `v0.1.113` is the one unadopted normal candidate.
-- `.promptbranch/ai-registry.json` assigns stable IDs to agents, skills, tools, validators, state contracts, evidence contracts, and authority controllers.
-- Registry validation resolves every reference, verifies implementation symbols and skill/tool manifests, proves declared capability coverage, and binds all authority boundaries to exactly one controller.
-- Registry validation is read-only and executes no declared project command.
+- `v0.1.113` passed strict 10/10 release validation and exact evidence-bound adoption.
+- `v0.1.114` is the one unadopted normal candidate.
+- The executable proof skill is `promptbranch.skill.application-architecture-proof`.
+- Its ordered tools are `filesystem.read` then `filesystem.list`.
+- No repository, Project Source, release, publication, or adoption state is mutated.
+- Operational proof remains unimplemented and fails closed at `proven_level=executable`.
 
 ## Current risks
 
-- Registry success must not be inferred from file presence alone.
-- Ambiguous IDs, missing symbols, mismatched tool manifests, unresolved contracts, or unbounded authority must fail closed.
-- Registry proof must not be reported as executable or operational proof.
+- A SkillRun claim without a matching canonical evidence hash is invalid.
+- Tool order, step bounds, result digests, validator outcomes, and safety flags must all validate.
+- Executable proof must not be promoted to operational proof.
 
 ## Current blockers
 
-Strict host release validation, Project Source publication, adoption, and accepted/current verification remain required before `v0.1.113` can be called complete.
+Strict host release validation, Project Source publication, adoption, and accepted/current verification remain required before `v0.1.114` can be called complete.
 
 ## Current unknowns
 
-Ordered skill execution, ValidatorSpec execution, SkillRun evidence, and operational domain-module proof remain intentionally deferred.
+Real project lifecycle correction, publication, adoption/current verification, recovery evidence, template migration, and the first domain-module proof remain deferred.
 
 ## Next safe action
 
-Run focused source-tree and clean-extraction validation, package `chatgpt_claudecode_workflow-2_v0.1.113.zip`, and require strict 10/10 host release evidence plus exact adoption identity before opening `v0.1.114`.
+Run source-tree and clean-extraction validation, package `chatgpt_claudecode_workflow-2_v0.1.114.zip`, and require strict 10/10 host release evidence plus exact adoption identity before opening `v0.1.115`.
 
 ## Last updated
 
 ```text
 2026-07-29
-v0.1.113 PBAI-001 registry validation and reference resolution candidate build
+v0.1.114 PBAI-001 executable validation and SkillRun evidence candidate build
 ```
 
 ## v0.1.102 candidate status

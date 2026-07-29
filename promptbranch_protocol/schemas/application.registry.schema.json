@@ -18,63 +18,352 @@
     "controllers"
   ],
   "properties": {
-    "schema": {"const": "promptbranch.ai.registry"},
-    "schema_version": {"const": "1.0"},
-    "application_id": {"$ref": "#/$defs/id"},
-    "runtime_provider": {"$ref": "#/$defs/id"},
-    "agents": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/agent"}},
-    "skills": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/skill"}},
-    "tools": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/tool"}},
-    "validators": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/validator"}},
-    "state_contracts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/stateContract"}},
-    "evidence_contracts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidenceContract"}},
-    "controllers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/controller"}}
+    "schema": {
+      "const": "promptbranch.ai.registry"
+    },
+    "schema_version": {
+      "const": "1.1"
+    },
+    "application_id": {
+      "$ref": "#/$defs/id"
+    },
+    "runtime_provider": {
+      "$ref": "#/$defs/id"
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/skill"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/tool"
+      }
+    },
+    "validators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/validator"
+      }
+    },
+    "state_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/stateContract"
+      }
+    },
+    "evidence_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidenceContract"
+      }
+    },
+    "controllers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/controller"
+      }
+    }
   },
   "$defs": {
-    "id": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
-    "path": {"type": "string", "minLength": 1},
-    "idList": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "uniqueItems": true
+    },
     "agent": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "symbol", "capabilities", "skills", "tools", "validators", "state_contracts", "evidence_contracts"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "symbol",
+        "capabilities",
+        "skills",
+        "tools",
+        "validators",
+        "state_contracts",
+        "evidence_contracts"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "symbol": {"$ref": "#/$defs/id"},
-        "capabilities": {"$ref": "#/$defs/idList"}, "skills": {"$ref": "#/$defs/idList"}, "tools": {"$ref": "#/$defs/idList"},
-        "validators": {"$ref": "#/$defs/idList"}, "state_contracts": {"$ref": "#/$defs/idList"}, "evidence_contracts": {"$ref": "#/$defs/idList"}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "symbol": {
+          "$ref": "#/$defs/id"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/idList"
+        },
+        "skills": {
+          "$ref": "#/$defs/idList"
+        },
+        "tools": {
+          "$ref": "#/$defs/idList"
+        },
+        "validators": {
+          "$ref": "#/$defs/idList"
+        },
+        "state_contracts": {
+          "$ref": "#/$defs/idList"
+        },
+        "evidence_contracts": {
+          "$ref": "#/$defs/idList"
+        }
       }
     },
     "skill": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "name", "tools", "validators"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "name": {"$ref": "#/$defs/id"}, "tools": {"$ref": "#/$defs/idList"}, "validators": {"$ref": "#/$defs/idList"}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "name",
+        "tools",
+        "validators"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "name": {
+          "$ref": "#/$defs/id"
+        },
+        "tools": {
+          "$ref": "#/$defs/idList"
+        },
+        "validators": {
+          "$ref": "#/$defs/idList"
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "proof",
+            "request",
+            "ordered_tools",
+            "validators",
+            "evidence_contract",
+            "max_steps",
+            "timeout_seconds"
+          ],
+          "properties": {
+            "proof": {
+              "const": true
+            },
+            "request": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ordered_tools": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "validators": {
+              "$ref": "#/$defs/idList"
+            },
+            "evidence_contract": {
+              "$ref": "#/$defs/id"
+            },
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "timeout_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 300
+            }
+          }
+        }
+      }
     },
     "tool": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "provider", "path", "collection", "risk", "read_only"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "path",
+        "collection",
+        "risk",
+        "read_only"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/id"}, "provider": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "collection": {"enum": ["READ_ONLY_MCP_TOOLS", "CONTROLLED_PROCESS_MCP_TOOLS"]},
-        "risk": {"enum": ["read", "external_process", "write", "destructive"]}, "read_only": {"type": "boolean"}
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "provider": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "collection": {
+          "enum": [
+            "READ_ONLY_MCP_TOOLS",
+            "CONTROLLED_PROCESS_MCP_TOOLS"
+          ]
+        },
+        "risk": {
+          "enum": [
+            "read",
+            "external_process",
+            "write",
+            "destructive"
+          ]
+        },
+        "read_only": {
+          "type": "boolean"
+        }
       }
     },
     "validator": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "symbol", "levels"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "symbol": {"$ref": "#/$defs/id"}, "levels": {"type": "array", "minItems": 1, "items": {"enum": ["declaration", "structural", "registry", "executable", "operational"]}, "uniqueItems": true}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "symbol",
+        "levels"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "symbol": {
+          "$ref": "#/$defs/id"
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "declaration",
+              "structural",
+              "registry",
+              "executable",
+              "operational"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
     },
     "stateContract": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "schema"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "schema": {"type": "string", "minLength": 1}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "schema"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "evidenceContract": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "symbol"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "symbol": {"$ref": "#/$defs/id"}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "symbol"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "symbol": {
+          "$ref": "#/$defs/id"
+        }
+      }
     },
     "controller": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "path", "symbol", "boundaries"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "path": {"$ref": "#/$defs/path"}, "symbol": {"$ref": "#/$defs/id"}, "boundaries": {"type": "array", "minItems": 1, "items": {"enum": ["mutation", "release", "publication", "adoption"]}, "uniqueItems": true}}
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "symbol",
+        "boundaries"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "symbol": {
+          "$ref": "#/$defs/id"
+        },
+        "boundaries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "mutation",
+              "release",
+              "publication",
+              "adoption"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
     }
   }
 }

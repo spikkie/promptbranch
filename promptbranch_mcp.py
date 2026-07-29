@@ -1810,6 +1810,12 @@ def _plan_tool_calls_for_skill(skill_name: str, request: str, *, repo_path: str 
     notes: list[str] = []
     root = Path(repo_path).expanduser().resolve()
 
+    if normalized_name == "application-architecture-proof":
+        return [
+            {"name": "filesystem.read", "arguments": {"path": ".promptbranch-ai.json", "max_bytes": 60000}},
+            {"name": "filesystem.list", "arguments": {"path": ".promptbranch", "max_files": 80}},
+        ], notes
+
     if normalized_name == "repo-inspection":
         calls: list[dict[str, Any]] = []
         if (root / "VERSION").is_file():

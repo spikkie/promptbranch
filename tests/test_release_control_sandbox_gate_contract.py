@@ -20,7 +20,8 @@ def test_release_evidence_signature_contains_manifest_hash() -> None:
 
 
 def test_run_all_has_explicit_tenth_sandbox_gate() -> None:
-    assert 'total=$((total + 8))' in SCRIPT
+    assert 'run_all_expected_step_count()' in SCRIPT
+    assert 'total="$(run_all_planned_step_names' in SCRIPT
     assert 'run_all_json_step "sandbox_mutation_rollback_gate"' in SCRIPT
     assert 'scripts/verify-sandbox-mutation-rollback-release-gate.py' in SCRIPT
     assert 'sandbox_mutation_rollback_gate: $(summary_value' in SCRIPT

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/skillrun.evidence.schema.json",
+  "title": "Promptbranch SkillRun evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "application",
+    "skill",
+    "request",
+    "execution",
+    "steps",
+    "validators",
+    "safety",
+    "outcome",
+    "run_id",
+    "evidence_sha256"
+  ],
+  "properties": {
+    "schema": {
+      "const": "promptbranch.ai.skill_run"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "application": {
+      "type": "object"
+    },
+    "skill": {
+      "type": "object"
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution": {
+      "type": "object"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1
+    },
+    "validators": {
+      "type": "array",
+      "minItems": 1
+    },
+    "safety": {
+      "type": "object"
+    },
+    "outcome": {
+      "type": "object"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{24}$"
+    },
+    "evidence_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

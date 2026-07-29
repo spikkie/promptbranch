@@ -1,6 +1,6 @@
 {
   "schema": "promptbranch.ai.registry",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "application_id": "promptbranch",
   "runtime_provider": "promptbranch",
   "agents": [
@@ -23,7 +23,8 @@
       ],
       "skills": [
         "promptbranch.skill.repo-inspection",
-        "promptbranch.skill.final-mvp"
+        "promptbranch.skill.final-mvp",
+        "promptbranch.skill.application-architecture-proof"
       ],
       "tools": [
         "promptbranch.state.read",
@@ -46,10 +47,12 @@
       "state_contracts": [
         "promptbranch.state.ask-reply",
         "promptbranch.state.application-architecture",
-        "promptbranch.state.application-registry"
+        "promptbranch.state.application-registry",
+        "promptbranch.state.skill-run"
       ],
       "evidence_contracts": [
-        "promptbranch.evidence.test-report"
+        "promptbranch.evidence.test-report",
+        "promptbranch.evidence.skill-run"
       ]
     }
   ],
@@ -81,6 +84,32 @@
         "promptbranch.validator.project-control",
         "promptbranch.validator.application-architecture"
       ]
+    },
+    {
+      "id": "promptbranch.skill.application-architecture-proof",
+      "path": ".promptbranch/skills/application-architecture-proof/SKILL.md",
+      "name": "application-architecture-proof",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list"
+      ],
+      "validators": [
+        "promptbranch.validator.application-architecture"
+      ],
+      "execution": {
+        "proof": true,
+        "request": "Execute the tracked PBAI-001 application architecture proof using only repository-bounded read-only tools.",
+        "ordered_tools": [
+          "filesystem.read",
+          "filesystem.list"
+        ],
+        "validators": [
+          "promptbranch.validator.application-architecture"
+        ],
+        "evidence_contract": "promptbranch.evidence.skill-run",
+        "max_steps": 2,
+        "timeout_seconds": 30
+      }
     }
   ],
   "tools": [
@@ -200,7 +229,8 @@
       "levels": [
         "declaration",
         "structural",
-        "registry"
+        "registry",
+        "executable"
       ]
     }
   ],
@@ -219,6 +249,11 @@
       "id": "promptbranch.state.application-registry",
       "path": "promptbranch_protocol/schemas/application.registry.schema.json",
       "schema": "promptbranch.ai.registry"
+    },
+    {
+      "id": "promptbranch.state.skill-run",
+      "path": "promptbranch_protocol/schemas/skillrun.evidence.schema.json",
+      "schema": "promptbranch.ai.skill_run"
     }
   ],
   "evidence_contracts": [
@@ -226,6 +261,11 @@
       "id": "promptbranch.evidence.test-report",
       "path": "promptbranch_test_report.py",
       "symbol": "build_test_report"
+    },
+    {
+      "id": "promptbranch.evidence.skill-run",
+      "path": "promptbranch_skillrun.py",
+      "symbol": "validate_skillrun_evidence"
     }
   ],
   "controllers": [

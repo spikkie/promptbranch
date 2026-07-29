@@ -14,6 +14,7 @@ This file defines the required release-validation groups for `pb test full` and 
 | `project_authority_behavioral_surface` | yes | Validate single-owner authority domains, runtime adopted-registry resolution, and the read-only instruction/skill/agent/tool/prompt inventory. | `python3 -m pytest -q tests/test_project_authority_graph.py tests/test_behavioral_surface.py` |
 | `application_architecture_structural` | yes | Validate the tracked PBAI-001 declaration, all ten non-empty architecture layers, delegation, bounded authority, and proof-level reporting. | `python3 -m pytest -q tests/test_promptbranch_application_architecture.py` |
 | `application_architecture_registry` | yes | Resolve the tracked PBAI-001 Agent, Skill, Tool, Validator, state, evidence, capability, and authority-controller registry without executing project code. | `python3 promptbranch_cli.py application architecture validate --repo-path . --level registry --json` |
+| `application_architecture_executable` | yes | Execute the sole tracked proof skill through MCP stdio with exact read-only tool order, bounded steps/time, and validated SkillRun evidence. | `python3 promptbranch_cli.py application architecture validate --repo-path . --level executable --json` |
 | `version_surface` | yes | Validate `VERSION`, `pyproject.toml`, and `promptbranch_version.py` consistency. | `python3 -m pytest -q tests/test_promptbranch_version.py` |
 | `artifact_json_contracts` | yes | Guard artifact adopt/current/baseline JSON contracts and external-repo reporting. | `python3 -m pytest -q tests/test_promptbranch_artifacts.py tests/test_promptbranch_cli.py -k "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status"` |
 | `repo_project_registry` | yes | Guard project-scoped repo registry behavior and repo doctor/list invariants. | `python3 -m pytest -q tests/test_promptbranch_project.py tests/test_promptbranch_repos.py` |
@@ -40,7 +41,7 @@ If a required group is missing or failed, release-control must treat the full-te
 ## Last updated
 
 ```text
-v0.1.113
+v0.1.114
 ```
 
 

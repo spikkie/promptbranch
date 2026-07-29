@@ -1,3 +1,7 @@
+## v0.1.114 PBAI-001 executable migration
+
+`v0.1.113` is accepted/current. `v0.1.114` requires declaration schema `1.2`, registry schema `1.1`, one explicit executable proof-skill contract, and the `promptbranch.ai.skill_run` evidence contract. There is no silent fallback for registry `1.0` or declaration `1.1` when executable proof is requested. Existing PB repositories must explicitly define a portable read-only proof skill or continue to report registry as their highest proven level. Executable validation may run bounded registered tools only after the operator explicitly requests `--level executable` or `architecture evidence`; it does not mutate repository, Project Source, release, publication, or adoption state. Operational proof remains unimplemented. The next planned slice after acceptance is `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.
+
 ## v0.1.113 PBAI-001 registry migration
 
 `v0.1.112` is accepted/current. `v0.1.113` requires declaration schema `1.1` and a tracked `.promptbranch/ai-registry.json`. No silent compatibility fallback is provided for schema `1.0` declarations. Existing PB repositories must explicitly enumerate their Agent, Skill, Tool, Validator, state, evidence, capability, and authority-controller references before registry proof can pass. Validation is read-only and does not change runtime registries, browser profiles, Project Sources, or adopted artifacts. After acceptance, the next planned slice is `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`.

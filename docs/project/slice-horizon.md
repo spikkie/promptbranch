@@ -4,10 +4,10 @@
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
-| v0.1.111.5.2 | Null-safe previous active-step ETA state | superseded | repair | accepted ETA corrective superseded as current by v0.1.112 |
-| v0.1.112 | PBAI-001 declaration and structural validation | accepted_current | normal | strict 10/10 validation, structural PBAI gate, adoption, and exact current identity verified |
-| v0.1.113 | PBAI-001 registry validation and reference resolution | active | normal | tracked registry, exact reference resolution, implementation binding, capability coverage, and bounded authority proof |
-| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | planned_after_acceptance | normal | ordered bounded execution and valid SkillRun evidence without operational proof |
+| v0.1.112 | PBAI-001 declaration and structural validation | superseded | normal | accepted structural proof superseded as current by v0.1.113 |
+| v0.1.113 | PBAI-001 registry validation and reference resolution | accepted_current | normal | strict 10/10 validation, registry proof, adoption, and exact current identity verified |
+| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | active | normal | ordered bounded read-only MCP execution and valid self-hashed SkillRun evidence |
+| v0.1.115 | PBAI-001 operational validation and lifecycle evidence | planned_after_acceptance | normal | real lifecycle, publication, adoption/current, and recovery proof |
 
 ## Repair horizon rule
 

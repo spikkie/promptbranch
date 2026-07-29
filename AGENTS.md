@@ -68,6 +68,9 @@ Required agent behavior:
 - run `pb application architecture validate --repo-path . --level structural --json` and `pb application architecture validate --repo-path . --level registry --json` before packaging;
 - fail closed on unknown fields, missing or empty layers, absolute paths, traversal, repeated cross-layer ownership, unsafe commands, delegation conflicts, or self-granted authority;
 - never execute project-local validation commands merely because they are declared;
-- read `.promptbranch/ai-registry.json`; fail closed on missing, duplicate, ambiguous, mismatched, or unbounded references; never claim executable or operational proof from registry evidence;
+- read `.promptbranch/ai-registry.json`; fail closed on missing, duplicate, ambiguous, mismatched, or unbounded references;
+- execute architecture proof only after an explicit executable/evidence request, only through the sole tracked proof skill, only with its exact registered read-only tool order and bounds;
+- validate the complete `promptbranch.ai.skill_run` record, per-step digests, run identity, and canonical evidence hash before reporting `proven_level=executable`;
+- never infer operational proof, mutation authority, Project Source authority, release authority, publication authority, or adoption authority from executable evidence;
 - keep domain modules dependent on Promptbranch generic runtime capabilities rather than duplicating them;
 - record explicit migration requirements for repositories without a declaration instead of adding silent fallback behavior.

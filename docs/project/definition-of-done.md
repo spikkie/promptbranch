@@ -864,3 +864,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-321 | Registered agent capabilities exactly cover declared ownership and every authority boundary resolves to one bounded controller | focused_candidate | capability and controller regressions | v0.1.113 |
 | DOD-322 | Registry validation is read-only, executes no declared command, reports registry as the highest proven level, and keeps executable/operational proof fail-closed | focused_candidate | CLI and no-execution tests | v0.1.113 |
 | DOD-323 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.113 |
+
+## v0.1.114 PBAI-001 executable validation and SkillRun evidence
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-324 | A sole tracked executable proof skill declares its request, exact ordered tools, validators, evidence contract, maximum steps, and timeout | focused_candidate | `.promptbranch/ai-registry.json`, schema `1.1`, parser regressions | v0.1.114 |
+| DOD-325 | Executable validation invokes the real Promptbranch MCP stdio boundary and permits only registered read-only tools in the declared order | focused_candidate | executable validator, source/clean-extraction proof, wrong-order tests | v0.1.114 |
+| DOD-326 | Every SkillRun includes typed application/skill identity, ordered step inputs/results, per-step SHA-256 digests, validator outcomes, safety boundaries, run ID, and canonical evidence SHA-256 | focused_candidate | `promptbranch_skillrun.py`, packaged schema, tamper tests | v0.1.114 |
+| DOD-327 | Failed tools, excessive steps, evidence tampering, missing validators, or mutation/authority flags fail closed at `proven_level=registry` | focused_candidate | negative executable and SkillRun regressions | v0.1.114 |
+| DOD-328 | Operational proof remains unimplemented and cannot be inferred from executable evidence | focused_candidate | operational fail-closed test and CLI result | v0.1.114 |
+| DOD-329 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114 |

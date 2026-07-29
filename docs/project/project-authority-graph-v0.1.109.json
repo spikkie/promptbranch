@@ -1,7 +1,7 @@
 {
   "schema": "promptbranch.project.authority_graph",
   "schema_version": "1.0",
-  "graph_version": "v0.1.113",
+  "graph_version": "v0.1.114",
   "repo_id": "chatgpt_claudecode_workflow-2",
   "validation_mode": "read_only",
   "default_conflict_policy": "fail_closed",

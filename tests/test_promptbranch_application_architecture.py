@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import promptbranch_application_architecture as architecture
 from promptbranch_application_architecture import (
     ApplicationArchitectureError,
     GENERIC_RUNTIME_CAPABILITIES,
@@ -31,11 +32,11 @@ def _base_declaration(*, kind: str = "runtime_application") -> dict:
     owned = list(GENERIC_RUNTIME_CAPABILITIES) if kind == "runtime_application" else ["domain_assessment"]
     return {
         "schema": "promptbranch.ai.application",
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "application": {"id": app_id, "kind": kind},
         "version_authority": {"path": "VERSION", "format": "plain", "sole": True},
         "runtime": {"provider": provider, "contract_version": "1.0"},
-        "registry": {"path": ".promptbranch/ai-registry.json", "schema": "promptbranch.ai.registry", "schema_version": "1.0"},
+        "registry": {"path": ".promptbranch/ai-registry.json", "schema": "promptbranch.ai.registry", "schema_version": "1.1"},
         "layers": {
             "instructions_policy": ["PROJECT_SETTINGS.md"],
             "runtime_actors": ["agent.py"],
@@ -64,6 +65,7 @@ def _base_declaration(*, kind: str = "runtime_application") -> dict:
             "commands": [
                 {"id": "structural", "level": "structural", "argv": ["python3", "-m", "pytest", "-q"], "cwd": ".", "timeout_seconds": 60},
                 {"id": "registry", "level": "registry", "argv": ["python3", "-m", "pytest", "-q"], "cwd": ".", "timeout_seconds": 60},
+                {"id": "executable", "level": "executable", "argv": ["python3", "-m", "pytest", "-q"], "cwd": ".", "timeout_seconds": 60},
             ]
         },
     }
@@ -75,7 +77,7 @@ def _base_registry(declaration: dict) -> dict:
     capabilities = list(declaration["delegation"]["owned_capabilities"])
     return {
         "schema": "promptbranch.ai.registry",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "application_id": app_id,
         "runtime_provider": provider,
         "agents": [{
@@ -87,13 +89,22 @@ def _base_registry(declaration: dict) -> dict:
         "skills": [{
             "id": f"{app_id}.skill.inspect", "path": ".promptbranch/skills/inspect/SKILL.md", "name": "inspect",
             "tools": ["filesystem.read"], "validators": [f"{app_id}.validator.main"],
+            "execution": {
+                "proof": True,
+                "request": "Inspect the sample repository.",
+                "ordered_tools": ["filesystem.read"],
+                "validators": [f"{app_id}.validator.main"],
+                "evidence_contract": f"{app_id}.evidence.main",
+                "max_steps": 1,
+                "timeout_seconds": 10,
+            },
         }],
         "tools": [{
             "id": "filesystem.read", "provider": provider, "path": "tools.py", "collection": "READ_ONLY_MCP_TOOLS",
             "risk": "read", "read_only": True,
         }],
         "validators": [{
-            "id": f"{app_id}.validator.main", "path": "validator.py", "symbol": "validate", "levels": ["structural", "registry"],
+            "id": f"{app_id}.validator.main", "path": "validator.py", "symbol": "validate", "levels": ["structural", "registry", "executable"],
         }],
         "state_contracts": [{
             "id": f"{app_id}.state.main", "path": "schemas/state.schema.json", "schema": f"{app_id}.state",
@@ -164,12 +175,12 @@ def test_promptbranch_runtime_passes_structural_and_registry_validation() -> Non
     assert registry["ok"] is True, registry.get("errors")
     assert registry["status"] == "registry_validated"
     assert registry["proven_level"] == "registry"
-    assert registry["max_supported_level"] == "registry"
+    assert registry["max_supported_level"] == "executable"
     assert registry["registry"]["reference_resolution"] == "complete"
     assert registry["registry"]["authority_resolution"] == "bounded"
     assert registry["registry"]["counts"] == {
-        "agents": 1, "skills": 2, "tools": 10, "validators": 4,
-        "state_contracts": 3, "evidence_contracts": 1, "controllers": 4,
+        "agents": 1, "skills": 3, "tools": 10, "validators": 4,
+        "state_contracts": 4, "evidence_contracts": 2, "controllers": 4,
     }
     assert registry["safety"]["commands_executed"] is False
     assert registry["safety"]["adoption_authority_granted"] is False
@@ -180,8 +191,8 @@ def test_schemas_and_tracked_files_are_strict() -> None:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     arch_schema = json.loads(ARCH_SCHEMA.read_text(encoding="utf-8"))
     registry_schema = json.loads(REGISTRY_SCHEMA.read_text(encoding="utf-8"))
-    assert declaration["schema_version"] == "1.1"
-    assert declaration["registry"] == {"path": ".promptbranch/ai-registry.json", "schema": "promptbranch.ai.registry", "schema_version": "1.0"}
+    assert declaration["schema_version"] == "1.2"
+    assert declaration["registry"] == {"path": ".promptbranch/ai-registry.json", "schema": "promptbranch.ai.registry", "schema_version": "1.1"}
     assert registry["schema"] == "promptbranch.ai.registry"
     assert arch_schema["additionalProperties"] is False
     assert arch_schema["properties"]["registry"]["additionalProperties"] is False
@@ -194,7 +205,7 @@ def test_plan_is_read_only_and_plans_registry_without_overclaiming() -> None:
     assert payload["status"] == "planned_read_only"
     assert payload["requested_level"] == "registry"
     assert payload["proven_level"] == "declaration"
-    assert payload["max_supported_level"] == "registry"
+    assert payload["max_supported_level"] == "executable"
     assert payload["declaration"]["registry"]["path"] == ".promptbranch/ai-registry.json"
     assert payload["safety"]["commands_executed"] is False
 
@@ -388,13 +399,56 @@ def test_validation_commands_require_structural_and_registry_levels(tmp_path: Pa
         load_application_declaration(repo)
 
 
-def test_executable_and_operational_fail_closed_at_proven_registry() -> None:
-    for level in ("executable", "operational"):
-        result = validate_application_architecture(ROOT, level=level)
-        assert result["ok"] is False
-        assert result["status"] == "validation_level_not_implemented"
-        assert result["proven_level"] == "registry"
-        assert result["max_supported_level"] == "registry"
+def test_operational_fails_closed_at_proven_executable(monkeypatch) -> None:
+    monkeypatch.setattr(architecture, "_execute_registered_skill", _fake_skill_run)
+    result = validate_application_architecture(ROOT, level="operational")
+    assert result["ok"] is False
+    assert result["status"] == "validation_level_not_implemented"
+    assert result["proven_level"] == "executable"
+    assert result["max_supported_level"] == "executable"
+
+
+def _fake_skill_run(repo: Path, skill: dict, *, profile_dir=None) -> dict:
+    del repo, profile_dir
+    plan = [{"name": tool, "arguments": {"path": "VERSION"} if tool == "filesystem.read" else {}} for tool in skill["execution"]["ordered_tools"]]
+    return {
+        "ok": True,
+        "action": "agent_run",
+        "status": "verified",
+        "mode": "promptbranch_native_host",
+        "planner": f"skill:{skill['name']}",
+        "plan": plan,
+        "results": [{"ok": True, "tool": item["name"], "result": {"ok": True}} for item in plan],
+        "skill_validation": {"ok": True},
+        "safety": {"mcp_transport": "stdio", "mutation_performed": False},
+    }
+
+
+def test_executable_validation_emits_valid_skillrun(monkeypatch, tmp_path: Path) -> None:
+    repo, _, _ = _write_repo(tmp_path)
+    monkeypatch.setattr(architecture, "_execute_registered_skill", _fake_skill_run)
+    result = validate_application_architecture(repo, level="executable")
+    assert result["ok"] is True, result.get("errors")
+    assert result["status"] == "executable_validated"
+    assert result["proven_level"] == "executable"
+    executable = result["executable"]
+    assert executable["evidence_validation"]["status"] == "skillrun_validated"
+    assert executable["evidence"]["execution"]["ordered_tools"] == ["filesystem.read"]
+    assert executable["safety"]["state_mutated"] is False
+
+
+def test_executable_rejects_wrong_order_and_tampered_evidence(monkeypatch, tmp_path: Path) -> None:
+    repo, _, _ = _write_repo(tmp_path)
+    def wrong(repo: Path, skill: dict, *, profile_dir=None) -> dict:
+        payload = _fake_skill_run(repo, skill, profile_dir=profile_dir)
+        payload["plan"] = [{"name": "git.status", "arguments": {}}]
+        payload["results"] = [{"ok": True, "tool": "git.status", "result": {"ok": True}}]
+        return payload
+    monkeypatch.setattr(architecture, "_execute_registered_skill", wrong)
+    result = validate_application_architecture(repo, level="executable")
+    assert result["ok"] is False
+    assert result["proven_level"] == "registry"
+    assert any("tool order" in error for error in result["errors"])
 
 
 def test_validation_is_read_only_and_executes_no_declared_commands(tmp_path: Path) -> None:

@@ -1133,3 +1133,12 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Failure policy:** missing/ambiguous IDs, mismatched Skill or MCP manifests, unresolved symbols/contracts, incomplete capability ownership, and unbounded authority fail closed at structural proof.
 - **Ticket state:** PBAI-001 remains `in_progress`; executable, operational, templates, migrations, and domain-module proof remain open.
 - **Next:** after acceptance, open `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`.
+
+## Decision — v0.1.114 executable proof uses one portable read-only skill
+
+- **Decision:** PBAI-001 executable proof is provided by `promptbranch.skill.application-architecture-proof`, not by a Git-dependent inspection skill.
+- **Reason:** source trees, clean ZIP extractions, and installed package validation must execute the same proof even when the extraction directory is not a Git worktree.
+- **Contract:** the proof executes exactly `filesystem.read` then `filesystem.list` through MCP stdio, with two steps maximum and a 30-second per-call bound.
+- **Evidence:** `promptbranch.ai.skill_run` version `1.0` records full step results plus argument/result digests and a canonical evidence hash.
+- **Authority:** executable proof grants no mutation, release, publication, or adoption authority.
+- **Next:** after acceptance, open `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.

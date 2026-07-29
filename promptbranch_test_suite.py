@@ -358,6 +358,21 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "--json",
         ),
     },
+    "application_architecture_executable": {
+        "required": True,
+        "description": "PBAI-001 bounded skill execution through MCP stdio with validated SkillRun evidence.",
+        "command": _release_validation_command(
+            "promptbranch_cli.py",
+            "application",
+            "architecture",
+            "validate",
+            "--repo-path",
+            ".",
+            "--level",
+            "executable",
+            "--json",
+        ),
+    },
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",

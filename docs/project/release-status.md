@@ -1,40 +1,40 @@
 # Release Status
 
-<!-- v0.1.113 current control-surface header -->
-- Accepted/current version: `v0.1.112`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
-- Active candidate version: `v0.1.113`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Next normal version: `v0.1.113`
-- Next normal slice: `v0.1.113 — PBAI-001 registry validation and reference resolution`
-- Next planned version after acceptance: `v0.1.114`
-- Next planned slice after acceptance: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+<!-- v0.1.114 current control-surface header -->
+- Accepted/current version: `v0.1.113`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
+- Active candidate version: `v0.1.114`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.zip`
+- Next normal version: `v0.1.114`
+- Next normal slice: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
+- Next planned version after acceptance: `v0.1.115`
+- Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
-## v0.1.113 normal candidate
+## v0.1.114 normal candidate
 
-- Baseline `v0.1.112` is adopted/current after strict 10/10 validation and structural PBAI proof.
-- The candidate adds the tracked AI object registry, strict registry schema/parser, exact reference resolver, CLI proof level, and required release gate.
-- Registry validation statically verifies implementation symbols and authoritative tool/skill contracts without importing or executing project code.
-- Unsupported executable and operational proof levels fail closed while reporting registry as the highest proven level.
+- Baseline `v0.1.113` is adopted/current after strict 10/10 validation and structural plus registry PBAI proof.
+- The candidate adds bounded executable validation, a tracked proof skill, typed SkillRun evidence, canonical evidence hashing, CLI evidence output, and a required release gate.
+- The proof executes two repository-bounded read-only MCP tools in exact order.
+- Operational proof remains fail-closed and unimplemented.
 - PBAI-001 remains `in_progress`.
 
 ## Current baseline
 
 ```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.112.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.113.zip
-active candidate version: v0.1.113
-active normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
-next planned slice after acceptance: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.113.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
+active candidate version: v0.1.114
+active normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+next planned slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
 
 ## Current authority result
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
-| v0.1.112 | normal | PBAI-001 declaration and structural validation | accepted_current | strict host validation 10/10; structural group 18/18; release_adopted_and_verified | accepted baseline |
-| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | candidate | focused and packaged-byte registry validation required; strict host release pending | adopt only after registry gate, full transports, live evidence, and exact identity verification |
-| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | planned | not started | begin only after v0.1.113 acceptance |
+| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | accepted_current | strict host validation 10/10; structural and registry gates; release_adopted_and_verified | accepted baseline |
+| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | candidate | source and packaged executable proof required; strict host release pending | adopt only after executable gate, full transports, live evidence, and exact identity verification |
+| v0.1.115 | normal | PBAI-001 operational validation and lifecycle evidence | planned | not started | begin only after v0.1.114 acceptance |
 
 ## ZIP status values
 

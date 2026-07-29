@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from promptbranch_skillrun import build_skillrun_evidence, utc_now, validate_skillrun_evidence
+
 SCHEMA = "promptbranch.ai.application"
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 DEFAULT_DECLARATION = ".promptbranch-ai.json"
-SUPPORTED_LEVELS = ("declaration", "structural", "registry")
+SUPPORTED_LEVELS = ("declaration", "structural", "registry", "executable")
 KNOWN_LEVELS = ("declaration", "structural", "registry", "executable", "operational")
 APPLICATION_KINDS = {"runtime_application", "domain_module"}
 VERSION_FORMATS = {"plain", "python", "toml"}
@@ -168,7 +173,7 @@ def _validate_command(command: object, index: int) -> dict[str, Any]:
     level = _non_empty_string(obj["level"], f"{label}.level")
     if level not in SUPPORTED_LEVELS:
         raise ApplicationArchitectureError(
-            f"{label}.level must be declaration, structural, or registry"
+            f"{label}.level must be declaration, structural, registry, or executable"
         )
     argv = _string_list(obj["argv"], f"{label}.argv")
     executable = Path(argv[0]).name.lower()
@@ -280,9 +285,9 @@ def load_application_declaration(
         raise ApplicationArchitectureError(
             "registry.schema must be promptbranch.ai.registry"
         )
-    if registry["schema_version"] != "1.0":
+    if registry["schema_version"] != "1.1":
         raise ApplicationArchitectureError(
-            "registry.schema_version must be 1.0"
+            "registry.schema_version must be 1.1"
         )
 
     layers = _require_object(root["layers"], "layers")
@@ -422,6 +427,10 @@ def load_application_declaration(
         raise ApplicationArchitectureError(
             "validation.commands must include at least one registry command"
         )
+    if "executable" not in command_levels:
+        raise ApplicationArchitectureError(
+            "validation.commands must include at least one executable command"
+        )
 
     normalized = {
         "schema": SCHEMA,
@@ -436,7 +445,7 @@ def load_application_declaration(
         "registry": {
             "path": registry_path,
             "schema": "promptbranch.ai.registry",
-            "schema_version": "1.0",
+            "schema_version": "1.1",
         },
         "layers": normalized_layers,
         "delegation": {
@@ -516,7 +525,7 @@ def plan_application_architecture(
         "declaration": _declaration_summary(declaration),
         "requested_level": "registry",
         "proven_level": "declaration",
-        "max_supported_level": "registry",
+        "max_supported_level": "executable",
         "layer_plan": layer_plan,
         "delegation": declaration["delegation"],
         "authority": declaration["authority"],
@@ -687,22 +696,22 @@ def _load_application_registry(repo: Path, declaration: dict[str, Any]) -> dict[
         raise ApplicationArchitectureError("application registry.runtime_provider does not match declaration")
 
     specs = {
-        "agents": ({"id", "path", "symbol", "capabilities", "skills", "tools", "validators", "state_contracts", "evidence_contracts"}, "runtime_actors"),
-        "skills": ({"id", "path", "name", "tools", "validators"}, "skills"),
-        "tools": ({"id", "provider", "path", "collection", "risk", "read_only"}, "tools"),
-        "validators": ({"id", "path", "symbol", "levels"}, "validators"),
-        "state_contracts": ({"id", "path", "schema"}, "state_contracts"),
-        "evidence_contracts": ({"id", "path", "symbol"}, "evidence_records"),
-        "controllers": ({"id", "path", "symbol", "boundaries"}, None),
+        "agents": ({"id", "path", "symbol", "capabilities", "skills", "tools", "validators", "state_contracts", "evidence_contracts"}, {"id", "path", "symbol", "capabilities", "skills", "tools", "validators", "state_contracts", "evidence_contracts"}, "runtime_actors"),
+        "skills": ({"id", "path", "name", "tools", "validators"}, {"id", "path", "name", "tools", "validators", "execution"}, "skills"),
+        "tools": ({"id", "provider", "path", "collection", "risk", "read_only"}, {"id", "provider", "path", "collection", "risk", "read_only"}, "tools"),
+        "validators": ({"id", "path", "symbol", "levels"}, {"id", "path", "symbol", "levels"}, "validators"),
+        "state_contracts": ({"id", "path", "schema"}, {"id", "path", "schema"}, "state_contracts"),
+        "evidence_contracts": ({"id", "path", "symbol"}, {"id", "path", "symbol"}, "evidence_records"),
+        "controllers": ({"id", "path", "symbol", "boundaries"}, {"id", "path", "symbol", "boundaries"}, None),
     }
     normalized: dict[str, list[dict[str, Any]]] = {}
     all_ids: dict[str, str] = {}
-    for kind, (keys, layer) in specs.items():
+    for kind, (required_keys, allowed_keys, layer) in specs.items():
         entries = _registry_list(registry[kind], f"application registry.{kind}")
         normalized[kind] = []
         for index, raw in enumerate(entries):
             label = f"application registry.{kind}[{index}]"
-            _require_exact_keys(raw, keys, keys, label)
+            _require_exact_keys(raw, required_keys, allowed_keys, label)
             item = dict(raw)
             item["id"] = _registry_id(item["id"], f"{label}.id")
             if item["id"] in all_ids:
@@ -721,6 +730,33 @@ def _load_application_registry(repo: Path, declaration: dict[str, Any]) -> dict[
                 raise ApplicationArchitectureError(
                     f"{label}.path is not owned by a declared controller-capable layer: {item['path']}"
                 )
+            if kind == "skills" and "execution" in item:
+                execution = _require_object(item["execution"], f"{label}.execution")
+                execution_keys = {"proof", "request", "ordered_tools", "validators", "evidence_contract", "max_steps", "timeout_seconds"}
+                _require_exact_keys(execution, execution_keys, execution_keys, f"{label}.execution")
+                if execution["proof"] is not True:
+                    raise ApplicationArchitectureError(f"{label}.execution.proof must be true")
+                request = _non_empty_string(execution["request"], f"{label}.execution.request")
+                ordered_tools = _string_list(execution["ordered_tools"], f"{label}.execution.ordered_tools")
+                validators = _string_list(execution["validators"], f"{label}.execution.validators")
+                evidence_contract = _registry_id(execution["evidence_contract"], f"{label}.execution.evidence_contract")
+                max_steps = execution["max_steps"]
+                timeout_seconds = execution["timeout_seconds"]
+                if isinstance(max_steps, bool) or not isinstance(max_steps, int) or max_steps <= 0 or max_steps > 100:
+                    raise ApplicationArchitectureError(f"{label}.execution.max_steps must satisfy 0 < max_steps <= 100")
+                if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or timeout_seconds <= 0 or timeout_seconds > 300:
+                    raise ApplicationArchitectureError(f"{label}.execution.timeout_seconds must satisfy 0 < timeout_seconds <= 300")
+                if len(ordered_tools) > max_steps:
+                    raise ApplicationArchitectureError(f"{label}.execution.ordered_tools exceeds max_steps")
+                item["execution"] = {
+                    "proof": True,
+                    "request": request,
+                    "ordered_tools": ordered_tools,
+                    "validators": validators,
+                    "evidence_contract": evidence_contract,
+                    "max_steps": max_steps,
+                    "timeout_seconds": timeout_seconds,
+                }
             normalized[kind].append(item)
     normalized["_path"] = registry_rel  # type: ignore[assignment]
     normalized["_application_id"] = application_id  # type: ignore[assignment]
@@ -809,7 +845,25 @@ def _validate_application_registry(repo: Path, declaration: dict[str, Any]) -> d
         front_tools = frontmatter.get("allowed_tools") if isinstance(frontmatter.get("allowed_tools"), list) else []
         if tools and tools != front_tools:
             errors.append(f"{owner}.tools do not exactly match SKILL.md allowed_tools")
-        require_refs(owner, skill["validators"], "validators")
+        skill_validators = require_refs(owner, skill["validators"], "validators")
+        execution = skill.get("execution") if isinstance(skill.get("execution"), dict) else None
+        if execution:
+            execution_tools = require_refs(f"{owner}.execution", execution["ordered_tools"], "tools")
+            execution_validators = require_refs(f"{owner}.execution", execution["validators"], "validators")
+            evidence_ref = execution["evidence_contract"]
+            if evidence_ref not in indexes["evidence_contracts"]:
+                errors.append(f"{owner}.execution.evidence_contract does not resolve: {evidence_ref}")
+            if execution_tools != tools:
+                errors.append(f"{owner}.execution.ordered_tools must exactly match the skill tool order")
+            if execution_validators != skill_validators:
+                errors.append(f"{owner}.execution.validators must exactly match the skill validators")
+            non_read_only = [tool_id for tool_id in execution_tools if not bool(indexes["tools"].get(tool_id, {}).get("read_only"))]
+            if non_read_only:
+                errors.append(f"{owner}.execution proof may use only read-only tools: {', '.join(non_read_only)}")
+
+    proof_skills = [skill for skill in registry["skills"] if isinstance(skill.get("execution"), dict) and skill["execution"].get("proof") is True]
+    if len(proof_skills) != 1:
+        errors.append("application registry must define exactly one executable proof skill")
 
     tool_paths = {item["path"] for item in registry["tools"]}
     if len(tool_paths) != 1:
@@ -905,6 +959,12 @@ def _validate_application_registry(repo: Path, declaration: dict[str, Any]) -> d
             errors.append(f"application registry contains unreferenced {kind}: {', '.join(orphaned)}")
     if not any("registry" in validator.get("levels", []) for validator in registry["validators"]):
         errors.append("application registry must include at least one registry-level validator")
+    if not any("executable" in validator.get("levels", []) for validator in registry["validators"]):
+        errors.append("application registry must include at least one executable-level validator")
+    if proof_skills:
+        evidence_ref = proof_skills[0]["execution"]["evidence_contract"]
+        if evidence_ref not in referenced["evidence_contracts"]:
+            referenced["evidence_contracts"].add(evidence_ref)
 
     return {
         "ok": not errors,
@@ -917,16 +977,182 @@ def _validate_application_registry(repo: Path, declaration: dict[str, Any]) -> d
         "resolved_ids": {kind: sorted(indexes[kind]) for kind in indexes},
         "reference_resolution": "complete" if not errors else "failed",
         "authority_resolution": "bounded" if not errors else "failed",
+        "executable_proof_skill": proof_skills[0]["id"] if len(proof_skills) == 1 else None,
         "error_count": len(errors),
         "errors": errors,
     }
 
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _execute_registered_skill(
+    repo: Path,
+    skill: dict[str, Any],
+    *,
+    profile_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    from promptbranch_mcp import agent_run
+
+    execution = skill["execution"]
+    installed = shutil.which("promptbranch") or shutil.which("pb")
+    launcher_path: Path | None = None
+    command = installed
+    if command is None:
+        handle = tempfile.NamedTemporaryFile("w", prefix="promptbranch-executable-proof-", suffix=".py", delete=False)
+        launcher_path = Path(handle.name)
+        handle.write(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            f"sys.path.insert(0, {str(repo)!r})\n"
+            "from promptbranch_cli import main\n"
+            "raise SystemExit(main())\n"
+        )
+        handle.close()
+        launcher_path.chmod(0o700)
+        command = str(launcher_path)
+    try:
+        return agent_run(
+            execution["request"],
+            repo_path=repo,
+            profile_dir=profile_dir,
+            skill=skill["name"],
+            proposal_mode="deterministic",
+            command=command,
+            mcp_timeout_seconds=float(execution["timeout_seconds"]),
+        )
+    finally:
+        if launcher_path is not None:
+            launcher_path.unlink(missing_ok=True)
+
+
+def _validate_executable_architecture(
+    repo: Path,
+    declaration: dict[str, Any],
+    registry_payload: dict[str, Any],
+    *,
+    profile_dir: str | Path | None = None,
+    proof_skill: str | None = None,
+) -> dict[str, Any]:
+    if not registry_payload.get("ok"):
+        return {
+            "ok": False,
+            "status": "executable_blocked_by_registry",
+            "proven_level": "structural",
+            "errors": list(registry_payload.get("errors") or []),
+        }
+    registry = _load_application_registry(repo, declaration)
+    proof_skills = [
+        skill for skill in registry["skills"]
+        if isinstance(skill.get("execution"), dict) and skill["execution"].get("proof") is True
+    ]
+    if proof_skill:
+        proof_skills = [skill for skill in proof_skills if skill["id"] == proof_skill or skill["name"] == proof_skill]
+    if len(proof_skills) != 1:
+        return {
+            "ok": False,
+            "status": "executable_contract_invalid",
+            "proven_level": "registry",
+            "errors": ["exactly one executable proof skill must be selected"],
+        }
+    skill = dict(proof_skills[0])
+    skill["path_sha256"] = _sha256_file(repo / skill["path"])
+    started_at = utc_now()
+    run = _execute_registered_skill(repo, skill, profile_dir=profile_dir)
+    finished_at = utc_now()
+    evidence = build_skillrun_evidence(
+        application_id=declaration["application"]["id"],
+        runtime_provider=declaration["runtime"]["provider"],
+        application_version=declaration["_version"],
+        skill=skill,
+        request=skill["execution"]["request"],
+        run=run,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    evidence_validation = validate_skillrun_evidence(
+        evidence,
+        expected_skill=skill,
+        allowed_tools=skill["execution"]["ordered_tools"],
+        max_steps=skill["execution"]["max_steps"],
+    )
+    errors: list[str] = []
+    if not run.get("ok"):
+        errors.append(f"registered skill execution failed: {run.get('status')}")
+    actual_order = [str(item.get("name") or "") for item in run.get("plan", []) if isinstance(item, dict)]
+    if actual_order != skill["execution"]["ordered_tools"]:
+        errors.append("executed tool order does not match registry contract")
+    if len(actual_order) > skill["execution"]["max_steps"]:
+        errors.append("executed step count exceeds registry max_steps")
+    if not evidence_validation.get("ok"):
+        errors.extend(evidence_validation.get("errors") or [])
+    return {
+        "ok": not errors,
+        "status": "executable_validated" if not errors else "executable_invalid",
+        "proven_level": "executable" if not errors else "registry",
+        "proof_skill": {
+            "id": skill["id"],
+            "name": skill["name"],
+            "path": skill["path"],
+            "path_sha256": skill["path_sha256"],
+            "ordered_tools": skill["execution"]["ordered_tools"],
+            "max_steps": skill["execution"]["max_steps"],
+            "timeout_seconds": skill["execution"]["timeout_seconds"],
+        },
+        "run": run,
+        "evidence": evidence,
+        "evidence_validation": evidence_validation,
+        "error_count": len(errors),
+        "errors": errors,
+        "safety": {
+            "bounded": True,
+            "read_only_tools_only": True,
+            "mcp_transport": "stdio",
+            "commands_executed": True,
+            "state_mutated": False,
+            "release_authority_granted": False,
+            "publication_authority_granted": False,
+            "adoption_authority_granted": False,
+        },
+    }
+
+
+def build_application_architecture_evidence(
+    repo_path: str | Path = ".",
+    config: str = DEFAULT_DECLARATION,
+    *,
+    profile_dir: str | Path | None = None,
+    proof_skill: str | None = None,
+) -> dict[str, Any]:
+    result = validate_application_architecture(
+        repo_path,
+        config,
+        level="executable",
+        profile_dir=profile_dir,
+        proof_skill=proof_skill,
+    )
+    return {
+        "ok": bool(result.get("ok")),
+        "action": "application_architecture_evidence",
+        "status": "skillrun_evidence_validated" if result.get("ok") else result.get("status"),
+        "repo_path": str(Path(repo_path).expanduser().resolve()),
+        "proven_level": result.get("proven_level", "none"),
+        "proof_skill": (result.get("executable") or {}).get("proof_skill") if isinstance(result.get("executable"), dict) else None,
+        "evidence": (result.get("executable") or {}).get("evidence") if isinstance(result.get("executable"), dict) else None,
+        "evidence_validation": (result.get("executable") or {}).get("evidence_validation") if isinstance(result.get("executable"), dict) else None,
+        "errors": list(result.get("errors") or []),
+        "safety": (result.get("executable") or {}).get("safety") if isinstance(result.get("executable"), dict) else result.get("safety"),
+    }
 
 def validate_application_architecture(
     repo_path: str | Path = ".",
     config: str = DEFAULT_DECLARATION,
     *,
     level: str = "registry",
+    profile_dir: str | Path | None = None,
+    proof_skill: str | None = None,
 ) -> dict[str, Any]:
     repo = Path(repo_path).expanduser().resolve()
     requested_level = str(level or "registry").strip().lower()
@@ -934,7 +1160,7 @@ def validate_application_architecture(
         "action": "application_architecture_validate",
         "repo_path": str(repo),
         "requested_level": requested_level,
-        "max_supported_level": "registry",
+        "max_supported_level": "executable",
     }
     if requested_level not in KNOWN_LEVELS:
         return {
@@ -1039,27 +1265,48 @@ def validate_application_architecture(
             "reference_resolution": "failed",
             "authority_resolution": "failed",
         }
-    if requested_level not in SUPPORTED_LEVELS:
+    if requested_level == "registry":
         return {
             **base,
-            "ok": False,
-            "status": "validation_level_not_implemented",
+            "ok": bool(registry["ok"]),
+            "status": "registry_validated" if registry["ok"] else "registry_invalid",
             "proven_level": "registry" if registry["ok"] else "structural",
             "registry": registry,
             "error_count": int(registry.get("error_count") or 0),
-            "errors": [
-                f"{requested_level} validation is not implemented; highest supported level is registry",
-                *list(registry.get("errors") or []),
-            ],
+            "errors": list(registry.get("errors") or []),
+        }
+    executable = _validate_executable_architecture(
+        repo,
+        declaration,
+        registry,
+        profile_dir=profile_dir,
+        proof_skill=proof_skill,
+    )
+    if requested_level == "executable":
+        return {
+            **base,
+            "ok": bool(executable["ok"]),
+            "status": executable["status"],
+            "proven_level": executable["proven_level"],
+            "registry": registry,
+            "executable": executable,
+            "error_count": int(executable.get("error_count") or 0),
+            "errors": list(executable.get("errors") or []),
+            "safety": executable.get("safety", base["safety"]),
         }
     return {
         **base,
-        "ok": bool(registry["ok"]),
-        "status": "registry_validated" if registry["ok"] else "registry_invalid",
-        "proven_level": "registry" if registry["ok"] else "structural",
+        "ok": False,
+        "status": "validation_level_not_implemented",
+        "proven_level": "executable" if executable["ok"] else executable["proven_level"],
         "registry": registry,
-        "error_count": int(registry.get("error_count") or 0),
-        "errors": list(registry.get("errors") or []),
+        "executable": executable,
+        "error_count": int(executable.get("error_count") or 0),
+        "errors": [
+            f"{requested_level} validation is not implemented; highest supported level is executable",
+            *list(executable.get("errors") or []),
+        ],
+        "safety": executable.get("safety", base["safety"]),
     }
 
 
@@ -1072,6 +1319,7 @@ __all__ = [
     "SCHEMA",
     "SCHEMA_VERSION",
     "SUPPORTED_LEVELS",
+    "build_application_architecture_evidence",
     "load_application_declaration",
     "plan_application_architecture",
     "validate_application_architecture",

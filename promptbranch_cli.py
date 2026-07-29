@@ -76,6 +76,7 @@ from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
 from promptbranch_application_architecture import (
     ApplicationArchitectureError,
     KNOWN_LEVELS as APPLICATION_ARCHITECTURE_LEVELS,
+    build_application_architecture_evidence,
     plan_application_architecture,
     validate_application_architecture,
 )
@@ -18443,6 +18444,15 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
                 repo,
                 config,
                 level=getattr(args, "level", "structural"),
+                profile_dir=getattr(args, "profile_dir", None),
+                proof_skill=getattr(args, "skill", None),
+            )
+        elif args.application_architecture_command == "evidence":
+            payload = build_application_architecture_evidence(
+                repo,
+                config,
+                profile_dir=getattr(args, "profile_dir", None),
+                proof_skill=getattr(args, "skill", None),
             )
         else:
             raise RuntimeError(
@@ -18456,7 +18466,7 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
             "repo_path": str(repo),
             "requested_level": getattr(args, "level", None),
             "proven_level": "none",
-            "max_supported_level": "registry",
+            "max_supported_level": "executable",
             "errors": [str(exc)],
             "safety": {"read_only": True, "state_mutated": False},
         }
@@ -24938,8 +24948,14 @@ def make_parser() -> argparse.ArgumentParser:
     application_architecture_validate = application_architecture_subparsers.add_parser("validate", help="Validate the tracked AI application declaration at the requested proof level.")
     application_architecture_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     application_architecture_validate.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
-    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="registry", help="Requested proof level. v0.1.113 implements declaration, structural, and registry validation.")
+    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="executable", help="Requested proof level. v0.1.114 implements declaration, structural, registry, and executable validation.")
+    application_architecture_validate.add_argument("--skill", help="Optional executable proof skill id or name. Defaults to the sole tracked proof skill.")
     application_architecture_validate.add_argument("--json", action="store_true")
+    application_architecture_evidence = application_architecture_subparsers.add_parser("evidence", help="Execute the bounded tracked proof skill and emit validated SkillRun evidence.")
+    application_architecture_evidence.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
+    application_architecture_evidence.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
+    application_architecture_evidence.add_argument("--skill", help="Optional executable proof skill id or name. Defaults to the sole tracked proof skill.")
+    application_architecture_evidence.add_argument("--json", action="store_true")
 
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
     project_subparsers = project.add_subparsers(dest="project_command", required=True)

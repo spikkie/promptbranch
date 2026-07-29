@@ -21,7 +21,7 @@
       "const": "promptbranch.ai.application"
     },
     "schema_version": {
-      "const": "1.1"
+      "const": "1.2"
     },
     "application": {
       "type": "object",
@@ -104,7 +104,7 @@
           "const": "promptbranch.ai.registry"
         },
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         }
       }
     },
@@ -245,7 +245,8 @@
                 "enum": [
                   "declaration",
                   "structural",
-                  "registry"
+                  "registry",
+                  "executable"
                 ]
               },
               "argv": {

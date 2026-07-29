@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
-  "accepted_current_version": "v0.1.112",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
-  "active_candidate_version": "v0.1.113",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
+  "accepted_current_version": "v0.1.113",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
+  "active_candidate_version": "v0.1.114",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
+  "active_slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -349,9 +349,16 @@
       "status": "candidate",
       "validation": "Source-tree and clean-extraction corrective surfaces passed 299 tests each; compileall, shell syntax, control surface, authority graph, behavioural surface, Artifact Guardian, and installed package contract planning passed. Strict host release validation remains pending.",
       "created_at": "2026-07-29T09:02:00+02:00"
+    },
+    {
+      "version": "v0.1.114",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
+      "slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
+      "status": "candidate",
+      "created_at": "2026-07-29T15:37:00+02:00"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -757,16 +764,16 @@
       "created_at": "2026-07-29T09:02:00+02:00"
     }
   ],
-  "last_completed_normal_slice": "v0.1.112 \u2014 PBAI-001 declaration and structural validation",
-  "last_completed_normal_slice_version": "v0.1.112",
+  "last_completed_normal_slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
+  "last_completed_normal_slice_version": "v0.1.113",
   "last_completed_repair": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
   "last_completed_repair_version": "v0.1.111.5.2",
   "last_updated": "2026-07-29T10:15:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
-  "next_normal_slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
-  "next_normal_version": "v0.1.113",
-  "next_planned_slice_after_acceptance": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
-  "next_planned_version_after_acceptance": "v0.1.114",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
+  "next_normal_slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
+  "next_normal_version": "v0.1.114",
+  "next_planned_slice_after_acceptance": "v0.1.115 \u2014 PBAI-001 operational validation and lifecycle evidence",
+  "next_planned_version_after_acceptance": "v0.1.115",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1678,38 +1685,38 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.111.5.2",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip",
-      "slice": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
-      "status": "superseded",
-      "release_mode": "repair",
-      "scope": "accepted ETA corrective superseded as current by v0.1.112",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip"
-    },
-    {
       "version": "v0.1.112",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
       "slice": "v0.1.112 \u2014 PBAI-001 declaration and structural validation",
-      "status": "accepted_current",
+      "status": "superseded",
       "release_mode": "normal",
-      "scope": "strict 10/10 validation, structural PBAI gate, adoption, and exact current identity verified",
+      "scope": "accepted structural proof superseded as current by v0.1.113",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip"
     },
     {
       "version": "v0.1.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
       "slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
-      "status": "active",
+      "status": "accepted_current",
       "release_mode": "normal",
-      "scope": "tracked AI object registry, exact ID/reference resolution, static implementation binding, capability coverage, and bounded authority proof",
+      "scope": "strict 10/10 validation, structural and registry PBAI gates, adoption, and exact current identity verified",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip"
     },
     {
       "version": "v0.1.114",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
       "slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
+      "status": "active",
+      "release_mode": "normal",
+      "scope": "bounded ordered read-only skill execution through MCP stdio with validated self-hashed SkillRun evidence",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip"
+    },
+    {
+      "version": "v0.1.115",
+      "slice": "v0.1.115 \u2014 PBAI-001 operational validation and lifecycle evidence",
       "status": "planned_after_acceptance",
       "release_mode": "normal",
-      "scope": "execute ordered skills with bounded tools and validators, producing valid SkillRun evidence without operational adoption proof"
+      "scope": "prove real PB-managed lifecycle, publication, adoption/current verification, and recovery evidence without closing template/domain-module migration gaps"
     }
   ],
   "schema": "promptbranch.project.plan_state",
@@ -1725,5 +1732,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.113"
+  "updated_for": "v0.1.114"
 }

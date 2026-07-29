@@ -1,6 +1,6 @@
 {
   "schema": "promptbranch.ai.application",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "application": {
     "id": "promptbranch",
     "kind": "runtime_application"
@@ -17,7 +17,7 @@
   "registry": {
     "path": ".promptbranch/ai-registry.json",
     "schema": "promptbranch.ai.registry",
-    "schema_version": "1.0"
+    "schema_version": "1.1"
   },
   "layers": {
     "instructions_policy": [
@@ -46,11 +46,13 @@
     ],
     "state_contracts": [
       "promptbranch_protocol/schemas",
-      "docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json"
+      "docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json",
+      "promptbranch_protocol/schemas/skillrun.evidence.schema.json"
     ],
     "evidence_records": [
       "promptbranch_test_report.py",
-      "docs/project/definition-of-done.md"
+      "docs/project/definition-of-done.md",
+      "promptbranch_skillrun.py"
     ],
     "controller_authority": [
       "docs/project/project-authority-graph-v0.1.109.json",
@@ -132,6 +134,24 @@
         ],
         "cwd": ".",
         "timeout_seconds": 300
+      },
+      {
+        "id": "pbai-001-executable",
+        "level": "executable",
+        "argv": [
+          "python3",
+          "promptbranch_cli.py",
+          "application",
+          "architecture",
+          "validate",
+          "--repo-path",
+          ".",
+          "--level",
+          "executable",
+          "--json"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 120
       }
     ]
   }
