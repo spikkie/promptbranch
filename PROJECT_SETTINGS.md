@@ -51,3 +51,24 @@ Human-readable status documents are projections. A projection disagreement is dr
 ## Backlog authority
 
 The machine-readable project backlog is `docs/backlog/backlog.json`. Ticket prose is stored under `docs/backlog/`. Only the backlog authority may classify an item as an open ticket.
+
+## PBAI-001 application architecture policy
+
+The tracked AI application declaration is `.promptbranch-ai.json`, validated against `promptbranch_protocol/schemas/application.architecture.schema.json` and the stricter runtime parser in `promptbranch_application_architecture.py`.
+
+Every Promptbranch runtime application or PB domain module must declare:
+
+1. instructions and policy;
+2. runtime agents or controlled reasoning actors;
+3. versioned skills;
+4. bounded tools;
+5. fail-closed validators;
+6. authoritative knowledge and project context;
+7. typed state and contracts;
+8. evidence and execution records;
+9. controller and authority boundaries;
+10. lifecycle integration and recovery.
+
+The declaration has one sole version authority, uses repository-relative paths without traversal, and must not self-grant mutation, release, publication, or adoption authority. Promptbranch runtime applications own generic execution capabilities. Domain modules must delegate those capabilities explicitly and own only their domain behavior.
+
+Architecture validation is read-only unless a later controlled execution request explicitly authorizes bounded work. A result may report only the highest proof level actually validated. `v0.1.112` implements declaration and structural proof only; registry, executable, and operational proof remain fail-closed and unimplemented.

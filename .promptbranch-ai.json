@@ -1,0 +1,117 @@
+{
+  "schema": "promptbranch.ai.application",
+  "schema_version": "1.0",
+  "application": {
+    "id": "promptbranch",
+    "kind": "runtime_application"
+  },
+  "version_authority": {
+    "path": "VERSION",
+    "format": "plain",
+    "sole": true
+  },
+  "runtime": {
+    "provider": "promptbranch",
+    "contract_version": "1.0"
+  },
+  "layers": {
+    "instructions_policy": [
+      "PROJECT_SETTINGS.md",
+      "AGENTS.md"
+    ],
+    "runtime_actors": [
+      "promptbranch_orchestration.py",
+      "promptbranch_loop.py"
+    ],
+    "skills": [
+      ".promptbranch/skills"
+    ],
+    "tools": [
+      "promptbranch_mcp.py"
+    ],
+    "validators": [
+      "promptbranch_application_architecture.py",
+      "promptbranch_project_control.py",
+      "promptbranch_project_authority.py",
+      "promptbranch_behavioral_surface.py"
+    ],
+    "knowledge_context": [
+      "docs/project/architecture.md",
+      "docs/backlog/PBAI-001-full-ai-application-architecture.md"
+    ],
+    "state_contracts": [
+      "promptbranch_protocol/schemas",
+      "docs/project/controlled-correction-execution-envelope-validation-v0.1.108.json"
+    ],
+    "evidence_records": [
+      "promptbranch_test_report.py",
+      "docs/project/definition-of-done.md"
+    ],
+    "controller_authority": [
+      "docs/project/project-authority-graph-v0.1.109.json",
+      "promptbranch_release_scheduler.py"
+    ],
+    "lifecycle_recovery": [
+      "promptbranch_release_engine.py",
+      ".promptbranch-release.json",
+      "docs/backlog/ISSUE-001-global-release-lifecycle-engine.md"
+    ]
+  },
+  "delegation": {
+    "generic_runtime_provider": "promptbranch",
+    "delegated_capabilities": [],
+    "owned_capabilities": [
+      "agent_execution",
+      "skill_execution",
+      "tool_dispatch",
+      "validation_orchestration",
+      "evidence_ledger",
+      "project_state_transition",
+      "correction",
+      "release",
+      "publication",
+      "adoption",
+      "verification"
+    ]
+  },
+  "authority": {
+    "self_grant_allowed": false,
+    "mutation": {
+      "controller": "promptbranch.controlled_execution",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "release": {
+      "controller": "promptbranch.release.lifecycle",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "publication": {
+      "controller": "promptbranch.release.publication",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "adoption": {
+      "controller": "promptbranch.artifact.registry",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    }
+  },
+  "validation": {
+    "commands": [
+      {
+        "id": "pbai-001-structural",
+        "level": "structural",
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_application_architecture.py"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 300
+      }
+    ]
+  }
+}

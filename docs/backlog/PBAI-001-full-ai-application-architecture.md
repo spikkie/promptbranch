@@ -1,5 +1,9 @@
 # PBAI-001: validate full AI application architecture in Promptbranch and PB modules
 
+- Status: `in_progress`
+- Started in: `v0.1.112`
+- Current phase: tracked declaration and structural validation only
+
 ## Goal
 
 Define and enforce `PBAI-001 — Full AI application architecture` across
@@ -103,10 +107,10 @@ differential validation proves the PB implementation equivalent or stronger.
 
 ## Acceptance criteria
 
-- [ ] PBAI-001 is a Promptbranch-wide invariant.
-- [ ] Strict declaration schema supports runtime applications and domain
+- [x] PBAI-001 is a Promptbranch-wide invariant for the Promptbranch runtime and release gate.
+- [x] Strict declaration schema supports runtime applications and domain
       modules.
-- [ ] Structural validation fails closed on missing layers, empty assets,
+- [x] Structural validation fails closed on missing layers, empty assets,
       invalid paths, unknown fields, and delegation conflicts.
 - [ ] Registry validation resolves all AI object references and authority.
 - [ ] Executable validation proves ordered skills, bounded tools, validators,
@@ -114,8 +118,8 @@ differential validation proves the PB implementation equivalent or stronger.
 - [ ] Operational validation integrates with issue #1 lifecycle evidence.
 - [ ] PB templates include PBAI-001 and the tracked declaration.
 - [ ] `promptbranch-method` passes as a domain module.
-- [ ] Promptbranch passes as a runtime application.
-- [ ] Validation output never overclaims its proof level.
+- [x] Promptbranch passes as a runtime application at structural proof level.
+- [x] Validation output never overclaims its proof level.
 - [ ] Existing PB projects receive explicit migration reports rather than
       silent breakage.
 
@@ -126,3 +130,18 @@ differential validation proves the PB implementation equivalent or stronger.
 - Documentation, a corpus, prompts, or tools alone are not full AI
   applications.
 - Existing project-local validators remain until PB equivalence is proven.
+
+## v0.1.112 implementation phase
+
+`v0.1.112` implements only declaration and structural proof:
+
+- `.promptbranch-ai.json` and schema version `1.0`;
+- strict parsing for runtime applications and domain modules;
+- ten required non-empty architecture layers;
+- sole version authority and bounded project-local validation commands;
+- coherent generic-runtime ownership/delegation;
+- fail-closed authority boundaries;
+- read-only plan and structural validation commands;
+- a required release-validation gate.
+
+Registry, executable, operational, template migration, and `promptbranch-method` proof remain open. PBAI-001 therefore remains `in_progress`.

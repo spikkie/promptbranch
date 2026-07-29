@@ -1,3 +1,11 @@
+## v0.1.112 PBAI-001 declaration migration
+
+`v0.1.111.5.2` is accepted/current. `v0.1.112` adds a tracked `.promptbranch-ai.json` declaration and read-only declaration/structural validation. It does not change user-local registries, browser profiles, Project Sources, adopted artifact records, release history, or application runtime data.
+
+Existing PB repositories are not silently accepted without a declaration. They require an explicit later migration report describing application kind, version authority, ten layer paths, delegation, authority boundaries, and validation commands. `v0.1.112` provides the Promptbranch runtime declaration only; template rollout and domain-module migration remain open.
+
+The next planned slice after acceptance is `v0.1.113 — PBAI-001 registry validation and reference resolution`.
+
 # Migration to Project Control Surface
 
 ## v0.1.111.5.2 ETA null-state corrective migration

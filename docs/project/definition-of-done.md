@@ -843,3 +843,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Version |
 |---|---|---|---|---|
 | DOD-313 | Missing, omitted, or null previous active-step progress state is normalised to an empty sequence at both release-controller and estimator boundaries while retaining empty-step safety, stable range countdown, and informational-only ETA authority | focused_candidate | `chatgpt_claudecode_workflow_release_control.sh`, `promptbranch_eta.py`, `tests/test_promptbranch_eta.py`, `tests/test_promptbranch_shell_scripts.py`, `docs/repair-v0.1.111.5.2.md` | v0.1.111.5.2 |
+
+## v0.1.112 PBAI-001 declaration and structural validation
+
+| ID | Definition | Evidence level | Evidence | Version |
+|---|---|---|---|---|
+| DOD-314 | A tracked `.promptbranch-ai.json` declaration and packaged schema support `runtime_application` and `domain_module` with one sole version authority | focused_candidate | `.promptbranch-ai.json`, `promptbranch_protocol/schemas/application.architecture.schema.json`, `promptbranch_application_architecture.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
+| DOD-315 | Structural validation requires all ten AI application layers and fails closed on unknown fields, unsafe paths, missing/empty assets, ambiguous layer ownership, unsafe commands, delegation conflicts, and self-granted authority | focused_candidate | `promptbranch_application_architecture.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
+| DOD-316 | `pb application architecture plan` is read-only, structural validation reports only the highest proven level, and registry/executable/operational requests do not overclaim | focused_candidate | `promptbranch_cli.py`, `promptbranch_application_architecture.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
+| DOD-317 | PBAI-001 structural validation is a required release-validation group and Promptbranch itself passes as a runtime application | focused_candidate | `promptbranch_test_suite.py`, `.promptbranch-ai.json`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
+| DOD-318 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.112 |

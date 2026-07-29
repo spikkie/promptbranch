@@ -27,6 +27,9 @@ REQUIRED_DOCS = (
     Path("docs/backlog/backlog.json"),
     Path("docs/backlog/ISSUE-001-global-release-lifecycle-engine.md"),
     Path("docs/backlog/PBAI-001-full-ai-application-architecture.md"),
+    Path(".promptbranch-ai.json"),
+    Path("promptbranch_protocol/schemas/application.architecture.schema.json"),
+    Path("docs/release-v0.1.112.md"),
 )
 REQUIRED_FIELDS = (
     "schema",
@@ -336,10 +339,10 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         "docs/project/status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, "## Next safe action", planned_after_version],
         "docs/project/plan.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version, "Rolling horizon authority"],
         "docs/project/release-status.md": [accepted_artifact, active_candidate_artifact, next_normal_version, next_normal_slice, planned_after_version],
-        "docs/project/definition-of-done.md": ["DOD-298", "DOD-300", "project next-slice", "read-only validation command"],
-        "docs/project/decisions.md": ["ADR-PROJ-108", next_normal_version, planned_after_version],
+        "docs/project/definition-of-done.md": ["DOD-298", "DOD-300", "DOD-314", "DOD-317", "project next-slice", "read-only validation command"],
+        "docs/project/decisions.md": ["ADR-PROJ-108", "ADR-PROJ-112", next_normal_version, planned_after_version],
         "docs/project/migration.md": [next_normal_version, planned_after_version],
-        "docs/project/architecture.md": ["controlled problem-solving loop", "Fixed architecture invariants", "Repair releases must not advance scope"],
+        "docs/project/architecture.md": ["controlled problem-solving loop", "Fixed architecture invariants", "Repair releases must not advance scope", "PBAI-001 application architecture invariant"],
         "docs/project/slice-horizon.md": horizon_versions + ["Repair horizon rule"],
     }
     for rel, tokens in docs_required_tokens.items():

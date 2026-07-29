@@ -1,49 +1,58 @@
 # Project Plan
 
-<!-- v0.1.111.5.2 current control-surface header -->
-- Accepted/current version: `v0.1.111.5`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
-- Active candidate version: `v0.1.111.5.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
+<!-- v0.1.112 current control-surface header -->
+- Accepted/current version: `v0.1.111.5.2`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
+- Active candidate version: `v0.1.112`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.112`
-- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.113`
+- Next planned slice after acceptance: `v0.1.113 — PBAI-001 registry validation and reference resolution`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
-accepted/current version: v0.1.111.5
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
+accepted/current version: v0.1.111.5.2
 last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
-last completed repair: v0.1.111.5 — Named-step ETA planning and stable countdown
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
-active candidate version: v0.1.111.5.2
-active repair slice: v0.1.111.5.2 — Null-safe previous active-step ETA state
-next normal target: chatgpt_claudecode_workflow-2_v0.1.112.zip
-next normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
+last completed repair: v0.1.111.5.2 — Null-safe previous active-step ETA state
+active candidate: chatgpt_claudecode_workflow-2_v0.1.112.zip
+active candidate version: v0.1.112
+active normal slice: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.113 — PBAI-001 registry validation and reference resolution
 ```
 
 ## Plan summary
 
-`v0.1.111.5` remains accepted/current. `v0.1.111.5.1` repaired empty-step shell indexing and range clamping but strict host validation exposed a null previous-active-step TypeError. `v0.1.111.5.2` normalises that state at both caller and estimator boundaries. `v0.1.112` remains blocked until this repair is accepted.
+`v0.1.111.5.2` is accepted/current. `v0.1.112` opens the first PBAI-001 implementation phase: a strict tracked declaration, ten-layer structural validator, bounded delegation and authority contracts, proof-level reporting, CLI plan/validate commands, and a required release gate. It does not implement registry, executable, or operational proof.
 
-## Active repair slice — v0.1.111.5.2 — Null-safe previous active-step ETA state
+## Active normal slice — v0.1.112 — PBAI-001 declaration and structural validation
 
 Scope:
 
-1. Treat omitted or null previous `active_steps` as an empty sequence in release-control progress.
-2. Apply the same defensive normalisation inside `estimate_named_step_eta`.
-3. Preserve empty-current-step safety and stable midpoint/high-bound countdown clamping.
-4. Add direct and shell contract regressions for missing and null prior state.
-5. Preserve informational-only ETA authority and transport independence.
+1. Add `.promptbranch-ai.json` with schema `promptbranch.ai.application` version `1.0`.
+2. Support `runtime_application` and `domain_module` ownership models.
+3. Require one sole version authority, runtime provider and contract version, ten non-empty architecture layers, explicit generic-runtime delegation, bounded authority, and project-local validation commands.
+4. Reject unknown fields, absolute paths, traversal, repeated cross-layer paths, missing or empty assets, unsupported shell invocation, unbounded timeouts, incoherent delegation, and self-granted mutation/release/publication/adoption authority.
+5. Add `pb application architecture plan --json` and `pb application architecture validate --level declaration|structural --json`.
+6. Report only the highest level proven. Registry, executable, and operational requests fail closed as not implemented.
+7. Add Promptbranch's runtime declaration, schema, deterministic regressions, and a required release-validation group.
+8. Add PBAI-001 policy to `PROJECT_SETTINGS.md` and agent read/validation rules to `AGENTS.md`.
 
-Acceptance requires strict 10/10 validation, zero `TypeError`, zero `eta_calculation_failed`, zero `bad array subscript`, evidence-bound adoption, and final current verification.
+Out of scope:
+
+- Agent/Skill/Tool/Validator registry reference resolution.
+- Ordered skill execution and SkillRun evidence.
+- Operational lifecycle publication/adoption proof for domain modules.
+- Automatic migration of existing PB repositories.
+- Closing PBAI-001 or declaring full AI-application completion.
+
+Acceptance requires the Promptbranch repository to pass structural validation, all fail-closed regressions to pass from source and packaged bytes, the release gate to include PBAI-001, strict host validation to reach 10/10, and adoption/current identity to verify exactly.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5` is accepted/current, `v0.1.111.5.2` is the one active repair, and `v0.1.112` is the next planned normal slice after acceptance.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5.2` is accepted/current, `v0.1.112` is the one active normal slice, and `v0.1.113 — PBAI-001 registry validation and reference resolution` is planned only after acceptance.
 
 ## Release / slice plan
 

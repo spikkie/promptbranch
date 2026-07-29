@@ -73,6 +73,12 @@ from promptbranch_test_suite import (
 )
 from promptbranch_test_report import build_test_report, build_test_status, render_test_report_text
 from promptbranch_version import PACKAGE_VERSION as CLI_VERSION
+from promptbranch_application_architecture import (
+    ApplicationArchitectureError,
+    KNOWN_LEVELS as APPLICATION_ARCHITECTURE_LEVELS,
+    plan_application_architecture,
+    validate_application_architecture,
+)
 from promptbranch_release_engine import ReleaseContractError, execute as execute_release_contract, load_contract as load_release_contract, plan as plan_release_contract
 from promptbranch_orchestration import (
     accepted_event_example_paths,
@@ -18423,6 +18429,48 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    if args.application_command != "architecture":
+        raise RuntimeError(f"Unknown application command: {args.application_command}")
+    repo = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    config = str(getattr(args, "config", ".promptbranch-ai.json") or ".promptbranch-ai.json")
+    try:
+        if args.application_architecture_command == "plan":
+            payload = plan_application_architecture(repo, config)
+        elif args.application_architecture_command == "validate":
+            payload = validate_application_architecture(
+                repo,
+                config,
+                level=getattr(args, "level", "structural"),
+            )
+        else:
+            raise RuntimeError(
+                f"Unknown application architecture command: {args.application_architecture_command}"
+            )
+    except ApplicationArchitectureError as exc:
+        payload = {
+            "ok": False,
+            "action": f"application_architecture_{args.application_architecture_command}",
+            "status": "declaration_invalid",
+            "repo_path": str(repo),
+            "requested_level": getattr(args, "level", None),
+            "proven_level": "none",
+            "max_supported_level": "structural",
+            "errors": [str(exc)],
+            "safety": {"read_only": True, "state_mutated": False},
+        }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"proven_level={payload.get('proven_level', 'none')}")
+        if payload.get("errors"):
+            for error in payload["errors"]:
+                print(f"error={error}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_release_contract(backend: Any, args: argparse.Namespace) -> int:
     del backend
     repo = Path(args.repo_path).resolve()
@@ -24878,6 +24926,21 @@ def make_parser() -> argparse.ArgumentParser:
     release_adopt.add_argument("--keep-open", action="store_true", help="Keep the browser/session open for Project Source verification.")
     release_adopt.add_argument("--json", action="store_true")
 
+
+    application = subparsers.add_parser("application", help="AI application declaration and proof-level validation commands.")
+    application_subparsers = application.add_subparsers(dest="application_command", required=True)
+    application_architecture = application_subparsers.add_parser("architecture", help="Plan or validate the tracked PBAI-001 application architecture declaration.")
+    application_architecture_subparsers = application_architecture.add_subparsers(dest="application_architecture_command", required=True)
+    application_architecture_plan = application_architecture_subparsers.add_parser("plan", help="Read and plan structural validation without executing commands or mutating state.")
+    application_architecture_plan.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
+    application_architecture_plan.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
+    application_architecture_plan.add_argument("--json", action="store_true")
+    application_architecture_validate = application_architecture_subparsers.add_parser("validate", help="Validate the tracked AI application declaration at the requested proof level.")
+    application_architecture_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
+    application_architecture_validate.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
+    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="structural", help="Requested proof level. v0.1.112 implements declaration and structural validation only.")
+    application_architecture_validate.add_argument("--json", action="store_true")
+
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
     project_subparsers = project.add_subparsers(dest="project_command", required=True)
     project_join = project_subparsers.add_parser("join", help="Join the current repo to a Promptbranch project registry.")
@@ -25879,6 +25942,8 @@ async def _async_main(args: argparse.Namespace) -> int:
             return await cmd_parallel(backend, args)
         if args.command == "src":
             return await cmd_src(backend, args)
+        if args.command == "application":
+            return await cmd_application(backend, args)
         if args.command == "project":
             return await cmd_project(backend, args)
         if args.command == "repo":

@@ -21,6 +21,7 @@ _REQUIRED_PROJECT_SETTINGS_TOKENS = (
     "## Authority model",
     "## Mutation boundaries",
     "## Validation and adoption",
+    "## PBAI-001 application architecture policy",
 )
 _REQUIRED_AGENTS_TOKENS = (
     "# AGENTS.md",
@@ -28,6 +29,7 @@ _REQUIRED_AGENTS_TOKENS = (
     "## Fail-closed rules",
     "## Release work",
     "## Completion claims",
+    "## PBAI-001 architecture work",
 )
 _MUTABLE_POLICY_PATTERNS = (
     re.compile(r"accepted/current\s+(?:version|baseline)\s*:", re.IGNORECASE),

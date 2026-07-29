@@ -77,3 +77,9 @@ Future slices are derived from:
 A normal release may replan the rolling horizon only when it records why in `docs/project/decisions.md`, updates `docs/project/slice-horizon.md`, and updates `docs/project/plan-state.json`.
 
 A repair release may not replan the active normal slice. If a repair reveals that the horizon is wrong, it must record evidence and leave the horizon change to the next normal release.
+
+## PBAI-001 application architecture invariant
+
+`.promptbranch-ai.json` owns the tracked AI application architecture declaration. A full application declares ten layers: instructions/policy, runtime actors, skills, tools, validators, knowledge/context, state/contracts, evidence/records, controller/authority, and lifecycle/recovery.
+
+Promptbranch is the generic `runtime_application`. PB domain modules delegate the exact generic-runtime capability set to Promptbranch and own only domain behavior. Declaration and structural validation are read-only and fail closed. The reported proof level is monotonic and evidence-bound: declaration and structural evidence cannot imply registry, executable, or operational completion.

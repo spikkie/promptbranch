@@ -199,6 +199,41 @@
       "missing_authority_policy": "fail_closed"
     },
     {
+      "domain": "ai.application_architecture",
+      "description": "Tracked PBAI-001 application kind, version authority, ten layers, delegation, bounded authority, and project-local validation commands.",
+      "authority": {
+        "kind": "repository_file",
+        "path": ".promptbranch-ai.json",
+        "selector": "json_object"
+      },
+      "projections": [
+        {
+          "path": "PROJECT_SETTINGS.md",
+          "type": "literal_contains",
+          "expected_from": "literal",
+          "expected": "PBAI-001",
+          "tokens": [
+            "PBAI-001",
+            ".promptbranch-ai.json",
+            "Every Promptbranch runtime application"
+          ]
+        },
+        {
+          "path": "AGENTS.md",
+          "type": "literal_contains",
+          "expected_from": "literal",
+          "expected": "PBAI-001",
+          "tokens": [
+            "PBAI-001",
+            ".promptbranch-ai.json",
+            "application architecture validate"
+          ]
+        }
+      ],
+      "conflict_policy": "fail_closed",
+      "missing_authority_policy": "fail_closed"
+    },
+    {
       "domain": "project.authority_graph",
       "description": "Fact-domain ownership declarations and validation rules.",
       "authority": {

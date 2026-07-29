@@ -1110,3 +1110,16 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Expansion boundary:** the range may expand only when the active plan genuinely expands or an unknown estimate becomes known.
 - **Authority:** ETA remains informational and cannot change pass/fail, fail-fast, transport independence, release verdict, publication, adoption, or accepted/current verification.
 - **Next:** after acceptance, open `v0.1.112 — PBAI-001 declaration and structural validation`.
+
+## ADR-PROJ-112 — Introduce PBAI-001 declaration and structural proof without overclaiming
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.111.5.2` is accepted/current.
+- **Decision:** `v0.1.112` introduces `.promptbranch-ai.json` as the sole tracked AI application architecture declaration and implements only declaration and structural proof.
+- **Schema:** `promptbranch.ai.application` version `1.0` supports `runtime_application` and `domain_module`.
+- **Required structure:** one sole version authority, runtime provider/contract version, ten non-empty architecture layers, generic-runtime delegation/ownership, bounded authority boundaries, and bounded project-local validation commands.
+- **Safety:** planning and structural validation are read-only. Declared commands are inspected but not executed. Mutation, release, publication, and adoption require explicit request plus verified evidence and cannot be self-granted.
+- **Proof boundary:** registry, executable, and operational levels fail closed as not implemented. Structural evidence may never be promoted to a higher proof level.
+- **Release integration:** the Promptbranch runtime declaration must pass as a required release-validation group.
+- **Ticket state:** PBAI-001 remains `in_progress`; registry resolution, executable evidence, operational proof, templates, migrations, and the first domain-module proof remain open.
+- **Next:** after acceptance, open `v0.1.113 — PBAI-001 registry validation and reference resolution`.

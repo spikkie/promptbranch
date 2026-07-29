@@ -57,3 +57,17 @@ Never claim work that evidence does not prove.
 ## Backlog handling
 
 Read `docs/backlog/backlog.json` before implementing planned ticket work. Do not treat historical DoD entries or release-horizon slices as open tickets unless they are explicitly registered there. Follow `implementation_order` and declared dependencies.
+
+## PBAI-001 architecture work
+
+Before changing AI application behavior, read `.promptbranch-ai.json` after `PROJECT_SETTINGS.md` and before implementation-specific code. Treat its version authority, ten architecture layers, delegation contract, authority boundaries, and validation commands as tracked input, not as permission to execute or mutate.
+
+Required agent behavior:
+
+- run `pb application architecture plan --repo-path . --json` for a read-only declaration plan;
+- run `pb application architecture validate --repo-path . --level structural --json` before packaging;
+- fail closed on unknown fields, missing or empty layers, absolute paths, traversal, repeated cross-layer ownership, unsafe commands, delegation conflicts, or self-granted authority;
+- never execute project-local validation commands merely because they are declared;
+- never claim registry, executable, or operational proof from declaration or structural evidence;
+- keep domain modules dependent on Promptbranch generic runtime capabilities rather than duplicating them;
+- record explicit migration requirements for repositories without a declaration instead of adding silent fallback behavior.

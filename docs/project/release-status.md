@@ -1,33 +1,41 @@
 # Release Status
 
-<!-- v0.1.111.5.2 current control-surface header -->
-- Accepted/current version: `v0.1.111.5`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.zip`
-- Active candidate version: `v0.1.111.5.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
+<!-- v0.1.112 current control-surface header -->
+- Accepted/current version: `v0.1.111.5.2`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
+- Active candidate version: `v0.1.112`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
 - Next normal version: `v0.1.112`
 - Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.112`
-- Next planned slice after acceptance: `v0.1.112 — PBAI-001 declaration and structural validation`
+- Next planned version after acceptance: `v0.1.113`
+- Next planned slice after acceptance: `v0.1.113 — PBAI-001 registry validation and reference resolution`
 
-## v0.1.111.5.2 corrective candidate
+## v0.1.112 normal candidate
 
-- `v0.1.111.5` is accepted/current after `tested=10/10`, `all_tests_final_verdict: GO`, and `release_adopted_and_verified`.
-- `v0.1.111.5.1` is repair-required after strict host validation exposed null previous active-step state.
-- `v0.1.111.5.2` normalises null/missing prior active-step state at both caller and estimator boundaries.
-- The stable countdown clamp now constrains both the midpoint and the high bound while the active plan only shrinks.
-- Range expansion remains allowed when the active plan genuinely expands or transitions from unknown to known.
-- ETA state and output remain unable to change validation status, fail-fast, release verdict, publication, or adoption.
+- Baseline `v0.1.111.5.2` is adopted/current after strict 10/10 validation and zero ETA exception diagnostics.
+- The candidate adds `.promptbranch-ai.json`, its strict schema, parser, structural validator, CLI surface, and release gate.
+- Promptbranch is declared as the generic `runtime_application` and owns the exact generic-runtime capability set.
+- Structural validation is read-only and does not execute declared project commands.
+- Unsupported proof levels fail closed and never overclaim registry, executable, or operational evidence.
+- PBAI-001 remains `in_progress`; this candidate does not close the full architecture ticket.
 
 ## Current baseline
 
 ```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.5.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
-active candidate version: v0.1.111.5.2
-active repair slice: v0.1.111.5.2 — Null-safe previous active-step ETA state
-next planned slice after acceptance: v0.1.112 — PBAI-001 declaration and structural validation
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.112.zip
+active candidate version: v0.1.112
+active normal slice: v0.1.112 — PBAI-001 declaration and structural validation
+next planned slice after acceptance: v0.1.113 — PBAI-001 registry validation and reference resolution
 ```
+
+## Current authority result
+
+| Version | Type | Slice | Status | Validation | Promotion rule |
+|---|---|---|---|---|---|
+| v0.1.111.5.2 | repair | Null-safe previous active-step ETA state | accepted_current | strict host validation 10/10; release_adopted_and_verified; zero TypeError/Traceback/ETA failure diagnostics | accepted baseline |
+| v0.1.112 | normal | PBAI-001 declaration and structural validation | candidate | focused and packaged-byte validation required; strict host release pending | adopt only after structural gate, full transports, live evidence, and exact identity verification |
+| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | planned | not started | begin only after v0.1.112 acceptance |
 
 ## ZIP status values
 

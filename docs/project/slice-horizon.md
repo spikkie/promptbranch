@@ -4,25 +4,25 @@
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
-| v0.1.108.1 | Project Source staged-overwrite and removal-proof reliability | completed | repair | accepted reliability repair before v0.1.109 |
-| v0.1.109 | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | completed | normal | accepted/current authority graph |
-| v0.1.109.1 | Behavioral surface inventory and runtime authority resolver alignment | repair_required | normal | original normal candidate not adopted |
-| v0.1.109.1.1 | Tracked repository Project binding and runtime evidence separation | completed | repair | accepted tracked binding and evidence separation |
-| v0.1.110 | Tracked backlog and architecture ticket intake | active | normal | tracked backlog with ISSUE-001 and PBAI-001; no runtime implementation |
-| v0.1.111 | Global release lifecycle contract and read-only planner | planned_after_acceptance | normal | first ISSUE-001 implementation phase |
+| v0.1.111.5 | Named-step ETA planning and stable countdown | superseded | repair | accepted ETA baseline superseded by null-safe corrective |
+| v0.1.111.5.2 | Null-safe previous active-step ETA state | accepted_current | repair | strict 10/10 validation, adoption/current verification, and zero ETA exception diagnostics passed |
+| v0.1.112 | PBAI-001 declaration and structural validation | active | normal | strict tracked declaration, ten-layer read-only structural validator, proof-level reporting, and required release gate |
+| v0.1.113 | PBAI-001 registry validation and reference resolution | planned_after_acceptance | normal | resolve Agent, Skill, Tool, Validator, state, evidence, and authority references without executable proof |
 
 ## Repair horizon rule
 
 Repair releases must not advance normal scope. A normal slice may advance only after the accepted/current baseline and project control surface agree.
 
-| v0.1.110 | Tracked backlog and architecture ticket intake | superseded | normal | carried into v0.1.111 |
+## Historical repair chain
+
+| Version | Slice | Status | Release mode | Scope |
+|---|---|---|---|---|
 | v0.1.111 | Global release lifecycle contract and read-only planner | repair_required | normal | installed module packaging failed |
 | v0.1.111.1 | Package and verify the release-contract engine | superseded | repair | retained in v0.1.111.2 |
 | v0.1.111.2 | Full-test progress, ETA, and fail-fast reporting | repair_required | repair | false expected-missing failure accounting; browser fail-fast was only phase-level |
 | v0.1.111.3 | Normalised browser progress and genuine step-level fail-fast | repair_required | repair | product transport proof passed; strict logs exposed idle-handoff and ETA defects |
-| v0.1.111.4 | Deterministic external-live idle handoff | repair_required | repair | idle-handoff retained; strict retry exposed false full-capacity final-count verification |
-| v0.1.111.4.1 | Capacity-aware Project Source family replacement verification | accepted_current | repair | 10/10 strict validation, adoption, and final current verification passed |
-| v0.1.111.5 | Named-step ETA planning and stable countdown | accepted_current | repair | 10/10 strict validation, adoption, and current verification passed; informational defects queued for corrective |
+| v0.1.111.4 | Deterministic external-live idle handoff | repair_required | repair | strict retry exposed false full-capacity final-count verification |
+| v0.1.111.4.1 | Capacity-aware Project Source family replacement verification | accepted | repair | strict 10/10 validation and evidence-bound adoption passed |
+| v0.1.111.5 | Named-step ETA planning and stable countdown | accepted | repair | strict 10/10 validation passed; informational defects queued for correction |
 | v0.1.111.5.1 | Empty-step-safe ETA progress and stable range countdown | repair_required | repair | strict run exposed null previous active-step TypeError; not adopted |
-| v0.1.111.5.2 | Null-safe previous active-step ETA state | active | repair | defensive caller and estimator normalisation for missing/null prior state |
-| v0.1.112 | PBAI-001 declaration and structural validation | planned_after_acceptance | normal | starts only after v0.1.111.5.2 acceptance |
+| v0.1.111.5.2 | Null-safe previous active-step ETA state | accepted_current | repair | corrected null prior state and closed ETA exception diagnostics |

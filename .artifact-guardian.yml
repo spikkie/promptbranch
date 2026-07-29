@@ -33,6 +33,9 @@ required_entries:
   - "AGENTS.md"
   - "docs/project/project-authority-graph-v0.1.109.json"
   - "promptbranch_project_authority.py"
+  - ".promptbranch-ai.json"
+  - "promptbranch_application_architecture.py"
+  - "promptbranch_protocol/schemas/application.architecture.schema.json"
 
 forbidden_entries:
   - ".git/"

@@ -333,6 +333,16 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_behavioral_surface.py",
         ),
     },
+    "application_architecture_structural": {
+        "required": True,
+        "description": "PBAI-001 tracked declaration and fail-closed structural architecture validation.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_application_architecture.py",
+        ),
+    },
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",

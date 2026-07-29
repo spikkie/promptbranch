@@ -43,3 +43,17 @@ def test_release_engine_is_declared_as_installed_module():
     data=tomllib.loads((ROOT/'pyproject.toml').read_text(encoding='utf-8'))
     modules=data['tool']['setuptools']['py-modules']
     assert 'promptbranch_release_engine' in modules
+
+
+def test_tracked_contract_uses_sole_version_authority_for_release_identity():
+    data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
+    version=(ROOT/'VERSION').read_text(encoding='utf-8').strip()
+    artifact=f"chatgpt_claudecode_workflow-2_{version}.zip"
+    assert data['artifact']['path']==artifact
+    for steps in data['operations'].values():
+        for step in steps:
+            for arg in step['argv']:
+                if isinstance(arg,str) and arg.endswith('.zip'):
+                    assert arg==artifact
+                if isinstance(arg,str) and arg.startswith('v0.'):
+                    assert arg==version

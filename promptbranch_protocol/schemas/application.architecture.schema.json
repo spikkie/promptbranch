@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/application.architecture.schema.json",
+  "title": "Promptbranch AI application declaration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "application",
+    "version_authority",
+    "runtime",
+    "layers",
+    "delegation",
+    "authority",
+    "validation"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.ai.application"},
+    "schema_version": {"const": "1.0"},
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "kind": {"enum": ["runtime_application", "domain_module"]}
+      }
+    },
+    "version_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "format", "sole"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "format": {"enum": ["plain", "python", "toml"]},
+        "sole": {"const": true}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "contract_version"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "contract_version": {"type": "string", "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"}
+      }
+    },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instructions_policy",
+        "runtime_actors",
+        "skills",
+        "tools",
+        "validators",
+        "knowledge_context",
+        "state_contracts",
+        "evidence_records",
+        "controller_authority",
+        "lifecycle_recovery"
+      ],
+      "properties": {
+        "instructions_policy": {"$ref": "#/$defs/pathList"},
+        "runtime_actors": {"$ref": "#/$defs/pathList"},
+        "skills": {"$ref": "#/$defs/pathList"},
+        "tools": {"$ref": "#/$defs/pathList"},
+        "validators": {"$ref": "#/$defs/pathList"},
+        "knowledge_context": {"$ref": "#/$defs/pathList"},
+        "state_contracts": {"$ref": "#/$defs/pathList"},
+        "evidence_records": {"$ref": "#/$defs/pathList"},
+        "controller_authority": {"$ref": "#/$defs/pathList"},
+        "lifecycle_recovery": {"$ref": "#/$defs/pathList"}
+      }
+    },
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generic_runtime_provider", "delegated_capabilities", "owned_capabilities"],
+      "properties": {
+        "generic_runtime_provider": {"type": "string", "minLength": 1},
+        "delegated_capabilities": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "owned_capabilities": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["self_grant_allowed", "mutation", "release", "publication", "adoption"],
+      "properties": {
+        "self_grant_allowed": {"const": false},
+        "mutation": {"$ref": "#/$defs/authorityBoundary"},
+        "release": {"$ref": "#/$defs/authorityBoundary"},
+        "publication": {"$ref": "#/$defs/authorityBoundary"},
+        "adoption": {"$ref": "#/$defs/authorityBoundary"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands"],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "level", "argv", "cwd", "timeout_seconds"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "level": {"enum": ["declaration", "structural"]},
+              "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "cwd": {"type": "string", "minLength": 1},
+              "timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 14400}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "pathList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "authorityBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controller", "requires_explicit_request", "requires_verified_evidence"],
+      "properties": {
+        "controller": {"type": "string", "minLength": 1},
+        "requires_explicit_request": {"const": true},
+        "requires_verified_evidence": {"const": true}
+      }
+    }
+  }
+}

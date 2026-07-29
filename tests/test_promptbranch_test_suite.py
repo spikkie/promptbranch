@@ -579,6 +579,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
     manifest = suite.release_validation_group_manifest()
     required = {
         "project_control_surface",
+        "application_architecture_structural",
         "version_surface",
         "artifact_json_contracts",
         "repo_project_registry",

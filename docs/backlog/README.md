@@ -8,13 +8,13 @@ Machine-readable authority: `docs/backlog/backlog.json`.
 
 > Promptbranch controls the release lifecycle. Each project defines what must be validated and how its artifact is built.
 
-## Open tickets
+## Tracked tickets
 
 | Priority | ID | Title | Status | Ticket |
 |---:|---|---|---|---|
-| 1 | ISSUE-001 | Add a global release lifecycle engine with repository-specific lifecycle contracts | open | `docs/backlog/ISSUE-001-global-release-lifecycle-engine.md` |
-| 2 | PBAI-001 | Validate full AI application architecture in Promptbranch and PB modules | open | `docs/backlog/PBAI-001-full-ai-application-architecture.md` |
+| 1 | ISSUE-001 | Add a global release lifecycle engine with repository-specific lifecycle contracts | implemented_candidate | `docs/backlog/ISSUE-001-global-release-lifecycle-engine.md` |
+| 2 | PBAI-001 | Validate full AI application architecture in Promptbranch and PB modules | in_progress | `docs/backlog/PBAI-001-full-ai-application-architecture.md` |
 
 ## Classification rule
 
-Only entries in `backlog.json` with `status: open` are open backlog tickets. Historical release rows, repair records, Definition-of-Done items, and rolling-horizon slices are not automatically backlog tickets.
+Only entries in `backlog.json` with `status: open` are open backlog tickets. `in_progress` means an explicitly bounded implementation phase is active but the ticket is not complete. Historical release rows, repair records, Definition-of-Done items, and rolling-horizon slices are not automatically backlog tickets.
