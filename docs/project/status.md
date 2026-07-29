@@ -1,64 +1,62 @@
 # Project Status
 
-<!-- v0.1.112 current control-surface header -->
-- Accepted/current version: `v0.1.111.5.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
-- Active candidate version: `v0.1.112`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
-- Next normal version: `v0.1.112`
-- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.113`
-- Next planned slice after acceptance: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+<!-- v0.1.113 current control-surface header -->
+- Accepted/current version: `v0.1.112`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
+- Active candidate version: `v0.1.113`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
+- Next normal version: `v0.1.113`
+- Next normal slice: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+- Next planned version after acceptance: `v0.1.114`
+- Next planned slice after acceptance: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
 
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
-accepted/current version: v0.1.111.5.2
-active candidate: chatgpt_claudecode_workflow-2_v0.1.112.zip
-active candidate version: v0.1.112
-active normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned version after acceptance: v0.1.113
-next planned slice after acceptance: v0.1.113 — PBAI-001 registry validation and reference resolution
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.112.zip
+accepted/current version: v0.1.112
+active candidate: chatgpt_claudecode_workflow-2_v0.1.113.zip
+active candidate version: v0.1.113
+active normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
+next planned version after acceptance: v0.1.114
+next planned slice after acceptance: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
 ```
 
 ## Current MVP state
 
-Promptbranch remains the generic controlled problem-solving runtime. `v0.1.112` introduces the first tracked PBAI-001 application declaration and proves only the declaration and structural levels. Registry, executable, and operational proof remain explicit later work.
+Promptbranch remains the generic controlled problem-solving runtime. `v0.1.112` is accepted/current and proves PBAI-001 through the structural level. `v0.1.113` adds a tracked AI object registry and read-only registry proof without advancing to execution or operational lifecycle proof.
 
 ## Current release state
 
-- `v0.1.111.5.2` passed all 10 strict release gates, produced zero ETA exception diagnostics, and is adopted/current.
-- `v0.1.112` is the one unadopted normal candidate.
-- `.promptbranch-ai.json` declares Promptbranch as a `runtime_application` with one sole version authority and ten required architecture layers.
-- `pb application architecture plan` is read-only and reports declaration proof only.
-- `pb application architecture validate --level structural` fails closed on invalid declarations, unsafe paths, missing or empty assets, delegation conflicts, and self-granted authority.
-- Structural architecture validation is a required release-validation group.
+- `v0.1.112` passed all 10 strict release gates and is adopted/current.
+- `v0.1.113` is the one unadopted normal candidate.
+- `.promptbranch/ai-registry.json` assigns stable IDs to agents, skills, tools, validators, state contracts, evidence contracts, and authority controllers.
+- Registry validation resolves every reference, verifies implementation symbols and skill/tool manifests, proves declared capability coverage, and binds all authority boundaries to exactly one controller.
+- Registry validation is read-only and executes no declared project command.
 
 ## Current risks
 
-- Structural validation must never execute declared validation commands.
-- A declaration-level success must not be reported as registry, executable, or operational proof.
-- Domain modules must delegate all generic runtime capabilities and must not duplicate Promptbranch ownership.
-- Existing PB repositories without `.promptbranch-ai.json` require explicit later migration reports; no silent fallback is allowed.
+- Registry success must not be inferred from file presence alone.
+- Ambiguous IDs, missing symbols, mismatched tool manifests, unresolved contracts, or unbounded authority must fail closed.
+- Registry proof must not be reported as executable or operational proof.
 
 ## Current blockers
 
-Strict host release validation, Project Source publication, adoption, and accepted/current verification remain required before `v0.1.112` can be called complete.
+Strict host release validation, Project Source publication, adoption, and accepted/current verification remain required before `v0.1.113` can be called complete.
 
 ## Current unknowns
 
-Registry-level reference schemas and the first `promptbranch-method` domain-module proof are intentionally deferred to `v0.1.113` or later.
+Ordered skill execution, ValidatorSpec execution, SkillRun evidence, and operational domain-module proof remain intentionally deferred.
 
 ## Next safe action
 
-Run focused source-tree and clean-extraction validation, package `chatgpt_claudecode_workflow-2_v0.1.112.zip`, and require strict 10/10 host release evidence plus exact adoption identity before opening `v0.1.113`.
+Run focused source-tree and clean-extraction validation, package `chatgpt_claudecode_workflow-2_v0.1.113.zip`, and require strict 10/10 host release evidence plus exact adoption identity before opening `v0.1.114`.
 
 ## Last updated
 
 ```text
 2026-07-29
-v0.1.112 PBAI-001 declaration and structural validation candidate build
+v0.1.113 PBAI-001 registry validation and reference resolution candidate build
 ```
 
 ## v0.1.102 candidate status

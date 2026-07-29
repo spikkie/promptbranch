@@ -77,7 +77,7 @@ def test_behavioral_surface_missing_tool_dispatcher_fails_closed(tmp_path: Path)
 
 def test_runtime_authority_resolves_project_registry(tmp_path: Path, monkeypatch) -> None:
     repo = tmp_path / "repo"
-    for rel in ("PROJECT_SETTINGS.md", "AGENTS.md", ".promptbranch-ai.json", "VERSION", "pyproject.toml", "promptbranch_version.py", ".promptbranch-release.yml", "docs/project/plan-state.json", "docs/project/status.md", "docs/project/plan.md", "docs/project/release-status.md", "docs/project/project-authority-graph-v0.1.109.json", "docs/project/promptbranch-behavioral-surface-v0.1.109.1.json", "docs/project/behavioral-surface.md"):
+    for rel in ("PROJECT_SETTINGS.md", "AGENTS.md", ".promptbranch-ai.json", ".promptbranch/ai-registry.json", "VERSION", "pyproject.toml", "promptbranch_version.py", ".promptbranch-release.yml", "docs/project/plan-state.json", "docs/project/status.md", "docs/project/plan.md", "docs/project/release-status.md", "docs/project/project-authority-graph-v0.1.109.json", "docs/project/promptbranch-behavioral-surface-v0.1.109.1.json", "docs/project/behavioral-surface.md"):
         source = ROOT / rel
         target = repo / rel
         target.parent.mkdir(parents=True, exist_ok=True)

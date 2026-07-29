@@ -1,0 +1,265 @@
+{
+  "schema": "promptbranch.ai.registry",
+  "schema_version": "1.0",
+  "application_id": "promptbranch",
+  "runtime_provider": "promptbranch",
+  "agents": [
+    {
+      "id": "promptbranch.agent.orchestration",
+      "path": "promptbranch_orchestration.py",
+      "symbol": "validate_event_intake",
+      "capabilities": [
+        "agent_execution",
+        "skill_execution",
+        "tool_dispatch",
+        "validation_orchestration",
+        "evidence_ledger",
+        "project_state_transition",
+        "correction",
+        "release",
+        "publication",
+        "adoption",
+        "verification"
+      ],
+      "skills": [
+        "promptbranch.skill.repo-inspection",
+        "promptbranch.skill.final-mvp"
+      ],
+      "tools": [
+        "promptbranch.state.read",
+        "promptbranch.workspace.current",
+        "promptbranch.task.current",
+        "filesystem.list",
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current",
+        "artifact.verify",
+        "test.smoke"
+      ],
+      "validators": [
+        "promptbranch.validator.project-control",
+        "promptbranch.validator.project-authority",
+        "promptbranch.validator.behavioral-surface",
+        "promptbranch.validator.application-architecture"
+      ],
+      "state_contracts": [
+        "promptbranch.state.ask-reply",
+        "promptbranch.state.application-architecture",
+        "promptbranch.state.application-registry"
+      ],
+      "evidence_contracts": [
+        "promptbranch.evidence.test-report"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "promptbranch.skill.repo-inspection",
+      "path": ".promptbranch/skills/repo-inspection/SKILL.md",
+      "name": "repo-inspection",
+      "tools": [
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary"
+      ],
+      "validators": [
+        "promptbranch.validator.application-architecture"
+      ]
+    },
+    {
+      "id": "promptbranch.skill.final-mvp",
+      "path": ".promptbranch/skills/promptbranch-final-mvp/SKILL.md",
+      "name": "promptbranch-final-mvp",
+      "tools": [
+        "filesystem.read",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current"
+      ],
+      "validators": [
+        "promptbranch.validator.project-control",
+        "promptbranch.validator.application-architecture"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "promptbranch.state.read",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "promptbranch.workspace.current",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "promptbranch.task.current",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "filesystem.list",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "filesystem.read",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "git.status",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "git.diff.summary",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "artifact.registry.current",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "artifact.verify",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "risk": "read",
+      "read_only": true
+    },
+    {
+      "id": "test.smoke",
+      "provider": "promptbranch",
+      "path": "promptbranch_mcp.py",
+      "collection": "CONTROLLED_PROCESS_MCP_TOOLS",
+      "risk": "external_process",
+      "read_only": false
+    }
+  ],
+  "validators": [
+    {
+      "id": "promptbranch.validator.project-control",
+      "path": "promptbranch_project_control.py",
+      "symbol": "validate_project_control_surface",
+      "levels": [
+        "structural",
+        "registry"
+      ]
+    },
+    {
+      "id": "promptbranch.validator.project-authority",
+      "path": "promptbranch_project_authority.py",
+      "symbol": "validate_project_authority_graph",
+      "levels": [
+        "structural",
+        "registry"
+      ]
+    },
+    {
+      "id": "promptbranch.validator.behavioral-surface",
+      "path": "promptbranch_behavioral_surface.py",
+      "symbol": "validate_behavioral_surface",
+      "levels": [
+        "structural",
+        "registry"
+      ]
+    },
+    {
+      "id": "promptbranch.validator.application-architecture",
+      "path": "promptbranch_application_architecture.py",
+      "symbol": "validate_application_architecture",
+      "levels": [
+        "declaration",
+        "structural",
+        "registry"
+      ]
+    }
+  ],
+  "state_contracts": [
+    {
+      "id": "promptbranch.state.ask-reply",
+      "path": "promptbranch_protocol/schemas/ask.reply.schema.json",
+      "schema": "promptbranch.ask.reply"
+    },
+    {
+      "id": "promptbranch.state.application-architecture",
+      "path": "promptbranch_protocol/schemas/application.architecture.schema.json",
+      "schema": "promptbranch.ai.application"
+    },
+    {
+      "id": "promptbranch.state.application-registry",
+      "path": "promptbranch_protocol/schemas/application.registry.schema.json",
+      "schema": "promptbranch.ai.registry"
+    }
+  ],
+  "evidence_contracts": [
+    {
+      "id": "promptbranch.evidence.test-report",
+      "path": "promptbranch_test_report.py",
+      "symbol": "build_test_report"
+    }
+  ],
+  "controllers": [
+    {
+      "id": "promptbranch.controlled_execution",
+      "path": "promptbranch_loop.py",
+      "symbol": "validate_loop_controlled_correction_execution_envelope",
+      "boundaries": [
+        "mutation"
+      ]
+    },
+    {
+      "id": "promptbranch.release.lifecycle",
+      "path": "promptbranch_release_engine.py",
+      "symbol": "execute",
+      "boundaries": [
+        "release"
+      ]
+    },
+    {
+      "id": "promptbranch.release.publication",
+      "path": "promptbranch_release_engine.py",
+      "symbol": "execute",
+      "boundaries": [
+        "publication"
+      ]
+    },
+    {
+      "id": "promptbranch.artifact.registry",
+      "path": "promptbranch_artifacts.py",
+      "symbol": "ArtifactRegistry",
+      "boundaries": [
+        "adoption"
+      ]
+    }
+  ]
+}

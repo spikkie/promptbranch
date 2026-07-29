@@ -1,3 +1,7 @@
+## v0.1.113 PBAI-001 registry migration
+
+`v0.1.112` is accepted/current. `v0.1.113` requires declaration schema `1.1` and a tracked `.promptbranch/ai-registry.json`. No silent compatibility fallback is provided for schema `1.0` declarations. Existing PB repositories must explicitly enumerate their Agent, Skill, Tool, Validator, state, evidence, capability, and authority-controller references before registry proof can pass. Validation is read-only and does not change runtime registries, browser profiles, Project Sources, or adopted artifacts. After acceptance, the next planned slice is `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`.
+
 ## v0.1.112 PBAI-001 declaration migration
 
 `v0.1.111.5.2` is accepted/current. `v0.1.112` adds a tracked `.promptbranch-ai.json` declaration and read-only declaration/structural validation. It does not change user-local registries, browser profiles, Project Sources, adopted artifact records, release history, or application runtime data.

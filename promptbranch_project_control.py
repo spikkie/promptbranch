@@ -29,7 +29,9 @@ REQUIRED_DOCS = (
     Path("docs/backlog/PBAI-001-full-ai-application-architecture.md"),
     Path(".promptbranch-ai.json"),
     Path("promptbranch_protocol/schemas/application.architecture.schema.json"),
-    Path("docs/release-v0.1.112.md"),
+    Path("promptbranch_protocol/schemas/application.registry.schema.json"),
+    Path(".promptbranch/ai-registry.json"),
+    Path("docs/release-v0.1.113.md"),
 )
 REQUIRED_FIELDS = (
     "schema",

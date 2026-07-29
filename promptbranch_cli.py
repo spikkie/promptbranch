@@ -18456,7 +18456,7 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
             "repo_path": str(repo),
             "requested_level": getattr(args, "level", None),
             "proven_level": "none",
-            "max_supported_level": "structural",
+            "max_supported_level": "registry",
             "errors": [str(exc)],
             "safety": {"read_only": True, "state_mutated": False},
         }
@@ -24931,14 +24931,14 @@ def make_parser() -> argparse.ArgumentParser:
     application_subparsers = application.add_subparsers(dest="application_command", required=True)
     application_architecture = application_subparsers.add_parser("architecture", help="Plan or validate the tracked PBAI-001 application architecture declaration.")
     application_architecture_subparsers = application_architecture.add_subparsers(dest="application_architecture_command", required=True)
-    application_architecture_plan = application_architecture_subparsers.add_parser("plan", help="Read and plan structural validation without executing commands or mutating state.")
+    application_architecture_plan = application_architecture_subparsers.add_parser("plan", help="Read and plan registry validation without executing commands or mutating state.")
     application_architecture_plan.add_argument("--repo-path", default=".", help="Repository root to inspect. Defaults to current directory.")
     application_architecture_plan.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
     application_architecture_plan.add_argument("--json", action="store_true")
     application_architecture_validate = application_architecture_subparsers.add_parser("validate", help="Validate the tracked AI application declaration at the requested proof level.")
     application_architecture_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     application_architecture_validate.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
-    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="structural", help="Requested proof level. v0.1.112 implements declaration and structural validation only.")
+    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="registry", help="Requested proof level. v0.1.113 implements declaration, structural, and registry validation.")
     application_architecture_validate.add_argument("--json", action="store_true")
 
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")

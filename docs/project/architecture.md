@@ -83,3 +83,8 @@ A repair release may not replan the active normal slice. If a repair reveals tha
 `.promptbranch-ai.json` owns the tracked AI application architecture declaration. A full application declares ten layers: instructions/policy, runtime actors, skills, tools, validators, knowledge/context, state/contracts, evidence/records, controller/authority, and lifecycle/recovery.
 
 Promptbranch is the generic `runtime_application`. PB domain modules delegate the exact generic-runtime capability set to Promptbranch and own only domain behavior. Declaration and structural validation are read-only and fail closed. The reported proof level is monotonic and evidence-bound: declaration and structural evidence cannot imply registry, executable, or operational completion.
+
+
+## PBAI registry proof
+
+The declaration owns architecture shape; `.promptbranch/ai-registry.json` owns stable AI object identities and references. Registry validation is static and read-only: it parses Python AST, Skill frontmatter, JSON schemas, capability ownership, and controller boundaries without importing project modules or executing declared commands.

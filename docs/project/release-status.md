@@ -1,41 +1,40 @@
 # Release Status
 
-<!-- v0.1.112 current control-surface header -->
-- Accepted/current version: `v0.1.111.5.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
-- Active candidate version: `v0.1.112`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
-- Next normal version: `v0.1.112`
-- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.113`
-- Next planned slice after acceptance: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+<!-- v0.1.113 current control-surface header -->
+- Accepted/current version: `v0.1.112`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
+- Active candidate version: `v0.1.113`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
+- Next normal version: `v0.1.113`
+- Next normal slice: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+- Next planned version after acceptance: `v0.1.114`
+- Next planned slice after acceptance: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
 
-## v0.1.112 normal candidate
+## v0.1.113 normal candidate
 
-- Baseline `v0.1.111.5.2` is adopted/current after strict 10/10 validation and zero ETA exception diagnostics.
-- The candidate adds `.promptbranch-ai.json`, its strict schema, parser, structural validator, CLI surface, and release gate.
-- Promptbranch is declared as the generic `runtime_application` and owns the exact generic-runtime capability set.
-- Structural validation is read-only and does not execute declared project commands.
-- Unsupported proof levels fail closed and never overclaim registry, executable, or operational evidence.
-- PBAI-001 remains `in_progress`; this candidate does not close the full architecture ticket.
+- Baseline `v0.1.112` is adopted/current after strict 10/10 validation and structural PBAI proof.
+- The candidate adds the tracked AI object registry, strict registry schema/parser, exact reference resolver, CLI proof level, and required release gate.
+- Registry validation statically verifies implementation symbols and authoritative tool/skill contracts without importing or executing project code.
+- Unsupported executable and operational proof levels fail closed while reporting registry as the highest proven level.
+- PBAI-001 remains `in_progress`.
 
 ## Current baseline
 
 ```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.112.zip
-active candidate version: v0.1.112
-active normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.113 — PBAI-001 registry validation and reference resolution
+accepted/current: chatgpt_claudecode_workflow-2_v0.1.112.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.113.zip
+active candidate version: v0.1.113
+active normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
+next planned slice after acceptance: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
 ```
 
 ## Current authority result
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
-| v0.1.111.5.2 | repair | Null-safe previous active-step ETA state | accepted_current | strict host validation 10/10; release_adopted_and_verified; zero TypeError/Traceback/ETA failure diagnostics | accepted baseline |
-| v0.1.112 | normal | PBAI-001 declaration and structural validation | candidate | focused and packaged-byte validation required; strict host release pending | adopt only after structural gate, full transports, live evidence, and exact identity verification |
-| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | planned | not started | begin only after v0.1.112 acceptance |
+| v0.1.112 | normal | PBAI-001 declaration and structural validation | accepted_current | strict host validation 10/10; structural group 18/18; release_adopted_and_verified | accepted baseline |
+| v0.1.113 | normal | PBAI-001 registry validation and reference resolution | candidate | focused and packaged-byte registry validation required; strict host release pending | adopt only after registry gate, full transports, live evidence, and exact identity verification |
+| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | planned | not started | begin only after v0.1.113 acceptance |
 
 ## ZIP status values
 

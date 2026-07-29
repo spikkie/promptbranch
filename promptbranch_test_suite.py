@@ -343,6 +343,21 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_application_architecture.py",
         ),
     },
+    "application_architecture_registry": {
+        "required": True,
+        "description": "PBAI-001 exact AI object registry and bounded authority reference resolution.",
+        "command": _release_validation_command(
+            "promptbranch_cli.py",
+            "application",
+            "architecture",
+            "validate",
+            "--repo-path",
+            ".",
+            "--level",
+            "registry",
+            "--json",
+        ),
+    },
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",

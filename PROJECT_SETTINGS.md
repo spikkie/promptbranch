@@ -54,7 +54,7 @@ The machine-readable project backlog is `docs/backlog/backlog.json`. Ticket pros
 
 ## PBAI-001 application architecture policy
 
-The tracked AI application declaration is `.promptbranch-ai.json`, validated against `promptbranch_protocol/schemas/application.architecture.schema.json` and the stricter runtime parser in `promptbranch_application_architecture.py`.
+The tracked AI application declaration is `.promptbranch-ai.json`; its authoritative object registry is `.promptbranch/ai-registry.json`, validated against `promptbranch_protocol/schemas/application.architecture.schema.json` and the stricter runtime parser in `promptbranch_application_architecture.py`.
 
 Every Promptbranch runtime application or PB domain module must declare:
 
@@ -71,4 +71,4 @@ Every Promptbranch runtime application or PB domain module must declare:
 
 The declaration has one sole version authority, uses repository-relative paths without traversal, and must not self-grant mutation, release, publication, or adoption authority. Promptbranch runtime applications own generic execution capabilities. Domain modules must delegate those capabilities explicitly and own only their domain behavior.
 
-Architecture validation is read-only unless a later controlled execution request explicitly authorizes bounded work. A result may report only the highest proof level actually validated. `v0.1.112` implements declaration and structural proof only; registry, executable, and operational proof remain fail-closed and unimplemented.
+Architecture validation is read-only unless a later controlled execution request explicitly authorizes bounded work. A result may report only the highest proof level actually validated. `v0.1.113` implements declaration, structural, and registry validation. Registry validation resolves stable IDs, implementation symbols, skill/tool contracts, state/evidence contracts, capability ownership, and bounded authority without execution. Every registry reference must resolve exactly once. Executable and operational proof remain fail-closed and unimplemented.

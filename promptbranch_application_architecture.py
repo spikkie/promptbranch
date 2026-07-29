@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 SCHEMA = "promptbranch.ai.application"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 DEFAULT_DECLARATION = ".promptbranch-ai.json"
-SUPPORTED_LEVELS = ("declaration", "structural")
+SUPPORTED_LEVELS = ("declaration", "structural", "registry")
 KNOWN_LEVELS = ("declaration", "structural", "registry", "executable", "operational")
 APPLICATION_KINDS = {"runtime_application", "domain_module"}
 VERSION_FORMATS = {"plain", "python", "toml"}
@@ -167,7 +168,7 @@ def _validate_command(command: object, index: int) -> dict[str, Any]:
     level = _non_empty_string(obj["level"], f"{label}.level")
     if level not in SUPPORTED_LEVELS:
         raise ApplicationArchitectureError(
-            f"{label}.level must be declaration or structural"
+            f"{label}.level must be declaration, structural, or registry"
         )
     argv = _string_list(obj["argv"], f"{label}.argv")
     executable = Path(argv[0]).name.lower()
@@ -215,6 +216,7 @@ def load_application_declaration(
         "application",
         "version_authority",
         "runtime",
+        "registry",
         "layers",
         "delegation",
         "authority",
@@ -264,6 +266,23 @@ def load_application_declaration(
     if not CONTRACT_VERSION_RE.fullmatch(contract_version):
         raise ApplicationArchitectureError(
             "runtime.contract_version must be a dotted numeric contract version"
+        )
+
+    registry = _require_object(root["registry"], "registry")
+    _require_exact_keys(
+        registry,
+        {"path", "schema", "schema_version"},
+        {"path", "schema", "schema_version"},
+        "registry",
+    )
+    registry_path = _safe_relative(registry["path"], "registry.path")
+    if registry["schema"] != "promptbranch.ai.registry":
+        raise ApplicationArchitectureError(
+            "registry.schema must be promptbranch.ai.registry"
+        )
+    if registry["schema_version"] != "1.0":
+        raise ApplicationArchitectureError(
+            "registry.schema_version must be 1.0"
         )
 
     layers = _require_object(root["layers"], "layers")
@@ -394,9 +413,14 @@ def load_application_declaration(
     command_ids = [command["id"] for command in commands]
     if len(command_ids) != len(set(command_ids)):
         raise ApplicationArchitectureError("validation.commands ids must be unique")
-    if "structural" not in {command["level"] for command in commands}:
+    command_levels = {command["level"] for command in commands}
+    if "structural" not in command_levels:
         raise ApplicationArchitectureError(
             "validation.commands must include at least one structural command"
+        )
+    if "registry" not in command_levels:
+        raise ApplicationArchitectureError(
+            "validation.commands must include at least one registry command"
         )
 
     normalized = {
@@ -409,6 +433,11 @@ def load_application_declaration(
             "sole": True,
         },
         "runtime": {"provider": runtime_provider, "contract_version": contract_version},
+        "registry": {
+            "path": registry_path,
+            "schema": "promptbranch.ai.registry",
+            "schema_version": "1.0",
+        },
         "layers": normalized_layers,
         "delegation": {
             "generic_runtime_provider": generic_provider,
@@ -466,6 +495,7 @@ def _declaration_summary(declaration: dict[str, Any]) -> dict[str, Any]:
         "version": declaration["_version"],
         "version_authority": declaration["version_authority"],
         "runtime": declaration["runtime"],
+        "registry": declaration["registry"],
     }
 
 
@@ -484,9 +514,9 @@ def plan_application_architecture(
         "status": "planned_read_only",
         "repo_path": str(repo),
         "declaration": _declaration_summary(declaration),
-        "requested_level": "structural",
+        "requested_level": "registry",
         "proven_level": "declaration",
-        "max_supported_level": "structural",
+        "max_supported_level": "registry",
         "layer_plan": layer_plan,
         "delegation": declaration["delegation"],
         "authority": declaration["authority"],
@@ -502,36 +532,426 @@ def plan_application_architecture(
     }
 
 
+
+def _registry_list(value: object, label: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not value:
+        raise ApplicationArchitectureError(f"{label} must be a non-empty array")
+    result: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        result.append(_require_object(item, f"{label}[{index}]"))
+    return result
+
+
+def _registry_id(value: object, label: str) -> str:
+    text = _non_empty_string(value, label)
+    if not IDENTIFIER_RE.fullmatch(text):
+        raise ApplicationArchitectureError(
+            f"{label} must contain only letters, digits, dots, underscores, or hyphens"
+        )
+    return text
+
+
+def _python_top_level_symbols(path: Path) -> set[str]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        raise ApplicationArchitectureError(f"cannot inspect Python symbols in {path}: {exc}") from exc
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+
+def _literal_bool(node: ast.AST | None, default: bool) -> bool:
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return node.value
+    return default
+
+
+def _tool_risk(node: ast.AST | None) -> str:
+    if node is None:
+        return "read"
+    if isinstance(node, ast.Attribute):
+        return node.attr.lower()
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.strip().lower()
+    return "unknown"
+
+
+def _static_mcp_tools(path: Path) -> dict[str, dict[str, Any]]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        raise ApplicationArchitectureError(f"cannot inspect MCP tool registry {path}: {exc}") from exc
+    result: dict[str, dict[str, Any]] = {}
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        collection = next(
+            (target.id for target in targets if isinstance(target, ast.Name) and target.id in {"READ_ONLY_MCP_TOOLS", "CONTROLLED_PROCESS_MCP_TOOLS"}),
+            None,
+        )
+        if collection is None:
+            continue
+        value = node.value
+        if not isinstance(value, (ast.Tuple, ast.List)):
+            continue
+        for item in value.elts:
+            if not isinstance(item, ast.Call):
+                continue
+            func_name = item.func.id if isinstance(item.func, ast.Name) else None
+            if func_name != "McpToolSpec":
+                continue
+            keywords = {kw.arg: kw.value for kw in item.keywords if kw.arg}
+            name_node = keywords.get("name")
+            if not isinstance(name_node, ast.Constant) or not isinstance(name_node.value, str):
+                continue
+            tool_id = name_node.value
+            result[tool_id] = {
+                "id": tool_id,
+                "collection": collection,
+                "risk": _tool_risk(keywords.get("risk")),
+                "read_only": _literal_bool(keywords.get("read_only"), True),
+            }
+    return result
+
+
+def _skill_frontmatter(path: Path) -> dict[str, Any]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ApplicationArchitectureError(f"cannot read skill {path}: {exc}") from exc
+    if not lines or lines[0].strip() != "---":
+        raise ApplicationArchitectureError(f"skill {path} is missing YAML frontmatter")
+    try:
+        end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+    except StopIteration as exc:
+        raise ApplicationArchitectureError(f"skill {path} has unterminated YAML frontmatter") from exc
+    data: dict[str, Any] = {}
+    current_list: str | None = None
+    for raw in lines[1:end]:
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - ") and current_list:
+            data.setdefault(current_list, []).append(line[4:].strip())
+            continue
+        if ":" not in line:
+            raise ApplicationArchitectureError(f"skill {path} has unsupported frontmatter line: {line}")
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if value:
+            data[key] = value
+            current_list = None
+        else:
+            data[key] = []
+            current_list = key
+    return data
+
+
+def _path_owned_by_layers(rel: str, declaration: dict[str, Any], allowed_layers: Sequence[str]) -> bool:
+    candidate = Path(rel)
+    for layer in allowed_layers:
+        for owner in declaration["layers"][layer]:
+            owner_path = Path(owner)
+            if candidate == owner_path or owner_path in candidate.parents:
+                return True
+    return False
+
+
+def _load_application_registry(repo: Path, declaration: dict[str, Any]) -> dict[str, Any]:
+    registry_rel = declaration["registry"]["path"]
+    path = repo / registry_rel
+    if not path.is_file():
+        raise ApplicationArchitectureError(f"AI application registry not found: {registry_rel}")
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ApplicationArchitectureError(f"invalid AI application registry: {exc}") from exc
+    registry = _require_object(root, "application registry")
+    required = {
+        "schema", "schema_version", "application_id", "runtime_provider", "agents", "skills", "tools",
+        "validators", "state_contracts", "evidence_contracts", "controllers",
+    }
+    _require_exact_keys(registry, required, required, "application registry")
+    if registry["schema"] != declaration["registry"]["schema"] or registry["schema_version"] != declaration["registry"]["schema_version"]:
+        raise ApplicationArchitectureError("application registry schema identity does not match declaration")
+    application_id = _registry_id(registry["application_id"], "application registry.application_id")
+    runtime_provider = _registry_id(registry["runtime_provider"], "application registry.runtime_provider")
+    if application_id != declaration["application"]["id"]:
+        raise ApplicationArchitectureError("application registry.application_id does not match declaration")
+    if runtime_provider != declaration["runtime"]["provider"]:
+        raise ApplicationArchitectureError("application registry.runtime_provider does not match declaration")
+
+    specs = {
+        "agents": ({"id", "path", "symbol", "capabilities", "skills", "tools", "validators", "state_contracts", "evidence_contracts"}, "runtime_actors"),
+        "skills": ({"id", "path", "name", "tools", "validators"}, "skills"),
+        "tools": ({"id", "provider", "path", "collection", "risk", "read_only"}, "tools"),
+        "validators": ({"id", "path", "symbol", "levels"}, "validators"),
+        "state_contracts": ({"id", "path", "schema"}, "state_contracts"),
+        "evidence_contracts": ({"id", "path", "symbol"}, "evidence_records"),
+        "controllers": ({"id", "path", "symbol", "boundaries"}, None),
+    }
+    normalized: dict[str, list[dict[str, Any]]] = {}
+    all_ids: dict[str, str] = {}
+    for kind, (keys, layer) in specs.items():
+        entries = _registry_list(registry[kind], f"application registry.{kind}")
+        normalized[kind] = []
+        for index, raw in enumerate(entries):
+            label = f"application registry.{kind}[{index}]"
+            _require_exact_keys(raw, keys, keys, label)
+            item = dict(raw)
+            item["id"] = _registry_id(item["id"], f"{label}.id")
+            if item["id"] in all_ids:
+                raise ApplicationArchitectureError(
+                    f"registry id {item['id']} is ambiguous across {all_ids[item['id']]} and {kind}"
+                )
+            all_ids[item["id"]] = kind
+            item["path"] = _safe_relative(item["path"], f"{label}.path")
+            if layer and not _path_owned_by_layers(item["path"], declaration, [layer]):
+                raise ApplicationArchitectureError(
+                    f"{label}.path is not owned by declared layer {layer}: {item['path']}"
+                )
+            if kind == "controllers" and not _path_owned_by_layers(
+                item["path"], declaration, ["runtime_actors", "controller_authority", "lifecycle_recovery"]
+            ):
+                raise ApplicationArchitectureError(
+                    f"{label}.path is not owned by a declared controller-capable layer: {item['path']}"
+                )
+            normalized[kind].append(item)
+    normalized["_path"] = registry_rel  # type: ignore[assignment]
+    normalized["_application_id"] = application_id  # type: ignore[assignment]
+    normalized["_runtime_provider"] = runtime_provider  # type: ignore[assignment]
+    return normalized
+
+
+def _validate_application_registry(repo: Path, declaration: dict[str, Any]) -> dict[str, Any]:
+    registry = _load_application_registry(repo, declaration)
+    errors: list[str] = []
+    indexes = {
+        kind: {item["id"]: item for item in registry[kind]}
+        for kind in ("agents", "skills", "tools", "validators", "state_contracts", "evidence_contracts", "controllers")
+    }
+
+    def require_refs(owner: str, refs: object, target: str) -> list[str]:
+        try:
+            values = _string_list(refs, f"{owner}.{target}")
+        except ApplicationArchitectureError as exc:
+            errors.append(str(exc))
+            return []
+        for ref in values:
+            if ref not in indexes[target]:
+                errors.append(f"{owner}.{target} reference does not resolve: {ref}")
+        return values
+
+    symbol_cache: dict[str, set[str]] = {}
+    def require_symbol(owner: str, rel: str, symbol: object) -> None:
+        symbol_name = _registry_id(symbol, f"{owner}.symbol")
+        path = repo / rel
+        if not path.is_file():
+            errors.append(f"{owner}.path is missing: {rel}")
+            return
+        if rel not in symbol_cache:
+            try:
+                symbol_cache[rel] = _python_top_level_symbols(path)
+            except ApplicationArchitectureError as exc:
+                errors.append(str(exc))
+                return
+        if symbol_name not in symbol_cache[rel]:
+            errors.append(f"{owner}.symbol does not resolve in {rel}: {symbol_name}")
+
+    for agent in registry["agents"]:
+        owner = f"agent {agent['id']}"
+        require_symbol(owner, agent["path"], agent["symbol"])
+        require_refs(owner, agent["skills"], "skills")
+        capabilities = _string_list(agent["capabilities"], f"{owner}.capabilities")
+        if capabilities:
+            unknown = sorted(set(capabilities) - set(declaration["delegation"]["owned_capabilities"]))
+            if unknown:
+                errors.append(f"{owner}.capabilities are not declared as owned: {', '.join(unknown)}")
+        require_refs(owner, agent["tools"], "tools")
+        require_refs(owner, agent["validators"], "validators")
+        require_refs(owner, agent["state_contracts"], "state_contracts")
+        require_refs(owner, agent["evidence_contracts"], "evidence_contracts")
+    agent_capabilities = {
+        capability
+        for agent in registry["agents"]
+        for capability in (agent.get("capabilities") if isinstance(agent.get("capabilities"), list) else [])
+    }
+    expected_capabilities = set(declaration["delegation"]["owned_capabilities"])
+    if agent_capabilities != expected_capabilities:
+        missing = sorted(expected_capabilities - agent_capabilities)
+        extra = sorted(agent_capabilities - expected_capabilities)
+        errors.append(
+            "registered agent capabilities must exactly cover declared owned capabilities"
+            + (f"; missing={missing}" if missing else "")
+            + (f"; extra={extra}" if extra else "")
+        )
+
+    for skill in registry["skills"]:
+        owner = f"skill {skill['id']}"
+        path = repo / skill["path"]
+        if not path.is_file():
+            errors.append(f"{owner}.path is missing: {skill['path']}")
+            continue
+        try:
+            frontmatter = _skill_frontmatter(path)
+        except ApplicationArchitectureError as exc:
+            errors.append(str(exc))
+            continue
+        name = _non_empty_string(skill["name"], f"{owner}.name")
+        if frontmatter.get("name") != name:
+            errors.append(f"{owner}.name does not match SKILL.md frontmatter")
+        tools = require_refs(owner, skill["tools"], "tools")
+        front_tools = frontmatter.get("allowed_tools") if isinstance(frontmatter.get("allowed_tools"), list) else []
+        if tools and tools != front_tools:
+            errors.append(f"{owner}.tools do not exactly match SKILL.md allowed_tools")
+        require_refs(owner, skill["validators"], "validators")
+
+    tool_paths = {item["path"] for item in registry["tools"]}
+    if len(tool_paths) != 1:
+        errors.append("registered tools must resolve through one authoritative MCP tool registry path")
+        static_tools: dict[str, dict[str, Any]] = {}
+    else:
+        rel = next(iter(tool_paths))
+        try:
+            static_tools = _static_mcp_tools(repo / rel)
+        except ApplicationArchitectureError as exc:
+            errors.append(str(exc))
+            static_tools = {}
+    registered_tool_ids = set(indexes["tools"])
+    if static_tools and registered_tool_ids != set(static_tools):
+        errors.append(
+            "registered tool ids must exactly match the authoritative MCP manifest"
+            f"; missing={sorted(set(static_tools)-registered_tool_ids)}"
+            f"; extra={sorted(registered_tool_ids-set(static_tools))}"
+        )
+    for tool in registry["tools"]:
+        owner = f"tool {tool['id']}"
+        if tool["provider"] != declaration["runtime"]["provider"]:
+            errors.append(f"{owner}.provider does not match runtime provider")
+        actual = static_tools.get(tool["id"])
+        if actual:
+            for field in ("collection", "risk", "read_only"):
+                if tool[field] != actual[field]:
+                    errors.append(f"{owner}.{field} does not match authoritative MCP manifest")
+
+    for validator in registry["validators"]:
+        owner = f"validator {validator['id']}"
+        require_symbol(owner, validator["path"], validator["symbol"])
+        levels = _string_list(validator["levels"], f"{owner}.levels")
+        unknown = sorted(set(levels) - set(KNOWN_LEVELS))
+        if unknown:
+            errors.append(f"{owner}.levels contains unknown proof levels: {', '.join(unknown)}")
+
+    for contract in registry["state_contracts"]:
+        owner = f"state contract {contract['id']}"
+        path = repo / contract["path"]
+        if not path.is_file():
+            errors.append(f"{owner}.path is missing: {contract['path']}")
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"{owner}.path is not valid JSON: {exc}")
+            continue
+        if not isinstance(payload, dict) or not payload.get("$schema") or not payload.get("$id"):
+            errors.append(f"{owner}.path is not a self-identifying JSON schema")
+        expected_schema = _non_empty_string(contract["schema"], f"{owner}.schema")
+        declared_const = ((payload.get("properties") or {}).get("schema") or {}).get("const") if isinstance(payload, dict) else None
+        if declared_const != expected_schema:
+            errors.append(f"{owner}.schema does not match schema const in {contract['path']}")
+
+    for evidence in registry["evidence_contracts"]:
+        require_symbol(f"evidence contract {evidence['id']}", evidence["path"], evidence["symbol"])
+
+    boundary_to_controller = {
+        boundary: declaration["authority"][boundary]["controller"]
+        for boundary in AUTHORITY_BOUNDARIES
+    }
+    for controller in registry["controllers"]:
+        owner = f"controller {controller['id']}"
+        require_symbol(owner, controller["path"], controller["symbol"])
+        boundaries = _string_list(controller["boundaries"], f"{owner}.boundaries")
+        unknown = sorted(set(boundaries) - set(AUTHORITY_BOUNDARIES))
+        if unknown:
+            errors.append(f"{owner}.boundaries contains unknown authority boundaries: {', '.join(unknown)}")
+        for boundary in boundaries:
+            if boundary_to_controller.get(boundary) != controller["id"]:
+                errors.append(f"{owner} is not the declared controller for boundary {boundary}")
+    for boundary, controller_id in boundary_to_controller.items():
+        controller = indexes["controllers"].get(controller_id)
+        if not controller:
+            errors.append(f"authority.{boundary}.controller does not resolve: {controller_id}")
+        elif boundary not in controller.get("boundaries", []):
+            errors.append(f"authority.{boundary}.controller does not claim boundary {boundary}")
+
+    referenced = {
+        "skills": {ref for agent in registry["agents"] for ref in agent.get("skills", [])},
+        "tools": {ref for agent in registry["agents"] for ref in agent.get("tools", [])}
+                 | {ref for skill in registry["skills"] for ref in skill.get("tools", [])},
+        "validators": {ref for agent in registry["agents"] for ref in agent.get("validators", [])}
+                      | {ref for skill in registry["skills"] for ref in skill.get("validators", [])},
+        "state_contracts": {ref for agent in registry["agents"] for ref in agent.get("state_contracts", [])},
+        "evidence_contracts": {ref for agent in registry["agents"] for ref in agent.get("evidence_contracts", [])},
+        "controllers": set(boundary_to_controller.values()),
+    }
+    for kind, refs in referenced.items():
+        orphaned = sorted(set(indexes[kind]) - refs)
+        if orphaned:
+            errors.append(f"application registry contains unreferenced {kind}: {', '.join(orphaned)}")
+    if not any("registry" in validator.get("levels", []) for validator in registry["validators"]):
+        errors.append("application registry must include at least one registry-level validator")
+
+    return {
+        "ok": not errors,
+        "path": registry["_path"],
+        "schema": declaration["registry"]["schema"],
+        "schema_version": declaration["registry"]["schema_version"],
+        "application_id": registry["_application_id"],
+        "runtime_provider": registry["_runtime_provider"],
+        "counts": {kind: len(indexes[kind]) for kind in indexes},
+        "resolved_ids": {kind: sorted(indexes[kind]) for kind in indexes},
+        "reference_resolution": "complete" if not errors else "failed",
+        "authority_resolution": "bounded" if not errors else "failed",
+        "error_count": len(errors),
+        "errors": errors,
+    }
+
+
 def validate_application_architecture(
     repo_path: str | Path = ".",
     config: str = DEFAULT_DECLARATION,
     *,
-    level: str = "structural",
+    level: str = "registry",
 ) -> dict[str, Any]:
     repo = Path(repo_path).expanduser().resolve()
-    requested_level = str(level or "structural").strip().lower()
+    requested_level = str(level or "registry").strip().lower()
+    common = {
+        "action": "application_architecture_validate",
+        "repo_path": str(repo),
+        "requested_level": requested_level,
+        "max_supported_level": "registry",
+    }
     if requested_level not in KNOWN_LEVELS:
         return {
+            **common,
             "ok": False,
-            "action": "application_architecture_validate",
             "status": "unknown_validation_level",
-            "repo_path": str(repo),
-            "requested_level": requested_level,
             "proven_level": "none",
-            "max_supported_level": "structural",
             "errors": [f"unknown validation level: {requested_level}"],
         }
     try:
         declaration = load_application_declaration(repo, config)
     except ApplicationArchitectureError as exc:
         return {
+            **common,
             "ok": False,
-            "action": "application_architecture_validate",
             "status": "declaration_invalid",
-            "repo_path": str(repo),
-            "requested_level": requested_level,
             "proven_level": "none",
-            "max_supported_level": "structural",
             "declaration_path": config,
             "errors": [str(exc)],
             "safety": {"read_only": True, "state_mutated": False},
@@ -540,41 +960,22 @@ def validate_application_architecture(
     declaration_summary = _declaration_summary(declaration)
     if requested_level == "declaration":
         return {
+            **common,
             "ok": True,
-            "action": "application_architecture_validate",
             "status": "declaration_validated",
-            "repo_path": str(repo),
-            "requested_level": requested_level,
             "proven_level": "declaration",
-            "max_supported_level": "structural",
             "declaration": declaration_summary,
             "errors": [],
             "safety": {"read_only": True, "state_mutated": False},
         }
-    if requested_level not in SUPPORTED_LEVELS:
-        return {
-            "ok": False,
-            "action": "application_architecture_validate",
-            "status": "validation_level_not_implemented",
-            "repo_path": str(repo),
-            "requested_level": requested_level,
-            "proven_level": "declaration",
-            "max_supported_level": "structural",
-            "declaration": declaration_summary,
-            "errors": [
-                f"{requested_level} validation is not implemented; highest supported level is structural"
-            ],
-            "safety": {"read_only": True, "state_mutated": False},
-        }
-
     layer_results: dict[str, list[dict[str, Any]]] = {}
-    errors: list[str] = []
+    structural_errors: list[str] = []
     for layer in LAYER_NAMES:
         results = [_asset_state(repo, rel) for rel in declaration["layers"][layer]]
         layer_results[layer] = results
         for result in results:
             if not result["ok"]:
-                errors.append(
+                structural_errors.append(
                     f"layers.{layer} asset {result['path']} failed structural validation: {result['error']}"
                 )
 
@@ -585,18 +986,12 @@ def validate_application_architecture(
         }
         command_cwds.append({"id": command["id"], **cwd_state})
         if not cwd_state["ok"]:
-            errors.append(
+            structural_errors.append(
                 f"validation command {command['id']} cwd failed structural validation: {cwd_state['error']}"
             )
 
-    return {
-        "ok": not errors,
-        "action": "application_architecture_validate",
-        "status": "structural_validated" if not errors else "structural_invalid",
-        "repo_path": str(repo),
-        "requested_level": requested_level,
-        "proven_level": "structural" if not errors else "declaration",
-        "max_supported_level": "structural",
+    base = {
+        **common,
         "declaration": declaration_summary,
         "required_layers": list(LAYER_NAMES),
         "layer_count": len(LAYER_NAMES),
@@ -605,8 +1000,6 @@ def validate_application_architecture(
         "authority": declaration["authority"],
         "validation_commands": declaration["validation"]["commands"],
         "validation_command_cwds": command_cwds,
-        "error_count": len(errors),
-        "errors": errors,
         "safety": {
             "read_only": True,
             "commands_executed": False,
@@ -615,6 +1008,58 @@ def validate_application_architecture(
             "publication_authority_granted": False,
             "adoption_authority_granted": False,
         },
+    }
+    if structural_errors:
+        return {
+            **base,
+            "ok": False,
+            "status": "structural_invalid",
+            "proven_level": "declaration",
+            "error_count": len(structural_errors),
+            "errors": structural_errors,
+        }
+    if requested_level == "structural":
+        return {
+            **base,
+            "ok": True,
+            "status": "structural_validated",
+            "proven_level": "structural",
+            "error_count": 0,
+            "errors": [],
+        }
+
+    try:
+        registry = _validate_application_registry(repo, declaration)
+    except ApplicationArchitectureError as exc:
+        registry = {
+            "ok": False,
+            "path": declaration["registry"]["path"],
+            "error_count": 1,
+            "errors": [str(exc)],
+            "reference_resolution": "failed",
+            "authority_resolution": "failed",
+        }
+    if requested_level not in SUPPORTED_LEVELS:
+        return {
+            **base,
+            "ok": False,
+            "status": "validation_level_not_implemented",
+            "proven_level": "registry" if registry["ok"] else "structural",
+            "registry": registry,
+            "error_count": int(registry.get("error_count") or 0),
+            "errors": [
+                f"{requested_level} validation is not implemented; highest supported level is registry",
+                *list(registry.get("errors") or []),
+            ],
+        }
+    return {
+        **base,
+        "ok": bool(registry["ok"]),
+        "status": "registry_validated" if registry["ok"] else "registry_invalid",
+        "proven_level": "registry" if registry["ok"] else "structural",
+        "registry": registry,
+        "error_count": int(registry.get("error_count") or 0),
+        "errors": list(registry.get("errors") or []),
     }
 
 

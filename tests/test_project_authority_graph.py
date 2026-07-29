@@ -23,6 +23,7 @@ def _copy_authority_repo(tmp_path: Path) -> Path:
         "AGENTS.md",
         ".promptbranch-repo.json",
         ".promptbranch-ai.json",
+        ".promptbranch/ai-registry.json",
         "VERSION",
         "pyproject.toml",
         "promptbranch_version.py",
@@ -34,6 +35,7 @@ def _copy_authority_repo(tmp_path: Path) -> Path:
         "docs/project/promptbranch-behavioral-surface-v0.1.109.1.json",
         "docs/project/behavioral-surface.md",
         "promptbranch_protocol/schemas/application.architecture.schema.json",
+        "promptbranch_protocol/schemas/application.registry.schema.json",
         str(AUTHORITY_GRAPH_REL),
     ):
         source = ROOT / rel
@@ -51,7 +53,7 @@ def test_authority_graph_show_lists_declared_domains() -> None:
     payload = build_project_authority_show_payload(ROOT)
     assert payload["ok"] is True
     assert payload["status"] == "authority_graph_loaded"
-    assert payload["domain_count"] == 11
+    assert payload["domain_count"] == 12
     assert payload["remote_mutation_allowed"] is False
     assert payload["mutation_performed"] is False
 
@@ -92,7 +94,7 @@ def test_authority_graph_missing_authority_fails_closed(tmp_path: Path) -> None:
 def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.1.112"', 'version = "9.9.9"'), encoding="utf-8")
+    pyproject.write_text(pyproject.read_text().replace('version = "0.1.113"', 'version = "9.9.9"'), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False
@@ -103,7 +105,7 @@ def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
 def test_plan_state_markdown_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     status = repo / "docs/project/status.md"
-    status.write_text(status.read_text().replace("chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip", "drifted.zip"), encoding="utf-8")
+    status.write_text(status.read_text().replace("chatgpt_claudecode_workflow-2_v0.1.112.zip", "drifted.zip"), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False

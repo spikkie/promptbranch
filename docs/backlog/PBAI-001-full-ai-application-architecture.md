@@ -2,7 +2,7 @@
 
 - Status: `in_progress`
 - Started in: `v0.1.112`
-- Current phase: tracked declaration and structural validation only
+- Current phase: tracked registry validation and reference resolution
 
 ## Goal
 
@@ -112,13 +112,13 @@ differential validation proves the PB implementation equivalent or stronger.
       modules.
 - [x] Structural validation fails closed on missing layers, empty assets,
       invalid paths, unknown fields, and delegation conflicts.
-- [ ] Registry validation resolves all AI object references and authority.
+- [x] Registry validation resolves all AI object references and authority.
 - [ ] Executable validation proves ordered skills, bounded tools, validators,
       and SkillRun evidence.
 - [ ] Operational validation integrates with issue #1 lifecycle evidence.
 - [ ] PB templates include PBAI-001 and the tracked declaration.
 - [ ] `promptbranch-method` passes as a domain module.
-- [x] Promptbranch passes as a runtime application at structural proof level.
+- [x] Promptbranch passes as a runtime application at registry proof level.
 - [x] Validation output never overclaims its proof level.
 - [ ] Existing PB projects receive explicit migration reports rather than
       silent breakage.
@@ -145,3 +145,17 @@ differential validation proves the PB implementation equivalent or stronger.
 - a required release-validation gate.
 
 Registry, executable, operational, template migration, and `promptbranch-method` proof remain open. PBAI-001 therefore remains `in_progress`.
+
+
+## v0.1.113 implementation phase
+
+`v0.1.113` adds registry proof without executing registered behavior:
+
+- `.promptbranch/ai-registry.json` and packaged schema version `1.0`;
+- declaration schema version `1.1` with explicit registry authority;
+- stable Agent, Skill, Tool, Validator, state, evidence, and controller identities;
+- exact cross-reference, Python-symbol, Skill frontmatter, and MCP manifest resolution;
+- exact application capability coverage and bounded authority-controller resolution;
+- read-only registry validation and a required release gate.
+
+Executable, operational, template migration, and the first domain-module proof remain open.

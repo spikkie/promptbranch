@@ -853,3 +853,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-316 | `pb application architecture plan` is read-only, structural validation reports only the highest proven level, and registry/executable/operational requests do not overclaim | focused_candidate | `promptbranch_cli.py`, `promptbranch_application_architecture.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
 | DOD-317 | PBAI-001 structural validation is a required release-validation group and Promptbranch itself passes as a runtime application | focused_candidate | `promptbranch_test_suite.py`, `.promptbranch-ai.json`, `tests/test_promptbranch_test_suite.py`, `tests/test_promptbranch_application_architecture.py` | v0.1.112 |
 | DOD-318 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.112 |
+
+
+## v0.1.113 PBAI-001 registry validation and reference resolution
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-319 | A tracked `.promptbranch/ai-registry.json` and packaged strict registry schema enumerate all required AI object kinds | focused_candidate | registry file, schema, declaration schema `1.1`, parser tests | v0.1.113 |
+| DOD-320 | Every Agent, Skill, Tool, Validator, state contract, and evidence contract reference resolves exactly and implementation bindings are statically verified | focused_candidate | registry validator and negative reference tests | v0.1.113 |
+| DOD-321 | Registered agent capabilities exactly cover declared ownership and every authority boundary resolves to one bounded controller | focused_candidate | capability and controller regressions | v0.1.113 |
+| DOD-322 | Registry validation is read-only, executes no declared command, reports registry as the highest proven level, and keeps executable/operational proof fail-closed | focused_candidate | CLI and no-execution tests | v0.1.113 |
+| DOD-323 | Candidate passes strict direct/localhost/live release validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.113 |

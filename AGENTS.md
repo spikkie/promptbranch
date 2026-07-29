@@ -65,9 +65,9 @@ Before changing AI application behavior, read `.promptbranch-ai.json` after `PRO
 Required agent behavior:
 
 - run `pb application architecture plan --repo-path . --json` for a read-only declaration plan;
-- run `pb application architecture validate --repo-path . --level structural --json` before packaging;
+- run `pb application architecture validate --repo-path . --level structural --json` and `pb application architecture validate --repo-path . --level registry --json` before packaging;
 - fail closed on unknown fields, missing or empty layers, absolute paths, traversal, repeated cross-layer ownership, unsafe commands, delegation conflicts, or self-granted authority;
 - never execute project-local validation commands merely because they are declared;
-- never claim registry, executable, or operational proof from declaration or structural evidence;
+- read `.promptbranch/ai-registry.json`; fail closed on missing, duplicate, ambiguous, mismatched, or unbounded references; never claim executable or operational proof from registry evidence;
 - keep domain modules dependent on Promptbranch generic runtime capabilities rather than duplicating them;
 - record explicit migration requirements for repositories without a declaration instead of adding silent fallback behavior.

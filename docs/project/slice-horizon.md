@@ -4,10 +4,10 @@
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
-| v0.1.111.5 | Named-step ETA planning and stable countdown | superseded | repair | accepted ETA baseline superseded by null-safe corrective |
-| v0.1.111.5.2 | Null-safe previous active-step ETA state | accepted_current | repair | strict 10/10 validation, adoption/current verification, and zero ETA exception diagnostics passed |
-| v0.1.112 | PBAI-001 declaration and structural validation | active | normal | strict tracked declaration, ten-layer read-only structural validator, proof-level reporting, and required release gate |
-| v0.1.113 | PBAI-001 registry validation and reference resolution | planned_after_acceptance | normal | resolve Agent, Skill, Tool, Validator, state, evidence, and authority references without executable proof |
+| v0.1.111.5.2 | Null-safe previous active-step ETA state | superseded | repair | accepted ETA corrective superseded as current by v0.1.112 |
+| v0.1.112 | PBAI-001 declaration and structural validation | accepted_current | normal | strict 10/10 validation, structural PBAI gate, adoption, and exact current identity verified |
+| v0.1.113 | PBAI-001 registry validation and reference resolution | active | normal | tracked registry, exact reference resolution, implementation binding, capability coverage, and bounded authority proof |
+| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | planned_after_acceptance | normal | ordered bounded execution and valid SkillRun evidence without operational proof |
 
 ## Repair horizon rule
 

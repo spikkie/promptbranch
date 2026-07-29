@@ -1123,3 +1123,13 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Release integration:** the Promptbranch runtime declaration must pass as a required release-validation group.
 - **Ticket state:** PBAI-001 remains `in_progress`; registry resolution, executable evidence, operational proof, templates, migrations, and the first domain-module proof remain open.
 - **Next:** after acceptance, open `v0.1.113 — PBAI-001 registry validation and reference resolution`.
+
+
+## ADR-PROJ-113 — Add strict PBAI registry proof without executing application behavior
+
+- **Decision:** `v0.1.113` introduces `.promptbranch/ai-registry.json`, declaration schema `1.1`, and read-only registry validation.
+- **Resolution:** every Agent, Skill, Tool, Validator, state contract, evidence contract, capability, and authority controller must resolve exactly once to a declared and statically inspectable implementation.
+- **Safety:** registry validation imports no project module, executes no declared command, mutates no state, and grants no release, publication, or adoption authority.
+- **Failure policy:** missing/ambiguous IDs, mismatched Skill or MCP manifests, unresolved symbols/contracts, incomplete capability ownership, and unbounded authority fail closed at structural proof.
+- **Ticket state:** PBAI-001 remains `in_progress`; executable, operational, templates, migrations, and domain-module proof remain open.
+- **Next:** after acceptance, open `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`.

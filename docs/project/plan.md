@@ -1,58 +1,58 @@
 # Project Plan
 
-<!-- v0.1.112 current control-surface header -->
-- Accepted/current version: `v0.1.111.5.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip`
-- Active candidate version: `v0.1.112`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
-- Next normal version: `v0.1.112`
-- Next normal slice: `v0.1.112 — PBAI-001 declaration and structural validation`
-- Next planned version after acceptance: `v0.1.113`
-- Next planned slice after acceptance: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+<!-- v0.1.113 current control-surface header -->
+- Accepted/current version: `v0.1.112`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.112.zip`
+- Active candidate version: `v0.1.113`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
+- Next normal version: `v0.1.113`
+- Next normal slice: `v0.1.113 — PBAI-001 registry validation and reference resolution`
+- Next planned version after acceptance: `v0.1.114`
+- Next planned slice after acceptance: `v0.1.114 — PBAI-001 executable validation and SkillRun evidence`
 
 ## Current baseline
 
 ```text
-accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip
-accepted/current version: v0.1.111.5.2
-last completed normal slice: v0.1.109 — PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition
+accepted/current baseline with adoption evidence: chatgpt_claudecode_workflow-2_v0.1.112.zip
+accepted/current version: v0.1.112
+last completed normal slice: v0.1.112 — PBAI-001 declaration and structural validation
 last completed repair: v0.1.111.5.2 — Null-safe previous active-step ETA state
-active candidate: chatgpt_claudecode_workflow-2_v0.1.112.zip
-active candidate version: v0.1.112
-active normal slice: v0.1.112 — PBAI-001 declaration and structural validation
-next planned slice after acceptance: v0.1.113 — PBAI-001 registry validation and reference resolution
+active candidate: chatgpt_claudecode_workflow-2_v0.1.113.zip
+active candidate version: v0.1.113
+active normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
+next planned slice after acceptance: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
 ```
 
 ## Plan summary
 
-`v0.1.111.5.2` is accepted/current. `v0.1.112` opens the first PBAI-001 implementation phase: a strict tracked declaration, ten-layer structural validator, bounded delegation and authority contracts, proof-level reporting, CLI plan/validate commands, and a required release gate. It does not implement registry, executable, or operational proof.
+`v0.1.112` is accepted/current. `v0.1.113` implements PBAI-001 registry proof: a strict tracked registry, exact reference resolution, static implementation binding, capability coverage, and bounded authority-controller resolution. It does not execute skills or claim executable/operational proof.
 
-## Active normal slice — v0.1.112 — PBAI-001 declaration and structural validation
+## Active normal slice — v0.1.113 — PBAI-001 registry validation and reference resolution
 
 Scope:
 
-1. Add `.promptbranch-ai.json` with schema `promptbranch.ai.application` version `1.0`.
-2. Support `runtime_application` and `domain_module` ownership models.
-3. Require one sole version authority, runtime provider and contract version, ten non-empty architecture layers, explicit generic-runtime delegation, bounded authority, and project-local validation commands.
-4. Reject unknown fields, absolute paths, traversal, repeated cross-layer paths, missing or empty assets, unsupported shell invocation, unbounded timeouts, incoherent delegation, and self-granted mutation/release/publication/adoption authority.
-5. Add `pb application architecture plan --json` and `pb application architecture validate --level declaration|structural --json`.
-6. Report only the highest level proven. Registry, executable, and operational requests fail closed as not implemented.
-7. Add Promptbranch's runtime declaration, schema, deterministic regressions, and a required release-validation group.
-8. Add PBAI-001 policy to `PROJECT_SETTINGS.md` and agent read/validation rules to `AGENTS.md`.
+1. Add `.promptbranch/ai-registry.json` and packaged schema `promptbranch.ai.registry` version `1.0`.
+2. Extend `.promptbranch-ai.json` to schema version `1.1` with an explicit registry authority reference.
+3. Register Agent, Skill, Tool, Validator, state-contract, evidence-contract, and controller identities.
+4. Resolve all cross-references exactly and reject missing or cross-kind duplicate IDs.
+5. Verify Python symbols statically, match skills to `SKILL.md` frontmatter, and match tools to the authoritative MCP manifest.
+6. Require registered agent capability coverage to exactly equal declared application ownership.
+7. Resolve all mutation/release/publication/adoption controllers and prove each boundary is bounded.
+8. Add `pb application architecture validate --level registry --json` and a required release-validation group.
 
 Out of scope:
 
-- Agent/Skill/Tool/Validator registry reference resolution.
-- Ordered skill execution and SkillRun evidence.
-- Operational lifecycle publication/adoption proof for domain modules.
-- Automatic migration of existing PB repositories.
-- Closing PBAI-001 or declaring full AI-application completion.
+- Executing registered agents, skills, tools, or validators.
+- SkillRun or execution-ledger evidence.
+- Operational Project Source publication/adoption proof for domain modules.
+- Automatic migration or fallback for declarations without registries.
+- Closing PBAI-001.
 
-Acceptance requires the Promptbranch repository to pass structural validation, all fail-closed regressions to pass from source and packaged bytes, the release gate to include PBAI-001, strict host validation to reach 10/10, and adoption/current identity to verify exactly.
+Acceptance requires registry validation to pass from source and packaged bytes, all negative resolution regressions to fail closed, the release gate to include registry proof, strict host validation to reach 10/10, and adoption/current identity to verify exactly.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. `v0.1.111.5.2` is accepted/current, `v0.1.112` is the one active normal slice, and `v0.1.113 — PBAI-001 registry validation and reference resolution` is planned only after acceptance.
+The machine-readable authority is `docs/project/plan-state.json`. `v0.1.112` is accepted/current, `v0.1.113` is the one active normal slice, and `v0.1.114 — PBAI-001 executable validation and SkillRun evidence` is planned only after acceptance.
 
 ## Release / slice plan
 
