@@ -1,10 +1,10 @@
 # Project Status
 
-<!-- v0.1.114.1 current control-surface header -->
+<!-- v0.1.114.2 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Active candidate version: `v0.1.114.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
 - Next normal version: `v0.1.115`
 - Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
@@ -16,9 +16,9 @@
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.113.zip
 accepted/current version: v0.1.113
 rejected candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.114.1.zip
-active candidate version: v0.1.114.1
-active repair slice: v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair
+active repair candidate: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
+active candidate version: v0.1.114.2
+active repair slice: v0.1.114.2 — Deterministic candidate test-runner dependency repair
 next normal slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
 
@@ -28,29 +28,30 @@ next normal slice after acceptance: v0.1.115 — PBAI-001 operational validation
 - Ambient PATH selected `/home/spikkie/git/ai-aip/py_env/bin/pb` instead of the freshly installed pipx candidate.
 - That environment contained an incompatible FastAPI/Starlette pair and `promptbranch_container_api` failed to import.
 - Adoption was refused; `v0.1.113` remains accepted/current.
-- `v0.1.114.1` is scope-neutral and preserves all executable PBAI and SkillRun behavior.
+- `v0.1.114.1` repaired runtime binding and FastAPI/Starlette compatibility, but strict direct validation exposed missing pytest in the exact candidate venv.
+- `v0.1.114.2` adds the deterministic candidate-local test runner while preserving all executable PBAI and SkillRun behavior.
 
 ## Repair scope
 
-1. Bind release-critical commands to the exact pipx candidate venv and fail closed on PATH shadowing.
-2. Pass the exact candidate Python to import-smoke and verify interpreter prefix.
-3. Pin `fastapi==0.128.2` with `starlette==0.50.0` in package and service dependency contracts.
-4. Verify runtime dependency versions during import-smoke.
+1. Retain exact candidate runtime binding and FastAPI/Starlette import compatibility.
+2. Pin `pytest==9.0.2` in candidate package metadata and `pytest-asyncio==1.3.0` in service requirements.
+3. Bind release-validation subprocesses to the absolute candidate Python.
+4. Verify pytest version, module path, and interpreter prefix before validation starts.
 5. Retain structural, registry, executable, SkillRun, transport, Artifact Guardian, publication, and adoption gates unchanged.
 
 ## Current blockers
 
-Strict host release validation and evidence-bound adoption remain required for `v0.1.114.1`.
+Strict host release validation and evidence-bound adoption remain required for `v0.1.114.2`.
 
 ## Next safe action
 
-Validate and package `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`, then rerun the strict 10/10 host workflow. Do not open `v0.1.115` until this repair is adopted.
+Validate and package `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`, then rerun the strict 10/10 host workflow. Do not open `v0.1.115` until this repair is adopted.
 
 ## Last updated
 
 ```text
-2026-07-29
-v0.1.114.1 candidate runtime and dependency compatibility repair
+2026-07-30
+v0.1.114.2 deterministic candidate test-runner dependency repair
 ```
 
 ## v0.1.102 candidate status

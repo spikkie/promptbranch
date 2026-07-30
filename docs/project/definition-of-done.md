@@ -884,3 +884,12 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-331 | Package import validation verifies the exact candidate Python plus the tracked FastAPI `0.128.2` and Starlette `0.50.0` runtime versions | focused_candidate | `promptbranch_test_suite.py`, dependency and identity regressions | v0.1.114.1 |
 | DOD-332 | The repair preserves PBAI structural, registry, executable, SkillRun, operational fail-closed, publication, adoption, and current-verification semantics | focused_candidate | existing PBAI/SkillRun/release groups | v0.1.114.1 |
 | DOD-333 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114.1 |
+
+## v0.1.114.2 deterministic candidate test-runner dependency repair
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-334 | The exact candidate venv contains pinned `pytest==9.0.2` as package metadata, not an ambient or implicit test dependency | focused_candidate | `pyproject.toml`, `requirements.txt`, installed metadata checks | v0.1.114.2 |
+| DOD-335 | Release control verifies pytest version, module path, interpreter prefix, and release-validation Python identity before Project Source mutation | focused_candidate | release controller preflight and regressions | v0.1.114.2 |
+| DOD-336 | `pb test full` resolves every release-validation command through the verified candidate Python and fails closed before group execution on test-runner drift | focused_candidate | `promptbranch_test_suite.py`, release-validation runner tests | v0.1.114.2 |
+| DOD-337 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114.2 |

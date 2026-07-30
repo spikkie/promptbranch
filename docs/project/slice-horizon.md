@@ -1,8 +1,12 @@
 # Slice Horizon
 
+## Repair history
+
+- `v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair` is repair-required after strict host validation exposed missing pytest in the exact candidate venv.
+
 ## Active repair
 
-- `v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair` is the sole active repair.
+- `v0.1.114.2 — Deterministic candidate test-runner dependency repair` is the sole active repair.
 - `v0.1.115 — PBAI-001 operational validation and lifecycle evidence` remains the next normal slice after repair acceptance.
 
 ## Current rolling horizon
@@ -11,7 +15,9 @@
 |---|---|---|---|---|
 | v0.1.112 | PBAI-001 declaration and structural validation | superseded | normal | accepted structural proof superseded as current by v0.1.113 |
 | v0.1.113 | PBAI-001 registry validation and reference resolution | accepted_current | normal | strict 10/10 validation, registry proof, adoption, and exact current identity verified |
-| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | active | normal | ordered bounded read-only MCP execution and valid self-hashed SkillRun evidence |
+| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | repair_required | normal | executable implementation retained; host package import failed under an ambient shadow runtime |
+| v0.1.114.1 | Candidate runtime resolution and FastAPI/Starlette compatibility repair | repair_required | repair | candidate runtime binding and import compatibility passed; exact candidate venv lacked pytest |
+| v0.1.114.2 | Deterministic candidate test-runner dependency repair | active | repair | pin and verify pytest inside the exact candidate venv without changing PBAI scope |
 | v0.1.115 | PBAI-001 operational validation and lifecycle evidence | planned_after_acceptance | normal | real lifecycle, publication, adoption/current, and recovery proof |
 
 ## Repair horizon rule

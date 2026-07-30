@@ -1,20 +1,21 @@
 # Release Status
 
-<!-- v0.1.114.1 current control-surface header -->
+<!-- v0.1.114.2 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Active candidate version: `v0.1.114.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
 - Next normal version: `v0.1.115`
 - Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
 - Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 
-## v0.1.114.1 repair candidate
+## v0.1.114.2 repair candidate
 
 - `v0.1.114` failed strict host validation with one common package-import defect in direct, localhost, and standalone import-smoke.
 - The release process used an ambient `ai-aip` virtual environment because it appeared before pipx on PATH.
-- `v0.1.114.1` binds candidate execution to the exact pipx venv and pins the FastAPI/Starlette pair.
+- `v0.1.114.1` proved exact pipx candidate binding and the FastAPI/Starlette compatibility pair, but the exact candidate venv lacked pytest.
+- `v0.1.114.2` retains that repair, pins `pytest==9.0.2`, and verifies its module path and interpreter identity before release validation.
 - PBAI executable and SkillRun behavior are unchanged.
 - Adoption remains pending.
 
@@ -24,7 +25,8 @@
 |---|---|---|---|---|---|
 | v0.1.113 | normal | PBAI-001 registry validation and reference resolution | accepted_current | strict host validation 10/10 and exact adoption | accepted baseline |
 | v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | repair_required | PBAI gates passed; package import failed under shadow runtime; adoption refused | never adopt these bytes |
-| v0.1.114.1 | repair | Candidate runtime resolution and FastAPI/Starlette compatibility repair | candidate | deterministic and strict host validation pending | no scope advance; adopt only after 10/10 and exact identity verification |
+| v0.1.114.1 | repair | Candidate runtime resolution and FastAPI/Starlette compatibility repair | repair_required | runtime and import repair passed; project_control_surface could not start because candidate pytest was missing | never adopt these bytes |
+| v0.1.114.2 | repair | Deterministic candidate test-runner dependency repair | candidate | deterministic and strict host validation pending | no scope advance; adopt only after 10/10 and exact identity verification |
 | v0.1.115 | normal | PBAI-001 operational validation and lifecycle evidence | planned | not started | begin only after repair acceptance |
 
 ## Current baseline
@@ -32,7 +34,7 @@
 ```text
 accepted/current: chatgpt_claudecode_workflow-2_v0.1.113.zip
 rejected candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active repair: chatgpt_claudecode_workflow-2_v0.1.114.1.zip
+active repair: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
 next normal: v0.1.115
 ```
 

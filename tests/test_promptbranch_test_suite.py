@@ -174,13 +174,13 @@ def test_package_import_smoke_fails_on_candidate_python_identity_drift(monkeypat
 def test_package_import_smoke_fails_on_fastapi_starlette_drift(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\ndependencies = ["fastapi==0.128.2", "starlette==0.50.0"]\n\n[tool.setuptools]\npy-modules = ["promptbranch_version"]\n',
+        '[project]\ndependencies = ["fastapi==0.128.2", "pytest==9.0.2", "starlette==0.50.0"]\n\n[tool.setuptools]\npy-modules = ["promptbranch_version"]\n',
         encoding="utf-8",
     )
 
     class Completed:
         returncode = 1
-        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":false,"expected":{"fastapi":"0.128.2","starlette":"0.50.0"},"observations":[{"name":"fastapi","expected":"0.128.2","actual":"0.128.2"},{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}],"mismatches":[{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}]}}'
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":false,"expected":{"fastapi":"0.128.2","pytest":"9.0.2","starlette":"0.50.0"},"observations":[{"name":"fastapi","expected":"0.128.2","actual":"0.128.2"},{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}],"mismatches":[{"name":"starlette","expected":"0.50.0","actual":"0.49.0"}]}}'
         stderr = ""
 
     monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
@@ -188,7 +188,7 @@ def test_package_import_smoke_fails_on_fastapi_starlette_drift(monkeypatch, tmp_
     result = suite.package_import_smoke(repo_path=tmp_path, python_executable="python-test")
 
     assert result["ok"] is False
-    assert result["expected_dependency_versions"] == {"fastapi": "0.128.2", "starlette": "0.50.0"}
+    assert result["expected_dependency_versions"] == {"fastapi": "0.128.2", "pytest": "9.0.2", "starlette": "0.50.0"}
     assert result["dependency_consistency"]["mismatches"][0]["name"] == "starlette"
 
 
@@ -638,12 +638,13 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
 
 
 
-def test_release_validation_groups_default_to_repo_python(monkeypatch) -> None:
+def test_release_validation_groups_default_to_current_promptbranch_python(monkeypatch) -> None:
     monkeypatch.delenv(suite.RELEASE_VALIDATION_PYTHON_ENV, raising=False)
+    monkeypatch.delenv("PROMPTBRANCH_CANDIDATE_PYTHON", raising=False)
     manifest = suite.release_validation_group_manifest()
 
     for group in suite.RELEASE_VALIDATION_GROUPS:
-        assert manifest[group]["command"][0] == "python3"
+        assert manifest[group]["command"][0] == suite.sys.executable
         assert suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER not in manifest[group]["command"]
 
 
@@ -872,8 +873,8 @@ def test_release_validation_group_nodeid_progress_reports_completed_nodeids(monk
     assert result["failed_nodeids"] == []
     assert result["timed_out_nodeids"] == []
     assert calls == [
-        ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_one"],
-        ["python3", "-m", "pytest", "-q", "tests/test_demo.py::test_two"],
+        [suite.sys.executable, "-m", "pytest", "-q", "tests/test_demo.py::test_one"],
+        [suite.sys.executable, "-m", "pytest", "-q", "tests/test_demo.py::test_two"],
     ]
     assert envs[0]["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] == "tests/test_demo.py::test_one"
     assert envs[1]["PROMPTBRANCH_RELEASE_VALIDATION_NODEID"] == "tests/test_demo.py::test_two"
@@ -1149,7 +1150,7 @@ def test_release_validation_manifest_requires_sandbox_mutation_rollback_gate() -
     assert gate["required"] is True
     assert gate["timeout_seconds"] == 180.0
     assert gate["command"] == [
-        "python3",
+        suite.sys.executable,
         "scripts/verify-sandbox-mutation-rollback-release-gate.py",
         "--repo",
         ".",
@@ -1162,7 +1163,7 @@ def test_release_validation_manifest_requires_execution_envelope_validation_gate
     assert gate["required"] is True
     assert gate["timeout_seconds"] == 120.0
     assert gate["command"] == [
-        "python3",
+        suite.sys.executable,
         "promptbranch_cli.py",
         "loop",
         "execution-envelope-validation",
@@ -1353,4 +1354,75 @@ def test_browser_profile_fail_fast_marks_remaining_browser_units_skipped(monkeyp
     assert result["progress"]["skipped_units"] == 1
     assert result["progress"]["states"]["browser.mcp_smoke"] == "failed"
     assert result["progress"]["states"]["browser.login_check"] == "skipped:browser_failure"
+
+def test_release_validation_runner_preflight_verifies_pinned_pytest(monkeypatch) -> None:
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, suite.sys.executable)
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTEST_VERSION_ENV, "9.0.2")
+
+    result = suite.release_validation_runner_preflight()
+
+    assert result["ok"] is True, result
+    assert result["status"] == "release_validation_runner_verified"
+    assert result["checks"]["python_executable_match"] is True
+    assert result["checks"]["pytest_version_match"] is True
+    assert result["checks"]["pytest_module_inside_python_prefix"] is True
+
+
+def test_release_validation_runner_preflight_fails_on_pytest_version_drift(monkeypatch) -> None:
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, suite.sys.executable)
+    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTEST_VERSION_ENV, "0.0.0")
+
+    result = suite.release_validation_runner_preflight()
+
+    assert result["ok"] is False
+    assert result["status"] == "release_validation_runner_invalid"
+    assert result["checks"]["pytest_version_match"] is False
+
+
+def test_release_validation_groups_fail_closed_before_first_group_on_runner_drift(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        suite,
+        "release_validation_runner_preflight",
+        lambda: {"ok": False, "status": "release_validation_runner_invalid"},
+    )
+
+    result = suite.run_release_validation_groups(repo_path=tmp_path, fail_fast=True)
+
+    assert result["ok"] is False
+    assert result["status"] == "runner_preflight_failed"
+    assert result["missing_required_groups"]
+    assert all(
+        payload["status"] == "skipped_runner_preflight_failed"
+        for payload in result["groups"].values()
+    )
+
+def test_package_import_smoke_fails_on_pytest_drift(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "VERSION").write_text("v0.0.166\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        """[project]
+dependencies = ["fastapi==0.128.2", "pytest==9.0.2", "starlette==0.50.0"]
+
+[tool.setuptools]
+py-modules = ["promptbranch_version"]
+""",
+        encoding="utf-8",
+    )
+
+    class Completed:
+        returncode = 1
+        stdout = '{"imports":[{"module":"promptbranch_version","ok":true}],"version_consistency":{"ok":true,"expected_version":"0.0.166","observations":[],"missing":[],"mismatches":[]},"runtime_identity":{"ok":true,"expected_python":"python-test","actual_python":"python-test","expected_prefix":".","actual_prefix":"."},"dependency_consistency":{"ok":false,"expected":{"fastapi":"0.128.2","pytest":"9.0.2","starlette":"0.50.0"},"observations":[{"name":"pytest","expected":"9.0.2","actual":"8.4.1"}],"mismatches":[{"name":"pytest","expected":"9.0.2","actual":"8.4.1"}]}}'
+        stderr = ""
+
+    monkeypatch.setattr(suite.subprocess, "run", lambda *args, **kwargs: Completed())
+
+    result = suite.package_import_smoke(repo_path=tmp_path, python_executable="python-test")
+
+    assert result["ok"] is False
+    assert result["dependency_consistency"]["mismatches"][0]["name"] == "pytest"
+
+def test_release_validation_runner_preserves_candidate_launcher_path() -> None:
+    source = Path(suite.__file__).read_text(encoding="utf-8")
+    assert 'Path(release_validation_python()).expanduser().absolute()' in source
+    assert 'Path(release_validation_python()).expanduser().resolve()' not in source
+    assert 'Path(sys.executable).absolute()' in source
 

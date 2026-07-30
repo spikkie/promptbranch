@@ -1258,3 +1258,7 @@ No state or registry migration is required. Consumers of `pb_test_progress:` sho
 ## v0.1.114.1 candidate-runtime and dependency compatibility repair
 
 `v0.1.114` was not adopted. Existing installations must not treat its Project Source upload or Git commit as accepted/current state. `v0.1.114.1` requires release control to bind commands to the exact pipx candidate runtime and requires the tracked FastAPI/Starlette pair `0.128.2`/`0.50.0`. Ambient virtual environments may remain on the operator PATH, but they cannot satisfy candidate validation. No PBAI schema or SkillRun migration is introduced by this repair. After acceptance, the next normal slice remains `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.
+
+## v0.1.114.2 deterministic candidate test-runner dependency repair
+
+`v0.1.114.1` is not accepted/current. Its runtime binding and FastAPI/Starlette repair are retained, but strict host validation showed that the exact pipx candidate venv lacked pytest. `v0.1.114.2` pins pytest in package metadata, verifies its version and module location in the candidate venv, and explicitly binds release-validation commands to that Python. No PBAI schema, SkillRun, publication, adoption, or operational-scope migration is introduced.

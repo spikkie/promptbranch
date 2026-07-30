@@ -289,20 +289,94 @@ def utc_now() -> str:
 
 RELEASE_VALIDATION_PYTHON_PLACEHOLDER = "{release_validation_python}"
 RELEASE_VALIDATION_PYTHON_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON"
+RELEASE_VALIDATION_PYTEST_VERSION_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION"
+RELEASE_VALIDATION_PYTEST_VERSION = "9.0.2"
 RELEASE_VALIDATION_SKIP_DUPLICATE_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE"
 
 
 def release_validation_python() -> str:
-    """Return the repo test Python for release-validation groups.
+    """Return the exact Python authority for release-validation groups.
 
-    `pb test full` is normally executed by the installed Promptbranch entrypoint.
-    In pipx/installed use, `sys.executable` points at the Promptbranch runtime
-    venv, which intentionally may not contain developer test dependencies such as
-    pytest. Release-validation groups are repo validation commands, so default to
-    the operator/repo Python instead of the installed CLI interpreter.
+    The release controller exports the installed candidate interpreter explicitly.
+    Standalone invocations use the current Promptbranch interpreter.  The runner
+    preflight below proves pytest identity before any required group executes.
     """
 
-    return os.environ.get(RELEASE_VALIDATION_PYTHON_ENV, "python3")
+    return (
+        os.environ.get(RELEASE_VALIDATION_PYTHON_ENV)
+        or os.environ.get("PROMPTBRANCH_CANDIDATE_PYTHON")
+        or sys.executable
+    )
+
+
+def release_validation_runner_preflight(*, timeout_seconds: float = 10.0) -> dict[str, Any]:
+    python_executable = str(Path(release_validation_python()).expanduser().absolute())
+    expected_pytest_version = os.environ.get(
+        RELEASE_VALIDATION_PYTEST_VERSION_ENV,
+        RELEASE_VALIDATION_PYTEST_VERSION,
+    )
+    script = r"""
+from importlib import metadata
+import json
+from pathlib import Path
+import sys
+payload = {
+    "python_executable": str(Path(sys.executable).absolute()),
+    "python_prefix": str(Path(sys.prefix).resolve()),
+}
+try:
+    import pytest
+    payload["pytest_version"] = metadata.version("pytest")
+    payload["pytest_module"] = str(Path(pytest.__file__).resolve())
+except Exception as exc:
+    payload["error_type"] = type(exc).__name__
+    payload["error"] = str(exc)
+print(json.dumps(payload, sort_keys=True))
+""".strip()
+    try:
+        completed = subprocess.run(
+            [python_executable, "-c", script],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=max(0.1, min(float(timeout_seconds), 10.0)),
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "ok": False,
+            "status": "release_validation_runner_unavailable",
+            "python_executable": python_executable,
+            "expected_pytest_version": expected_pytest_version,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+    try:
+        observed = json.loads((completed.stdout or "").strip() or "{}")
+    except json.JSONDecodeError:
+        observed = {}
+    prefix = Path(str(observed.get("python_prefix") or "/")).resolve()
+    module_text = str(observed.get("pytest_module") or "")
+    module_path = Path(module_text).resolve() if module_text else None
+    module_inside_prefix = bool(module_path and _path_is_within(module_path, prefix))
+    executable_match = str(observed.get("python_executable") or "") == python_executable
+    version_match = str(observed.get("pytest_version") or "") == expected_pytest_version
+    ok = completed.returncode == 0 and executable_match and version_match and module_inside_prefix
+    return {
+        "ok": ok,
+        "status": "release_validation_runner_verified" if ok else "release_validation_runner_invalid",
+        "python_executable": python_executable,
+        "expected_pytest_version": expected_pytest_version,
+        "observed": observed,
+        "checks": {
+            "process_exit_zero": completed.returncode == 0,
+            "python_executable_match": executable_match,
+            "pytest_version_match": version_match,
+            "pytest_module_inside_python_prefix": module_inside_prefix,
+        },
+        "returncode": completed.returncode,
+        "stderr_tail": _tail_text(completed.stderr or ""),
+    }
 
 
 def _release_validation_command(*args: str) -> list[str]:
@@ -1131,6 +1205,39 @@ def run_release_validation_groups(
             "duplicate_skip": True,
             "groups": groups,
         }
+    runner_preflight = release_validation_runner_preflight()
+    if not runner_preflight.get("ok"):
+        groups = {}
+        for group_name, spec in RELEASE_VALIDATION_GROUPS.items():
+            groups[group_name] = {
+                "ok": False,
+                "action": "release_validation_group",
+                "status": "skipped_runner_preflight_failed",
+                "group": group_name,
+                "required": bool(spec.get("required")),
+                "description": spec.get("description"),
+                "skip_reason": "release validation runner preflight failed",
+            }
+            if progress is not None:
+                progress.finish(
+                    f"validation.{group_name}",
+                    ok=False,
+                    skipped=True,
+                    skip_reason="runner_preflight_failed",
+                )
+        missing_required = [
+            name for name, spec in RELEASE_VALIDATION_GROUPS.items() if bool(spec.get("required"))
+        ]
+        return {
+            "ok": False,
+            "action": "release_validation_groups",
+            "status": "runner_preflight_failed",
+            "required_group_count": len(RELEASE_VALIDATION_GROUPS),
+            "missing_required_groups": missing_required,
+            "runner_preflight": runner_preflight,
+            "groups": groups,
+        }
+
     groups: dict[str, dict[str, Any]] = {}
     group_items = list(RELEASE_VALIDATION_GROUPS.items())
     for index, (group_name, spec) in enumerate(group_items):
@@ -1167,6 +1274,7 @@ def run_release_validation_groups(
         "status": "passed" if not missing_required else "failed",
         "required_group_count": len(RELEASE_VALIDATION_GROUPS),
         "missing_required_groups": missing_required,
+        "runner_preflight": runner_preflight,
         "groups": groups,
     }
 
@@ -1683,7 +1791,7 @@ def package_import_smoke(*, repo_path: str | Path = ".", python_executable: str 
     declared = _declared_py_modules(root)
     modules = sorted({"promptbranch", "promptbranch.cli", *declared})
     expected_version = normalize_version(_read_version(root))
-    expected_dependencies = _declared_exact_dependency_versions(root, ("fastapi", "starlette"))
+    expected_dependencies = _declared_exact_dependency_versions(root, ("fastapi", "starlette", "pytest"))
     if not declared:
         return {"ok": False, "action": "package_import_smoke", "status": "pyproject_missing_or_unreadable", "repo_path": str(root), "modules": modules}
     executable = python_executable or sys.executable

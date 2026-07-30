@@ -1916,6 +1916,35 @@ bind_installed_candidate_runtime() {
     return 1
   }
 
+  local expected_pytest_version="9.0.2"
+  if ! "${candidate_python}" - "${candidate_venv_dir}" "${expected_pytest_version}" <<'PYTESTPY'
+from importlib import metadata
+from pathlib import Path
+import sys
+venv = Path(sys.argv[1]).resolve()
+expected = sys.argv[2]
+try:
+    import pytest
+except Exception as exc:
+    raise SystemExit(f"candidate pytest import failed: {type(exc).__name__}: {exc}")
+observed = metadata.version("pytest")
+module_path = Path(pytest.__file__).resolve()
+prefix = Path(sys.prefix).resolve()
+if prefix != venv:
+    raise SystemExit(f"candidate pytest Python prefix mismatch: expected {venv}, got {prefix}")
+if observed != expected:
+    raise SystemExit(f"candidate pytest version mismatch: expected {expected}, got {observed}")
+try:
+    module_path.relative_to(venv)
+except ValueError as exc:
+    raise SystemExit(f"candidate pytest module escaped venv: {module_path}") from exc
+print(f"candidate pytest verified: version={observed} module={module_path}")
+PYTESTPY
+  then
+    echo "ERROR: deterministic candidate pytest preflight failed" >&2
+    return 1
+  fi
+
   export PATH="${candidate_bin_dir}:${PATH}"
   hash -r
   resolved_pb="$(command -v pb || true)"
@@ -1935,12 +1964,15 @@ bind_installed_candidate_runtime() {
   export PROMPTBRANCH_CANDIDATE_PYTHON="${candidate_python}"
   export PROMPTBRANCH_CANDIDATE_PB="${candidate_pb}"
   export PROMPTBRANCH_CANDIDATE_PROMPTBRANCH="${candidate_promptbranch}"
+  export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"
+  export PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION="9.0.2"
 
   echo "Candidate runtime bound:"
   echo "  pipx_venv: ${candidate_venv_dir}"
   echo "  python:    ${candidate_python}"
   echo "  pb:        ${candidate_pb}"
   echo "  version:   ${expected_version}"
+  echo "  pytest:    9.0.2"
 }
 
 verify_installed_candidate_cli() {

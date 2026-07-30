@@ -67,3 +67,21 @@ def test_fastapi_starlette_compatibility_pair_is_exact_and_consistent() -> None:
     expected = {"fastapi": "0.128.2", "starlette": "0.50.0"}
     assert {name: project_dependencies.get(name) for name in expected} == expected
     assert {name: requirements_dependencies.get(name) for name in expected} == expected
+
+
+def test_candidate_pytest_runner_is_exact_and_consistent() -> None:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project_dependencies = {
+        item.split("==", 1)[0].strip().lower(): item.split("==", 1)[1].strip()
+        for item in data["project"]["dependencies"]
+        if "==" in item
+    }
+    requirements_dependencies = {
+        item.split("==", 1)[0].strip().lower(): item.split("==", 1)[1].strip()
+        for raw in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        if (item := raw.strip()) and not item.startswith("#") and "==" in item
+    }
+
+    assert project_dependencies.get("pytest") == "9.0.2"
+    assert requirements_dependencies.get("pytest") == "9.0.2"
+    assert requirements_dependencies.get("pytest-asyncio") == "1.3.0"

@@ -84,3 +84,12 @@ python3 -m pytest -q \
 | PBAI | structural, registry, and executable release groups plus valid SkillRun evidence |
 | Packaging | source and clean-extraction parity, compileall, shell syntax, Artifact Guardian |
 | Release | strict direct and localhost transports, live gates, exact adoption/current identity |
+
+## v0.1.114.2
+
+| Surface | Required evidence |
+|---|---|
+| Candidate test runner | `pytest==9.0.2` installed in and imported from the exact candidate pipx venv |
+| Release-validation Python | absolute candidate Python path exported through `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` |
+| Runner drift | fail closed on missing pytest, version mismatch, module path outside candidate venv, or interpreter-prefix mismatch |
+| Scope | no PBAI or SkillRun authority expansion; next normal slice remains v0.1.115 |

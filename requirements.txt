@@ -38,8 +38,8 @@ pyee
 Pygments
 pyotp
 pytesseract
-pytest
-pytest-asyncio
+pytest==9.0.2
+pytest-asyncio==1.3.0
 python-dotenv
 python-jose
 python-multipart

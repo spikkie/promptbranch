@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
   "accepted_current_version": "v0.1.113",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
-  "active_candidate_version": "v0.1.114.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+  "active_candidate_version": "v0.1.114.2",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
+  "active_slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -362,12 +362,21 @@
       "version": "v0.1.114.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
       "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
-      "status": "candidate",
-      "validation": "Pins FastAPI 0.128.2 with Starlette 0.50.0, binds release-critical commands to the exact pipx candidate venv, and proves import-smoke interpreter/dependency identity. Source, clean-extraction, Artifact Guardian, installed-package, and strict host validation remain required.",
+      "status": "repair_required",
+      "validation": "Strict host direct transport bound the correct candidate runtime and passed package import smoke, then failed project_control_surface because the candidate venv lacked pytest; fail-fast skipped the remaining validation groups and adoption could not proceed.",
       "created_at": "2026-07-29T20:29:00+02:00"
+    },
+    {
+      "version": "v0.1.114.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
+      "status": "candidate",
+      "created_at": "2026-07-30T07:48:00+02:00",
+      "kind": "repair",
+      "summary": "Pins pytest in the candidate package, verifies its version and module path inside the exact pipx venv, and binds release-validation subprocesses to that interpreter without advancing PBAI scope."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1749,10 +1758,19 @@
       "version": "v0.1.114.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
       "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
+      "status": "repair_required",
+      "release_mode": "repair",
+      "scope": "candidate runtime and FastAPI/Starlette repair retained; host validation exposed missing deterministic pytest in the exact candidate venv",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip"
+    },
+    {
+      "version": "v0.1.114.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
       "status": "active",
       "release_mode": "repair",
-      "scope": "bind exact pipx candidate runtime and pin FastAPI/Starlette compatibility without advancing PBAI scope",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip"
+      "scope": "pin and verify pytest inside the exact candidate venv; preserve candidate runtime binding, FastAPI/Starlette compatibility, PBAI executable proof, and SkillRun evidence",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip"
     },
     {
       "version": "v0.1.115",
@@ -1775,5 +1793,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.114.1"
+  "updated_for": "v0.1.114.2"
 }

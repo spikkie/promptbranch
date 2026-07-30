@@ -1,10 +1,10 @@
 # Project Plan
 
-<!-- v0.1.114.1 current control-surface header -->
+<!-- v0.1.114.2 current control-surface header -->
 - Accepted/current version: `v0.1.113`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.1.zip`
+- Active candidate version: `v0.1.114.2`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
 - Next normal version: `v0.1.115`
 - Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
 - Next planned version after acceptance: `v0.1.115`
@@ -16,22 +16,22 @@
 accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.113.zip
 last completed normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
 failed candidate: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-active repair: v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair
+active repair: v0.1.114.2 — Deterministic candidate test-runner dependency repair
 next normal slice after repair acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
 ```
 
-## Active repair slice — v0.1.114.1
+## Active repair slice — v0.1.114.2
 
-The normal-slice implementation is retained unchanged. This repair corrects only the strict validation runtime boundary and dependency compatibility contract.
+The normal-slice implementation is retained unchanged. This repair retains the strict candidate-runtime and FastAPI/Starlette compatibility boundary, then adds a deterministic candidate-local pytest runner contract.
 
 Scope:
 
-1. Resolve the pipx home after candidate installation and derive exact `python`, `pb`, and `promptbranch` paths.
-2. Verify candidate distribution/version identity before Project Source mutation.
-3. Prepend the candidate venv to PATH, clear shell command hashing, and fail closed if ambient executables still win.
-4. Run full tests and import-smoke with the exact candidate runtime.
-5. Pin FastAPI and Starlette to one tested compatible pair and verify both versions at import time.
-6. Add regressions for shadow PATH, interpreter drift, and dependency drift.
+1. Retain exact pipx candidate `python`, `pb`, and `promptbranch` binding and fail closed on PATH or prefix drift.
+2. Retain the pinned FastAPI/Starlette compatibility pair and exact import-smoke interpreter proof.
+3. Pin `pytest==9.0.2` in candidate package metadata and service requirements.
+4. Export the absolute candidate Python for every release-validation group.
+5. Verify pytest version, module path, and interpreter prefix before Project Source mutation and before required groups execute.
+6. Add regressions for missing pytest, version drift, module-path escape, and runner-preflight failure.
 
 Out of scope:
 
@@ -44,7 +44,7 @@ Acceptance requires source-tree and clean-extraction parity, installed candidate
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.113` remains accepted/current, `v0.1.114` is repair-required, `v0.1.114.1` is the sole active repair candidate, and scope advancement is disabled until adoption.
+`docs/project/plan-state.json` is authoritative. `v0.1.113` remains accepted/current, `v0.1.114` is repair-required, `v0.1.114.2` is the sole active repair candidate, and scope advancement is disabled until adoption.
 
 ## Release / slice plan
 

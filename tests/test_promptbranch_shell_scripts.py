@@ -4165,3 +4165,13 @@ def test_import_smoke_explicit_candidate_python_ignores_shadow_path(monkeypatch,
     assert result["ok"] is True
     assert captured["cmd"][0] == str(candidate_python)
     assert str(shadow_bin) in str(captured["env"]["PATH"])
+
+def test_release_control_binds_and_verifies_deterministic_candidate_pytest() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+
+    assert 'local expected_pytest_version="9.0.2"' in script
+    assert 'candidate pytest verified: version=' in script
+    assert 'candidate pytest module escaped venv' in script
+    assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"' in script
+    assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION="9.0.2"' in script
+
