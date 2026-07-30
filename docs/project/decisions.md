@@ -1160,3 +1160,13 @@ Expected-result normalisation is part of the browser step transaction and must o
 - Boundary: unknown changed paths fail closed, and every result declares the strict release gate deferred and still required.
 - Operational proof: generated only after strict adoption and validated against exact artifact, Project Source, registry, state, rollback, and recovery evidence.
 - Next: `v0.1.116` — PBAI-001 templates, migration reports, and first domain-module proof.
+
+## ADR-PROJ-1151 — Cross-process browser ownership must use the advertised bounded queue
+
+- **Status:** accepted for corrective candidate implementation.
+- **Baseline:** `v0.1.114.2` remains accepted/current; `v0.1.115` is repair-required after strict external-live validation failed before adoption.
+- **Decision:** in-process and cross-process browser-profile locks share one bounded queue deadline. External `flock` contention is polled until acquisition or deadline; it cannot bypass the scheduler with an immediate failure.
+- **Evidence:** timeout payloads identify the observed owner PID, operation, operation ID, acquisition time, liveness, poll count, and owner transitions where available.
+- **Handoff:** live preflight and continuous live use the same service transport. Release control additionally proves service idle and host-level `flock` release before continuous live begins.
+- **Authority:** the repair changes no PBAI, publication, adoption, accepted/current, or strict-gate authority.
+- **Next:** after repair acceptance, open `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`.

@@ -1,12 +1,12 @@
 # Release Status
 
-<!-- v0.1.115 current control-surface header -->
+<!-- v0.1.115.1 current control-surface header -->
 - Accepted/current version: `v0.1.114.2`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.zip`
-- Next normal version: `v0.1.115`
-- Next normal slice: `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing`
+- Active candidate version: `v0.1.115.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
+- Next normal version: `v0.1.116`
+- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 - Next planned version after acceptance: `v0.1.116`
 - Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 
@@ -14,19 +14,18 @@
 
 | Version | Type | Slice | Status | Validation | Promotion rule |
 |---|---|---|---|---|---|
-| v0.1.113 | normal | PBAI-001 registry validation | superseded | previously accepted | historical |
-| v0.1.114 | normal | PBAI-001 executable validation and SkillRun evidence | repaired | implementation retained through repairs | never adopt original bytes |
 | v0.1.114.2 | repair | Deterministic candidate test-runner dependency repair | accepted/current | strict 10/10, Artifact Guardian, evidence-bound adoption, exact current identity | accepted baseline |
-| v0.1.115 | normal | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | candidate | source and packaged validation pending | adopt only after unchanged strict 10/10 gate |
-| v0.1.116 | normal | PBAI-001 templates, migration reports, and first domain-module proof | planned | not started | begin after v0.1.115 acceptance |
+| v0.1.115 | normal | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | repair_required | direct and localhost passed; live profile handoff failed after 0.001s despite 600s queue | never adopt original bytes |
+| v0.1.115.1 | repair | Release-live profile ownership handoff repair | candidate | focused and packaged validation pending | adopt only after unchanged strict 10/10 gate |
+| v0.1.116 | normal | PBAI-001 templates, migration reports, and first domain-module proof | planned | not started | begin after v0.1.115.1 acceptance |
 
 ## Current baseline
 
 ```text
 accepted/current: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
-next normal: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
-next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
+repair-required candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
+active repair candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
+next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 standard browser profile default: retained
 ```
 

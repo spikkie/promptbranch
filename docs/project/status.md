@@ -1,12 +1,12 @@
 # Project Status
 
-<!-- v0.1.115 current control-surface header -->
+<!-- v0.1.115.1 current control-surface header -->
 - Accepted/current version: `v0.1.114.2`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.zip`
-- Next normal version: `v0.1.115`
-- Next normal slice: `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing`
+- Active candidate version: `v0.1.115.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
+- Next normal version: `v0.1.116`
+- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 - Next planned version after acceptance: `v0.1.116`
 - Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 
@@ -15,19 +15,21 @@
 ```text
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
 accepted/current version: v0.1.114.2
-active candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
-active candidate version: v0.1.115
-active slice: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
+repair-required candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
+active candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
+active candidate version: v0.1.115.1
+active slice: v0.1.115.1 — Release-live profile ownership handoff repair
+next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 ```
 
 ## Current release state
 
-`v0.1.114.2` passed strict 10/10 host validation, Artifact Guardian, evidence-bound adoption and exact accepted/current verification. `v0.1.115` adds post-adoption operational evidence and fast impact-based development testing. The standard browser profile default and all live release gates remain authoritative for final adoption.
+`v0.1.114.2` remains accepted/current. `v0.1.115` is repair-required after its strict host run passed direct, localhost, rollback, import-smoke and Artifact Guardian but failed the first external-live continuous operation because cross-process profile locking returned immediately instead of honoring the queue timeout. `v0.1.115.1` repairs only that ownership handoff while retaining all PBAI operational-evidence and impact-testing behavior.
 
 ## Next safe action
 
-Run deterministic impacted tests during development, freeze `chatgpt_claudecode_workflow-2_v0.1.115.zip`, then run the unchanged strict 10/10 host workflow. Do not treat edit/component/candidate test evidence as release acceptance.
+Freeze `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`, verify the exact candidate runtime, then run the unchanged strict 10/10 all-all adoption workflow. Do not treat local handoff tests as release acceptance.
 
 ## v0.1.102 candidate status
 

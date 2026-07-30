@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import subprocess
+import sys
+import textwrap
+import time
 
 from promptbranch_automation.automation import ChatGPTAutomation
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
@@ -879,6 +884,114 @@ def test_browser_profile_busy_payload_marks_scheduler_path(monkeypatch, tmp_path
     assert payload["queue_timeout_seconds"] == 0.001
     assert payload["queue_wait_seconds"] is not None
     assert "list-start" not in events
+
+
+def _start_external_profile_lock_holder(profile_dir, *, hold_seconds: float, operation: str = "live_profile_preflight"):
+    lock_path = profile_dir / ".promptbranch-browser-profile.lock"
+    script = textwrap.dedent(
+        """
+        import fcntl
+        import json
+        import os
+        import sys
+        import time
+        from pathlib import Path
+
+        lock_path = Path(sys.argv[1])
+        hold_seconds = float(sys.argv[2])
+        operation = sys.argv[3]
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"pid={os.getpid()}\\n")
+            handle.write(f"operation={operation}\\n")
+            handle.write("operation_id=external-fixture\\n")
+            handle.write(f"acquired_at={time.time()}\\n")
+            handle.write("stale_lock_seconds=300.0\\n")
+            handle.flush()
+            print(json.dumps({"ready": True, "pid": os.getpid()}), flush=True)
+            time.sleep(hold_seconds)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        """
+    )
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script, str(lock_path), str(hold_seconds), operation],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdout is not None
+    ready = json.loads(proc.stdout.readline())
+    assert ready["ready"] is True
+    return proc, ready
+
+
+def test_cross_process_profile_lock_waits_until_external_owner_releases(tmp_path):
+    from promptbranch_automation.service import _SharedProfileAsyncLock
+
+    profile_dir = tmp_path / ".pb_profile"
+    proc, ready = _start_external_profile_lock_holder(profile_dir, hold_seconds=0.12)
+    try:
+        waiter = _SharedProfileAsyncLock(
+            str(profile_dir),
+            wait_timeout_seconds=0.5,
+            stale_lock_seconds=300.0,
+        )
+
+        started = time.monotonic()
+        asyncio.run(waiter._acquire("release_live_continuous"))
+        elapsed = time.monotonic() - started
+        status = _SharedProfileAsyncLock.status_for_profile(str(profile_dir))
+        asyncio.run(waiter._release())
+
+        assert elapsed >= 0.07
+        assert elapsed < 0.5
+        assert waiter.last_waited_seconds >= 0.07
+        assert status["active_operation"] == "release_live_continuous"
+        assert int(ready["pid"]) != 0
+    finally:
+        stdout, stderr = proc.communicate(timeout=2)
+        assert proc.returncode == 0, stderr or stdout
+
+
+def test_cross_process_profile_lock_timeout_honors_queue_deadline_and_reports_owner(tmp_path):
+    from promptbranch_automation.service import _SharedProfileAsyncLock
+    from promptbranch_browser_auth.exceptions import BrowserProfileBusyError
+
+    profile_dir = tmp_path / ".pb_profile"
+    proc, ready = _start_external_profile_lock_holder(profile_dir, hold_seconds=0.35)
+    try:
+        waiter = _SharedProfileAsyncLock(
+            str(profile_dir),
+            wait_timeout_seconds=0.1,
+            stale_lock_seconds=300.0,
+        )
+
+        started = time.monotonic()
+        try:
+            asyncio.run(waiter._acquire("release_live_continuous"))
+        except BrowserProfileBusyError as exc:
+            payload = exc.to_payload()
+        else:
+            raise AssertionError("expected bounded cross-process profile timeout")
+        elapsed = time.monotonic() - started
+
+        assert elapsed >= 0.08
+        assert elapsed < 0.3
+        assert payload["active_operation"] == "live_profile_preflight"
+        assert payload["queue_timeout_seconds"] == 0.1
+        assert payload["queue_wait_seconds"] >= 0.08
+        diagnostics = payload["external_lock_diagnostics"]
+        assert diagnostics["status"] == "external_flock_wait_timeout"
+        assert int(diagnostics["owner_pid"]) == int(ready["pid"])
+        assert diagnostics["owner_pid_alive"] is True
+        assert diagnostics["owner_operation"] == "live_profile_preflight"
+        assert diagnostics["poll_count"] >= 2
+    finally:
+        stdout, stderr = proc.communicate(timeout=2)
+        assert proc.returncode == 0, stderr or stdout
 
 
 def test_automation_forwards_prefer_button_submit_to_browser_client(monkeypatch):

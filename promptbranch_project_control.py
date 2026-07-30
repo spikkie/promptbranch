@@ -31,7 +31,7 @@ REQUIRED_DOCS = (
     Path("promptbranch_protocol/schemas/application.architecture.schema.json"),
     Path("promptbranch_protocol/schemas/application.registry.schema.json"),
     Path(".promptbranch/ai-registry.json"),
-    Path("docs/release-v0.1.115.md"),
+    Path("docs/release-v0.1.115.1.md"),
 )
 REQUIRED_FIELDS = (
     "schema",

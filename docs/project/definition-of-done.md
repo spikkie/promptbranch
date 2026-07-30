@@ -893,3 +893,12 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-335 | Release control verifies pytest version, module path, interpreter prefix, and release-validation Python identity before Project Source mutation | focused_candidate | release controller preflight and regressions | v0.1.114.2 |
 | DOD-336 | `pb test full` resolves every release-validation command through the verified candidate Python and fails closed before group execution on test-runner drift | focused_candidate | `promptbranch_test_suite.py`, release-validation runner tests | v0.1.114.2 |
 | DOD-337 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.114.2 |
+
+## v0.1.115.1 release-live profile ownership handoff repair
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-338 | Cross-process profile `flock` contention waits within the configured scheduler deadline and succeeds when the external owner releases | focused_candidate | `_SharedProfileAsyncLock`, cross-process release regression | v0.1.115.1 |
+| DOD-339 | A cross-process timeout reports the observed owner and proves the actual queue wait instead of returning after approximately 0.001 seconds | focused_candidate | structured busy payload and timeout regression | v0.1.115.1 |
+| DOD-340 | Live preflight and continuous live use the same service owner and are separated by service-idle plus host-flock release proof | focused_candidate | release controller and shell regressions | v0.1.115.1 |
+| DOD-341 | Strict direct, localhost, external-live, rollback, Guardian, operational-evidence, adoption and current-verification gates remain unchanged | open | full all-all release-control adoption log required | v0.1.115.1 |

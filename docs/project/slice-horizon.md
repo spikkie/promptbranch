@@ -2,24 +2,24 @@
 
 ## Repair history
 
-- `v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair` is repair-required after strict host validation exposed missing pytest in the exact candidate venv.
+- `v0.1.112` and `v0.1.113` are superseded historical PBAI structural and registry slices.
+- `v0.1.114.2 — Deterministic candidate test-runner dependency repair` is accepted/current.
+- `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing` is repair-required after cross-process browser-profile handoff failed before external-live execution.
 
 ## Active repair
 
-- `v0.1.114.2 — Deterministic candidate test-runner dependency repair` is accepted/current.
-- `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing` is the sole active normal candidate.
-- `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof` is planned after acceptance.
+- `v0.1.115.1 — Release-live profile ownership handoff repair` is the sole active repair candidate.
+- `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof` is planned after repair acceptance.
 
 ## Current rolling horizon
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
-| v0.1.112 | PBAI-001 declaration and structural validation | superseded | normal | accepted structural proof superseded as current by v0.1.113 |
-| v0.1.113 | PBAI-001 registry validation and reference resolution | superseded | normal | strict 10/10 validation, registry proof, adoption, and exact current identity verified |
-| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | repair_required | normal | executable implementation retained; host package import failed under an ambient shadow runtime |
-| v0.1.114.1 | Candidate runtime resolution and FastAPI/Starlette compatibility repair | repair_required | repair | candidate runtime binding and import compatibility passed; exact candidate venv lacked pytest |
+| v0.1.114 | PBAI-001 executable validation and SkillRun evidence | repair_required | normal | executable implementation retained through accepted repairs |
+| v0.1.114.1 | Candidate runtime resolution and compatibility repair | repair_required | repair | exact candidate runtime worked; missing pytest required another repair |
 | v0.1.114.2 | Deterministic candidate test-runner dependency repair | accepted_current | repair | strict 10/10 validation and exact adoption verified |
-| v0.1.115 | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | active | normal | real lifecycle, publication, adoption/current, recovery proof, and deterministic impacted tests |
+| v0.1.115 | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | repair_required | normal | primary transports passed; external-live profile handoff failed and adoption was refused |
+| v0.1.115.1 | Release-live profile ownership handoff repair | active | repair | bounded cross-process flock queue plus explicit service/host release barrier |
 | v0.1.116 | PBAI-001 templates, migration reports, and first domain-module proof | planned_after_acceptance | normal | complete template migration and domain-module proof |
 
 ## Repair horizon rule

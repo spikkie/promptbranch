@@ -20,8 +20,8 @@ def _fixture(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "VERSION").write_text("v0.1.115\n", encoding="utf-8")
-    artifact = repo / "chatgpt_claudecode_workflow-2_v0.1.115.zip"
+    (repo / "VERSION").write_text("v0.1.115.1\n", encoding="utf-8")
+    artifact = repo / "chatgpt_claudecode_workflow-2_v0.1.115.1.zip"
     artifact.write_bytes(b"candidate")
     artifact_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
     assigned = artifact.name.replace(".zip", "(1).zip")
@@ -46,9 +46,9 @@ def _fixture(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
             "ok": True, "action": "artifact_current_all", "status": "artifact_registry_loaded",
             "repos": {repo_id: {
                 "ok": True, "status": "artifact_registry_loaded", "repo_id": repo_id,
-                "runtime": {"version": "v0.1.115"},
-                "state": {"artifact_version": "v0.1.115", "source_ref": assigned},
-                "registry_current": {"version": "v0.1.115", "filename": artifact.name, "sha256": artifact_sha},
+                "runtime": {"version": "v0.1.115.1"},
+                "state": {"artifact_version": "v0.1.115.1", "source_ref": assigned},
+                "registry_current": {"version": "v0.1.115.1", "filename": artifact.name, "sha256": artifact_sha},
                 "consistency": {
                     "registry_current_matches_state_artifact": True,
                     "state_source_matches_state_artifact": True,

@@ -34,6 +34,7 @@ from .automation import ChatGPTAutomation
 logger = logging.getLogger(__name__)
 
 DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS = 600.0
+DEFAULT_BROWSER_PROFILE_FLOCK_POLL_SECONDS = 0.05
 
 
 
@@ -264,6 +265,113 @@ class _SharedProfileAsyncLock:
             "default_queue_wait_timeout_seconds": DEFAULT_BROWSER_PROFILE_QUEUE_WAIT_SECONDS,
         }
 
+    @staticmethod
+    def _read_lock_file_payload(handle: Any) -> dict[str, str]:
+        payload: dict[str, str] = {}
+        try:
+            handle.seek(0)
+            text = handle.read()
+        except (OSError, ValueError):
+            return payload
+        for line in str(text or "").splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            payload[key.strip()] = value.strip()
+        return payload
+
+    @staticmethod
+    def _pid_is_alive(value: Any) -> bool | None:
+        try:
+            pid = int(str(value or "").strip())
+        except (TypeError, ValueError):
+            return None
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return None
+        return True
+
+    async def _acquire_external_flock(
+        self,
+        *,
+        started_monotonic: float,
+        wait_timeout_seconds: float,
+    ) -> tuple[bool, float, dict[str, Any]]:
+        """Acquire the cross-process flock within the same bounded queue deadline.
+
+        The in-process thread lock and the file lock share one deadline.  A
+        competing Promptbranch process is therefore queued with bounded polling
+        instead of receiving an immediate ``browser_profile_busy`` response.
+        """
+
+        if self._lock_file is None:
+            raise RuntimeError("browser profile lock file is not open")
+        deadline = started_monotonic + max(0.001, float(wait_timeout_seconds))
+        attempts = 0
+        owner_transitions: list[dict[str, Any]] = []
+        last_owner_key: tuple[Any, ...] | None = None
+        last_payload: dict[str, str] = {}
+        while True:
+            attempts += 1
+            try:
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                last_payload = self._read_lock_file_payload(self._lock_file)
+                owner_key = (
+                    last_payload.get("pid"),
+                    last_payload.get("operation"),
+                    last_payload.get("operation_id"),
+                    last_payload.get("acquired_at"),
+                )
+                if owner_key != last_owner_key:
+                    owner_transitions.append(
+                        {
+                            "pid": last_payload.get("pid"),
+                            "operation": last_payload.get("operation"),
+                            "operation_id": last_payload.get("operation_id"),
+                            "acquired_at": last_payload.get("acquired_at"),
+                            "observed_after_seconds": round(max(0.0, time.monotonic() - started_monotonic), 3),
+                        }
+                    )
+                    last_owner_key = owner_key
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    waited = max(0.0, time.monotonic() - started_monotonic)
+                    diagnostics = {
+                        "status": "external_flock_wait_timeout",
+                        "poll_count": attempts,
+                        "poll_seconds": DEFAULT_BROWSER_PROFILE_FLOCK_POLL_SECONDS,
+                        "owner_pid": last_payload.get("pid"),
+                        "owner_pid_alive": self._pid_is_alive(last_payload.get("pid")),
+                        "owner_operation": last_payload.get("operation"),
+                        "owner_operation_id": last_payload.get("operation_id"),
+                        "owner_acquired_at": last_payload.get("acquired_at"),
+                        "owner_stale_lock_seconds": last_payload.get("stale_lock_seconds"),
+                        "owner_transitions": owner_transitions,
+                    }
+                    return False, waited, diagnostics
+                await asyncio.sleep(min(DEFAULT_BROWSER_PROFILE_FLOCK_POLL_SECONDS, max(0.001, remaining)))
+                continue
+            waited = max(0.0, time.monotonic() - started_monotonic)
+            diagnostics = {
+                "status": "external_flock_acquired",
+                "poll_count": attempts,
+                "poll_seconds": DEFAULT_BROWSER_PROFILE_FLOCK_POLL_SECONDS,
+                "waited_seconds": round(waited, 3),
+                "previous_owner_pid": last_payload.get("pid"),
+                "previous_owner_operation": last_payload.get("operation"),
+                "previous_owner_operation_id": last_payload.get("operation_id"),
+                "owner_transitions": owner_transitions,
+            }
+            return True, waited, diagnostics
+
     async def __aenter__(self) -> "_SharedProfileAsyncLock":
         return await self._acquire("browser_operation")
 
@@ -317,17 +425,24 @@ class _SharedProfileAsyncLock:
             lock_path = self.lock_path
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             self._lock_file = lock_path.open("a+", encoding="utf-8")
-            try:
-                await asyncio.to_thread(fcntl.flock, self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
+            flock_acquired, waited, external_lock_diagnostics = await self._acquire_external_flock(
+                started_monotonic=started,
+                wait_timeout_seconds=wait_timeout,
+            )
+            self.last_waited_seconds = round(waited, 3)
+            if not flock_acquired:
                 active = self._active_operation_for_profile(self.profile_dir)
                 active_payload = self._active_public_payload(active, stale_lock_seconds=self.stale_lock_seconds) if active else {}
-                active_operation = active_payload.get("active_operation") or "external_promptbranch_process"
+                active_operation = (
+                    active_payload.get("active_operation")
+                    or external_lock_diagnostics.get("owner_operation")
+                    or "external_promptbranch_process"
+                )
                 raise BrowserProfileBusyError(
-                    f"browser profile is locked by another process for {active_operation}",
+                    f"browser profile remained locked by another process for {active_operation} after waiting {waited:.1f}s",
                     operation_name=self._operation_name,
                     active_operation=active_operation,
-                    active_operation_id=active_payload.get("active_operation_id"),
+                    active_operation_id=active_payload.get("active_operation_id") or external_lock_diagnostics.get("owner_operation_id"),
                     active_elapsed_seconds=active_payload.get("active_elapsed_seconds"),
                     stale_lock_seconds=self.stale_lock_seconds,
                     stale_lock_expired=active_payload.get("stale_lock_expired"),
@@ -340,7 +455,8 @@ class _SharedProfileAsyncLock:
                     queue_timeout_seconds=wait_timeout,
                     scheduler_path="shared_profile_async_lock",
                     bypass_detected=False,
-                ) from exc
+                    external_lock_diagnostics=external_lock_diagnostics,
+                )
             self._acquired_at = time.time()
             self._operation_id = uuid.uuid4().hex
             self._set_active_operation(

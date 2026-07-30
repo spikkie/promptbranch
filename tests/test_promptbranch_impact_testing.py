@@ -82,7 +82,7 @@ def _minimal_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     (repo / ".promptbranch").mkdir(parents=True)
     (repo / "tests").mkdir()
-    (repo / "VERSION").write_text("v0.1.115\n", encoding="utf-8")
+    (repo / "VERSION").write_text("v0.1.115.1\n", encoding="utf-8")
     (repo / ".promptbranch/test-impact-map.json").write_bytes(
         (ROOT / ".promptbranch/test-impact-map.json").read_bytes()
     )

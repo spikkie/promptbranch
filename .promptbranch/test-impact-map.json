@@ -150,8 +150,9 @@
           "-q",
           "tests/test_promptbranch_automation_service.py",
           "tests/test_promptbranch_cli.py",
+          "tests/test_promptbranch_shell_scripts.py",
           "-k",
-          "scheduler or source_queue or browser_profile_busy"
+          "scheduler or source_queue or browser_profile_busy or cross_process_profile_lock or live_profile_handoff or same_service_owner or cross_process_profile_handoff"
         ]
       ],
       "modes": [

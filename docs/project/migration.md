@@ -1266,3 +1266,7 @@ No state or registry migration is required. Consumers of `pb_test_progress:` sho
 ## v0.1.115 to v0.1.116 migration note
 
 `v0.1.115` introduces `pb test impacted` and operational lifecycle evidence without silently changing existing project behavior. Existing PB projects that lack `.promptbranch/test-impact-map.json` receive a fail-closed planning error; they are not assigned a guessed test set. `v0.1.116` will add templates, explicit migration reports, and the first domain-module proof.
+
+## v0.1.115.1 profile-handoff repair migration note
+
+No state, registry, PBAI schema, impact-map schema, or Project Source migration is required. `v0.1.115` remains unadopted and must not be treated as accepted/current. The repair changes browser-profile ownership scheduling and release-controller handoff only: external file-lock contention now honors the bounded queue, and continuous live starts only after explicit service-idle and host-lock release proof. Existing profiles are preserved and are not copied or silently repaired.

@@ -829,6 +829,8 @@ run_all_shared_project_url=""
 run_all_shared_conversation_url=""
 run_all_live_warmup_conversation_url=""
 run_all_live_service_target_url=""
+run_all_live_profile_handoff_timeout_seconds="${PROMPTBRANCH_RELEASE_LIVE_PROFILE_HANDOFF_TIMEOUT_SECONDS:-600}"
+run_all_live_profile_handoff_poll_seconds="${PROMPTBRANCH_RELEASE_LIVE_PROFILE_HANDOFF_POLL_SECONDS:-0.05}"
 run_all_continuous_failure_kind=""
 run_all_browser_service_recovery_count=0
 run_all_live_preflight_retried_after_service_recovery=0
@@ -5869,8 +5871,9 @@ run_all_login_check_profile() {
   local profile_dir="$2"
   local log_path="$3"
   local rc=0
-  echo "+ CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir ${profile_dir} login-check 2>&1 | tee -a ${log_path}"
-  CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${profile_dir}" login-check 2>&1 | tee -a "${log_path}"
+  echo "live_profile_actor_transport: service_owner_http"
+  echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir ${profile_dir} login-check 2>&1 | tee -a ${log_path}"
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb --profile-dir "${profile_dir}" login-check 2>&1 | tee -a "${log_path}"
   rc=${PIPESTATUS[0]}
   if [[ ${rc} -ne 0 ]]; then
     cat <<MSG | tee -a "${log_path}" >&2
@@ -5880,6 +5883,125 @@ Bootstrap this exact profile before rerunning --run-all-tests:
 MSG
   fi
   return ${rc}
+}
+
+run_all_wait_for_live_profile_handoff() {
+  local profile_dir="$1"
+  local log_path="$2"
+  local rc=0
+  local lock_path="${profile_dir}/.promptbranch-browser-profile.lock"
+  {
+    echo "== release-live profile ownership handoff barrier =="
+    echo "live_profile_handoff_strategy: same_service_owner_then_host_flock_release_proof"
+    echo "live_profile_handoff_timeout_seconds: ${run_all_live_profile_handoff_timeout_seconds}"
+    echo "live_profile_handoff_poll_seconds: ${run_all_live_profile_handoff_poll_seconds}"
+    echo "+ CHATGPT_SERVICE_BASE_URL=${service_base_url} pb --profile-dir ${profile_dir} browser wait-idle --timeout ${run_all_live_profile_handoff_timeout_seconds} --poll-seconds 0.25 --json"
+  } | tee -a "${log_path}"
+  CHATGPT_SERVICE_BASE_URL="${service_base_url}" pb --profile-dir "${profile_dir}" browser wait-idle \
+    --timeout "${run_all_live_profile_handoff_timeout_seconds}" \
+    --poll-seconds 0.25 \
+    --json 2>&1 | tee -a "${log_path}"
+  rc=${PIPESTATUS[0]}
+  if [[ ${rc} -ne 0 ]]; then
+    run_all_live_failure_kind="live_profile_handoff_timeout"
+    echo "ERROR: service browser-idle barrier failed before release-live-continuous." | tee -a "${log_path}" >&2
+    return ${rc}
+  fi
+
+  python3 - "${lock_path}" "${run_all_live_profile_handoff_timeout_seconds}" "${run_all_live_profile_handoff_poll_seconds}" <<'INNERPY' 2>&1 | tee -a "${log_path}"
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+lock_path = Path(sys.argv[1]).expanduser().resolve()
+timeout_seconds = max(0.001, float(sys.argv[2]))
+poll_seconds = max(0.001, float(sys.argv[3]))
+deadline = time.monotonic() + timeout_seconds
+attempts = 0
+last_owner = {}
+lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+def read_payload(handle):
+    payload = {}
+    try:
+        handle.seek(0)
+        text = handle.read()
+    except OSError:
+        return payload
+    for line in str(text or "").splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            payload[key.strip()] = value.strip()
+    return payload
+
+def pid_alive(value):
+    try:
+        pid = int(str(value or ""))
+    except ValueError:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
+
+started = time.monotonic()
+with lock_path.open("a+", encoding="utf-8") as handle:
+    while True:
+        attempts += 1
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            last_owner = read_payload(handle)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print(json.dumps({
+                    "ok": False,
+                    "action": "release_live_profile_handoff_barrier",
+                    "status": "external_flock_wait_timeout",
+                    "lock_path": str(lock_path),
+                    "waited_seconds": round(time.monotonic() - started, 3),
+                    "attempts": attempts,
+                    "owner_pid": last_owner.get("pid"),
+                    "owner_pid_alive": pid_alive(last_owner.get("pid")),
+                    "owner_operation": last_owner.get("operation"),
+                    "owner_operation_id": last_owner.get("operation_id"),
+                    "owner_acquired_at": last_owner.get("acquired_at"),
+                }, indent=2))
+                raise SystemExit(75)
+            time.sleep(min(poll_seconds, max(0.001, remaining)))
+            continue
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            print(json.dumps({
+                "ok": True,
+                "action": "release_live_profile_handoff_barrier",
+                "status": "profile_released_for_next_owner",
+                "lock_path": str(lock_path),
+                "waited_seconds": round(time.monotonic() - started, 3),
+                "attempts": attempts,
+                "previous_owner_pid": last_owner.get("pid"),
+                "previous_owner_operation": last_owner.get("operation"),
+            }, indent=2))
+            raise SystemExit(0)
+INNERPY
+  rc=${PIPESTATUS[0]}
+  if [[ ${rc} -ne 0 ]]; then
+    run_all_live_failure_kind="live_profile_handoff_timeout"
+    echo "ERROR: host flock-release proof failed before release-live-continuous." | tee -a "${log_path}" >&2
+    return ${rc}
+  fi
+  echo "live_profile_handoff_status: verified_released" | tee -a "${log_path}"
+  return 0
 }
 
 run_all_resolve_live_service_target_url() {
@@ -5991,6 +6113,14 @@ run_all_live_profile_preflight() {
       run_all_live_warmup_conversation_url=""
       echo "live_profile_preflight_warmup_conversation_url: unavailable" | tee -a "${live_profile_preflight_raw_log}"
     fi
+  fi
+  if run_all_wait_for_live_profile_handoff "${live_profile_pool_slot_dir}" "${live_profile_preflight_raw_log}"; then
+    :
+  else
+    rc=$?
+    write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "live_profile_handoff_timeout" "false" "${rc}" "${live_profile_preflight_raw_log}"
+    workflow_rc=${rc}
+    return ${rc}
   fi
   write_all_test_json_step "live_profile_preflight" "${live_profile_preflight_json}" "verified_explicit_live_profiles" "true" "0" "${live_profile_preflight_raw_log}"
   return 0

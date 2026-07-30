@@ -1,12 +1,12 @@
 # Project Plan
 
-<!-- v0.1.115 current control-surface header -->
+<!-- v0.1.115.1 current control-surface header -->
 - Accepted/current version: `v0.1.114.2`
 - Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.zip`
-- Next normal version: `v0.1.115`
-- Next normal slice: `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing`
+- Active candidate version: `v0.1.115.1`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
+- Next normal version: `v0.1.116`
+- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 - Next planned version after acceptance: `v0.1.116`
 - Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 
@@ -17,23 +17,26 @@ accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
 accepted/current version: v0.1.114.2
 last completed normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
 last completed repair: v0.1.114.2 — Deterministic candidate test-runner dependency repair
-active candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
-active candidate version: v0.1.115
-active slice: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
+failed normal candidate: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
+active candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
+active candidate version: v0.1.115.1
+active slice: v0.1.115.1 — Release-live profile ownership handoff repair
+next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 ```
 
-## Active normal slice — v0.1.115
+## Active repair slice — v0.1.115.1
 
-1. Generate tamper-evident operational lifecycle evidence only after strict validation and evidence-bound adoption.
-2. Validate correction, Project Source publication, accepted/current identity, rollback and recovery as PBAI-001 operational dimensions.
-3. Add `pb test impacted` with a checked-in change-to-test map, dependency closure, fail-closed unmapped files and JSON evidence.
-4. Permit exact-key reuse only for unchanged transport-independent evidence.
-5. Preserve the mandatory strict 10/10 adoption gate.
+1. Make cross-process profile `flock` acquisition honor the configured bounded queue timeout.
+2. Emit deterministic external-owner and polling diagnostics on timeout.
+3. Keep live preflight and continuous live on the same service transport owner.
+4. Require service-idle and host-flock release proof before `release-live-continuous`.
+5. Preserve all `v0.1.115` PBAI operational-evidence and impacted-testing behavior without advancing scope.
+6. Preserve the mandatory strict 10/10 adoption gate.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.114.2` is accepted/current, `v0.1.115` is the sole active normal candidate, and `v0.1.116` is planned only after acceptance.
+`docs/project/plan-state.json` is authoritative. `v0.1.114.2` is accepted/current, `v0.1.115` is repair-required, `v0.1.115.1` is the sole active repair candidate, and `v0.1.116` remains planned only after repair acceptance.
 
 ## Release / slice plan
 

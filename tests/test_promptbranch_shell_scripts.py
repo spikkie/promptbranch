@@ -4191,3 +4191,33 @@ def test_release_control_emits_operational_evidence_only_after_verified_adoption
     assert text.index(current_verify) < text.index(evidence_header) < text.index(evidence_build)
     assert 'json_file_is_ok_true "${operational_evidence_json}"' in text
     assert 'json_file_is_ok_true "${operational_validation_json}"' in text
+
+
+def test_release_control_waits_for_live_profile_handoff_before_continuous_live() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    assert "run_all_wait_for_live_profile_handoff()" in script
+    assert "live_profile_handoff_strategy: same_service_owner_then_host_flock_release_proof" in script
+    assert "release_live_profile_handoff_barrier" in script
+    preflight_start = script.index("run_all_live_profile_preflight()")
+    preflight_end = script.index("record_all_test_skipped_step()", preflight_start)
+    preflight = script[preflight_start:preflight_end]
+    assert preflight.index("run_all_login_check_profile") < preflight.index("run_all_wait_for_live_profile_handoff")
+    assert preflight.index("run_all_wait_for_live_profile_handoff") < preflight.rindex('write_all_test_json_step "live_profile_preflight"')
+
+
+def test_release_control_live_preflight_and_continuous_use_same_service_owner() -> None:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    login_start = script.index("run_all_login_check_profile()")
+    login_end = script.index("run_all_wait_for_live_profile_handoff()", login_start)
+    login_function = script[login_start:login_end]
+    assert 'CHATGPT_SERVICE_BASE_URL="${service_base_url}" CHATGPT_FAIL_FAST_ON_CHALLENGE=1 pb' in login_function
+    continuous_start = script.index("run_all_release_live_continuous_bootstrap_and_ask()")
+    continuous_end = script.index("if extracted_url=", continuous_start)
+    continuous_function = script[continuous_start:continuous_end]
+    assert 'CHATGPT_SERVICE_BASE_URL="${service_base_url}" PROMPTBRANCH_RELEASE_LIVE_FAIL_FAST_ON_CHALLENGE=1' in continuous_function
+
+
+def test_release_validation_group_includes_cross_process_profile_handoff_regressions() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_test_suite.py").read_text(encoding="utf-8")
+    assert "test_cross_process_profile_lock_waits_until_external_owner_releases" in source
+    assert "test_cross_process_profile_lock_timeout_honors_queue_deadline_and_reports_owner" in source

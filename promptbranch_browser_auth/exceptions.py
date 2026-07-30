@@ -135,6 +135,7 @@ class BrowserProfileBusyError(TimeoutError):
         queue_timeout_seconds: float | None = None,
         scheduler_path: str | None = None,
         bypass_detected: bool | None = None,
+        external_lock_diagnostics: dict | None = None,
     ) -> None:
         super().__init__(message)
         self.operation_name = operation_name
@@ -152,6 +153,7 @@ class BrowserProfileBusyError(TimeoutError):
         self.queue_timeout_seconds = queue_timeout_seconds
         self.scheduler_path = scheduler_path
         self.bypass_detected = bypass_detected
+        self.external_lock_diagnostics = external_lock_diagnostics or None
 
     def to_payload(self) -> dict:
         return {
@@ -174,6 +176,7 @@ class BrowserProfileBusyError(TimeoutError):
             "queue_timeout_seconds": self.queue_timeout_seconds,
             "scheduler_path": self.scheduler_path,
             "bypass_detected": self.bypass_detected,
+            "external_lock_diagnostics": self.external_lock_diagnostics,
             "timeout_layer": "browser_profile_lock",
             "recovery_hint": "A browser-backed operation is already using the shared profile. Retry after the active operation finishes, inspect pb browser status --json, or let stale-lock recovery expire abandoned ownership.",
         }
