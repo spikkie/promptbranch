@@ -2,7 +2,7 @@
 
 - Status: `in_progress`
 - Started in: `v0.1.112`
-- Current phase: executable proof implemented; candidate-runtime repair pending strict adoption
+- Current phase: operational lifecycle proof implemented; template/domain-module migration pending
 
 ## Goal
 
@@ -113,9 +113,9 @@ differential validation proves the PB implementation equivalent or stronger.
 - [x] Structural validation fails closed on missing layers, empty assets,
       invalid paths, unknown fields, and delegation conflicts.
 - [x] Registry validation resolves all AI object references and authority.
-- [ ] Executable validation proves ordered skills, bounded tools, validators,
+- [x] Executable validation proves ordered skills, bounded tools, validators,
       and SkillRun evidence.
-- [ ] Operational validation integrates with issue #1 lifecycle evidence.
+- [x] Operational validation integrates with issue #1 lifecycle evidence.
 - [ ] PB templates include PBAI-001 and the tracked declaration.
 - [ ] `promptbranch-method` passes as a domain module.
 - [x] Promptbranch passes as a runtime application at registry proof level.
@@ -173,3 +173,16 @@ Executable, operational, template migration, and the first domain-module proof r
 - fail-closed operational proof at `proven_level=executable`.
 
 Operational lifecycle proof, template migration, and the first domain-module proof remain open. PBAI-001 remains `in_progress`.
+
+## v0.1.115 implementation phase
+
+`v0.1.115` adds operational proof and development-loop acceleration:
+
+- `promptbranch.ai.operational_lifecycle_evidence` schema `1.0`;
+- a read-only evidence builder over strict 10/10 summary, Artifact Guardian, exact Project Source identity, evidence-bound adoption, accepted/current verification, rollback, and recovery;
+- automatic evidence generation and operational validation after successful strict adoption;
+- fail-closed `--level operational` validation that requires tamper-evident lifecycle evidence;
+- `pb test impacted` with a checked-in map, transitive dependency closure, explicit deferrals, and exact-key evidence reuse;
+- strict release/adoption validation remains mandatory and unchanged.
+
+Template migration and the first domain-module proof remain for `v0.1.116`.

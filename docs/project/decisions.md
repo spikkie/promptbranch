@@ -1152,3 +1152,11 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Dependency boundary:** FastAPI and Starlette are pinned as one tested compatibility pair and import-smoke verifies the installed versions.
 - **Scope:** no PBAI capability, SkillRun behavior, lifecycle authority, publication authority, or adoption authority is added.
 - **Next:** after repair acceptance, open `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.
+
+## ADR-PROJ-115 — Development tests may be selective; adoption tests may not
+
+- Status: accepted for candidate `v0.1.115`.
+- Decision: use a checked-in impact map and dependency closure for edit/component/candidate development loops.
+- Boundary: unknown changed paths fail closed, and every result declares the strict release gate deferred and still required.
+- Operational proof: generated only after strict adoption and validated against exact artifact, Project Source, registry, state, rollback, and recovery evidence.
+- Next: `v0.1.116` — PBAI-001 templates, migration reports, and first domain-module proof.

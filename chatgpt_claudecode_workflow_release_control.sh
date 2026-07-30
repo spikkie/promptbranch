@@ -3313,6 +3313,31 @@ INNERPY
   pb artifact current --json | tee "${current_json}"
   if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
     verify_current_matches_version "${current_json}" "${adoption_source_evidence_json}"
+
+    local operational_evidence_json="${release_log_dir}/application-architecture-operational-evidence.${ver}.json"
+    local operational_build_log="${release_log_dir}/application-architecture-operational-evidence-build.${ver}.json"
+    local operational_validation_json="${release_log_dir}/application-architecture-operational-validation.${ver}.json"
+    echo "== PBAI-001 operational lifecycle evidence =="
+    echo "+ pb application architecture lifecycle-evidence --repo-path ${repo_root} --all-tests-summary ${all_tests_summary_json} --artifact-guard ${artifact_guard_log} --adoption-result ${adopt_json} --current-result ${current_json} --source-evidence ${adoption_source_evidence_json} --artifact ${local_zip} --output ${operational_evidence_json} --json"
+    pb application architecture lifecycle-evidence \
+      --repo-path "${repo_root}" \
+      --all-tests-summary "${all_tests_summary_json}" \
+      --artifact-guard "${artifact_guard_log}" \
+      --adoption-result "${adopt_json}" \
+      --current-result "${current_json}" \
+      --source-evidence "${adoption_source_evidence_json}" \
+      --artifact "${local_zip}" \
+      --output "${operational_evidence_json}" \
+      --json | tee "${operational_build_log}"
+    json_file_is_ok_true "${operational_evidence_json}"
+    echo "+ pb application architecture validate --repo-path ${repo_root} --level operational --evidence ${operational_evidence_json} --json"
+    pb application architecture validate \
+      --repo-path "${repo_root}" \
+      --level operational \
+      --evidence "${operational_evidence_json}" \
+      --json | tee "${operational_validation_json}"
+    json_file_is_ok_true "${operational_validation_json}"
+    echo "PBAI-001 operational lifecycle evidence verified: ${operational_evidence_json}"
   else
     verify_current_matches_version "${current_json}"
   fi

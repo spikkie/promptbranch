@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from promptbranch_skillrun import build_skillrun_evidence, utc_now, validate_skillrun_evidence
+from promptbranch_operational_evidence import validate_operational_lifecycle_evidence
 
 SCHEMA = "promptbranch.ai.application"
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 DEFAULT_DECLARATION = ".promptbranch-ai.json"
-SUPPORTED_LEVELS = ("declaration", "structural", "registry", "executable")
+SUPPORTED_LEVELS = ("declaration", "structural", "registry", "executable", "operational")
 KNOWN_LEVELS = ("declaration", "structural", "registry", "executable", "operational")
 APPLICATION_KINDS = {"runtime_application", "domain_module"}
 VERSION_FORMATS = {"plain", "python", "toml"}
@@ -173,7 +174,7 @@ def _validate_command(command: object, index: int) -> dict[str, Any]:
     level = _non_empty_string(obj["level"], f"{label}.level")
     if level not in SUPPORTED_LEVELS:
         raise ApplicationArchitectureError(
-            f"{label}.level must be declaration, structural, registry, or executable"
+            f"{label}.level must be declaration, structural, registry, executable, or operational"
         )
     argv = _string_list(obj["argv"], f"{label}.argv")
     executable = Path(argv[0]).name.lower()
@@ -525,7 +526,7 @@ def plan_application_architecture(
         "declaration": _declaration_summary(declaration),
         "requested_level": "registry",
         "proven_level": "declaration",
-        "max_supported_level": "executable",
+        "max_supported_level": "operational",
         "layer_plan": layer_plan,
         "delegation": declaration["delegation"],
         "authority": declaration["authority"],
@@ -1153,6 +1154,7 @@ def validate_application_architecture(
     level: str = "registry",
     profile_dir: str | Path | None = None,
     proof_skill: str | None = None,
+    operational_evidence: str | Path | None = None,
 ) -> dict[str, Any]:
     repo = Path(repo_path).expanduser().resolve()
     requested_level = str(level or "registry").strip().lower()
@@ -1160,7 +1162,7 @@ def validate_application_architecture(
         "action": "application_architecture_validate",
         "repo_path": str(repo),
         "requested_level": requested_level,
-        "max_supported_level": "executable",
+        "max_supported_level": "operational",
     }
     if requested_level not in KNOWN_LEVELS:
         return {
@@ -1294,19 +1296,42 @@ def validate_application_architecture(
             "errors": list(executable.get("errors") or []),
             "safety": executable.get("safety", base["safety"]),
         }
+    if not executable["ok"]:
+        return {
+            **base,
+            "ok": False,
+            "status": executable["status"],
+            "proven_level": executable["proven_level"],
+            "registry": registry,
+            "executable": executable,
+            "error_count": int(executable.get("error_count") or 0),
+            "errors": list(executable.get("errors") or []),
+            "safety": executable.get("safety", base["safety"]),
+        }
+    if operational_evidence is None:
+        return {
+            **base,
+            "ok": False,
+            "status": "operational_evidence_required",
+            "proven_level": "executable",
+            "registry": registry,
+            "executable": executable,
+            "error_count": 1,
+            "errors": ["operational validation requires --evidence with verified lifecycle/adoption evidence"],
+            "safety": executable.get("safety", base["safety"]),
+        }
+    operational = validate_operational_lifecycle_evidence(operational_evidence, repo_path=repo)
     return {
         **base,
-        "ok": False,
-        "status": "validation_level_not_implemented",
-        "proven_level": "executable" if executable["ok"] else executable["proven_level"],
+        "ok": bool(operational.get("ok")),
+        "status": operational.get("status"),
+        "proven_level": operational.get("proven_level", "executable"),
         "registry": registry,
         "executable": executable,
-        "error_count": int(executable.get("error_count") or 0),
-        "errors": [
-            f"{requested_level} validation is not implemented; highest supported level is executable",
-            *list(executable.get("errors") or []),
-        ],
-        "safety": executable.get("safety", base["safety"]),
+        "operational": operational,
+        "error_count": int(operational.get("error_count") or 0),
+        "errors": list(operational.get("errors") or []),
+        "safety": operational.get("safety", executable.get("safety", base["safety"])),
     }
 
 

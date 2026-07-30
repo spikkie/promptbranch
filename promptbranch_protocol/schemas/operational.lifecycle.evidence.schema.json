@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.ai.operational_lifecycle_evidence/1.0",
+  "title": "Promptbranch PBAI-001 operational lifecycle evidence",
+  "type": "object",
+  "required": [
+    "schema", "schema_version", "ok", "status", "proven_level", "application_id",
+    "version", "artifact", "release_summary", "project_source", "adoption",
+    "accepted_current", "operational_dimensions", "checks", "errors", "safety", "evidence_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.ai.operational_lifecycle_evidence"},
+    "schema_version": {"const": "1.0"},
+    "ok": {"type": "boolean"},
+    "status": {"enum": ["operational_evidence_verified", "operational_evidence_invalid"]},
+    "proven_level": {"enum": ["executable", "operational"]},
+    "application_id": {"const": "promptbranch"},
+    "version": {"type": "string", "minLength": 1},
+    "artifact": {"type": "object"},
+    "release_summary": {"type": "object"},
+    "project_source": {"type": "object"},
+    "adoption": {"type": "object"},
+    "accepted_current": {"type": "object"},
+    "operational_dimensions": {
+      "type": "object",
+      "required": [
+        "correction_verified", "lifecycle_verified", "publication_verified", "adoption_verified",
+        "accepted_current_verified", "recovery_verified", "rollback_gate_verified"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "correction_verified": {"const": true},
+        "lifecycle_verified": {"const": true},
+        "publication_verified": {"const": true},
+        "adoption_verified": {"const": true},
+        "accepted_current_verified": {"const": true},
+        "recovery_verified": {"const": true},
+        "rollback_gate_verified": {"const": true}
+      }
+    },
+    "checks": {"type": "object"},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "safety": {"type": "object"},
+    "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": true
+}

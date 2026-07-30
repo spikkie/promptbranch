@@ -32,7 +32,7 @@ def _base_declaration(*, kind: str = "runtime_application") -> dict:
     owned = list(GENERIC_RUNTIME_CAPABILITIES) if kind == "runtime_application" else ["domain_assessment"]
     return {
         "schema": "promptbranch.ai.application",
-        "schema_version": "1.2",
+        "schema_version": "1.3",
         "application": {"id": app_id, "kind": kind},
         "version_authority": {"path": "VERSION", "format": "plain", "sole": True},
         "runtime": {"provider": provider, "contract_version": "1.0"},
@@ -175,12 +175,12 @@ def test_promptbranch_runtime_passes_structural_and_registry_validation() -> Non
     assert registry["ok"] is True, registry.get("errors")
     assert registry["status"] == "registry_validated"
     assert registry["proven_level"] == "registry"
-    assert registry["max_supported_level"] == "executable"
+    assert registry["max_supported_level"] == "operational"
     assert registry["registry"]["reference_resolution"] == "complete"
     assert registry["registry"]["authority_resolution"] == "bounded"
     assert registry["registry"]["counts"] == {
         "agents": 1, "skills": 3, "tools": 10, "validators": 4,
-        "state_contracts": 4, "evidence_contracts": 2, "controllers": 4,
+        "state_contracts": 5, "evidence_contracts": 3, "controllers": 4,
     }
     assert registry["safety"]["commands_executed"] is False
     assert registry["safety"]["adoption_authority_granted"] is False
@@ -191,7 +191,7 @@ def test_schemas_and_tracked_files_are_strict() -> None:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     arch_schema = json.loads(ARCH_SCHEMA.read_text(encoding="utf-8"))
     registry_schema = json.loads(REGISTRY_SCHEMA.read_text(encoding="utf-8"))
-    assert declaration["schema_version"] == "1.2"
+    assert declaration["schema_version"] == "1.3"
     assert declaration["registry"] == {"path": ".promptbranch/ai-registry.json", "schema": "promptbranch.ai.registry", "schema_version": "1.1"}
     assert registry["schema"] == "promptbranch.ai.registry"
     assert arch_schema["additionalProperties"] is False
@@ -205,7 +205,7 @@ def test_plan_is_read_only_and_plans_registry_without_overclaiming() -> None:
     assert payload["status"] == "planned_read_only"
     assert payload["requested_level"] == "registry"
     assert payload["proven_level"] == "declaration"
-    assert payload["max_supported_level"] == "executable"
+    assert payload["max_supported_level"] == "operational"
     assert payload["declaration"]["registry"]["path"] == ".promptbranch/ai-registry.json"
     assert payload["safety"]["commands_executed"] is False
 
@@ -399,13 +399,33 @@ def test_validation_commands_require_structural_and_registry_levels(tmp_path: Pa
         load_application_declaration(repo)
 
 
-def test_operational_fails_closed_at_proven_executable(monkeypatch) -> None:
+def test_operational_requires_verified_lifecycle_evidence(monkeypatch) -> None:
     monkeypatch.setattr(architecture, "_execute_registered_skill", _fake_skill_run)
     result = validate_application_architecture(ROOT, level="operational")
     assert result["ok"] is False
-    assert result["status"] == "validation_level_not_implemented"
+    assert result["status"] == "operational_evidence_required"
     assert result["proven_level"] == "executable"
-    assert result["max_supported_level"] == "executable"
+    assert result["max_supported_level"] == "operational"
+
+
+def test_operational_accepts_only_validated_lifecycle_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(architecture, "_execute_registered_skill", _fake_skill_run)
+    monkeypatch.setattr(
+        architecture,
+        "validate_operational_lifecycle_evidence",
+        lambda evidence, repo_path: {
+            "ok": True,
+            "status": "operational_validated",
+            "proven_level": "operational",
+            "error_count": 0,
+            "errors": [],
+            "safety": {"read_only": True, "state_mutated": False, "project_source_mutated": False},
+        },
+    )
+    result = validate_application_architecture(ROOT, level="operational", operational_evidence="evidence.json")
+    assert result["ok"] is True
+    assert result["status"] == "operational_validated"
+    assert result["proven_level"] == "operational"
 
 
 def _fake_skill_run(repo: Path, skill: dict, *, profile_dir=None) -> dict:

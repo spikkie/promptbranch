@@ -1,50 +1,39 @@
 # Project Plan
 
-<!-- v0.1.114.2 current control-surface header -->
-- Accepted/current version: `v0.1.113`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
+<!-- v0.1.115 current control-surface header -->
+- Accepted/current version: `v0.1.114.2`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
+- Active candidate version: `v0.1.115`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.zip`
 - Next normal version: `v0.1.115`
-- Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
-- Next planned version after acceptance: `v0.1.115`
-- Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
+- Next normal slice: `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing`
+- Next planned version after acceptance: `v0.1.116`
+- Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.113.zip
-last completed normal slice: v0.1.113 — PBAI-001 registry validation and reference resolution
-failed candidate: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-active repair: v0.1.114.2 — Deterministic candidate test-runner dependency repair
-next normal slice after repair acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
+accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
+accepted/current version: v0.1.114.2
+last completed normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
+last completed repair: v0.1.114.2 — Deterministic candidate test-runner dependency repair
+active candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
+active candidate version: v0.1.115
+active slice: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
+next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 ```
 
-## Active repair slice — v0.1.114.2
+## Active normal slice — v0.1.115
 
-The normal-slice implementation is retained unchanged. This repair retains the strict candidate-runtime and FastAPI/Starlette compatibility boundary, then adds a deterministic candidate-local pytest runner contract.
-
-Scope:
-
-1. Retain exact pipx candidate `python`, `pb`, and `promptbranch` binding and fail closed on PATH or prefix drift.
-2. Retain the pinned FastAPI/Starlette compatibility pair and exact import-smoke interpreter proof.
-3. Pin `pytest==9.0.2` in candidate package metadata and service requirements.
-4. Export the absolute candidate Python for every release-validation group.
-5. Verify pytest version, module path, and interpreter prefix before Project Source mutation and before required groups execute.
-6. Add regressions for missing pytest, version drift, module-path escape, and runner-preflight failure.
-
-Out of scope:
-
-- Any new PBAI capability or operational proof.
-- Changes to SkillRun semantics or evidence authority.
-- Relaxing package import, release, publication, adoption, or current-verification gates.
-- Starting `v0.1.115`.
-
-Acceptance requires source-tree and clean-extraction parity, installed candidate-runtime proof, all three PBAI gates, import-smoke dependency/interpreter identity, strict direct and localhost transports, live gates, Artifact Guardian, and exact evidence-bound adoption.
+1. Generate tamper-evident operational lifecycle evidence only after strict validation and evidence-bound adoption.
+2. Validate correction, Project Source publication, accepted/current identity, rollback and recovery as PBAI-001 operational dimensions.
+3. Add `pb test impacted` with a checked-in change-to-test map, dependency closure, fail-closed unmapped files and JSON evidence.
+4. Permit exact-key reuse only for unchanged transport-independent evidence.
+5. Preserve the mandatory strict 10/10 adoption gate.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.113` remains accepted/current, `v0.1.114` is repair-required, `v0.1.114.2` is the sole active repair candidate, and scope advancement is disabled until adoption.
+`docs/project/plan-state.json` is authoritative. `v0.1.114.2` is accepted/current, `v0.1.115` is the sole active normal candidate, and `v0.1.116` is planned only after acceptance.
 
 ## Release / slice plan
 

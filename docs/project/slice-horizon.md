@@ -6,19 +6,21 @@
 
 ## Active repair
 
-- `v0.1.114.2 — Deterministic candidate test-runner dependency repair` is the sole active repair.
-- `v0.1.115 — PBAI-001 operational validation and lifecycle evidence` remains the next normal slice after repair acceptance.
+- `v0.1.114.2 — Deterministic candidate test-runner dependency repair` is accepted/current.
+- `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing` is the sole active normal candidate.
+- `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof` is planned after acceptance.
 
 ## Current rolling horizon
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
 | v0.1.112 | PBAI-001 declaration and structural validation | superseded | normal | accepted structural proof superseded as current by v0.1.113 |
-| v0.1.113 | PBAI-001 registry validation and reference resolution | accepted_current | normal | strict 10/10 validation, registry proof, adoption, and exact current identity verified |
+| v0.1.113 | PBAI-001 registry validation and reference resolution | superseded | normal | strict 10/10 validation, registry proof, adoption, and exact current identity verified |
 | v0.1.114 | PBAI-001 executable validation and SkillRun evidence | repair_required | normal | executable implementation retained; host package import failed under an ambient shadow runtime |
 | v0.1.114.1 | Candidate runtime resolution and FastAPI/Starlette compatibility repair | repair_required | repair | candidate runtime binding and import compatibility passed; exact candidate venv lacked pytest |
-| v0.1.114.2 | Deterministic candidate test-runner dependency repair | active | repair | pin and verify pytest inside the exact candidate venv without changing PBAI scope |
-| v0.1.115 | PBAI-001 operational validation and lifecycle evidence | planned_after_acceptance | normal | real lifecycle, publication, adoption/current, and recovery proof |
+| v0.1.114.2 | Deterministic candidate test-runner dependency repair | accepted_current | repair | strict 10/10 validation and exact adoption verified |
+| v0.1.115 | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | active | normal | real lifecycle, publication, adoption/current, recovery proof, and deterministic impacted tests |
+| v0.1.116 | PBAI-001 templates, migration reports, and first domain-module proof | planned_after_acceptance | normal | complete template migration and domain-module proof |
 
 ## Repair horizon rule
 

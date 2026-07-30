@@ -93,3 +93,14 @@ python3 -m pytest -q \
 | Release-validation Python | absolute candidate Python path exported through `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` |
 | Runner drift | fail closed on missing pytest, version mismatch, module path outside candidate venv, or interpreter-prefix mismatch |
 | Scope | no PBAI or SkillRun authority expansion; next normal slice remains v0.1.115 |
+
+## v0.1.115 operational and impacted-test gates
+
+| Group | Required | Purpose | Representative command |
+|---|---|---|---|
+| `application_architecture_operational` | post-adoption | Validate tamper-evident correction, lifecycle, publication, adoption/current, rollback, and recovery evidence without mutation. | `pb application architecture validate --repo-path . --level operational --evidence <evidence.json> --json` |
+| `impacted_test_plan` | development | Select deterministic tests from changed files and dependency closure; fail closed on unmapped files. | `pb test impacted --base v0.1.114.2 --mode component --plan-only --json` |
+| `impacted_test_execution` | development | Run only selected development groups and emit exact-key evidence. | `pb test impacted --base v0.1.114.2 --mode component --json` |
+| `strict_release_10_of_10` | adoption | Preserve complete direct, localhost, live, import-smoke, Artifact Guardian and adoption verification. | `chatgpt_claudecode_workflow_release_control.sh --run-all-tests --run-external-live-tests --adopt-after-validation ...` |
+
+Impacted testing never changes `missing_required_groups` semantics for the strict release gate.

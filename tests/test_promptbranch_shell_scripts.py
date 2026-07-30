@@ -4175,3 +4175,19 @@ def test_release_control_binds_and_verifies_deterministic_candidate_pytest() -> 
     assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"' in script
     assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION="9.0.2"' in script
 
+
+
+def test_release_control_emits_operational_evidence_only_after_verified_adoption() -> None:
+    script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    text = script.read_text(encoding="utf-8")
+    current_verify = 'verify_current_matches_version "${current_json}" "${adoption_source_evidence_json}"'
+    evidence_header = '== PBAI-001 operational lifecycle evidence =='
+    evidence_build = 'pb application architecture lifecycle-evidence'
+    evidence_validate = 'pb application architecture validate \\\n      --repo-path "${repo_root}" \\\n      --level operational'
+    assert current_verify in text
+    assert evidence_header in text
+    assert evidence_build in text
+    assert evidence_validate in text
+    assert text.index(current_verify) < text.index(evidence_header) < text.index(evidence_build)
+    assert 'json_file_is_ok_true "${operational_evidence_json}"' in text
+    assert 'json_file_is_ok_true "${operational_validation_json}"' in text

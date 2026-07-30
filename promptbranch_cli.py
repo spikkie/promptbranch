@@ -80,6 +80,12 @@ from promptbranch_application_architecture import (
     plan_application_architecture,
     validate_application_architecture,
 )
+from promptbranch_operational_evidence import (
+    OperationalEvidenceError,
+    build_operational_lifecycle_evidence,
+    validate_operational_lifecycle_evidence,
+)
+from promptbranch_impact_testing import ImpactTestingError, build_impact_plan, execute_impact_plan
 from promptbranch_release_engine import ReleaseContractError, execute as execute_release_contract, load_contract as load_release_contract, plan as plan_release_contract
 from promptbranch_orchestration import (
     accepted_event_example_paths,
@@ -18446,6 +18452,7 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
                 level=getattr(args, "level", "structural"),
                 profile_dir=getattr(args, "profile_dir", None),
                 proof_skill=getattr(args, "skill", None),
+                operational_evidence=getattr(args, "evidence", None),
             )
         elif args.application_architecture_command == "evidence":
             payload = build_application_architecture_evidence(
@@ -18454,11 +18461,24 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
                 profile_dir=getattr(args, "profile_dir", None),
                 proof_skill=getattr(args, "skill", None),
             )
+        elif args.application_architecture_command == "lifecycle-evidence":
+            payload = build_operational_lifecycle_evidence(
+                repo_path=repo,
+                all_tests_summary=args.all_tests_summary,
+                artifact_guard=args.artifact_guard,
+                adoption_result=args.adoption_result,
+                current_result=args.current_result,
+                source_evidence=args.source_evidence,
+                artifact=args.artifact,
+            )
+            output = getattr(args, "output", None)
+            if output:
+                Path(output).expanduser().resolve().write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         else:
             raise RuntimeError(
                 f"Unknown application architecture command: {args.application_architecture_command}"
             )
-    except ApplicationArchitectureError as exc:
+    except (ApplicationArchitectureError, OperationalEvidenceError) as exc:
         payload = {
             "ok": False,
             "action": f"application_architecture_{args.application_architecture_command}",
@@ -18466,7 +18486,7 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
             "repo_path": str(repo),
             "requested_level": getattr(args, "level", None),
             "proven_level": "none",
-            "max_supported_level": "executable",
+            "max_supported_level": "operational",
             "errors": [str(exc)],
             "safety": {"read_only": True, "state_mutated": False},
         }
@@ -23599,7 +23619,42 @@ async def cmd_test_import_smoke(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+async def cmd_test_impacted(args: argparse.Namespace) -> int:
+    try:
+        plan = build_impact_plan(
+            repo_path=getattr(args, "path", "."),
+            base=getattr(args, "base", "HEAD"),
+            mode=getattr(args, "mode", "edit"),
+            map_path=getattr(args, "map", ".promptbranch/test-impact-map.json"),
+        )
+        payload = plan if getattr(args, "plan_only", False) else execute_impact_plan(
+            plan,
+            timeout_seconds=float(getattr(args, "timeout_seconds", 600.0)),
+            evidence_dir=getattr(args, "evidence_dir", None),
+        )
+    except ImpactTestingError as exc:
+        payload = {
+            "ok": False,
+            "action": "test_impacted",
+            "status": "impact_plan_blocked",
+            "errors": [str(exc)],
+            "full_release_validation_required": True,
+            "strict_adoption_gate_unchanged": True,
+        }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"mode={payload.get('mode')}")
+        print(f"selected_groups={','.join(payload.get('selected_groups') or []) or 'none'}")
+        for error in payload.get("errors") or []:
+            print(f"error={error}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_test(backend: CommandBackend, args: argparse.Namespace) -> int:
+    if args.test_command == "impacted":
+        return await cmd_test_impacted(args)
     if args.test_command == "report":
         return await cmd_test_report(args)
     if args.test_command == "status":
@@ -24948,14 +25003,27 @@ def make_parser() -> argparse.ArgumentParser:
     application_architecture_validate = application_architecture_subparsers.add_parser("validate", help="Validate the tracked AI application declaration at the requested proof level.")
     application_architecture_validate.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     application_architecture_validate.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
-    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="executable", help="Requested proof level. v0.1.114 implements declaration, structural, registry, and executable validation.")
+    application_architecture_validate.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="executable", help="Requested proof level. Operational validation requires verified lifecycle evidence.")
     application_architecture_validate.add_argument("--skill", help="Optional executable proof skill id or name. Defaults to the sole tracked proof skill.")
+    application_architecture_validate.add_argument("--evidence", help="PBAI-001 operational lifecycle evidence JSON. Required for --level operational.")
     application_architecture_validate.add_argument("--json", action="store_true")
     application_architecture_evidence = application_architecture_subparsers.add_parser("evidence", help="Execute the bounded tracked proof skill and emit validated SkillRun evidence.")
     application_architecture_evidence.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     application_architecture_evidence.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")
     application_architecture_evidence.add_argument("--skill", help="Optional executable proof skill id or name. Defaults to the sole tracked proof skill.")
     application_architecture_evidence.add_argument("--json", action="store_true")
+
+    application_architecture_lifecycle_evidence = application_architecture_subparsers.add_parser("lifecycle-evidence", help="Build validated PBAI-001 operational lifecycle evidence from strict release artifacts.")
+    application_architecture_lifecycle_evidence.add_argument("--repo-path", default=".")
+    application_architecture_lifecycle_evidence.add_argument("--config", default=".promptbranch-ai.json")
+    application_architecture_lifecycle_evidence.add_argument("--all-tests-summary", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--artifact-guard", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--adoption-result", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--current-result", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--source-evidence", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--artifact", required=True)
+    application_architecture_lifecycle_evidence.add_argument("--output")
+    application_architecture_lifecycle_evidence.add_argument("--json", action="store_true")
 
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
     project_subparsers = project.add_subparsers(dest="project_command", required=True)
@@ -25291,6 +25359,15 @@ def make_parser() -> argparse.ArgumentParser:
 
     test = subparsers.add_parser("test", help="Reliability test commands.")
     test_subparsers = test.add_subparsers(dest="test_command", required=True)
+    test_impacted = test_subparsers.add_parser("impacted", help="Plan or run deterministic impact-based development tests; never replaces strict release validation.")
+    test_impacted.add_argument("--path", default=".", help="Repository root.")
+    test_impacted.add_argument("--base", default="HEAD", help="Git base ref used for change discovery.")
+    test_impacted.add_argument("--mode", choices=["edit", "component", "candidate"], default="edit")
+    test_impacted.add_argument("--map", default=".promptbranch/test-impact-map.json")
+    test_impacted.add_argument("--plan-only", action="store_true")
+    test_impacted.add_argument("--evidence-dir", default=".pb_profile/test-impact-evidence", help="Exact-evidence-key cache directory. Defaults to ignored .pb_profile/test-impact-evidence.")
+    test_impacted.add_argument("--timeout-seconds", type=float, default=600.0)
+    test_impacted.add_argument("--json", action="store_true")
     test_smoke = test_subparsers.add_parser("smoke", help="Run the standard Promptbranch smoke suite.")
     test_smoke.add_argument("--json", action="store_true", help="Emit the bounded smoke substep summary as JSON.")
     test_smoke.add_argument("--substep-timeout-seconds", type=float, default=60.0, help="Maximum runtime for each smoke substep before JSON timeout output is emitted.")

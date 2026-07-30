@@ -1,0 +1,324 @@
+{
+  "schema": "promptbranch.test.impact_map",
+  "schema_version": "1.0",
+  "groups": {
+    "compile": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "compileall",
+          "-q",
+          "."
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "shell_syntax": {
+      "commands": [
+        [
+          "bash",
+          "-n",
+          "chatgpt_claudecode_workflow_release_control.sh"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "impact_planner": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_impact_testing.py"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "project_control_surface": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_project_control_surface.py"
+        ]
+      ],
+      "modes": [
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "application_architecture": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_application_architecture.py"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "operational_lifecycle": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_operational_evidence.py",
+          "tests/test_release_adoption_verification.py"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "package_runtime": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_version.py",
+          "tests/test_promptbranch_test_suite.py",
+          "tests/test_promptbranch_shell_scripts.py",
+          "-k",
+          "candidate or release_validation_python or package_import or version_surface"
+        ]
+      ],
+      "modes": [
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "artifact_contracts": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_artifact_guardian.py",
+          "tests/test_promptbranch_artifacts.py",
+          "tests/test_promptbranch_test_report.py",
+          "tests/test_promptbranch_release_contract.py"
+        ]
+      ],
+      "modes": [
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
+    "browser_source_lifecycle": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_automation_service.py",
+          "tests/test_promptbranch_cli.py",
+          "-k",
+          "scheduler or source_queue or browser_profile_busy"
+        ]
+      ],
+      "modes": [
+        "component",
+        "candidate"
+      ],
+      "transport_independent": false
+    }
+  },
+  "dependencies": {
+    "impact_planner": [
+      "compile"
+    ],
+    "project_control_surface": [
+      "compile"
+    ],
+    "application_architecture": [
+      "compile"
+    ],
+    "operational_lifecycle": [
+      "application_architecture",
+      "project_control_surface"
+    ],
+    "package_runtime": [
+      "compile"
+    ],
+    "artifact_contracts": [
+      "package_runtime"
+    ],
+    "browser_source_lifecycle": [
+      "compile"
+    ],
+    "shell_syntax": []
+  },
+  "rules": [
+    {
+      "patterns": [
+        "promptbranch_impact_testing.py",
+        ".promptbranch/test-impact-map.json",
+        "tests/test_promptbranch_impact_testing.py"
+      ],
+      "groups": [
+        "impact_planner"
+      ],
+      "reason": "impact-selection implementation or policy changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_application_architecture.py",
+        ".promptbranch-ai.json",
+        ".promptbranch/ai-registry.json",
+        "promptbranch_protocol/schemas/application.*",
+        "tests/test_promptbranch_application_architecture.py"
+      ],
+      "groups": [
+        "application_architecture"
+      ],
+      "reason": "PBAI declaration, registry or validator changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_operational_evidence.py",
+        "promptbranch_protocol/schemas/operational.lifecycle.evidence.schema.json",
+        "tests/test_promptbranch_operational_evidence.py",
+        "chatgpt_claudecode_workflow_release_control.sh"
+      ],
+      "groups": [
+        "operational_lifecycle",
+        "shell_syntax"
+      ],
+      "reason": "operational lifecycle evidence or release controller changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_test_suite.py",
+        "pyproject.toml",
+        "requirements.txt",
+        "promptbranch_version.py",
+        "VERSION",
+        "tests/test_candidate_runtime_binding.py",
+        "tests/test_promptbranch_version.py"
+      ],
+      "groups": [
+        "package_runtime"
+      ],
+      "reason": "candidate runtime, dependency or version surface changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_artifact*.py",
+        ".artifact-guardian.yml",
+        "tests/test_artifact*.py"
+      ],
+      "groups": [
+        "artifact_contracts"
+      ],
+      "reason": "artifact contract or guardian surface changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_browser_auth/**",
+        "promptbranch_automation/**",
+        "promptbranch_scheduler.py",
+        "promptbranch_source_queue.py",
+        "tests/test_project_source*.py",
+        "tests/test_promptbranch_automation_service.py"
+      ],
+      "groups": [
+        "browser_source_lifecycle"
+      ],
+      "reason": "browser-backed source lifecycle or scheduler changed"
+    },
+    {
+      "patterns": [
+        "docs/**",
+        "README.md",
+        "UPGRADING.md",
+        "PROJECT_SETTINGS.md",
+        "AGENTS.md"
+      ],
+      "groups": [
+        "project_control_surface"
+      ],
+      "reason": "tracked project policy or documentation projection changed"
+    },
+    {
+      "patterns": [
+        "tests/**"
+      ],
+      "groups": [
+        "compile"
+      ],
+      "reason": "test definition changed and must at least compile"
+    },
+    {
+      "patterns": [
+        "*.py",
+        "scripts/*.py",
+        "scripts/**/*.py"
+      ],
+      "groups": [
+        "compile"
+      ],
+      "reason": "Python implementation changed"
+    },
+    {
+      "patterns": [
+        "*.sh",
+        "scripts/*.sh",
+        "scripts/**/*.sh"
+      ],
+      "groups": [
+        "shell_syntax"
+      ],
+      "reason": "shell implementation changed"
+    },
+    {
+      "patterns": [
+        "*.json",
+        "*.yml",
+        "*.yaml",
+        ".promptbranch/**"
+      ],
+      "groups": [
+        "project_control_surface"
+      ],
+      "reason": "tracked configuration or contract changed"
+    }
+  ]
+}

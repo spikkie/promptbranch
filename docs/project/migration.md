@@ -1262,3 +1262,7 @@ No state or registry migration is required. Consumers of `pb_test_progress:` sho
 ## v0.1.114.2 deterministic candidate test-runner dependency repair
 
 `v0.1.114.1` is not accepted/current. Its runtime binding and FastAPI/Starlette repair are retained, but strict host validation showed that the exact pipx candidate venv lacked pytest. `v0.1.114.2` pins pytest in package metadata, verifies its version and module location in the candidate venv, and explicitly binds release-validation commands to that Python. No PBAI schema, SkillRun, publication, adoption, or operational-scope migration is introduced.
+
+## v0.1.115 to v0.1.116 migration note
+
+`v0.1.115` introduces `pb test impacted` and operational lifecycle evidence without silently changing existing project behavior. Existing PB projects that lack `.promptbranch/test-impact-map.json` receive a fail-closed planning error; they are not assigned a guessed test set. `v0.1.116` will add templates, explicit migration reports, and the first domain-module proof.

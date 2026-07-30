@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
-  "accepted_current_version": "v0.1.113",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
-  "active_candidate_version": "v0.1.114.2",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+  "accepted_current_version": "v0.1.114.2",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
+  "active_candidate_version": "v0.1.115",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
+  "active_slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -376,7 +376,7 @@
       "summary": "Pins pytest in the candidate package, verifies its version and module path inside the exact pipx venv, and binds release-validation subprocesses to that interpreter without advancing PBAI scope."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -782,16 +782,16 @@
       "created_at": "2026-07-29T09:02:00+02:00"
     }
   ],
-  "last_completed_normal_slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
-  "last_completed_normal_slice_version": "v0.1.113",
-  "last_completed_repair": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
-  "last_completed_repair_version": "v0.1.111.5.2",
-  "last_updated": "2026-07-29T10:15:00+02:00",
+  "last_completed_normal_slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
+  "last_completed_normal_slice_version": "v0.1.114",
+  "last_completed_repair": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
+  "last_completed_repair_version": "v0.1.114.2",
+  "last_updated": "2026-07-30T10:35:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
-  "next_normal_slice": "v0.1.115 \u2014 PBAI-001 operational validation and lifecycle evidence",
+  "next_normal_slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
   "next_normal_version": "v0.1.115",
-  "next_planned_slice_after_acceptance": "v0.1.115 \u2014 PBAI-001 operational validation and lifecycle evidence",
-  "next_planned_version_after_acceptance": "v0.1.115",
+  "next_planned_slice_after_acceptance": "v0.1.116 \u2014 PBAI-001 templates, migration reports, and first domain-module proof",
+  "next_planned_version_after_acceptance": "v0.1.116",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1415,9 +1415,27 @@
       "status": "candidate",
       "summary": "Binds strict release validation to the installed candidate runtime and pins a compatible FastAPI/Starlette pair without changing PBAI executable semantics.",
       "validation": "Focused candidate-runtime, import-smoke, dependency compatibility, PBAI, control, package, and clean-extraction validation pending."
+    },
+    {
+      "version": "v0.1.114.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
+      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
+      "kind": "repair",
+      "status": "accepted_current",
+      "summary": "Bound pytest 9.0.2 to the exact candidate venv and preserved executable PBAI behavior.",
+      "validation": "Strict host validation passed 10/10; Artifact Guardian passed; evidence-bound adoption and release_adopted_and_verified succeeded."
+    },
+    {
+      "version": "v0.1.115",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
+      "slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
+      "kind": "normal",
+      "status": "candidate",
+      "summary": "Adds PBAI operational lifecycle evidence and deterministic impact-based fast development testing.",
+      "validation": "Source, clean-extraction, installed-package, and strict host validation pending."
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -1728,19 +1746,10 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.112",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip",
-      "slice": "v0.1.112 \u2014 PBAI-001 declaration and structural validation",
-      "status": "superseded",
-      "release_mode": "normal",
-      "scope": "accepted structural proof superseded as current by v0.1.113",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.112.zip"
-    },
-    {
       "version": "v0.1.113",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip",
       "slice": "v0.1.113 \u2014 PBAI-001 registry validation and reference resolution",
-      "status": "accepted_current",
+      "status": "superseded",
       "release_mode": "normal",
       "scope": "strict 10/10 validation, structural and registry PBAI gates, adoption, and exact current identity verified",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.113.zip"
@@ -1767,22 +1776,32 @@
       "version": "v0.1.114.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
       "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
-      "status": "active",
+      "status": "accepted_current",
       "release_mode": "repair",
-      "scope": "pin and verify pytest inside the exact candidate venv; preserve candidate runtime binding, FastAPI/Starlette compatibility, PBAI executable proof, and SkillRun evidence",
+      "scope": "strict 10/10 validation, candidate-local pytest, evidence-bound adoption, and exact current identity verified",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip"
     },
     {
       "version": "v0.1.115",
-      "slice": "v0.1.115 \u2014 PBAI-001 operational validation and lifecycle evidence",
+      "slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
+      "status": "active",
+      "release_mode": "normal",
+      "scope": "operational lifecycle/adoption evidence plus deterministic impact-based development testing; strict 10/10 adoption gate remains mandatory",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip"
+    },
+    {
+      "version": "v0.1.116",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
+      "slice": "v0.1.116 \u2014 PBAI-001 templates, migration reports, and first domain-module proof",
       "status": "planned_after_acceptance",
       "release_mode": "normal",
-      "scope": "prove real PB-managed lifecycle, publication, adoption/current verification, and recovery evidence without closing template/domain-module migration gaps"
+      "scope": "complete PBAI template migration and prove the first domain module"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1793,5 +1812,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.114.2"
+  "updated_for": "v0.1.115"
 }

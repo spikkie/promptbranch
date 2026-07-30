@@ -1021,3 +1021,20 @@ pb agent tool-call test.smoke '{"timeout_seconds":60}' --path . --json
 - Ambiguous upload outcomes require operator review and do not advance the local artifact registry or Promptbranch source/artifact state.
 - Preserved transactional source-sync behavior: local ZIP creation may occur, but source/artifact state advances only after verified project-source upload.
 
+
+## Impact-based development testing
+
+```bash
+pb test impacted --base v0.1.114.2 --mode edit --plan-only --json
+pb test impacted --base v0.1.114.2 --mode component --evidence-dir .pb_profile/impact-evidence --json
+```
+
+The planner fails closed for unmapped changed files and always reports that the strict release/adoption gate remains required.
+
+## PBAI-001 operational lifecycle evidence
+
+After a successful strict release adoption, release control builds and validates a tamper-evident operational evidence record. Manual validation is available with:
+
+```bash
+pb application architecture validate --repo-path . --level operational --evidence <evidence.json> --json
+```

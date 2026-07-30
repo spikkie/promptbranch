@@ -48,11 +48,13 @@
         "promptbranch.state.ask-reply",
         "promptbranch.state.application-architecture",
         "promptbranch.state.application-registry",
-        "promptbranch.state.skill-run"
+        "promptbranch.state.skill-run",
+        "promptbranch.state.operational-lifecycle"
       ],
       "evidence_contracts": [
         "promptbranch.evidence.test-report",
-        "promptbranch.evidence.skill-run"
+        "promptbranch.evidence.skill-run",
+        "promptbranch.evidence.operational-lifecycle"
       ]
     }
   ],
@@ -230,7 +232,8 @@
         "declaration",
         "structural",
         "registry",
-        "executable"
+        "executable",
+        "operational"
       ]
     }
   ],
@@ -254,6 +257,11 @@
       "id": "promptbranch.state.skill-run",
       "path": "promptbranch_protocol/schemas/skillrun.evidence.schema.json",
       "schema": "promptbranch.ai.skill_run"
+    },
+    {
+      "id": "promptbranch.state.operational-lifecycle",
+      "path": "promptbranch_protocol/schemas/operational.lifecycle.evidence.schema.json",
+      "schema": "promptbranch.ai.operational_lifecycle_evidence"
     }
   ],
   "evidence_contracts": [
@@ -266,6 +274,11 @@
       "id": "promptbranch.evidence.skill-run",
       "path": "promptbranch_skillrun.py",
       "symbol": "validate_skillrun_evidence"
+    },
+    {
+      "id": "promptbranch.evidence.operational-lifecycle",
+      "path": "promptbranch_operational_evidence.py",
+      "symbol": "build_operational_lifecycle_evidence"
     }
   ],
   "controllers": [

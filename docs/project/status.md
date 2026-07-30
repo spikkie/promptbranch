@@ -1,58 +1,33 @@
 # Project Status
 
-<!-- v0.1.114.2 current control-surface header -->
-- Accepted/current version: `v0.1.113`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.113.zip`
-- Active candidate version: `v0.1.114.2`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
+<!-- v0.1.115 current control-surface header -->
+- Accepted/current version: `v0.1.114.2`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
+- Active candidate version: `v0.1.115`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.zip`
 - Next normal version: `v0.1.115`
-- Next normal slice: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
-- Next planned version after acceptance: `v0.1.115`
-- Next planned slice after acceptance: `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`
+- Next normal slice: `v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing`
+- Next planned version after acceptance: `v0.1.116`
+- Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
 
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.113.zip
-accepted/current version: v0.1.113
-rejected candidate: chatgpt_claudecode_workflow-2_v0.1.114.zip
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
-active candidate version: v0.1.114.2
-active repair slice: v0.1.114.2 — Deterministic candidate test-runner dependency repair
-next normal slice after acceptance: v0.1.115 — PBAI-001 operational validation and lifecycle evidence
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
+accepted/current version: v0.1.114.2
+active candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
+active candidate version: v0.1.115
+active slice: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
+next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
 ```
 
 ## Current release state
 
-- `v0.1.114` proved PBAI structural, registry, and executable gates but failed strict host validation in `package_import_smoke`.
-- Ambient PATH selected `/home/spikkie/git/ai-aip/py_env/bin/pb` instead of the freshly installed pipx candidate.
-- That environment contained an incompatible FastAPI/Starlette pair and `promptbranch_container_api` failed to import.
-- Adoption was refused; `v0.1.113` remains accepted/current.
-- `v0.1.114.1` repaired runtime binding and FastAPI/Starlette compatibility, but strict direct validation exposed missing pytest in the exact candidate venv.
-- `v0.1.114.2` adds the deterministic candidate-local test runner while preserving all executable PBAI and SkillRun behavior.
-
-## Repair scope
-
-1. Retain exact candidate runtime binding and FastAPI/Starlette import compatibility.
-2. Pin `pytest==9.0.2` in candidate package metadata and `pytest-asyncio==1.3.0` in service requirements.
-3. Bind release-validation subprocesses to the absolute candidate Python.
-4. Verify pytest version, module path, and interpreter prefix before validation starts.
-5. Retain structural, registry, executable, SkillRun, transport, Artifact Guardian, publication, and adoption gates unchanged.
-
-## Current blockers
-
-Strict host release validation and evidence-bound adoption remain required for `v0.1.114.2`.
+`v0.1.114.2` passed strict 10/10 host validation, Artifact Guardian, evidence-bound adoption and exact accepted/current verification. `v0.1.115` adds post-adoption operational evidence and fast impact-based development testing. The standard browser profile default and all live release gates remain authoritative for final adoption.
 
 ## Next safe action
 
-Validate and package `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`, then rerun the strict 10/10 host workflow. Do not open `v0.1.115` until this repair is adopted.
-
-## Last updated
-
-```text
-2026-07-30
-v0.1.114.2 deterministic candidate test-runner dependency repair
-```
+Run deterministic impacted tests during development, freeze `chatgpt_claudecode_workflow-2_v0.1.115.zip`, then run the unchanged strict 10/10 host workflow. Do not treat edit/component/candidate test evidence as release acceptance.
 
 ## v0.1.102 candidate status
 
