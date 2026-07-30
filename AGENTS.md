@@ -85,3 +85,8 @@ For candidate installation and release validation:
 - run import-smoke with the exact candidate Python and require FastAPI/Starlette version parity with the tracked dependency contract;
 - preserve all PBAI structural, registry, executable, SkillRun, publication, adoption, and accepted/current gates;
 - do not advance to the next normal slice until the active repair candidate passes strict host validation and adoption.
+
+## PBAI-001 template, migration, and differential-validation operator contract
+
+Use `pb application architecture template` as a deterministic plan; repository writes require explicit `--write`. Use `migration-report` for read-only gap analysis. Keep project-local validators until `differential-validate` proves Promptbranch equivalent or stronger on identical isolated cases. A domain module may report only its highest actual proof level and may not self-grant mutation, publication, release, or adoption authority.
+

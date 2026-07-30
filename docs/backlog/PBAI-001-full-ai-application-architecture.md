@@ -1,8 +1,8 @@
 # PBAI-001: validate full AI application architecture in Promptbranch and PB modules
 
-- Status: `in_progress`
+- Status: `implementation_complete_pending_adoption`
 - Started in: `v0.1.112`
-- Current phase: operational lifecycle proof implemented; template/domain-module migration pending
+- Current phase: all implementation criteria complete in candidate v0.1.116; strict adoption pending
 
 ## Goal
 
@@ -116,11 +116,11 @@ differential validation proves the PB implementation equivalent or stronger.
 - [x] Executable validation proves ordered skills, bounded tools, validators,
       and SkillRun evidence.
 - [x] Operational validation integrates with issue #1 lifecycle evidence.
-- [ ] PB templates include PBAI-001 and the tracked declaration.
-- [ ] `promptbranch-method` passes as a domain module.
-- [x] Promptbranch passes as a runtime application at registry proof level.
+- [x] PB templates include PBAI-001 and the tracked declaration.
+- [x] `promptbranch-method` proof snapshot passes as a domain module through executable level and differential validation.
+- [x] Promptbranch passes as a runtime application at operational proof level.
 - [x] Validation output never overclaims its proof level.
-- [ ] Existing PB projects receive explicit migration reports rather than
+- [x] Existing PB projects receive explicit migration reports rather than
       silent breakage.
 
 ## Non-goals
@@ -186,3 +186,17 @@ Operational lifecycle proof, template migration, and the first domain-module pro
 - strict release/adoption validation remains mandatory and unchanged.
 
 Template migration and the first domain-module proof remain for `v0.1.116`.
+
+
+## v0.1.116 implementation phase
+
+`v0.1.116` completes the remaining implementation criteria:
+
+- deterministic checked-in templates for both application kinds;
+- read-only explicit migration reports;
+- fail-closed isolated differential validation;
+- first `promptbranch-method` domain-module proof snapshot at executable level;
+- preservation of the local reference validator until equivalence is proven;
+- release and impact-test integration.
+
+The ticket remains pending final closure until strict host validation adopts `v0.1.116`; candidate-local evidence alone is not accepted/current authority.

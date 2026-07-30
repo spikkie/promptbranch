@@ -1,0 +1,19 @@
+{
+  "$id": "https://promptbranch.local/example-domain/schemas/domain-proof.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "schema": {
+      "const": "example-domain.domain_proof"
+    }
+  },
+  "required": [
+    "schema",
+    "ok"
+  ],
+  "title": "example-domain domain proof",
+  "type": "object"
+}

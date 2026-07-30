@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
-  "accepted_current_version": "v0.1.114.2",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-  "active_candidate_version": "v0.1.115.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+  "accepted_current_version": "v0.1.115.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
+  "active_candidate_version": "v0.1.116",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.115.1 — Release-live profile ownership handoff repair",
+  "active_slice": "v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -395,7 +395,7 @@
       "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -801,16 +801,16 @@
       "created_at": "2026-07-29T09:02:00+02:00"
     }
   ],
-  "last_completed_normal_slice": "v0.1.114 — PBAI-001 executable validation and SkillRun evidence",
-  "last_completed_normal_slice_version": "v0.1.114",
-  "last_completed_repair": "v0.1.114.2 — Deterministic candidate test-runner dependency repair",
-  "last_completed_repair_version": "v0.1.114.2",
-  "last_updated": "2026-07-30T13:26:00+02:00",
+  "last_completed_normal_slice": "v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
+  "last_completed_normal_slice_version": "v0.1.115",
+  "last_completed_repair": "v0.1.115.1 — Release-live profile ownership handoff repair",
+  "last_completed_repair_version": "v0.1.115.1",
+  "last_updated": "2026-07-30T17:55:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
-  "next_normal_slice": "v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof",
+  "next_normal_slice": "v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof",
   "next_normal_version": "v0.1.116",
-  "next_planned_slice_after_acceptance": "v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof",
-  "next_planned_version_after_acceptance": "v0.1.116",
+  "next_planned_slice_after_acceptance": "v0.1.117 — PBAI compliance inventory and multi-repository rollout",
+  "next_planned_version_after_acceptance": "v0.1.117",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1464,7 +1464,7 @@
       "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending."
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -1785,31 +1785,13 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.114",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
-      "slice": "v0.1.114 — PBAI-001 executable validation and SkillRun evidence",
-      "status": "repair_required",
-      "release_mode": "normal",
-      "scope": "executable PBAI implementation retained; strict host package-import failure required candidate-runtime repair"
-    },
-    {
-      "version": "v0.1.114.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
-      "slice": "v0.1.114.1 — Candidate runtime resolution and FastAPI/Starlette compatibility repair",
-      "status": "repair_required",
-      "release_mode": "repair",
-      "scope": "candidate runtime and compatibility repair retained; strict host validation exposed missing candidate-local pytest"
-    },
-    {
       "version": "v0.1.114.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
       "slice": "v0.1.114.2 — Deterministic candidate test-runner dependency repair",
-      "status": "accepted_current",
+      "status": "accepted_historical",
       "release_mode": "repair",
-      "scope": "strict 10/10 validation, candidate-local pytest, evidence-bound adoption, and exact current identity verified"
+      "scope": "previous accepted baseline"
     },
     {
       "version": "v0.1.115",
@@ -1818,29 +1800,39 @@
       "slice": "v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
       "status": "repair_required",
       "release_mode": "normal",
-      "scope": "direct, localhost, import-smoke, rollback, and Guardian passed; external live profile handoff failed before adoption"
+      "scope": "semantic slice retained; profile handoff failed before adoption"
     },
     {
       "version": "v0.1.115.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
       "slice": "v0.1.115.1 — Release-live profile ownership handoff repair",
-      "status": "active",
+      "status": "accepted_current",
       "release_mode": "repair",
-      "scope": "scope-neutral repair for bounded cross-process flock waiting and explicit service/host profile-release proof before continuous live testing"
+      "scope": "strict 10/10 adoption and real operational PBAI evidence verified"
     },
     {
       "version": "v0.1.116",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
-      "slice": "v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
+      "slice": "v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof",
+      "status": "active",
+      "release_mode": "normal",
+      "scope": "complete remaining PBAI-001 integration acceptance criteria"
+    },
+    {
+      "version": "v0.1.117",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
+      "slice": "v0.1.117 — PBAI compliance inventory and multi-repository rollout",
       "status": "planned_after_acceptance",
       "release_mode": "normal",
-      "scope": "complete PBAI template migration and prove the first domain module"
+      "scope": "inventory and deliberate rollout after PBAI-001 closure"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1851,5 +1843,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.115.1"
+  "updated_for": "v0.1.116"
 }

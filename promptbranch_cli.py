@@ -80,6 +80,14 @@ from promptbranch_application_architecture import (
     plan_application_architecture,
     validate_application_architecture,
 )
+from promptbranch_application_migration import (
+    ApplicationMigrationError,
+    build_application_migration_report,
+    build_application_template,
+    differential_validate_application,
+    write_application_template,
+    write_migration_report,
+)
 from promptbranch_operational_evidence import (
     OperationalEvidenceError,
     build_operational_lifecycle_evidence,
@@ -18474,11 +18482,46 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
             output = getattr(args, "output", None)
             if output:
                 Path(output).expanduser().resolve().write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        elif args.application_architecture_command == "template":
+            if getattr(args, "write", False):
+                payload = write_application_template(
+                    args.output_dir,
+                    kind=args.kind,
+                    application_id=args.application_id,
+                    version_path=args.version_path,
+                    runtime_provider=args.runtime_provider,
+                    contract_version=args.contract_version,
+                    force=bool(getattr(args, "force", False)),
+                )
+            else:
+                payload = build_application_template(
+                    kind=args.kind,
+                    application_id=args.application_id,
+                    version_path=args.version_path,
+                    runtime_provider=args.runtime_provider,
+                    contract_version=args.contract_version,
+                )
+                payload["output_dir"] = str(Path(args.output_dir).expanduser().resolve())
+        elif args.application_architecture_command == "migration-report":
+            payload = build_application_migration_report(
+                repo,
+                kind=args.kind,
+                application_id=args.application_id,
+                runtime_provider=args.runtime_provider,
+                config=config,
+            )
+            output = getattr(args, "output", None)
+            if output:
+                target = write_migration_report(payload, output)
+                payload["report_output"] = str(target)
+                payload["safety"] = {**payload.get("safety", {}), "report_file_written": True, "target_repo_mutated": False}
+        elif args.application_architecture_command == "differential-validate":
+            payload = differential_validate_application(repo, config=args.differential_config)
         else:
             raise RuntimeError(
                 f"Unknown application architecture command: {args.application_architecture_command}"
             )
-    except (ApplicationArchitectureError, OperationalEvidenceError) as exc:
+    except (ApplicationArchitectureError, ApplicationMigrationError, OperationalEvidenceError) as exc:
         payload = {
             "ok": False,
             "action": f"application_architecture_{args.application_architecture_command}",
@@ -25024,6 +25067,32 @@ def make_parser() -> argparse.ArgumentParser:
     application_architecture_lifecycle_evidence.add_argument("--artifact", required=True)
     application_architecture_lifecycle_evidence.add_argument("--output")
     application_architecture_lifecycle_evidence.add_argument("--json", action="store_true")
+
+    application_architecture_template = application_architecture_subparsers.add_parser("template", help="Plan or explicitly write a complete PBAI-001 application template.")
+    application_architecture_template.add_argument("--kind", choices=["runtime_application", "domain_module"], required=True)
+    application_architecture_template.add_argument("--application-id", required=True)
+    application_architecture_template.add_argument("--runtime-provider", default="promptbranch")
+    application_architecture_template.add_argument("--contract-version", default="1.0")
+    application_architecture_template.add_argument("--version-path", default="VERSION")
+    application_architecture_template.add_argument("--output-dir", default=".")
+    application_architecture_template.add_argument("--write", action="store_true", help="Explicitly write the rendered template. Without this flag the command is read-only.")
+    application_architecture_template.add_argument("--force", action="store_true", help="Allow explicit replacement of existing template paths. Requires --write.")
+    application_architecture_template.add_argument("--json", action="store_true")
+
+    application_architecture_migration = application_architecture_subparsers.add_parser("migration-report", help="Produce an explicit read-only PBAI-001 migration report for an existing repository.")
+    application_architecture_migration.add_argument("--repo-path", default=".")
+    application_architecture_migration.add_argument("--config", default=".promptbranch-ai.json")
+    application_architecture_migration.add_argument("--kind", choices=["runtime_application", "domain_module"])
+    application_architecture_migration.add_argument("--application-id")
+    application_architecture_migration.add_argument("--runtime-provider", default="promptbranch")
+    application_architecture_migration.add_argument("--output", help="Optional report JSON output. Writing the report does not mutate the target repository architecture.")
+    application_architecture_migration.add_argument("--json", action="store_true")
+
+    application_architecture_differential = application_architecture_subparsers.add_parser("differential-validate", help="Compare a project-local reference validator with Promptbranch against identical isolated cases.")
+    application_architecture_differential.add_argument("--repo-path", default=".")
+    application_architecture_differential.add_argument("--config", default=".promptbranch-ai.json")
+    application_architecture_differential.add_argument("--differential-config", default=".promptbranch/ai-differential.json")
+    application_architecture_differential.add_argument("--json", action="store_true")
 
     project = subparsers.add_parser("project", help="Project-scoped Promptbranch commands.")
     project_subparsers = project.add_subparsers(dest="project_command", required=True)

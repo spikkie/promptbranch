@@ -1270,3 +1270,8 @@ No state or registry migration is required. Consumers of `pb_test_progress:` sho
 ## v0.1.115.1 profile-handoff repair migration note
 
 No state, registry, PBAI schema, impact-map schema, or Project Source migration is required. `v0.1.115` remains unadopted and must not be treated as accepted/current. The repair changes browser-profile ownership scheduling and release-controller handoff only: external file-lock contention now honors the bounded queue, and continuous live starts only after explicit service-idle and host-lock release proof. Existing profiles are preserved and are not copied or silently repaired.
+## v0.1.116 PBAI migration model
+
+Existing PB projects receive `pb application architecture migration-report --repo-path <repo> --json`. The report is read-only, identifies missing declarations/layers/registries and recommends explicit commands. Template generation is plan-only unless `--write` is supplied. Project-local validators remain authoritative references until `pb application architecture differential-validate` proves Promptbranch equivalent or stronger on the same mutation cases.
+
+Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.

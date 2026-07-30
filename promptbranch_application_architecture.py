@@ -1004,10 +1004,11 @@ def _execute_registered_skill(
     if command is None:
         handle = tempfile.NamedTemporaryFile("w", prefix="promptbranch-executable-proof-", suffix=".py", delete=False)
         launcher_path = Path(handle.name)
+        runtime_root = Path(__file__).resolve().parent
         handle.write(
             "#!/usr/bin/env python3\n"
             "import sys\n"
-            f"sys.path.insert(0, {str(repo)!r})\n"
+            f"sys.path.insert(0, {str(runtime_root)!r})\n"
             "from promptbranch_cli import main\n"
             "raise SystemExit(main())\n"
         )

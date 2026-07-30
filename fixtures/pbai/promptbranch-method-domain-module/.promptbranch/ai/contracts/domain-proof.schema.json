@@ -1,0 +1,19 @@
+{
+  "$id": "https://promptbranch.local/promptbranch-method/schemas/domain-proof.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "schema": {
+      "const": "promptbranch-method.domain_proof"
+    }
+  },
+  "required": [
+    "schema",
+    "ok"
+  ],
+  "title": "promptbranch-method domain proof",
+  "type": "object"
+}

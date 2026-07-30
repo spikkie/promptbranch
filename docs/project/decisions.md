@@ -1170,3 +1170,11 @@ Expected-result normalisation is part of the browser step transaction and must o
 - **Handoff:** live preflight and continuous live use the same service transport. Release control additionally proves service idle and host-level `flock` release before continuous live begins.
 - **Authority:** the repair changes no PBAI, publication, adoption, accepted/current, or strict-gate authority.
 - **Next:** after repair acceptance, open `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`.
+## v0.1.116 — PBAI template and differential-validation boundary
+
+- Templates are deterministic plans by default and write only with explicit `--write`.
+- Migration reporting is read-only and emits explicit gaps; it never silently changes a repository.
+- Differential validation executes the local reference validator and Promptbranch validator on identical isolated copies and fails if Promptbranch is weaker.
+- The embedded `promptbranch-method` proof snapshot is based on the real v0.1.0 project structure and authoritative corpus metadata, but does not claim an external repository commit, push, or release.
+
+Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.

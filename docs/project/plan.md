@@ -1,79 +1,31 @@
 # Project Plan
 
-<!-- v0.1.115.1 current control-surface header -->
-- Accepted/current version: `v0.1.114.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
-- Next normal version: `v0.1.116`
-- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
-- Next planned version after acceptance: `v0.1.116`
-- Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
-
 ## Current baseline
 
 ```text
-accepted/current baseline: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
-accepted/current version: v0.1.114.2
-last completed normal slice: v0.1.114 — PBAI-001 executable validation and SkillRun evidence
-last completed repair: v0.1.114.2 — Deterministic candidate test-runner dependency repair
-failed normal candidate: v0.1.115 — PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing
-active candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
-active candidate version: v0.1.115.1
-active slice: v0.1.115.1 — Release-live profile ownership handoff repair
-next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
-next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
+accepted/current version: v0.1.115.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
+active candidate version: v0.1.116
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
+active slice: v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof
 ```
 
-## Active repair slice — v0.1.115.1
+## Active normal slice
 
-1. Make cross-process profile `flock` acquisition honor the configured bounded queue timeout.
-2. Emit deterministic external-owner and polling diagnostics on timeout.
-3. Keep live preflight and continuous live on the same service transport owner.
-4. Require service-idle and host-flock release proof before `release-live-continuous`.
-5. Preserve all `v0.1.115` PBAI operational-evidence and impacted-testing behavior without advancing scope.
-6. Preserve the mandatory strict 10/10 adoption gate.
+In scope:
+
+- checked-in PBAI templates for `runtime_application` and `domain_module`;
+- explicit read-only migration reports for existing PB repositories;
+- fail-closed differential validation against project-local validators;
+- first `promptbranch-method` domain-module declaration, registry, executable proof, and differential evidence;
+- release-gate and impact-map integration;
+- no overclaim beyond the highest proven level.
+
+Out of scope: silent repository mutation, self-granted publication/adoption authority, removal of project-local validators before equivalence is proven, and external `promptbranch-method` Git publication from this candidate.
 
 ## Rolling horizon authority
 
-`docs/project/plan-state.json` is authoritative. `v0.1.114.2` is accepted/current, `v0.1.115` is repair-required, `v0.1.115.1` is the sole active repair candidate, and `v0.1.116` remains planned only after repair acceptance.
-
-## Release / slice plan
-
-| Version | Slice | Goal | Scope | Out of scope | Expected validation | Status |
-|---|---|---|---|---|---|---|
-| v0.1.66 | Release doctor config-aware candidate ZIP precheck | Make release doctor consume `.promptbranch-release.yml` for read-only candidate ZIP inspection | release doctor/config docs and tests | install, upload Project Sources, adoption, state update, commit, push | focused release config/doctor/docs-status tests | accepted_current |
-| v0.1.67 | Project MVP / DoD / Plan control surface migration | Create `docs/project/` and focused validator while preserving old docs | `docs/project/*`, `tests/test_project_control_surface.py`, release metadata | runtime behavior, deployment behavior, source mutation, artifact adoption, old-doc deletion | focused control-surface validator | superseded by later accepted baseline |
-| v0.1.68 | Project Sources add performance and transactional diagnostics | Reduce new-source add latency and return safer diagnostics after overwrite/persistence failures | source-add preflight/verification path, focused source-add tests, project status docs | broad lifecycle rewrite, deployment behavior | full v0.1.68 test report supplied by operator | accepted_current |
-| v0.1.69 | Browser-profile busy retry and source-add idle barrier | Prevent lifecycle adoption/source-list verification from racing a just-finished Project Source browser mutation | `pb browser wait-idle`, post-source-add idle barrier, structured busy payloads for `src list`/artifact adoption verification, focused tests, status docs | runtime ask behavior, deployment behavior, autonomous execution, broad release lifecycle migration | focused browser/source/adoption parser tests, project control-surface test, compileall, ZIP hygiene; adopted by operator evidence | accepted_current |
-| v0.1.70 | Multi-repo artifact registry state | Make artifact current-state repo-scoped so one repo adoption cannot overwrite another repo baseline | `ArtifactRecord.repo_id`, repo-aware registry current/current_all, repo-scoped state, `pb artifact current --repo/--all`, adopt repo-prefix validation, focused tests, status docs | release-set orchestration, dependency solving, multi-repo lifecycle execution, Project Source upload changes, ZIP packaging changes | focused artifact/state/CLI tests, project control-surface test, compileall, ZIP hygiene, operator adoption evidence | accepted_current |
-| v0.1.70.1 | Repair missing repo artifact-current fallback | Explicit `pb artifact current --repo <missing>` must fail closed without returning another repo artifact as state | `promptbranch_state.py`, `promptbranch_cli.py`, focused tests, repair note, status docs, version metadata | line advancement, release-set orchestration, project declaration, dependency solving, lifecycle behavior changes | missing-repo focused tests, existing artifact-current focused tests, project control-surface test, compileall, ZIP hygiene, operator adoption evidence | accepted_current |
-| v0.1.71 | Project-scoped multi-repo registry resolution | Make any joined repo resolve the same project artifact registry without remembering a coordinator/main repo | `.promptbranch-repo.json` support, user-local project registry path, `pb project join/status`, `pb repo list/doctor`, artifact current --all project diagnostics, focused tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, Git/deployment operations across repos | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | accepted_current by operator statement; explicit adoption JSON not recorded here |
-| v0.1.71.1 | Repair project registry command alignment | Ensure join creates project registry and artifact-current/repo diagnostics all use the project registry when no explicit `--profile-dir` is supplied | profile-dir explicitness tracking, project registry creation, artifact current --all configured-repo visibility, focused tests, repair note | normal v0.1.72 scope, import/migration command, release-set orchestration, adoption semantics | project/repo focused tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | rejected: missing required root `.gitignore` |
-| v0.1.71.2 | Repair v0.1.71.1 ZIP root completeness | Restore required root `.gitignore` while preserving v0.1.71.1 behavior | `.gitignore`, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | required-root-file check, project/repo focused tests, project control-surface test, compileall, ZIP hygiene | rejected: protected `.pb_profile/` ZIP entry |
-| v0.1.71.3 | Repair protected ZIP entry hygiene | Remove protected local Promptbranch state from repair ZIP while preserving v0.1.71.1/v0.1.71.2 behavior | ZIP payload hygiene, version metadata, repair/status docs | normal v0.1.72 scope, behavior changes, release-set orchestration | install ZIP guard, required-root and protected-entry checks, focused tests, compileall, ZIP hygiene | rejected: service health version-format mismatch |
-| v0.1.71.4 | Repair service health version normalization | Normalize release-control service health comparison between bare and canonical `v` versions | release-control health wait gate, focused shell-script tests, version metadata, repair/status docs | project-registry behavior, Docker build behavior beyond avoiding false mismatch, adoption semantics | focused shell-script health-probe tests, control-surface test, compileall, ZIP hygiene | rejected: full-test `package_import_smoke` saw `VERSION_TAG=vv0.1.71.4` |
-| v0.1.71.5 | Repair `VERSION_TAG` double-v normalization | Ensure `promptbranch_version.VERSION_TAG` is canonical `v0.1.71.5`, never `vv0.1.71.5` | `promptbranch_version.py`, focused version-surface tests, version metadata, repair/status docs | Docker behavior, project-registry behavior, release-set orchestration, adoption semantics | focused version-surface tests, package import smoke, source version consistency, control-surface test, compileall, ZIP hygiene | accepted_current |
-| v0.1.72 | Project registry adoption/import ergonomics | Safely import existing repo-local current artifact records into the project-scoped registry through an explicit dry-run-capable command | `pb project import-current-registry`, registry import helpers, focused import/conflict tests, docs | release-set orchestration, dependency solving, automatic Project Source upload, automatic adoption, deployment behavior | focused project/repo import tests, control-surface test, compileall, ZIP hygiene, clean extraction validation | candidate |
-| v0.1.75 | KISS project/repo management command model | Use one repo-loop command/state model for one repo or many repos | `pb artifact current`, `pb project status`, project/repo inventory payloads, focused tests, status docs | release-set orchestration, dependency solving, automatic cross-repo adoption, browser behavior | focused project/repo tests, artifact-current regression tests, project control-surface test, compileall, ZIP hygiene | candidate |
-
-## Slice definition — v0.1.71 normal release
-
-```text
-Release: v0.1.71
-Baseline: chatgpt_claudecode_workflow-2_v0.1.70.1.zip accepted/current with operator adoption evidence.
-Type: normal candidate
-Slice: Project-scoped multi-repo registry resolution
-Goal: allow any repo joined to a Promptbranch project to resolve the same project-level artifact registry automatically, without requiring operators or other developers to remember a coordinator repo or manual --profile-dir.
-In scope: `.promptbranch-repo.json`, `pb project join --json`, `pb project status --json`, `pb repo list --json`, `pb repo doctor --json`, project-derived registry path under user-local state, artifact current --all project diagnostics, focused tests, release/status docs, version metadata.
-Out of scope: release-set orchestration, cross-repo dependency solving, automatic Project Source upload, automatic artifact adoption, Git operations across repos, deployment orchestration, making one repo the main repo.
-Expected files: `promptbranch_project.py`, `promptbranch_repos.py`, `promptbranch_artifacts.py`, `promptbranch_state.py`, `promptbranch_cli.py`, `tests/test_promptbranch_project.py`, `tests/test_promptbranch_repos.py`, existing artifact/current focused tests, `docs/project/*`, `docs/release-v0.1.71.md`, `.promptbranch-repo.example.json`, `docs/promptbranch-multi-repo-projects.md`, version files.
-Expected validation: project/repo focused pytest, artifact-current regression tests, project control-surface pytest, Python compileall, ZIP hygiene, clean extraction focused validation.
-DoD movement: add DOD-016 for project-scoped multi-repo registry resolution; mark done after focused validation passes.
-Risk: project registry storage changes where artifact current-state is read/written for joined repos; explicit --profile-dir remains the debug/override escape hatch.
-Next step: package candidate ZIP and require operator install/test/adoption evidence before treating it as accepted/current.
-```
-
+The machine-readable authority is `docs/project/plan-state.json`. The active normal slice is `v0.1.116`; after acceptance, the next planned slice is `v0.1.117 — PBAI compliance inventory and multi-repository rollout`. Repair releases must not advance normal scope.
 
 ## Repair definition — v0.1.71.1
 

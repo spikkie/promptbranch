@@ -1,64 +1,13 @@
 # Release Status
 
-<!-- v0.1.115.1 current control-surface header -->
-- Accepted/current version: `v0.1.114.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
-- Next normal version: `v0.1.116`
-- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
-- Next planned version after acceptance: `v0.1.116`
-- Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip` (`v0.1.115.1`).
 
-## Current authority result
-
-| Version | Type | Slice | Status | Validation | Promotion rule |
-|---|---|---|---|---|---|
-| v0.1.114.2 | repair | Deterministic candidate test-runner dependency repair | accepted/current | strict 10/10, Artifact Guardian, evidence-bound adoption, exact current identity | accepted baseline |
-| v0.1.115 | normal | PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing | repair_required | direct and localhost passed; live profile handoff failed after 0.001s despite 600s queue | never adopt original bytes |
-| v0.1.115.1 | repair | Release-live profile ownership handoff repair | candidate | focused and packaged validation pending | adopt only after unchanged strict 10/10 gate |
-| v0.1.116 | normal | PBAI-001 templates, migration reports, and first domain-module proof | planned | not started | begin after v0.1.115.1 acceptance |
-
-## Current baseline
-
-```text
-accepted/current: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
-repair-required candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
-active repair candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
-next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
-standard browser profile default: retained
-```
-
-## ZIP status values
-
-Use only:
-
-```text
-planned
-candidate
-installed_not_current
-accepted_current
-rejected
-superseded
-repair_required
-```
-
-## Current authority result
-
-| Version | Type | Slice | Status | Validation | Promotion rule |
-|---|---|---|---|---|---|
-| v0.1.111.5 | repair | Named-step ETA planning and stable countdown | accepted_current | strict host validation 10/10; release_adopted_and_verified; informational post-adoption defects queued for v0.1.111.5.1 | accepted baseline |
-| v0.1.111.5.1 | repair | Empty-step-safe ETA progress and stable range countdown | repair_required | strict host run exposed `previous_active_steps=None` TypeError; run stopped before adoption | rejected candidate |
-| v0.1.111.5.2 | repair | Null-safe previous active-step ETA state | candidate | 299 source-tree and 299 clean-extraction tests passed; strict host release pending | no normal scope advance |
-| v0.1.108 | normal | Controlled correction execution envelope validation gate | repair_required | superseded by the accepted reliability repair | remains historical repair origin |
-| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted_current | focused reliability passed; retry release validation 10/10; release_adopted_and_verified | accepted baseline |
-| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | require authority_consistent, full_direct, full_localhost, Artifact Guardian, and evidence-bound adoption |
-| v0.1.110 | normal | Authority-backed project snapshot and drift report | planned | not started | begin only after v0.1.109 is accepted/current |
-
-## Release evidence table
+Active candidate: `chatgpt_claudecode_workflow-2_v0.1.116.zip` — v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
+| v0.1.116 | normal | PBAI templates, migration, differential validation, method domain proof | candidate | local validation pending | closes remaining PBAI-001 criteria after adoption | pending |
+| v0.1.115.1 | repair | release-live profile ownership handoff | accepted/current | strict 10/10 + operational PBAI passed | repair accepted | eff2bd7a… |
 | v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted/current | retry validation 10/10 and release_adopted_and_verified | DOD-297 completed | recorded in adopted registry evidence |
 | v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | DOD-298 through DOD-301 candidate evidence | pending |
 
@@ -879,3 +828,5 @@ Packaging-only repair for the missing installed `promptbranch_release_engine` mo
 
 | v0.1.111.2 | repair | Full-test progress, ETA, and fail-fast reporting | repair_required | partial strict log exposed false expected-missing failure accounting and phase-level rather than step-level browser fail-fast; no terminal verdict or adoption evidence | DOD-308 predecessor defect; no normal scope advanced | rejected/not adopted |
 | v0.1.111.3 | repair | Normalised browser progress and genuine step-level fail-fast | candidate | normalise before terminal progress; stop before next main browser step on genuine failure; pending work units skipped; all gates preserved | DOD-308 focused candidate; strict host validation pending | pending |
+
+Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.

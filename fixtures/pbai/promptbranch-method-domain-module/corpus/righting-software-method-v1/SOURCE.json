@@ -1,0 +1,11 @@
+{
+  "schema": "promptbranch-method.corpus-source",
+  "schema_version": "1.0",
+  "corpus_id": "righting-software-promptbranch-method-v1",
+  "source_release": "promptbranch-method_v0.1.0",
+  "source_commit_observed": "4282b86",
+  "object_count": 428,
+  "first_object_id": "PBM-00001",
+  "last_object_id": "PBM-00428",
+  "corpus_sha256": "7a2dd34e1892a906590165553bf7b78bde44ba26b9c789aa54134f532de5abeb"
+}

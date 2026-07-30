@@ -19,7 +19,7 @@
       "id": "PBAI-001",
       "external_ref": null,
       "title": "Validate full AI application architecture in Promptbranch and PB modules",
-      "status": "in_progress",
+      "status": "implemented_candidate",
       "priority": 2,
       "owner": "Promptbranch",
       "path": "docs/backlog/PBAI-001-full-ai-application-architecture.md",
@@ -27,7 +27,8 @@
       "depends_on": [
         "ISSUE-001"
       ],
-      "started_in": "v0.1.112"
+      "started_in": "v0.1.112",
+      "implemented_in": "v0.1.116"
     }
   ]
 }

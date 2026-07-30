@@ -1038,3 +1038,15 @@ After a successful strict release adoption, release control builds and validates
 ```bash
 pb application architecture validate --repo-path . --level operational --evidence <evidence.json> --json
 ```
+
+
+## PBAI-001 templates and migration
+
+```bash
+pb application architecture template --kind domain_module --application-id example-domain --json
+pb application architecture template --kind domain_module --application-id example-domain --output-dir . --write --json
+pb application architecture migration-report --repo-path ../existing-project --json
+pb application architecture differential-validate --repo-path ../domain-module --differential-config .promptbranch/ai-differential.json --json
+```
+
+Template planning and migration reporting are read-only by default. Differential validation runs both validators against isolated copies and fails closed if Promptbranch accepts a case the reference validator rejects.

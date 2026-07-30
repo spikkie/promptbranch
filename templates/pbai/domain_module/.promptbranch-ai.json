@@ -1,0 +1,161 @@
+{
+  "application": {
+    "id": "example-domain",
+    "kind": "domain_module"
+  },
+  "authority": {
+    "adoption": {
+      "controller": "promptbranch.artifact.registry",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "mutation": {
+      "controller": "promptbranch.controlled_execution",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "publication": {
+      "controller": "promptbranch.release.publication",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "release": {
+      "controller": "promptbranch.release.lifecycle",
+      "requires_explicit_request": true,
+      "requires_verified_evidence": true
+    },
+    "self_grant_allowed": false
+  },
+  "delegation": {
+    "delegated_capabilities": [
+      "agent_execution",
+      "skill_execution",
+      "tool_dispatch",
+      "validation_orchestration",
+      "evidence_ledger",
+      "project_state_transition",
+      "correction",
+      "release",
+      "publication",
+      "adoption",
+      "verification"
+    ],
+    "generic_runtime_provider": "promptbranch",
+    "owned_capabilities": [
+      "domain_instructions",
+      "domain_actors",
+      "domain_skills",
+      "domain_tools",
+      "domain_validators",
+      "domain_knowledge",
+      "domain_contracts",
+      "domain_evidence",
+      "domain_authority_hooks",
+      "domain_lifecycle_hooks"
+    ]
+  },
+  "layers": {
+    "controller_authority": [
+      ".promptbranch/ai/authority.py"
+    ],
+    "evidence_records": [
+      ".promptbranch/ai/evidence.py"
+    ],
+    "instructions_policy": [
+      "PROJECT_SETTINGS.md",
+      "AGENTS.md"
+    ],
+    "knowledge_context": [
+      ".promptbranch/ai/knowledge"
+    ],
+    "lifecycle_recovery": [
+      ".promptbranch/ai/lifecycle"
+    ],
+    "runtime_actors": [
+      ".promptbranch/ai/actors.py"
+    ],
+    "skills": [
+      ".promptbranch/skills"
+    ],
+    "state_contracts": [
+      ".promptbranch/ai/contracts"
+    ],
+    "tools": [
+      ".promptbranch/ai/tools.py"
+    ],
+    "validators": [
+      ".promptbranch/ai/validators.py"
+    ]
+  },
+  "registry": {
+    "path": ".promptbranch/ai-registry.json",
+    "schema": "promptbranch.ai.registry",
+    "schema_version": "1.1"
+  },
+  "runtime": {
+    "contract_version": "1.0",
+    "provider": "promptbranch"
+  },
+  "schema": "promptbranch.ai.application",
+  "schema_version": "1.3",
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "pb",
+          "application",
+          "architecture",
+          "validate",
+          "--repo-path",
+          ".",
+          "--level",
+          "structural",
+          "--json"
+        ],
+        "cwd": ".",
+        "id": "pbai-001-structural",
+        "level": "structural",
+        "timeout_seconds": 120
+      },
+      {
+        "argv": [
+          "pb",
+          "application",
+          "architecture",
+          "validate",
+          "--repo-path",
+          ".",
+          "--level",
+          "registry",
+          "--json"
+        ],
+        "cwd": ".",
+        "id": "pbai-001-registry",
+        "level": "registry",
+        "timeout_seconds": 120
+      },
+      {
+        "argv": [
+          "pb",
+          "application",
+          "architecture",
+          "validate",
+          "--repo-path",
+          ".",
+          "--level",
+          "executable",
+          "--json"
+        ],
+        "cwd": ".",
+        "id": "pbai-001-executable",
+        "level": "executable",
+        "timeout_seconds": 180
+      }
+    ]
+  },
+  "version_authority": {
+    "format": "plain",
+    "path": "VERSION",
+    "sole": true
+  }
+}

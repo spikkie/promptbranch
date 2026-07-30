@@ -1,0 +1,52 @@
+{
+  "schema": "promptbranch.ai.differential",
+  "schema_version": "1.0",
+  "reference": {
+    "id": "promptbranch-method.reference-structural",
+    "argv": ["python3", "scripts/validate-pbai-reference.py", "--json"],
+    "cwd": ".",
+    "timeout_seconds": 30
+  },
+  "promptbranch": {
+    "config": ".promptbranch-ai.json",
+    "level": "structural"
+  },
+  "cases": [
+    {
+      "id": "clean",
+      "mutation": {"kind": "none"},
+      "expect_reference": "pass",
+      "expect_promptbranch": "pass"
+    },
+    {
+      "id": "missing-agents-policy",
+      "mutation": {"kind": "remove", "path": "AGENTS.md"},
+      "expect_reference": "fail",
+      "expect_promptbranch": "fail"
+    },
+    {
+      "id": "empty-knowledge",
+      "mutation": {"kind": "empty", "path": ".promptbranch/ai/knowledge/README.md"},
+      "expect_reference": "fail",
+      "expect_promptbranch": "fail"
+    },
+    {
+      "id": "unknown-declaration-field",
+      "mutation": {"kind": "json_add_unknown_field", "path": ".promptbranch-ai.json", "field": "implicit_authority", "value": true},
+      "expect_reference": "fail",
+      "expect_promptbranch": "fail"
+    },
+    {
+      "id": "self-grant-authority",
+      "mutation": {"kind": "json_set", "path": ".promptbranch-ai.json", "pointer": "/authority/self_grant_allowed", "value": true},
+      "expect_reference": "fail",
+      "expect_promptbranch": "fail"
+    },
+    {
+      "id": "missing-proof-skill",
+      "mutation": {"kind": "remove", "path": ".promptbranch/skills/application-architecture-proof/SKILL.md"},
+      "expect_reference": "fail",
+      "expect_promptbranch": "fail"
+    }
+  ]
+}

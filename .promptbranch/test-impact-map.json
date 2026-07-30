@@ -74,7 +74,8 @@
           "-m",
           "pytest",
           "-q",
-          "tests/test_promptbranch_application_architecture.py"
+          "tests/test_promptbranch_application_architecture.py",
+          "tests/test_promptbranch_application_migration.py"
         ]
       ],
       "modes": [
@@ -205,12 +206,16 @@
         ".promptbranch-ai.json",
         ".promptbranch/ai-registry.json",
         "promptbranch_protocol/schemas/application.*",
-        "tests/test_promptbranch_application_architecture.py"
+        "tests/test_promptbranch_application_architecture.py",
+        "promptbranch_application_migration.py",
+        "templates/pbai/**",
+        "fixtures/pbai/**",
+        "tests/test_promptbranch_application_migration.py"
       ],
       "groups": [
         "application_architecture"
       ],
-      "reason": "PBAI declaration, registry or validator changed"
+      "reason": "PBAI declaration, registry, templates, migration, differential validation, or domain proof changed"
     },
     {
       "patterns": [

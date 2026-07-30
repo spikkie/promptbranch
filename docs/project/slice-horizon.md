@@ -39,3 +39,11 @@ Repair releases must not advance normal scope. A normal slice may advance only a
 | v0.1.111.5 | Named-step ETA planning and stable countdown | accepted | repair | strict 10/10 validation passed; informational defects queued for correction |
 | v0.1.111.5.1 | Empty-step-safe ETA progress and stable range countdown | repair_required | repair | strict run exposed null previous active-step TypeError; not adopted |
 | v0.1.111.5.2 | Null-safe previous active-step ETA state | accepted_current | repair | corrected null prior state and closed ETA exception diagnostics |
+## Current horizon — v0.1.116
+
+- `v0.1.115.1` — accepted/current repair with operational PBAI proof.
+- `v0.1.116` — active normal slice: v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof.
+- `v0.1.117` — planned after acceptance: v0.1.117 — PBAI compliance inventory and multi-repository rollout.
+
+Repair horizon rule remains unchanged: repairs do not advance normal scope.
+

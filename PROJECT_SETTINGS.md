@@ -86,3 +86,8 @@ Development testing uses `pb test impacted`. Its checked-in map must select test
 ## v0.1.115.1 release-live profile handoff repair policy
 
 `v0.1.115.1` is a scope-neutral repair. Cross-process browser-profile `flock` contention must honor the configured bounded queue timeout rather than fail immediately. Timeout evidence must identify the observed external owner where available. Release control must keep live preflight and continuous live on the same service transport, wait for service-level browser idle, and independently prove the host profile file lock is released before continuous live execution. These repair gates do not weaken or replace strict direct, localhost, external-live, rollback, Artifact Guardian, operational-evidence, adoption, or accepted/current verification.
+
+## PBAI-001 v0.1.116 integration policy
+
+Use `pb application architecture template` as a deterministic plan; repository writes require explicit `--write`. Use `migration-report` for read-only gap analysis. Keep project-local validators until `differential-validate` proves Promptbranch equivalent or stronger on identical isolated cases. A domain module may report only its highest actual proof level and may not self-grant mutation, publication, release, or adoption authority.
+

@@ -1,0 +1,159 @@
+{
+  "action": "application_architecture_migration_report",
+  "application_id": "promptbranch-method",
+  "current_structural_validation": null,
+  "declaration": {
+    "exists": false,
+    "path": ".promptbranch-ai.json"
+  },
+  "discovered_layer_candidates": {
+    "controller_authority": [
+      "PROJECT_SETTINGS.md",
+      "docs/architecture/integration-boundary.md"
+    ],
+    "evidence_records": [
+      "docs/project/definition-of-done.md"
+    ],
+    "instructions_policy": [
+      "PROJECT_SETTINGS.md",
+      "AGENTS.md",
+      "README.md"
+    ],
+    "knowledge_context": [
+      "corpus",
+      "docs/architecture"
+    ],
+    "lifecycle_recovery": [
+      "scripts/run-release-lifecycle.sh",
+      "docs/project/migration.md"
+    ],
+    "runtime_actors": [
+      "src"
+    ],
+    "skills": [],
+    "state_contracts": [
+      "schemas"
+    ],
+    "tools": [
+      "src"
+    ],
+    "validators": [
+      "scripts/validate.sh"
+    ]
+  },
+  "gap_count": 2,
+  "gaps": [
+    {
+      "code": "declaration_missing",
+      "path": ".promptbranch-ai.json",
+      "required_action": "review and add a tracked declaration"
+    },
+    {
+      "code": "layer_unresolved",
+      "path": "skills",
+      "required_action": "select or create at least one authoritative asset"
+    }
+  ],
+  "not_performed": [
+    "declaration_write",
+    "registry_write",
+    "asset_creation",
+    "existing_file_overwrite",
+    "validation_command_execution",
+    "release",
+    "publication",
+    "adoption"
+  ],
+  "ok": true,
+  "recommended_commands": [
+    "pb application architecture template --kind domain_module --application-id promptbranch-method --output-dir . --json",
+    "pb application architecture validate --repo-path . --level structural --json",
+    "pb application architecture validate --repo-path . --level registry --json"
+  ],
+  "repo_path": "/mnt/data/pb_v0.1.116_work/fixtures/pbai/promptbranch-method-pre-migration",
+  "requested_kind": "domain_module",
+  "runtime_provider": "promptbranch",
+  "safety": {
+    "read_only": true,
+    "silent_migration": false,
+    "state_mutated": false
+  },
+  "schema": "promptbranch.ai.migration.report",
+  "schema_version": "1.0",
+  "status": "migration_required",
+  "template_manifest": [
+    {
+      "path": ".promptbranch-ai.json",
+      "sha256": "71060caf08588cc2621e3eb4f083e7459fdd8c695f55a4fd38ef912da73c9e00",
+      "size_bytes": 3652
+    },
+    {
+      "path": ".promptbranch/ai-registry.json",
+      "sha256": "740c65ffe2887767c50a70662d0c23d34985d4115b30c25a7e08e7d052ec1162",
+      "size_bytes": 3872
+    },
+    {
+      "path": ".promptbranch/ai/actors.py",
+      "sha256": "a69a5f9f9433ce1ca48d79e648982d7ecd72deb4860e38341eb79fc3ce63adf7",
+      "size_bytes": 570
+    },
+    {
+      "path": ".promptbranch/ai/authority.py",
+      "sha256": "ee49eafb53bac225ff232bec0971c43600bd6e7ff7d46531e6541c4648f28003",
+      "size_bytes": 661
+    },
+    {
+      "path": ".promptbranch/ai/contracts/domain-proof.schema.json",
+      "sha256": "938c59eabe005ef86758dcda2d881b44b390f3522bd462419ff819696afa5882",
+      "size_bytes": 434
+    },
+    {
+      "path": ".promptbranch/ai/evidence.py",
+      "sha256": "002d1c096563741c0ced3ad54261db9bd4eaf5f948580a36422af4574f158ec8",
+      "size_bytes": 190
+    },
+    {
+      "path": ".promptbranch/ai/knowledge/README.md",
+      "sha256": "973aefcc34bfc60138877087ce136539024328636f141880c41fbc17cf854fb8",
+      "size_bytes": 221
+    },
+    {
+      "path": ".promptbranch/ai/lifecycle/README.md",
+      "sha256": "107e834d075a5db773c43265702fe595738c400a6a6e35642652069f317e2ec7",
+      "size_bytes": 247
+    },
+    {
+      "path": ".promptbranch/ai/tools.py",
+      "sha256": "c94eed90f962f806750c4308dfd460fa24e60fcfecb9c5cfd62dad156c55f591",
+      "size_bytes": 568
+    },
+    {
+      "path": ".promptbranch/ai/validators.py",
+      "sha256": "aef01a23a15b6b921b802c5f60f3cb176ba027d6c06253c178ed0fe5506e3ad2",
+      "size_bytes": 231
+    },
+    {
+      "path": ".promptbranch/skills/application-architecture-proof/SKILL.md",
+      "sha256": "902c3a12da2a59effa2f513caa1de1d3b72f649377f8c78bc420a8d326fe4e24",
+      "size_bytes": 549
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "7113c3316cfdf0ebafeef3fbc7e1c163eb09f8f0d9aecd3138057044a5e4ec37",
+      "size_bytes": 378
+    },
+    {
+      "path": "PROJECT_SETTINGS.md",
+      "sha256": "652bf13949d82b31feda540591f88692cdc2c97f333e1de2f9362857b3a62650",
+      "size_bytes": 628
+    },
+    {
+      "path": "VERSION",
+      "sha256": "d0b4f9120ba026c00fa23cb84b4e1620a2e6436592e58155a5151653179572c0",
+      "size_bytes": 7
+    }
+  ],
+  "version_authority_candidates": [
+    "VERSION"
+  ]
+}

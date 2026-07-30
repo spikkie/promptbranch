@@ -1,35 +1,33 @@
 # Project Status
 
-<!-- v0.1.115.1 current control-surface header -->
-- Accepted/current version: `v0.1.114.2`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.114.2.zip`
-- Active candidate version: `v0.1.115.1`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
+<!-- v0.1.116 current control-surface header -->
+- Accepted/current version: `v0.1.115.1`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
+- Active candidate version: `v0.1.116`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.116.zip`
 - Next normal version: `v0.1.116`
-- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
-- Next planned version after acceptance: `v0.1.116`
-- Next planned slice after acceptance: `v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof`
+- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof`
+- Next planned version after acceptance: `v0.1.117`
+- Next planned slice after acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`
 
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.114.2.zip
-accepted/current version: v0.1.114.2
-repair-required candidate: chatgpt_claudecode_workflow-2_v0.1.115.zip
-active candidate: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
-active candidate version: v0.1.115.1
-active slice: v0.1.115.1 — Release-live profile ownership handoff repair
-next normal: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
-next planned after acceptance: v0.1.116 — PBAI-001 templates, migration reports, and first domain-module proof
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
+accepted/current version: v0.1.115.1
+active candidate: chatgpt_claudecode_workflow-2_v0.1.116.zip
+active candidate version: v0.1.116
+active slice: v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof
+next planned after acceptance: v0.1.117 — PBAI compliance inventory and multi-repository rollout
 ```
 
 ## Current release state
 
-`v0.1.114.2` remains accepted/current. `v0.1.115` is repair-required after its strict host run passed direct, localhost, rollback, import-smoke and Artifact Guardian but failed the first external-live continuous operation because cross-process profile locking returned immediately instead of honoring the queue timeout. `v0.1.115.1` repairs only that ownership handoff while retaining all PBAI operational-evidence and impact-testing behavior.
+`v0.1.115.1` is accepted/current after strict 10/10 validation, evidence-bound adoption, and real PBAI-001 operational proof. `v0.1.116` completes the remaining ticket criteria with checked-in templates, read-only migration reports, fail-closed differential validation, and the first Promptbranch-managed `promptbranch-method` domain-module proof snapshot.
 
 ## Next safe action
 
-Freeze `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`, verify the exact candidate runtime, then run the unchanged strict 10/10 all-all adoption workflow. Do not treat local handoff tests as release acceptance.
+Build and validate `chatgpt_claudecode_workflow-2_v0.1.116.zip` from the adopted baseline. Run impacted and component gates during development, then the unchanged strict 10/10 host workflow before adoption. The standard browser profile default and deletion freeze remain unchanged.
 
 ## v0.1.102 candidate status
 

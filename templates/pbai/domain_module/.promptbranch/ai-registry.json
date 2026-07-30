@@ -1,0 +1,147 @@
+{
+  "agents": [
+    {
+      "capabilities": [
+        "domain_instructions",
+        "domain_actors",
+        "domain_skills",
+        "domain_tools",
+        "domain_validators",
+        "domain_knowledge",
+        "domain_contracts",
+        "domain_evidence",
+        "domain_authority_hooks",
+        "domain_lifecycle_hooks"
+      ],
+      "evidence_contracts": [
+        "example-domain.evidence.domain-proof"
+      ],
+      "id": "example-domain.agent.domain",
+      "path": ".promptbranch/ai/actors.py",
+      "skills": [
+        "example-domain.skill.architecture-proof"
+      ],
+      "state_contracts": [
+        "example-domain.state.domain-proof"
+      ],
+      "symbol": "domain_architecture_actor",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list"
+      ],
+      "validators": [
+        "example-domain.validator.domain-result"
+      ]
+    }
+  ],
+  "application_id": "example-domain",
+  "controllers": [
+    {
+      "boundaries": [
+        "mutation"
+      ],
+      "id": "promptbranch.controlled_execution",
+      "path": ".promptbranch/ai/authority.py",
+      "symbol": "controlled_execution_adapter"
+    },
+    {
+      "boundaries": [
+        "release"
+      ],
+      "id": "promptbranch.release.lifecycle",
+      "path": ".promptbranch/ai/authority.py",
+      "symbol": "release_lifecycle_adapter"
+    },
+    {
+      "boundaries": [
+        "publication"
+      ],
+      "id": "promptbranch.release.publication",
+      "path": ".promptbranch/ai/authority.py",
+      "symbol": "publication_adapter"
+    },
+    {
+      "boundaries": [
+        "adoption"
+      ],
+      "id": "promptbranch.artifact.registry",
+      "path": ".promptbranch/ai/authority.py",
+      "symbol": "artifact_registry_adapter"
+    }
+  ],
+  "evidence_contracts": [
+    {
+      "id": "example-domain.evidence.domain-proof",
+      "path": ".promptbranch/ai/evidence.py",
+      "symbol": "validate_domain_evidence"
+    }
+  ],
+  "runtime_provider": "promptbranch",
+  "schema": "promptbranch.ai.registry",
+  "schema_version": "1.1",
+  "skills": [
+    {
+      "execution": {
+        "evidence_contract": "example-domain.evidence.domain-proof",
+        "max_steps": 2,
+        "ordered_tools": [
+          "filesystem.read",
+          "filesystem.list"
+        ],
+        "proof": true,
+        "request": "Execute the tracked PBAI-001 proof for example-domain using only repository-bounded read-only tools.",
+        "timeout_seconds": 30,
+        "validators": [
+          "example-domain.validator.domain-result"
+        ]
+      },
+      "id": "example-domain.skill.architecture-proof",
+      "name": "application-architecture-proof",
+      "path": ".promptbranch/skills/application-architecture-proof/SKILL.md",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list"
+      ],
+      "validators": [
+        "example-domain.validator.domain-result"
+      ]
+    }
+  ],
+  "state_contracts": [
+    {
+      "id": "example-domain.state.domain-proof",
+      "path": ".promptbranch/ai/contracts/domain-proof.schema.json",
+      "schema": "example-domain.domain_proof"
+    }
+  ],
+  "tools": [
+    {
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "id": "filesystem.read",
+      "path": ".promptbranch/ai/tools.py",
+      "provider": "promptbranch",
+      "read_only": true,
+      "risk": "read"
+    },
+    {
+      "collection": "READ_ONLY_MCP_TOOLS",
+      "id": "filesystem.list",
+      "path": ".promptbranch/ai/tools.py",
+      "provider": "promptbranch",
+      "read_only": true,
+      "risk": "read"
+    }
+  ],
+  "validators": [
+    {
+      "id": "example-domain.validator.domain-result",
+      "levels": [
+        "structural",
+        "registry",
+        "executable"
+      ],
+      "path": ".promptbranch/ai/validators.py",
+      "symbol": "validate_domain_result"
+    }
+  ]
+}

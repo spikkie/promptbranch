@@ -415,6 +415,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "pytest",
             "-q",
             "tests/test_promptbranch_application_architecture.py",
+            "tests/test_promptbranch_application_migration.py",
         ),
     },
     "application_architecture_registry": {
