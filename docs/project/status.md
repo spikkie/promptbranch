@@ -1,34 +1,40 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.117
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.117(2).zip
-active candidate version: v0.1.117.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
-active slice: v0.1.117.1 — Immutable release identity and hash-bound evidence reuse
+accepted/current baseline: v0.1.117.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.117.1(1).zip
+accepted/current SHA-256: 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719
+active candidate version: v0.1.118
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
+active slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 next normal version: v0.1.118
 next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 
-`v0.1.117` is accepted/current. `v0.1.117.1` is a repair candidate. It prevents same-version/different-hash adoption, makes exact same-version/same-hash reruns idempotent, binds reusable release evidence to the final canonical artifact SHA-256, repository identity, Git commit, validation profile, and skip matrix, and blocks duplicate Project Source publication before mutation. No adoption is claimed for this candidate.
+`v0.1.117.1` is accepted/current after strict 10/10 release validation, Project Source publication, evidence-bound adoption and current verification. `v0.1.118` is the active normal candidate. It adds incremental pipeline checkpoints, read-only evidence import planning, and guarded resume execution that reuses successful mutation phases only when immutable evidence still matches the repository and canonical artifact.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.117
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-active candidate version: v0.1.117.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+accepted/current version: v0.1.117.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.117.1(1).zip
+active candidate version: v0.1.118
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
+candidate adoption: not performed
 next normal version: v0.1.118
-next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
+next planned after acceptance: v0.1.119
 ```
 
-## Current release state
+## Candidate behavior
 
-The immutable baseline is `chatgpt_claudecode_workflow-2_v0.1.117.zip`. The active repair artifact is `chatgpt_claudecode_workflow-2_v0.1.117.1.zip`. The standard browser profile default and all existing release gates remain unchanged. Normal scope does not advance.
+- `pb release pipeline import --evidence <checkpoint-or-summary>` validates prior evidence without mutation.
+- `pb release pipeline resume --evidence <checkpoint-or-summary> ...` writes a new evidence run and records explicit recovery provenance.
+- Safe local gates are rerun; successful Git/source/adoption/current mutation boundaries are not replayed silently.
+- Artifact, contract, Git and Project Source identity mismatches block before remote mutation.
 
 ## Next safe action
 
-Run repository-owned validation, build and verify `chatgpt_claudecode_workflow-2_v0.1.117.1.zip`, then execute the strict host release workflow. Adoption must prove a new `v0.1.117.1` identity; it must not replace a different hash for an already adopted version. After successful adoption, continue with `v0.1.118 — Resumable/importable release-pipeline evidence and recovery`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.118.zip` from the locally green candidate, then run the strict host release workflow. Treat `v0.1.117.1` as accepted/current until adoption/current evidence proves `v0.1.118`.
 
 ## v0.1.102 candidate status
 

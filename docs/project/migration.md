@@ -1280,10 +1280,15 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 
 `v0.1.117` does not silently replace existing project-local release scripts. Repositories may add the optional `git` section to `.promptbranch-release.json` to define unsafe and expected paths plus a commit-message template. Existing contracts without the section remain valid and receive conservative defaults. `pb release pipeline plan` is read-only. Pipeline apply is opt-in and requires canonical version confirmation.
 
-## v0.1.117 to v0.1.118 migration note
+## v0.1.117.1 to v0.1.118 migration note
 
-`v0.1.118` is planned to add resumable/importable release-pipeline evidence and recovery. It must consume the immutable evidence emitted by `v0.1.117`, detect already completed phases, and avoid replaying successful Git, Project Source publication, adoption, or accepted/current mutation phases. No automatic migration is performed by `v0.1.117`.
+`v0.1.118` adds explicit import/resume commands; it performs no automatic evidence migration. Existing `v0.1.117`/`v0.1.117.1` pipeline summaries or checkpoints may be supplied to `pb release pipeline import --evidence <path>`. Legacy evidence is reusable only when phase-specific immutable bindings prove the current repository, version, artifact SHA-256, Git commit/push and exact Project Source identity. Missing or conflicting bindings fail closed. Resume always creates a new evidence directory and copies the imported payload for auditability.
 
 ## v0.1.117 to v0.1.117.1 migration note
 
 `v0.1.117.1` introduces no registry schema migration. Existing adopted records that include SHA-256 remain valid. A same-version adoption with missing or different SHA-256 now fails closed; operators must restore the exact adopted bytes or bump `VERSION`. Exact same-version/same-hash reruns are idempotent and do not upload or adopt another Project Source. Validation evidence created by older releases without repository identity, Git commit, or canonical artifact binding is not reusable.
+
+
+## v0.1.118 recovery evidence migration
+
+No automatic state migration is performed. Import remains read-only; resume creates a new evidence run and requires exact repository, version, canonical artifact SHA-256, Git and Project Source bindings before reusing mutation evidence. The next planned slice after acceptance is `v0.1.119 — Read-only multi-repository release-set dependency planner`.

@@ -1,30 +1,22 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.117.zip` (`v0.1.117`).
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.117.1.zip` (`v0.1.117.1`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.117.1.zip` (`v0.1.117.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.117.1(1).zip`.
+Accepted SHA-256: `44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.118.zip` (`v0.1.118`).
 Next normal slice: `v0.1.118 — Resumable/importable release-pipeline evidence and recovery`.
-
-| v0.1.117 | normal | PBAI compliance inventory and evidence-bound generic release pipeline | accepted/current | strict host validation 10/10 GO and evidence-bound adoption | DOD-342 through DOD-346 accepted | a7516dbc88049cd229ae7fdc6b012bb876e1f42de85199e13b3f71c66f22b01c |
-| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | candidate | focused and full validation pending | DOD-347 through DOD-349 focused candidate; no normal scope advance | pending |
-
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.116.zip` (`v0.1.116`), assigned Project Source `chatgpt_claudecode_workflow-2_v0.1.116(1).zip`.
-
-Active candidate: `chatgpt_claudecode_workflow-2_v0.1.117.zip` — PBAI compliance inventory and evidence-bound generic release pipeline.
-
-Active slice: `v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline`.
-
-Planned after acceptance: `v0.1.118 — resumable/importable release-pipeline evidence and recovery`.
+Next planned after acceptance: `v0.1.119 — Read-only multi-repository release-set dependency planner`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | candidate | focused local validation pending; strict host validation not run | immutable same-version hash gate and canonical evidence binding | pending |
-| v0.1.117 | normal | PBAI compliance inventory and generic release pipeline | candidate | focused validation in progress; strict host validation pending | DOD-342 through DOD-346 candidate | pending |
-| v0.1.116 | normal | PBAI templates, migration, differential validation, method domain proof | accepted/current | strict lifecycle and adoption verified by operator | PBAI runtime/domain baseline complete | 1349f162… |
-| v0.1.115.1 | repair | release-live profile ownership handoff | accepted historical | strict 10/10 + operational PBAI passed | repair accepted | eff2bd7a… |
+| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | candidate | focused recovery, authority, test-suite and all 14 deterministic release groups passed; strict host validation pending | DOD-350 through DOD-354 candidate | pending |
+| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | accepted/current | strict host 10/10 GO; Git push, Project Source publication, adoption and current verification passed | DOD-347 through DOD-349 accepted | 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719 |
+| v0.1.117 | normal | PBAI compliance inventory and evidence-bound generic release pipeline | accepted historical | strict host validation 10/10 GO and evidence-bound adoption | DOD-342 through DOD-346 accepted | a7516dbc88049cd229ae7fdc6b012bb876e1f42de85199e13b3f71c66f22b01c |
 
 ## Status rule
 
-A ZIP becomes `accepted_current` only after adoption evidence confirms runtime, state artifact, exact assigned source, registry current, and consistency alignment.
+A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. Imported recovery evidence cannot independently advance accepted/current state.
+
 | v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | repair_required | release-control passed validation groups but failed live browser source remove under 120s source-mutation wait | DOD-029 done; DOD-030 required | pending |
 
 | v0.1.74.3 | repair | Full integration source-mutation wait alignment | accepted_current | operator-pinned baseline for v0.1.75 rebase; full adoption JSON not present in this package build context | DOD-030 done; baseline advanced by operator instruction | pending |

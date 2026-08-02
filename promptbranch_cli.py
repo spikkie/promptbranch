@@ -97,6 +97,7 @@ from promptbranch_impact_testing import ImpactTestingError, build_impact_plan, e
 from promptbranch_release_engine import ReleaseContractError, execute as execute_release_contract, load_contract as load_release_contract, plan as plan_release_contract
 from promptbranch_release_pipeline import (
     build_pbai_compliance_inventory,
+    build_release_pipeline_import_plan,
     build_release_pipeline_plan,
     execute_release_pipeline,
 )
@@ -18615,17 +18616,36 @@ async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
         "adopt": bool(getattr(args, "adopt", False)),
         "verify_current": bool(getattr(args, "verify_current", False)),
     }
-    if args.release_pipeline_command == "plan":
+    command = args.release_pipeline_command
+    if command == "plan":
         payload = build_release_pipeline_plan(**kwargs)
-    elif args.release_pipeline_command == "apply":
+    elif command == "import":
+        payload = build_release_pipeline_import_plan(
+            repo_path=kwargs["repo_path"],
+            config=kwargs["config"],
+            confirm_version=kwargs["confirm_version"],
+            evidence=getattr(args, "evidence"),
+        )
+    elif command in {"apply", "resume"}:
         if not kwargs["confirm_version"]:
             payload = {
                 "ok": False,
-                "action": "release_pipeline_apply",
-                "status": "pipeline_apply_blocked",
+                "action": "release_pipeline_resume" if command == "resume" else "release_pipeline_apply",
+                "status": "pipeline_resume_blocked" if command == "resume" else "pipeline_apply_blocked",
                 "blockers": [{
                     "code": "pipeline_confirm_version_required",
-                    "message": "release pipeline apply requires --confirm-version",
+                    "message": f"release pipeline {command} requires --confirm-version",
+                }],
+                "mutating_actions_executed": False,
+            }
+        elif command == "resume" and not getattr(args, "evidence", None):
+            payload = {
+                "ok": False,
+                "action": "release_pipeline_resume",
+                "status": "pipeline_resume_blocked",
+                "blockers": [{
+                    "code": "pipeline_resume_evidence_required",
+                    "message": "release pipeline resume requires --evidence",
                 }],
                 "mutating_actions_executed": False,
             }
@@ -18633,9 +18653,10 @@ async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
             payload = execute_release_pipeline(
                 **kwargs,
                 message=getattr(args, "message", None),
+                resume_from=getattr(args, "evidence", None) if command == "resume" else None,
             )
     else:
-        raise RuntimeError(f"Unknown release pipeline command: {args.release_pipeline_command}")
+        raise RuntimeError(f"Unknown release pipeline command: {command}")
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     else:
@@ -18645,8 +18666,12 @@ async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
             print(f"version={payload.get('version')}")
         if payload.get("evidence_dir"):
             print(f"evidence_dir={payload.get('evidence_dir')}")
+        if payload.get("first_incomplete_phase"):
+            print(f"first_incomplete_phase={payload.get('first_incomplete_phase')}")
         for blocker in payload.get("blockers") or []:
             print(f"blocker={blocker.get('code')}: {blocker.get('message')}", file=sys.stderr)
+        for warning in payload.get("warnings") or []:
+            print(f"warning={warning.get('code')}: {warning.get('message')}", file=sys.stderr)
     return 0 if payload.get("ok") else 1
 
 
@@ -25046,24 +25071,33 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
-    release_pipeline = release_subparsers.add_parser("pipeline", help="Plan or apply the evidence-bound generic release pipeline with explicit Git, publication, adoption, and current-verification phases.")
+    release_pipeline = release_subparsers.add_parser("pipeline", help="Plan, import, apply, or resume the evidence-bound generic release pipeline with explicit Git, publication, adoption, and current-verification phases.")
     release_pipeline_subparsers = release_pipeline.add_subparsers(dest="release_pipeline_command", required=True)
     for pipeline_name, pipeline_help in (
         ("plan", "Build a read-only release pipeline plan."),
         ("apply", "Apply the guarded release pipeline; mutation phases require explicit flags."),
+        ("resume", "Resume from validated prior pipeline evidence without replaying successful mutation phases."),
     ):
         pipeline_parser = release_pipeline_subparsers.add_parser(pipeline_name, help=pipeline_help)
         pipeline_parser.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
         pipeline_parser.add_argument("--config", default=".promptbranch-release.json", help="Tracked release contract. Defaults to .promptbranch-release.json.")
-        pipeline_parser.add_argument("--confirm-version", help="Canonical v-prefixed VERSION confirmation. Required for apply.")
+        pipeline_parser.add_argument("--confirm-version", help="Canonical v-prefixed VERSION confirmation. Required for apply and resume.")
         pipeline_parser.add_argument("--stage-all", action="store_true", help="Explicitly permit staging all contract-safe dirty paths. Required with --commit.")
-        pipeline_parser.add_argument("--commit", action="store_true", help="Create a guarded release commit after local validation and verification.")
-        pipeline_parser.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit.")
-        pipeline_parser.add_argument("--publish", action="store_true", help="Publish the exact rebuilt ZIP to Project Source only after same-run push.")
-        pipeline_parser.add_argument("--adopt", action="store_true", help="Adopt the exact published source using captured source evidence.")
-        pipeline_parser.add_argument("--verify-current", action="store_true", help="Verify accepted/current after same-run adoption.")
+        pipeline_parser.add_argument("--commit", action="store_true", help="Create a guarded release commit after local validation and verification, unless imported evidence proves it already completed.")
+        pipeline_parser.add_argument("--push", action="store_true", help="Push only after a successful guarded commit, unless imported evidence proves it already completed.")
+        pipeline_parser.add_argument("--publish", action="store_true", help="Publish the exact rebuilt ZIP only after Git proof, unless exact imported source evidence is reusable.")
+        pipeline_parser.add_argument("--adopt", action="store_true", help="Adopt the exact published source using captured or imported source evidence.")
+        pipeline_parser.add_argument("--verify-current", action="store_true", help="Verify accepted/current after adoption or imported current-state proof.")
         pipeline_parser.add_argument("--message", help="Commit message. Defaults to the contract template.")
+        if pipeline_name == "resume":
+            pipeline_parser.add_argument("--evidence", required=True, help="Prior release-pipeline checkpoint, summary, or evidence directory to import and resume.")
         pipeline_parser.add_argument("--json", action="store_true")
+    release_pipeline_import = release_pipeline_subparsers.add_parser("import", help="Validate prior release-pipeline evidence and show a read-only recovery plan.")
+    release_pipeline_import.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+    release_pipeline_import.add_argument("--config", default=".promptbranch-release.json", help="Tracked release contract. Defaults to .promptbranch-release.json.")
+    release_pipeline_import.add_argument("--confirm-version", help="Optional canonical v-prefixed VERSION confirmation.")
+    release_pipeline_import.add_argument("--evidence", required=True, help="Prior release-pipeline checkpoint, summary, or evidence directory.")
+    release_pipeline_import.add_argument("--json", action="store_true")
     release_contract_plan = release_subparsers.add_parser("contract-plan", help="Validate .promptbranch-release.json and emit a read-only repository lifecycle plan.")
     release_contract_plan.add_argument("--config", default=".promptbranch-release.json")
     release_contract_plan.add_argument("--repo-path", default=".")

@@ -53,7 +53,7 @@ Publication must return persistent source evidence containing the backend-assign
 - the selected repository state artifact reference and version;
 - the exact assigned Project Source filename from the same run;
 - the Project Source version;
-- the registry current filename and version;
+- the registry current filename, version, and exact canonical SHA-256;
 - registry-current/state-artifact consistency;
 - state-source/state-artifact consistency.
 
@@ -63,6 +63,27 @@ A matching version with a different indexed Project Source filename is not suffi
 
 The tracked release contract calls `scripts/run-release-validation-groups.py`. This runs the mandatory deterministic release groups declared by Promptbranch instead of collecting the entire repository test tree, which also contains network, service, compatibility-wrapper and browser suites that belong to separate strict/live profiles.
 
-## Recovery horizon
+## Evidence import and recovery
 
-`v0.1.117` evidence is single-run and fail-closed. `v0.1.118` is planned to import validated evidence, resume safe dependent phases and record explicit recovery after partial failure.
+Read-only import planning:
+
+```bash
+pb release pipeline import \
+  --repo-path . \
+  --confirm-version "$(tr -d '\\r\\n' < VERSION)" \
+  --evidence .pb_profile/release_runs/pipeline/<run>/release-pipeline-checkpoint.json \
+  --json
+```
+
+Guarded resume:
+
+```bash
+pb release pipeline resume \
+  --repo-path . \
+  --confirm-version "$(tr -d '\\r\\n' < VERSION)" \
+  --evidence .pb_profile/release_runs/pipeline/<run>/release-pipeline-checkpoint.json \
+  --stage-all --commit --push --publish --adopt --verify-current \
+  --json
+```
+
+Every run atomically writes a crash-consistent checkpoint after each phase. Import validates repository, version, artifact, contract, Git and source identity without mutation. Resume requires the exact imported mutation envelope, re-runs safe local gates, and skips only successful mutation phases whose immutable evidence still matches. Successful adoption/current evidence is never replayed merely because it was imported; authoritative current identity must reconfirm it.

@@ -232,7 +232,13 @@ def _verify_artifact(path: Path, contract: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def execute(repo: Path, contract: dict[str, Any], operation: str) -> dict[str, Any]:
+def execute(
+    repo: Path,
+    contract: dict[str, Any],
+    operation: str,
+    *,
+    runner=subprocess.run,
+) -> dict[str, Any]:
     if operation not in _ALLOWED_OPS:
         raise ReleaseContractError(f"unsupported operation: {operation}")
     if operation in {"publish", "adopt"} and not contract["operations"].get(operation):
@@ -257,7 +263,7 @@ def execute(repo: Path, contract: dict[str, Any], operation: str) -> dict[str, A
         timed_out = False
         error = None
         try:
-            proc = subprocess.run(step["argv"], cwd=repo / step["cwd"], env=env, text=True, capture_output=True, timeout=float(step["timeout_seconds"]), check=False)
+            proc = runner(step["argv"], cwd=repo / step["cwd"], env=env, text=True, capture_output=True, timeout=float(step["timeout_seconds"]), check=False)
             rc = proc.returncode
             stdout_path.write_text(proc.stdout, encoding="utf-8")
             stderr_path.write_text(proc.stderr, encoding="utf-8")

@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import subprocess
 import zipfile
+import faulthandler
+faulthandler.dump_traceback_later(20, repeat=True)
 from pathlib import Path
 
 from promptbranch_release_engine import load_contract
 from promptbranch_release_pipeline import (
     build_pbai_compliance_inventory,
+    build_release_pipeline_import_plan,
     build_release_pipeline_plan,
     execute_release_pipeline,
 )
@@ -86,14 +89,25 @@ class FakeRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.adopted = False
+        self.commit_sha = "a" * 40
 
     def __call__(self, argv, **kwargs):
         args = [str(value) for value in argv]
         self.calls.append(args)
         stdout = ""
-        if args[:3] == ["git", "status", "--porcelain=v1"]:
+        if args == ["python3", "build_artifact.py"]:
+            repo = Path(kwargs.get("cwd", "."))
+            with zipfile.ZipFile(repo / "demo-repo_v1.2.3.zip", "w") as archive:
+                archive.write(repo / "VERSION", "VERSION")
+        elif args[:2] == ["python3", "-c"]:
+            stdout = "ok\n"
+        elif args[:3] == ["git", "status", "--porcelain=v1"]:
             stdout = " M VERSION\n"
+        elif args[:3] == ["git", "rev-parse", "HEAD"]:
+            stdout = self.commit_sha + "\n"
         elif "src" in args and "add" in args:
+            import hashlib
+            artifact_path = Path(kwargs.get("cwd", ".")) / "demo-repo_v1.2.3.zip"
             stdout = json.dumps(
                 {
                     "ok": True,
@@ -103,6 +117,7 @@ class FakeRunner:
                     "assigned_filename": "demo-repo_v1.2.3(1).zip",
                     "processed_file_id": "file_demo",
                     "library_metadata_object_id": "libfile_demo",
+                    "local_sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
                 }
             )
         elif "artifact" in args and "adopt" in args:
@@ -393,3 +408,369 @@ def test_pipeline_same_version_different_hash_fails_before_publication(tmp_path:
     assert payload["stop_reason"] == "immutable_release_identity_conflict"
     assert not any("src" in call and "add" in call for call in runner.calls)
     assert not any("artifact" in call and "adopt" in call for call in runner.calls)
+
+
+class PublishFailureRunner(FakeRunner):
+    def __call__(self, argv, **kwargs):
+        args = [str(value) for value in argv]
+        if "src" in args and "add" in args:
+            self.calls.append(args)
+            return subprocess.CompletedProcess(
+                args,
+                1,
+                stdout=json.dumps({
+                    "ok": False,
+                    "status": "source_add_failed",
+                    "persistence_verified": False,
+                }),
+                stderr="",
+            )
+        return super().__call__(args, **kwargs)
+
+
+class AdoptionFailureRunner(FakeRunner):
+    def __call__(self, argv, **kwargs):
+        args = [str(value) for value in argv]
+        if "artifact" in args and "adopt" in args:
+            self.calls.append(args)
+            return subprocess.CompletedProcess(
+                args,
+                1,
+                stdout=json.dumps({
+                    "ok": False,
+                    "status": "adoption_failed",
+                    "source_verified": True,
+                    "source_evidence_verified": True,
+                }),
+                stderr="",
+            )
+        return super().__call__(args, **kwargs)
+
+
+def _run_failed_publish(repo: Path) -> tuple[dict, PublishFailureRunner]:
+    runner = PublishFailureRunner()
+    payload = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=runner,
+    )
+    assert payload["ok"] is False
+    assert payload["stop_reason"] == "project_source_publish_failed"
+    return payload, runner
+
+
+def test_pipeline_failure_writes_incremental_checkpoint(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    payload, _ = _run_failed_publish(repo)
+    checkpoint = Path(payload["checkpoint_path"])
+    assert checkpoint.is_file()
+    data = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert data["status"] == "release_pipeline_failed"
+    assert data["stop_reason"] == "project_source_publish_failed"
+    assert data["evidence_binding"]["artifact_sha256"] == payload["artifact"]["sha256"]
+    assert data["evidence_binding"]["git_commit"] == "a" * 40
+    assert any(item["phase"] == "git-sync" and item["ok"] for item in data["phase_results"])
+
+
+def test_pipeline_import_is_read_only_and_recovers_git_boundary(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    payload, _ = _run_failed_publish(repo)
+    before = sorted(str(path.relative_to(repo)) for path in repo.rglob("*"))
+    plan = build_release_pipeline_import_plan(
+        repo,
+        evidence=payload["checkpoint_path"],
+        confirm_version="v1.2.3",
+        runner=FakeRunner(),
+    )
+    after = sorted(str(path.relative_to(repo)) for path in repo.rglob("*"))
+    assert plan["ok"] is True
+    assert plan["status"] == "pipeline_evidence_importable"
+    assert plan["state_mutated"] is False
+    assert "git-sync" in plan["reusable_mutation_phases"]
+    assert "project-source-publish" not in plan["reusable_mutation_phases"]
+    assert plan["first_incomplete_phase"] == "project-source-publish"
+    assert before == after
+
+
+def test_pipeline_resume_after_publish_failure_skips_git_and_recovers(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    failed, _ = _run_failed_publish(repo)
+    runner = FakeRunner()
+    recovered = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        resume_from=failed["checkpoint_path"],
+        runner=runner,
+    )
+    assert recovered["ok"] is True
+    assert recovered["status"] == "release_pipeline_recovered"
+    assert "git-sync" in recovered["recovery"]["reused_phases"]
+    assert any("src" in call and "add" in call for call in runner.calls)
+    assert not any(call[:2] == ["git", "add"] for call in runner.calls)
+    assert not any(call[:2] == ["git", "commit"] for call in runner.calls)
+    assert not any(call[:2] == ["git", "push"] for call in runner.calls)
+    reused_git = next(item for item in recovered["phase_results"] if item["phase"] == "git-sync")
+    assert reused_git["payload"]["status"] == "reused_imported_git_sync"
+    assert reused_git["payload"]["state_mutated"] is False
+
+
+def test_pipeline_resume_reuses_published_source_after_adoption_failure(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    failing_runner = AdoptionFailureRunner()
+    failed = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=failing_runner,
+    )
+    assert failed["stop_reason"] == "artifact_adopt_failed"
+
+    runner = FakeRunner()
+    recovered = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        resume_from=failed["checkpoint_path"],
+        runner=runner,
+    )
+    assert recovered["ok"] is True
+    assert recovered["status"] == "release_pipeline_recovered"
+    assert "git-sync" in recovered["recovery"]["reused_phases"]
+    assert "project-source-publish" in recovered["recovery"]["reused_phases"]
+    assert not any("src" in call and "add" in call for call in runner.calls)
+    assert any("artifact" in call and "adopt" in call for call in runner.calls)
+    source_phase = next(item for item in recovered["phase_results"] if item["phase"] == "project-source-publish")
+    assert source_phase["payload"]["status"] == "reused_imported_project_source"
+
+
+def test_pipeline_resume_after_adoption_uses_current_identity_instead_of_replaying(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    mismatch = MismatchedCurrentRunner()
+    failed = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=mismatch,
+    )
+    assert failed["stop_reason"] == "accepted_current_verify_failed"
+
+    runner = FakeRunner()
+    runner.adopted = True
+    recovered = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        resume_from=failed["checkpoint_path"],
+        runner=runner,
+    )
+    assert recovered["ok"] is True
+    assert recovered["status"] == "release_pipeline_recovered_idempotent"
+    assert recovered["already_current"] is True
+    assert not any("src" in call and "add" in call for call in runner.calls)
+    assert not any("artifact" in call and "adopt" in call for call in runner.calls)
+
+
+def test_pipeline_import_rejects_changed_local_artifact_bytes(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    failed, _ = _run_failed_publish(repo)
+    artifact = repo / "demo-repo_v1.2.3.zip"
+    artifact.write_bytes(artifact.read_bytes() + b"changed")
+    plan = build_release_pipeline_import_plan(
+        repo,
+        evidence=failed["checkpoint_path"],
+        confirm_version="v1.2.3",
+        runner=FakeRunner(),
+    )
+    assert plan["ok"] is False
+    assert "pipeline_import_local_artifact_hash_mismatch" in plan["blocker_codes"]
+
+
+def test_pipeline_cli_import_and_resume_commands(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    initial = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        runner=FakeRunner(),
+    )
+    assert initial["ok"] is True
+
+    imported = subprocess.run(
+        [
+            "python3",
+            str(ROOT / "promptbranch_cli.py"),
+            "release",
+            "pipeline",
+            "import",
+            "--repo-path",
+            str(repo),
+            "--confirm-version",
+            "v1.2.3",
+            "--evidence",
+            initial["checkpoint_path"],
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert imported.returncode == 0, imported.stderr + imported.stdout
+    import_payload = json.loads(imported.stdout)
+    assert import_payload["status"] == "pipeline_evidence_importable"
+    assert import_payload["state_mutated"] is False
+
+    resumed = subprocess.run(
+        [
+            "python3",
+            str(ROOT / "promptbranch_cli.py"),
+            "release",
+            "pipeline",
+            "resume",
+            "--repo-path",
+            str(repo),
+            "--confirm-version",
+            "v1.2.3",
+            "--evidence",
+            initial["checkpoint_path"],
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert resumed.returncode == 0, resumed.stderr + resumed.stdout
+    resume_payload = json.loads(resumed.stdout)
+    assert resume_payload["status"] == "release_pipeline_recovered"
+    assert resume_payload["recovery"]["mode"] == "resumed"
+
+
+class MissingSourceHashRunner(FakeRunner):
+    def __call__(self, argv, **kwargs):
+        result = super().__call__(argv, **kwargs)
+        args = [str(value) for value in argv]
+        if "src" in args and "add" in args:
+            payload = json.loads(result.stdout)
+            payload.pop("local_sha256", None)
+            return subprocess.CompletedProcess(args, result.returncode, stdout=json.dumps(payload), stderr=result.stderr)
+        return result
+
+
+class MissingCurrentHashRunner(FakeRunner):
+    def __call__(self, argv, **kwargs):
+        result = super().__call__(argv, **kwargs)
+        args = [str(value) for value in argv]
+        if "artifact" in args and "current" in args and self.adopted:
+            payload = json.loads(result.stdout)
+            payload["repos"]["demo-repo"]["registry_current"].pop("sha256", None)
+            return subprocess.CompletedProcess(args, result.returncode, stdout=json.dumps(payload), stderr=result.stderr)
+        return result
+
+
+def test_pipeline_resume_requires_exact_imported_mutation_scope(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    failed, _ = _run_failed_publish(repo)
+    runner = FakeRunner()
+    blocked = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        resume_from=failed["checkpoint_path"],
+        runner=runner,
+    )
+    assert blocked["ok"] is False
+    assert blocked["status"] == "pipeline_resume_blocked"
+    assert "pipeline_resume_commit_scope_mismatch" in blocked["blocker_codes"]
+    assert "pipeline_resume_publish_scope_mismatch" in blocked["blocker_codes"]
+    assert runner.calls
+    assert not any("src" in call and "add" in call for call in runner.calls)
+    assert not any(call[:2] == ["git", "add"] for call in runner.calls)
+
+
+def test_pipeline_import_rejects_unsupported_schema_version(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    initial = execute_release_pipeline(repo, confirm_version="v1.2.3", runner=FakeRunner())
+    checkpoint = Path(initial["checkpoint_path"])
+    evidence = json.loads(checkpoint.read_text(encoding="utf-8"))
+    evidence["schema_version"] = "99.0"
+    altered = tmp_path / "unsupported-pipeline-evidence.json"
+    altered.write_text(json.dumps(evidence), encoding="utf-8")
+
+    plan = build_release_pipeline_import_plan(
+        repo,
+        evidence=altered,
+        confirm_version="v1.2.3",
+        runner=FakeRunner(),
+    )
+    assert plan["ok"] is False
+    assert "pipeline_import_schema_version_unsupported" in plan["blocker_codes"]
+    assert plan["state_mutated"] is False
+
+
+def test_pipeline_publication_requires_exact_canonical_artifact_hash(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    payload = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=MissingSourceHashRunner(),
+    )
+    assert payload["ok"] is False
+    assert payload["stop_reason"] == "project_source_publish_failed"
+    publish_phase = next(item for item in payload["phase_results"] if item["phase"] == "project-source-publish")
+    assert publish_phase["payload"]["status"] == "project_source_publication_unverified"
+
+
+def test_pipeline_current_verification_requires_registry_sha256(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    payload = execute_release_pipeline(
+        repo,
+        confirm_version="v1.2.3",
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=MissingCurrentHashRunner(),
+    )
+    assert payload["ok"] is False
+    assert payload["stop_reason"] == "accepted_current_verify_failed"
+    current_phase = next(item for item in payload["phase_results"] if item["phase"] == "accepted-current-verify")
+    assert current_phase["payload"]["status"] == "accepted_current_mismatch"

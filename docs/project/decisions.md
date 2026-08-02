@@ -1195,3 +1195,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Idempotence:** the same version, canonical filename, SHA-256 and consistent accepted/current state is an idempotent success; duplicate upload and adoption are skipped.
 - **Evidence reuse:** reusable direct validation evidence binds to the canonical rebuilt artifact SHA-256, repository identity, Git commit, transport, service base, runtime mode, source-kind matrix and command signature. The transport ZIP is not acceptance authority.
 - **Versioning:** changed bytes require a new version. No override or silent replacement path is introduced.
+
+
+## ADR-REL-118 — Importable checkpoints and guarded pipeline recovery
+
+- **Baseline:** `v0.1.117.1` accepted/current.
+- **Decision:** `v0.1.118` writes incremental checkpoints, validates imported evidence read-only, and resumes only from immutable phase evidence.
+- **Safety:** successful remote mutation phases are reused rather than silently replayed; changed bytes, divergent Git identity, ambiguous Project Source identity, or stale accepted/current evidence fail closed.
+- **Next planned after acceptance:** `v0.1.119 — Read-only multi-repository release-set dependency planner`.

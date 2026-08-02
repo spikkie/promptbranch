@@ -516,7 +516,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
     },
     "release_pipeline": {
         "required": True,
-        "description": "Evidence-bound generic release-pipeline planning, Git ordering, Project Source publication, adoption, and accepted/current verification.",
+        "description": "Evidence-bound generic release-pipeline planning, incremental checkpoints, import/resume recovery, mutation reuse, Project Source publication, adoption, and accepted/current verification.",
         "command": _release_validation_command(
             "-m",
             "pytest",

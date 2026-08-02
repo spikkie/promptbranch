@@ -909,6 +909,17 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-340 | Live preflight and continuous live use the same service owner and are separated by service-idle plus host-flock release proof | focused_candidate | release controller and shell regressions | v0.1.115.1 |
 | DOD-341 | Strict direct, localhost, external-live, rollback, Guardian, operational-evidence, adoption and current-verification gates remain unchanged | open | full all-all release-control adoption log required | v0.1.115.1 |
 
-| DOD-347 | Same adopted version with a different or missing artifact SHA-256 fails before Project Source or registry mutation | focused_candidate | release identity and artifact registry tests | v0.1.117.1 |
-| DOD-348 | Same version and same SHA-256 is idempotent and skips duplicate publication/adoption | focused_candidate | release pipeline idempotence test | v0.1.117.1 |
-| DOD-349 | Reusable release evidence binds to canonical rebuilt artifact SHA-256, repository identity, Git commit and validation dimensions | focused_candidate | release-control contract tests | v0.1.117.1 |
+| DOD-347 | Same adopted version with a different or missing artifact SHA-256 fails before Project Source or registry mutation | done | release identity and artifact registry tests | v0.1.117.1 |
+| DOD-348 | Same version and same SHA-256 is idempotent and skips duplicate publication/adoption | done | release pipeline idempotence test | v0.1.117.1 |
+| DOD-349 | Reusable release evidence binds to canonical rebuilt artifact SHA-256, repository identity, Git commit and validation dimensions | done | release-control contract tests | v0.1.117.1 |
+
+
+## v0.1.118 resumable/importable release-pipeline evidence and recovery
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-350 | Every release-pipeline phase atomically updates a crash-consistent checkpoint containing ordered phase results, immutable repository/version/artifact/contract bindings, the exact requested mutation envelope and stop reason | focused_candidate | `promptbranch_release_pipeline.py`, checkpoint failure regression | v0.1.118 |
+| DOD-351 | `pb release pipeline import` validates a prior checkpoint, summary or evidence directory without mutation and fails closed on repository, version, artifact, contract, Git or Project Source identity drift | focused_candidate | import planner and negative identity regressions | v0.1.118 |
+| DOD-352 | `pb release pipeline resume` requires the exact imported mutation envelope, re-runs safe repository-owned local gates, and reuses exact successful Git and Project Source mutation evidence instead of replaying those mutations | focused_candidate | publication/adoption partial-failure recovery regressions | v0.1.118 |
+| DOD-353 | Successful imported adoption/current evidence is accepted only when authoritative current identity reconfirms it; divergence blocks automatic replay and records explicit recovery failure | focused_candidate | adoption/current recovery and divergence tests | v0.1.118 |
+| DOD-354 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.118 |

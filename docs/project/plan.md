@@ -1,46 +1,54 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.117
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-active candidate version: v0.1.117.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
-active slice: v0.1.117.1 — Immutable release identity and hash-bound evidence reuse
+accepted/current baseline: v0.1.117.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+active candidate version: v0.1.118
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
+active slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 next normal version: v0.1.118
 next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.117
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-active candidate version: v0.1.117.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+accepted/current version: v0.1.117.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.117.1(1).zip
+accepted/current SHA-256: 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719
+active candidate version: v0.1.118
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
 next normal version: v0.1.118
 next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
+next planned after acceptance: v0.1.119 — Read-only multi-repository release-set dependency planner
 ```
-
-## Active repair
-
-1. Bind reusable release-validation evidence to the canonical rebuilt artifact SHA-256, repository identity, Git commit, and existing validation dimensions.
-2. Fail closed before Project Source mutation when an adopted version exists with a different or missing hash.
-3. Treat the same version and exact same hash as idempotent and skip duplicate publication/adoption.
-4. Preserve `v0.1.118` as the next normal slice after this repair is adopted.
 
 ## Active normal slice
 
-No normal slice is active while `v0.1.117.1` is in repair mode. The accepted normal baseline is `v0.1.117`.
+1. Write an incremental immutable checkpoint after every release-pipeline phase so interruption and partial failure leave importable evidence.
+2. Add `pb release pipeline import` as a read-only validator and recovery planner for a prior checkpoint, summary, or evidence directory.
+3. Add `pb release pipeline resume` with explicit mutation flags and exact `--confirm-version`; successful mutation phases may be reused only when their repository, version, artifact SHA-256, Git commit, contract and source identity remain valid.
+4. Re-run repository-owned local validation/test/build/verify during recovery, but never silently replay a successful Git commit/push, Project Source publication, artifact adoption, or accepted/current mutation boundary.
+5. Fail closed when imported adoption evidence no longer agrees with authoritative current state; reconciliation is operator-owned and must not become an implicit second adoption.
+6. Record imported provenance, reused phases, replayed safe phases, recovery point and final recovery status in the new run evidence.
+
+## Recovery invariants
+
+- Import planning is read-only and writes no state.
+- Imported artifact hashes must be unambiguous and match rebuilt local bytes before any remote mutation.
+- A reusable Git phase must resolve to the current repository HEAD and include push proof when push was requested.
+- Reusable Project Source evidence must include the exact assigned filename, processed file id, Library metadata id, persistence proof and canonical artifact SHA-256.
+- Existing `v0.1.117.1` immutable release identity semantics remain authoritative.
+- Project deletion remains frozen.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.117` — accepted/current: PBAI compliance inventory and evidence-bound generic release pipeline.
-2. `v0.1.117.1` — active repair: immutable release identity and hash-bound evidence reuse.
-3. `v0.1.118` — planned after acceptance: Resumable/importable release-pipeline evidence and recovery.
-4. `v0.1.119` — planned: read-only multi-repository release-set dependency planner.
+1. `v0.1.117` — accepted historical: PBAI compliance inventory and evidence-bound generic release pipeline.
+2. `v0.1.117.1` — accepted/current repair: immutable release identity and hash-bound evidence reuse.
+3. `v0.1.118` — active normal candidate: resumable/importable release-pipeline evidence and recovery.
+4. `v0.1.119` — planned after acceptance: read-only multi-repository release-set dependency planner.
 5. `v0.1.120` — planned: guarded multi-repository rollout execution and rollback evidence.
-
-Repair releases must not advance normal scope.
 
 ## Repair definition — v0.1.71.1
 
