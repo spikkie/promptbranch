@@ -51,6 +51,12 @@
 
 | DOD-310 | Full-capacity Project Source replacement derives its authoritative final count and identity multiset from one verified prune, one upload, and verified previous-family removals; exact assigned singleton, pruned absence, previous-family absence, and no unexpected disappearance are release-gated | focused_candidate | `promptbranch_browser_auth/client.py`, `tests/test_project_source_capabilities.py`, `docs/repair-v0.1.111.4.1.md` | v0.1.111.4.1 |
 
+| DOD-342 | PBAI compliance inventory reports migration, proof level and release-contract rollout readiness for one or more repositories without mutation | focused_candidate | `promptbranch_release_pipeline.py`, `tests/test_promptbranch_release_pipeline.py` | v0.1.117 |
+| DOD-343 | Generic release-pipeline planning is read-only and declares local, Git, publication, adoption and current-verification phases in authority order | focused_candidate | `pb release pipeline plan`, focused tests | v0.1.117 |
+| DOD-344 | Pipeline apply requires canonical version confirmation and explicit mutation dependencies | focused_candidate | pipeline dependency tests | v0.1.117 |
+| DOD-345 | Project Source publication evidence is bound into adoption and final accepted/current verification | focused_candidate | fake transport pipeline test and strict release validation pending | v0.1.117 |
+| DOD-346 | Candidate artifact is rebuilt and reverified after the guarded release commit before publication | focused_candidate | pipeline phase-order tests; strict release validation pending | v0.1.117 |
+
 ## Status values
 
 Use only:

@@ -17,7 +17,7 @@ EVIDENCE_SCHEMA = "promptbranch.release.execution"
 _ALLOWED_TOP = {
     "schema", "schema_version", "repository", "version_authority", "artifact",
     "operations", "preserve", "forbid_mutation", "environment", "evidence",
-    "delegation",
+    "delegation", "git",
 }
 _ALLOWED_OPS = {"validate", "test", "build", "verify", "publish", "adopt", "verify_current"}
 _MUTATING_OPS = {"build", "publish", "adopt"}
@@ -67,7 +67,8 @@ def load_contract(repo: Path, config: str = ".promptbranch-release.json") -> dic
         raise ReleaseContractError(f"invalid release contract: {exc}") from exc
     if not isinstance(data, dict):
         raise ReleaseContractError("release contract root must be an object")
-    _require_keys(data, _ALLOWED_TOP, _ALLOWED_TOP, "contract")
+    required_top = _ALLOWED_TOP - {"git"}
+    _require_keys(data, required_top, _ALLOWED_TOP, "contract")
     if data["schema"] != SCHEMA or data["schema_version"] != SCHEMA_VERSION:
         raise ReleaseContractError("unsupported release contract schema or schema_version")
 
@@ -155,6 +156,20 @@ def load_contract(repo: Path, config: str = ".promptbranch-release.json") -> dic
     for key in ("promptbranch_owns", "repository_owns"):
         if not isinstance(delegation[key], list) or not delegation[key]:
             raise ReleaseContractError(f"delegation.{key} must be a non-empty array")
+
+    git = data.get("git", {})
+    if not isinstance(git, dict):
+        raise ReleaseContractError("git must be an object")
+    _require_keys(git, set(), {"unsafe_paths", "expected_paths", "commit_message"}, "git")
+    for field in ("unsafe_paths", "expected_paths"):
+        values = git.get(field, [])
+        if not isinstance(values, list) or any(not isinstance(item, str) or not item.strip() for item in values):
+            raise ReleaseContractError(f"git.{field} must be a string array")
+    message = git.get("commit_message", "Release {version}")
+    if not isinstance(message, str) or not message.strip() or "\n" in message or "\r" in message:
+        raise ReleaseContractError("git.commit_message must be one non-empty line")
+    git["commit_message"] = message
+    data["git"] = git
     return data
 
 
@@ -222,7 +237,7 @@ def execute(repo: Path, contract: dict[str, Any], operation: str) -> dict[str, A
         raise ReleaseContractError(f"unsupported operation: {operation}")
     if operation in {"publish", "adopt"} and not contract["operations"].get(operation):
         raise ReleaseContractError(f"operation {operation} is not declared")
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{operation}"
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + f"-{operation}"
     evidence_dir = repo / contract["evidence"]["directory"] / run_id
     evidence_dir.mkdir(parents=True, exist_ok=False)
     preserved_before = _snapshot(repo, contract["preserve"])

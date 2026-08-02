@@ -9,7 +9,7 @@
     "format": "plain"
   },
   "artifact": {
-    "path": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+    "path": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
     "kind": "zip",
     "required_root_entries": [
       "VERSION",
@@ -50,14 +50,15 @@
     ],
     "test": [
       {
-        "id": "full-local-tests",
+        "id": "required-release-validation-groups",
         "argv": [
           "python3",
-          "-m",
-          "pytest",
-          "-q"
+          "scripts/run-release-validation-groups.py",
+          "--repo",
+          ".",
+          "--json"
         ],
-        "timeout_seconds": 3600
+        "timeout_seconds": 1800
       }
     ],
     "build": [
@@ -69,7 +70,7 @@
           "--repo",
           ".",
           "--output",
-          "chatgpt_claudecode_workflow-2_v0.1.115.1.zip"
+          "chatgpt_claudecode_workflow-2_v0.1.117.zip"
         ],
         "timeout_seconds": 600
       }
@@ -83,9 +84,9 @@
           "--repo",
           ".",
           "--zip",
-          "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.117.zip",
           "--version",
-          "v0.1.115.1",
+          "v0.1.117",
           "--json"
         ],
         "timeout_seconds": 600
@@ -98,7 +99,7 @@
           "pb",
           "src",
           "add",
-          "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.117.zip",
           "--json"
         ],
         "timeout_seconds": 900
@@ -111,9 +112,9 @@
           "pb",
           "artifact",
           "adopt",
-          "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.117.zip",
           "--version",
-          "v0.1.115.1",
+          "v0.1.117",
           "--json"
         ],
         "timeout_seconds": 900
@@ -126,9 +127,9 @@
           "python3",
           "scripts/verify-release-adoption-current.py",
           "--version",
-          "v0.1.115.1",
+          "v0.1.117",
           "--artifact",
-          "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.117.zip",
           "--json"
         ],
         "timeout_seconds": 600
@@ -165,5 +166,19 @@
       "packaging",
       "domain_gates"
     ]
+  },
+  "git": {
+    "unsafe_paths": [
+      ".env",
+      ".generated/",
+      ".pb_profile/",
+      "debug_artifacts/",
+      "*.zip",
+      "*.log",
+      "__pycache__/",
+      ".pytest_cache/"
+    ],
+    "expected_paths": [],
+    "commit_message": "Release {version}"
   }
 }

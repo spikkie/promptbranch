@@ -142,6 +142,24 @@
       ],
       "transport_independent": true
     },
+    "release_pipeline": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_release_contract.py",
+          "tests/test_promptbranch_release_pipeline.py"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
+    },
     "browser_source_lifecycle": {
       "commands": [
         [
@@ -186,7 +204,12 @@
     "browser_source_lifecycle": [
       "compile"
     ],
-    "shell_syntax": []
+    "shell_syntax": [],
+    "release_pipeline": [
+      "compile",
+      "project_control_surface",
+      "application_architecture"
+    ]
   },
   "rules": [
     {
@@ -199,6 +222,19 @@
         "impact_planner"
       ],
       "reason": "impact-selection implementation or policy changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_release_pipeline.py",
+        "promptbranch_release_engine.py",
+        ".promptbranch-release.json",
+        "tests/test_promptbranch_release_contract.py",
+        "tests/test_promptbranch_release_pipeline.py"
+      ],
+      "groups": [
+        "release_pipeline"
+      ],
+      "reason": "generic release pipeline, release contract, Git ordering, publication, adoption, or current verification changed"
     },
     {
       "patterns": [

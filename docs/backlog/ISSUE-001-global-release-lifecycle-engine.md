@@ -4,8 +4,8 @@
 
 - ID: `ISSUE-001`
 - External reference: `#1`
-- Status: `implemented_candidate`
-- Implemented in: `v0.1.111`
+- Status: `pipeline_candidate`
+- Implemented in: `v0.1.111`; evidence-bound end-to-end pipeline candidate in `v0.1.117`
 - Priority: `1`
 - Owner: Promptbranch
 - Discovery result: No matching open issue existed before creation.
@@ -199,11 +199,11 @@ Its existing project-local lifecycle remains authoritative during the comparison
 - [x] Local execution runs repository-defined gates with bounded timeouts and complete step evidence.
 - [x] Artifact build output is hash-bound and structurally validated.
 - [x] Publication is a separate explicit operation; exact Project Source identity is captured by the declared `pb src add --json` step evidence.
-- [ ] Adoption evidence-chain precondition across separate invocations remains to be hardened before accepted/current adoption.
+- [x] Same-run pipeline adoption is bound to exact Project Source evidence; resumable cross-invocation import is planned for v0.1.118.
 - [x] Final accepted/current verification is a separately declared required operation using the existing strict verifier.
 - [x] `.pb_profile/` is preserved locally and excluded from release artifacts.
 - [x] `.promptbranch-repo.json` is preserved as tracked repository authority and included in release artifacts.
-- [ ] Existing project-local lifecycle scripts remain during migration.
-- [ ] `promptbranch-method` passes differential validation with Promptbranch equivalent or stronger.
-- [ ] A failed or ambiguous step cannot publish, adopt, or advance accepted/current.
-- [ ] Evidence records are sufficient to reproduce why each lifecycle verdict was reached.
+- [x] Existing project-local lifecycle scripts remain during migration.
+- [x] `promptbranch-method` actual-repository executable proof is 6/6 equivalent-or-stronger; operational pipeline rollout remains separate.
+- [x] The v0.1.117 pipeline skips every dependent later phase after a failed or ambiguous step.
+- [x] Same-run pipeline evidence records every phase and exact source/adoption/current payload; resumable evidence import is planned for v0.1.118.

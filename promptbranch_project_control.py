@@ -31,7 +31,6 @@ REQUIRED_DOCS = (
     Path("promptbranch_protocol/schemas/application.architecture.schema.json"),
     Path("promptbranch_protocol/schemas/application.registry.schema.json"),
     Path(".promptbranch/ai-registry.json"),
-    Path("docs/release-v0.1.116.md"),
 )
 REQUIRED_FIELDS = (
     "schema",
@@ -191,6 +190,10 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
     accepted_artifact = str(state.get("accepted_current_artifact") or "")
     active_candidate_version = str(state.get("active_candidate_version") or "")
     active_candidate_artifact = str(state.get("active_candidate_artifact") or "")
+    active_release_doc = Path(f"docs/release-{active_candidate_version}.md") if active_candidate_version else None
+    if active_release_doc is not None and not (root / active_release_doc).is_file():
+        missing.append(str(active_release_doc))
+        errors.append(f"missing required active release document: {active_release_doc}")
     next_normal_version = str(state.get("next_normal_version") or "")
     next_normal_slice = str(state.get("next_normal_slice") or "")
     active_slice = str(state.get("active_slice") or "")
@@ -379,7 +382,7 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
         "scope_advance_allowed": state.get("scope_advance_allowed"),
         "repair_must_not_advance_scope": state.get("repair_must_not_advance_scope"),
         "rolling_slice_horizon": horizon,
-        "required_files": [str(rel) for rel in REQUIRED_DOCS],
+        "required_files": [str(rel) for rel in REQUIRED_DOCS] + ([str(active_release_doc)] if active_release_doc is not None else []),
         "missing_files": missing,
         "error_count": len(errors),
         "errors": errors,

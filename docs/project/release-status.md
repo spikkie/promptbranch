@@ -1,15 +1,18 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip` (`v0.1.115.1`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.116.zip` (`v0.1.116`), assigned Project Source `chatgpt_claudecode_workflow-2_v0.1.116(1).zip`.
 
-Active candidate: `chatgpt_claudecode_workflow-2_v0.1.116.zip` — v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof.
+Active candidate: `chatgpt_claudecode_workflow-2_v0.1.117.zip` — PBAI compliance inventory and evidence-bound generic release pipeline.
+
+Active slice: `v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline`.
+
+Planned after acceptance: `v0.1.118 — resumable/importable release-pipeline evidence and recovery`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.116 | normal | PBAI templates, migration, differential validation, method domain proof | candidate | local validation pending | closes remaining PBAI-001 criteria after adoption | pending |
-| v0.1.115.1 | repair | release-live profile ownership handoff | accepted/current | strict 10/10 + operational PBAI passed | repair accepted | eff2bd7a… |
-| v0.1.108.1 | repair | Project Source staged-overwrite and removal-proof reliability | accepted/current | retry validation 10/10 and release_adopted_and_verified | DOD-297 completed | recorded in adopted registry evidence |
-| v0.1.109 | normal | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | candidate | 279 focused/relevant deterministic tests passed; full release validation pending | DOD-298 through DOD-301 candidate evidence | pending |
+| v0.1.117 | normal | PBAI compliance inventory and generic release pipeline | candidate | focused validation in progress; strict host validation pending | DOD-342 through DOD-346 candidate | pending |
+| v0.1.116 | normal | PBAI templates, migration, differential validation, method domain proof | accepted/current | strict lifecycle and adoption verified by operator | PBAI runtime/domain baseline complete | 1349f162… |
+| v0.1.115.1 | repair | release-live profile ownership handoff | accepted historical | strict 10/10 + operational PBAI passed | repair accepted | eff2bd7a… |
 
 ## Status rule
 

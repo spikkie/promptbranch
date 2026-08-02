@@ -1,33 +1,44 @@
 # Project Status
 
-<!-- v0.1.116 current control-surface header -->
-- Accepted/current version: `v0.1.115.1`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.115.1.zip`
-- Active candidate version: `v0.1.116`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.116.zip`
-- Next normal version: `v0.1.116`
-- Next normal slice: `v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof`
-- Next planned version after acceptance: `v0.1.117`
-- Next planned slice after acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`
-
 ## Current baseline
 
 ```text
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
-accepted/current version: v0.1.115.1
-active candidate: chatgpt_claudecode_workflow-2_v0.1.116.zip
-active candidate version: v0.1.116
-active slice: v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof
-next planned after acceptance: v0.1.117 — PBAI compliance inventory and multi-repository rollout
+accepted/current version: v0.1.116
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.116(1).zip
+active candidate version: v0.1.117
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+active slice: v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline
+next planned version: v0.1.118
+next planned slice: v0.1.118 — resumable/importable release-pipeline evidence and recovery
 ```
+
+<!-- v0.1.117 current control-surface header -->
+- Accepted/current version: `v0.1.116`
+- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.116.zip`
+- Accepted/current Project Source: `chatgpt_claudecode_workflow-2_v0.1.116(1).zip`
+- Active candidate version: `v0.1.117`
+- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.117.zip`
+- Active slice: `v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline`
+- Next planned version: `v0.1.118`
+- Next planned slice: `v0.1.118 — resumable/importable release-pipeline evidence and recovery`
 
 ## Current release state
 
-`v0.1.115.1` is accepted/current after strict 10/10 validation, evidence-bound adoption, and real PBAI-001 operational proof. `v0.1.116` completes the remaining ticket criteria with checked-in templates, read-only migration reports, fail-closed differential validation, and the first Promptbranch-managed `promptbranch-method` domain-module proof snapshot.
+`v0.1.116` is accepted/current with runtime, adopted artifact, exact assigned Project Source, registry current, and code/source consistency aligned. `v0.1.117` develops independently from `promptbranch-method` and treats Promptbranch `v0.1.116` as the immutable baseline.
+
+Focused candidate implementation now provides:
+
+- `pb application architecture inventory` for read-only multi-repository PBAI compliance inventory;
+- `pb release pipeline plan` for a read-only phase and mutation plan;
+- `pb release pipeline apply` for local proof plus explicitly requested Git, Project Source, adoption, and current verification;
+- source-evidence-bound adoption using the exact publication result;
+- a committed-tree rebuild/verify boundary before Project Source publication;
+- fail-closed dependency and version-confirmation gates.
 
 ## Next safe action
 
-Build and validate `chatgpt_claudecode_workflow-2_v0.1.116.zip` from the adopted baseline. Run impacted and component gates during development, then the unchanged strict 10/10 host workflow before adoption. The standard browser profile default and deletion freeze remain unchanged.
+Run focused and full local validation, build `chatgpt_claudecode_workflow-2_v0.1.117.zip`, validate clean extraction, and then run the unchanged strict host release workflow. Candidate creation does not claim commit, push, publication, adoption, accepted/current, or operational proof.
 
 ## v0.1.102 candidate status
 

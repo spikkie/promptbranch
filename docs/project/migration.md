@@ -1275,3 +1275,11 @@ No state, registry, PBAI schema, impact-map schema, or Project Source migration 
 Existing PB projects receive `pb application architecture migration-report --repo-path <repo> --json`. The report is read-only, identifies missing declarations/layers/registries and recommends explicit commands. Template generation is plan-only unless `--write` is supplied. Project-local validators remain authoritative references until `pb application architecture differential-validate` proves Promptbranch equivalent or stronger on the same mutation cases.
 
 Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.
+
+## v0.1.116 to v0.1.117 migration note
+
+`v0.1.117` does not silently replace existing project-local release scripts. Repositories may add the optional `git` section to `.promptbranch-release.json` to define unsafe and expected paths plus a commit-message template. Existing contracts without the section remain valid and receive conservative defaults. `pb release pipeline plan` is read-only. Pipeline apply is opt-in and requires canonical version confirmation.
+
+## v0.1.117 to v0.1.118 migration note
+
+`v0.1.118` is planned to add resumable/importable release-pipeline evidence and recovery. It must consume the immutable evidence emitted by `v0.1.117`, detect already completed phases, and avoid replaying successful Git, Project Source publication, adoption, or accepted/current mutation phases. No automatic migration is performed by `v0.1.117`.

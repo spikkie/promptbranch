@@ -23,6 +23,7 @@ def test_parser_accepts_service_options() -> None:
             "--service-token",
             "secret",
             "ask",
+            "--text",
             "hello",
         ]
     )
@@ -97,6 +98,7 @@ def test_main_can_ask_via_service_backend(monkeypatch, capsys, tmp_path) -> None
             "--project-url",
             "https://chatgpt.com/g/demo/project",
             "ask",
+            "--text",
             "hello",
         ]
     )
@@ -139,7 +141,7 @@ def test_main_json_ask_emits_full_payload_with_conversation_url(monkeypatch, cap
     captured = capsys.readouterr()
     assert exit_code == 0
     payload = json.loads(captured.out)
-    assert payload["answer"] == {"status": "ok"}
+    assert payload["answer"] == {"status": "ok", "text": "{'status': 'ok'}"}
     assert payload["conversation_url"] == "https://chatgpt.com/g/demo/c/123"
 
 
@@ -202,6 +204,7 @@ def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monke
             "--project-url",
             "https://chatgpt.com/g/demo/project",
             "ask",
+            "--text",
             "first",
         ]
     )
@@ -214,6 +217,7 @@ def test_main_reuses_saved_project_conversation_for_follow_up_service_asks(monke
             "--project-url",
             "https://chatgpt.com/g/demo/project",
             "ask",
+            "--text",
             "second",
         ]
     )
@@ -248,6 +252,7 @@ def test_main_can_ask_via_service_backend_from_env(monkeypatch, capsys, tmp_path
             "--profile-dir",
             str(tmp_path),
             "ask",
+            "--text",
             "hello",
         ]
     )
@@ -292,6 +297,7 @@ def test_main_can_ask_via_service_backend_from_config(monkeypatch, capsys, tmp_p
             "--profile-dir",
             str(tmp_path),
             "ask",
+            "--text",
             "hello",
         ]
     )
@@ -337,6 +343,7 @@ def test_main_can_ask_via_service_backend_from_default_config_path(monkeypatch, 
             "--profile-dir",
             str(tmp_path / "profile"),
             "ask",
+            "--text",
             "hello",
         ]
     )

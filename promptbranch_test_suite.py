@@ -514,6 +514,17 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "release_lifecycle_plan",
         ),
     },
+    "release_pipeline": {
+        "required": True,
+        "description": "Evidence-bound generic release-pipeline planning, Git ordering, Project Source publication, adoption, and accepted/current verification.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_release_contract.py",
+            "tests/test_promptbranch_release_pipeline.py",
+        ),
+    },
     "sandbox_mutation_rollback_gate": {
         "required": True,
         "description": "Mandatory sandbox mutation verification, validation immutability, exact rollback, repository immutability, and workspace cleanup gate.",

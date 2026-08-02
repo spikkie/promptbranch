@@ -628,6 +628,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         "repo_project_registry",
         "browser_scheduler_source_lifecycle",
         "release_lifecycle_plan",
+        "release_pipeline",
         "execution_envelope_validation_gate",
         "compileall",
     }

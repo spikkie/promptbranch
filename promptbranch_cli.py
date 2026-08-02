@@ -95,6 +95,11 @@ from promptbranch_operational_evidence import (
 )
 from promptbranch_impact_testing import ImpactTestingError, build_impact_plan, execute_impact_plan
 from promptbranch_release_engine import ReleaseContractError, execute as execute_release_contract, load_contract as load_release_contract, plan as plan_release_contract
+from promptbranch_release_pipeline import (
+    build_pbai_compliance_inventory,
+    build_release_pipeline_plan,
+    execute_release_pipeline,
+)
 from promptbranch_orchestration import (
     accepted_event_example_paths,
     accepted_event_ledger_status,
@@ -18448,79 +18453,89 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
     del backend
     if args.application_command != "architecture":
         raise RuntimeError(f"Unknown application command: {args.application_command}")
-    repo = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    repo = Path(".").resolve()
     config = str(getattr(args, "config", ".promptbranch-ai.json") or ".promptbranch-ai.json")
     try:
-        if args.application_architecture_command == "plan":
-            payload = plan_application_architecture(repo, config)
-        elif args.application_architecture_command == "validate":
-            payload = validate_application_architecture(
-                repo,
-                config,
-                level=getattr(args, "level", "structural"),
-                profile_dir=getattr(args, "profile_dir", None),
-                proof_skill=getattr(args, "skill", None),
-                operational_evidence=getattr(args, "evidence", None),
-            )
-        elif args.application_architecture_command == "evidence":
-            payload = build_application_architecture_evidence(
-                repo,
-                config,
-                profile_dir=getattr(args, "profile_dir", None),
-                proof_skill=getattr(args, "skill", None),
-            )
-        elif args.application_architecture_command == "lifecycle-evidence":
-            payload = build_operational_lifecycle_evidence(
-                repo_path=repo,
-                all_tests_summary=args.all_tests_summary,
-                artifact_guard=args.artifact_guard,
-                adoption_result=args.adoption_result,
-                current_result=args.current_result,
-                source_evidence=args.source_evidence,
-                artifact=args.artifact,
-            )
-            output = getattr(args, "output", None)
-            if output:
-                Path(output).expanduser().resolve().write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        elif args.application_architecture_command == "template":
-            if getattr(args, "write", False):
-                payload = write_application_template(
-                    args.output_dir,
-                    kind=args.kind,
-                    application_id=args.application_id,
-                    version_path=args.version_path,
-                    runtime_provider=args.runtime_provider,
-                    contract_version=args.contract_version,
-                    force=bool(getattr(args, "force", False)),
-                )
-            else:
-                payload = build_application_template(
-                    kind=args.kind,
-                    application_id=args.application_id,
-                    version_path=args.version_path,
-                    runtime_provider=args.runtime_provider,
-                    contract_version=args.contract_version,
-                )
-                payload["output_dir"] = str(Path(args.output_dir).expanduser().resolve())
-        elif args.application_architecture_command == "migration-report":
-            payload = build_application_migration_report(
-                repo,
-                kind=args.kind,
-                application_id=args.application_id,
-                runtime_provider=args.runtime_provider,
+        if args.application_architecture_command == "inventory":
+            repo_paths = list(getattr(args, "repo_paths", []) or ["."])
+            payload = build_pbai_compliance_inventory(
+                repo_paths,
+                level=getattr(args, "level", "executable"),
                 config=config,
+                release_config=getattr(args, "release_config", ".promptbranch-release.json"),
             )
-            output = getattr(args, "output", None)
-            if output:
-                target = write_migration_report(payload, output)
-                payload["report_output"] = str(target)
-                payload["safety"] = {**payload.get("safety", {}), "report_file_written": True, "target_repo_mutated": False}
-        elif args.application_architecture_command == "differential-validate":
-            payload = differential_validate_application(repo, config=args.differential_config)
         else:
-            raise RuntimeError(
-                f"Unknown application architecture command: {args.application_architecture_command}"
-            )
+            repo = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+            if args.application_architecture_command == "plan":
+                payload = plan_application_architecture(repo, config)
+            elif args.application_architecture_command == "validate":
+                payload = validate_application_architecture(
+                    repo,
+                    config,
+                    level=getattr(args, "level", "structural"),
+                    profile_dir=getattr(args, "profile_dir", None),
+                    proof_skill=getattr(args, "skill", None),
+                    operational_evidence=getattr(args, "evidence", None),
+                )
+            elif args.application_architecture_command == "evidence":
+                payload = build_application_architecture_evidence(
+                    repo,
+                    config,
+                    profile_dir=getattr(args, "profile_dir", None),
+                    proof_skill=getattr(args, "skill", None),
+                )
+            elif args.application_architecture_command == "lifecycle-evidence":
+                payload = build_operational_lifecycle_evidence(
+                    repo_path=repo,
+                    all_tests_summary=args.all_tests_summary,
+                    artifact_guard=args.artifact_guard,
+                    adoption_result=args.adoption_result,
+                    current_result=args.current_result,
+                    source_evidence=args.source_evidence,
+                    artifact=args.artifact,
+                )
+                output = getattr(args, "output", None)
+                if output:
+                    Path(output).expanduser().resolve().write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            elif args.application_architecture_command == "template":
+                if getattr(args, "write", False):
+                    payload = write_application_template(
+                        args.output_dir,
+                        kind=args.kind,
+                        application_id=args.application_id,
+                        version_path=args.version_path,
+                        runtime_provider=args.runtime_provider,
+                        contract_version=args.contract_version,
+                        force=bool(getattr(args, "force", False)),
+                    )
+                else:
+                    payload = build_application_template(
+                        kind=args.kind,
+                        application_id=args.application_id,
+                        version_path=args.version_path,
+                        runtime_provider=args.runtime_provider,
+                        contract_version=args.contract_version,
+                    )
+                    payload["output_dir"] = str(Path(args.output_dir).expanduser().resolve())
+            elif args.application_architecture_command == "migration-report":
+                payload = build_application_migration_report(
+                    repo,
+                    kind=args.kind,
+                    application_id=args.application_id,
+                    runtime_provider=args.runtime_provider,
+                    config=config,
+                )
+                output = getattr(args, "output", None)
+                if output:
+                    target = write_migration_report(payload, output)
+                    payload["report_output"] = str(target)
+                    payload["safety"] = {**payload.get("safety", {}), "report_file_written": True, "target_repo_mutated": False}
+            elif args.application_architecture_command == "differential-validate":
+                payload = differential_validate_application(repo, config=args.differential_config)
+            else:
+                raise RuntimeError(
+                    f"Unknown application architecture command: {args.application_architecture_command}"
+                )
     except (ApplicationArchitectureError, ApplicationMigrationError, OperationalEvidenceError) as exc:
         payload = {
             "ok": False,
@@ -18569,7 +18584,57 @@ async def cmd_release_contract(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    kwargs = {
+        "repo_path": getattr(args, "repo_path", "."),
+        "config": getattr(args, "config", ".promptbranch-release.json"),
+        "confirm_version": getattr(args, "confirm_version", None),
+        "stage_all": bool(getattr(args, "stage_all", False)),
+        "commit": bool(getattr(args, "commit", False)),
+        "push": bool(getattr(args, "push", False)),
+        "publish": bool(getattr(args, "publish", False)),
+        "adopt": bool(getattr(args, "adopt", False)),
+        "verify_current": bool(getattr(args, "verify_current", False)),
+    }
+    if args.release_pipeline_command == "plan":
+        payload = build_release_pipeline_plan(**kwargs)
+    elif args.release_pipeline_command == "apply":
+        if not kwargs["confirm_version"]:
+            payload = {
+                "ok": False,
+                "action": "release_pipeline_apply",
+                "status": "pipeline_apply_blocked",
+                "blockers": [{
+                    "code": "pipeline_confirm_version_required",
+                    "message": "release pipeline apply requires --confirm-version",
+                }],
+                "mutating_actions_executed": False,
+            }
+        else:
+            payload = execute_release_pipeline(
+                **kwargs,
+                message=getattr(args, "message", None),
+            )
+    else:
+        raise RuntimeError(f"Unknown release pipeline command: {args.release_pipeline_command}")
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"ok={str(bool(payload.get('ok'))).lower()}")
+        if payload.get("version"):
+            print(f"version={payload.get('version')}")
+        if payload.get("evidence_dir"):
+            print(f"evidence_dir={payload.get('evidence_dir')}")
+        for blocker in payload.get("blockers") or []:
+            print(f"blocker={blocker.get('code')}: {blocker.get('message')}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "pipeline":
+        return await cmd_release_pipeline(backend, args)
     if args.release_command in {"contract-plan", "contract-execute", "contract-publish", "contract-adopt"}:
         return await cmd_release_contract(backend, args)
     if args.release_command == "baseline-status":
@@ -24851,6 +24916,24 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
+    release_pipeline = release_subparsers.add_parser("pipeline", help="Plan or apply the evidence-bound generic release pipeline with explicit Git, publication, adoption, and current-verification phases.")
+    release_pipeline_subparsers = release_pipeline.add_subparsers(dest="release_pipeline_command", required=True)
+    for pipeline_name, pipeline_help in (
+        ("plan", "Build a read-only release pipeline plan."),
+        ("apply", "Apply the guarded release pipeline; mutation phases require explicit flags."),
+    ):
+        pipeline_parser = release_pipeline_subparsers.add_parser(pipeline_name, help=pipeline_help)
+        pipeline_parser.add_argument("--repo-path", default=".", help="Repository root. Defaults to current directory.")
+        pipeline_parser.add_argument("--config", default=".promptbranch-release.json", help="Tracked release contract. Defaults to .promptbranch-release.json.")
+        pipeline_parser.add_argument("--confirm-version", help="Canonical v-prefixed VERSION confirmation. Required for apply.")
+        pipeline_parser.add_argument("--stage-all", action="store_true", help="Explicitly permit staging all contract-safe dirty paths. Required with --commit.")
+        pipeline_parser.add_argument("--commit", action="store_true", help="Create a guarded release commit after local validation and verification.")
+        pipeline_parser.add_argument("--push", action="store_true", help="Push only after a successful same-run guarded commit.")
+        pipeline_parser.add_argument("--publish", action="store_true", help="Publish the exact rebuilt ZIP to Project Source only after same-run push.")
+        pipeline_parser.add_argument("--adopt", action="store_true", help="Adopt the exact published source using captured source evidence.")
+        pipeline_parser.add_argument("--verify-current", action="store_true", help="Verify accepted/current after same-run adoption.")
+        pipeline_parser.add_argument("--message", help="Commit message. Defaults to the contract template.")
+        pipeline_parser.add_argument("--json", action="store_true")
     release_contract_plan = release_subparsers.add_parser("contract-plan", help="Validate .promptbranch-release.json and emit a read-only repository lifecycle plan.")
     release_contract_plan.add_argument("--config", default=".promptbranch-release.json")
     release_contract_plan.add_argument("--repo-path", default=".")
@@ -25050,6 +25133,12 @@ def make_parser() -> argparse.ArgumentParser:
     application_architecture_validate.add_argument("--skill", help="Optional executable proof skill id or name. Defaults to the sole tracked proof skill.")
     application_architecture_validate.add_argument("--evidence", help="PBAI-001 operational lifecycle evidence JSON. Required for --level operational.")
     application_architecture_validate.add_argument("--json", action="store_true")
+    application_architecture_inventory = application_architecture_subparsers.add_parser("inventory", help="Inventory PBAI compliance and release-contract rollout readiness across one or more repositories without mutation.")
+    application_architecture_inventory.add_argument("--repo-path", dest="repo_paths", action="append", default=[], help="Repository root to inventory. Repeat for multiple repositories. Defaults to current directory.")
+    application_architecture_inventory.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration name.")
+    application_architecture_inventory.add_argument("--release-config", default=".promptbranch-release.json", help="Tracked release contract name.")
+    application_architecture_inventory.add_argument("--level", choices=APPLICATION_ARCHITECTURE_LEVELS, default="executable", help="Highest PBAI proof level requested for each repository.")
+    application_architecture_inventory.add_argument("--json", action="store_true")
     application_architecture_evidence = application_architecture_subparsers.add_parser("evidence", help="Execute the bounded tracked proof skill and emit validated SkillRun evidence.")
     application_architecture_evidence.add_argument("--repo-path", default=".", help="Repository root to validate. Defaults to current directory.")
     application_architecture_evidence.add_argument("--config", default=".promptbranch-ai.json", help="Tracked AI application declaration. Defaults to .promptbranch-ai.json.")

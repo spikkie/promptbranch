@@ -1178,3 +1178,12 @@ Expected-result normalisation is part of the browser step transaction and must o
 - The embedded `promptbranch-method` proof snapshot is based on the real v0.1.0 project structure and authoritative corpus metadata, but does not claim an external repository commit, push, or release.
 
 Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.
+
+## ADR-REL-117 — Generic release pipeline uses explicit ordered authority boundaries
+
+- **Status:** accepted for `v0.1.117` candidate implementation.
+- **Baseline:** Promptbranch `v0.1.116` remains accepted/current.
+- **Decision:** local proof precedes Git synchronization; Project Source publication follows same-run push; adoption consumes exact source evidence; accepted/current verification is a separate final phase.
+- **Safety:** plan mode is read-only, apply requires exact version confirmation, mutation flags are opt-in, and later phases are skipped after failure.
+- **Independence:** `promptbranch-method` continues independently on Promptbranch `>= v0.1.116` and may adopt this pipeline later through an explicit compatibility release.
+- **Next:** `v0.1.118` adds resumable/importable evidence and recovery without replaying completed mutation phases.

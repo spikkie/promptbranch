@@ -3,29 +3,41 @@
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.115.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.115.1.zip
-active candidate version: v0.1.116
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
-active slice: v0.1.116 — PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof
+accepted/current version: v0.1.116
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.116(1).zip
+active candidate version: v0.1.117
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+active slice: v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline
 ```
 
 ## Active normal slice
 
 In scope:
 
-- checked-in PBAI templates for `runtime_application` and `domain_module`;
-- explicit read-only migration reports for existing PB repositories;
-- fail-closed differential validation against project-local validators;
-- first `promptbranch-method` domain-module declaration, registry, executable proof, and differential evidence;
-- release-gate and impact-map integration;
-- no overclaim beyond the highest proven level.
+- read-only PBAI compliance inventory across one or more repositories;
+- explicit rollout readiness from declaration, proof level, migration status, and release contract;
+- generic release pipeline planning with immutable phase order;
+- local repository-owned validate/test/build/verify operations;
+- explicit guarded Git staging, commit, and same-run push;
+- committed-tree artifact rebuild and verification before publication;
+- exact Project Source publication evidence capture;
+- source-evidence-bound adoption and accepted/current verification;
+- fail-closed dependency rules: commit requires stage-all, push requires commit, publication requires push, adoption requires publication, and current verification requires adoption;
+- no mutation in plan mode and no silent phase enablement.
 
-Out of scope: silent repository mutation, self-granted publication/adoption authority, removal of project-local validators before equivalence is proven, and external `promptbranch-method` Git publication from this candidate.
+Out of scope: multi-repository release-set execution, cross-repository dependency solving, automatic rollback, silent project-local orchestrator retirement, deployment, and ChatGPT Project deletion.
 
 ## Rolling horizon authority
 
-The machine-readable authority is `docs/project/plan-state.json`. The active normal slice is `v0.1.116`; after acceptance, the next planned slice is `v0.1.117 — PBAI compliance inventory and multi-repository rollout`. Repair releases must not advance normal scope.
+The machine-readable authority is `docs/project/plan-state.json`.
+
+1. `v0.1.117` — active: PBAI compliance inventory and evidence-bound generic release pipeline.
+2. `v0.1.118` — planned: resumable/importable pipeline evidence and recovery after partial external failure.
+3. `v0.1.119` — planned: read-only multi-repository release-set dependency planner.
+4. `v0.1.120` — planned: guarded multi-repository rollout execution and rollback evidence.
+
+Repair releases must not advance normal scope.
 
 ## Repair definition — v0.1.71.1
 
