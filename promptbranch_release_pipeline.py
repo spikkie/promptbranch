@@ -19,6 +19,7 @@ from promptbranch_application_migration import (
     ApplicationMigrationError,
     build_application_migration_report,
 )
+from promptbranch_release_identity import evaluate_current_release_identity, sha256_file
 from promptbranch_release_engine import (
     ReleaseContractError,
     execute as execute_release_contract,
@@ -542,9 +543,42 @@ def execute_release_pipeline(
         elif not run_local("committed-tree-verify", "verify"):
             stop_reason = "committed_tree_verify_failed"
 
+    release_identity: dict[str, Any] | None = None
+    identity_current_payload: dict[str, Any] | None = None
+    if stop_reason is None and (publish or adopt or verify_current):
+        identity_current_result = _command_result(
+            [*_pb_command(), "artifact", "current", "--all", "--json"],
+            repo=repo,
+            evidence_path=evidence_dir / "release-identity-current-command.json",
+            timeout=180.0,
+            runner=runner,
+        )
+        identity_current_payload = identity_current_result.get("payload") if isinstance(identity_current_result.get("payload"), dict) else None
+        if not artifact.is_file():
+            release_identity = {"ok": False, "status": "release_identity_artifact_missing", "artifact": str(artifact)}
+        else:
+            release_identity = evaluate_current_release_identity(
+                identity_current_payload,
+                repo_id=repo_id,
+                version=version,
+                artifact_filename=artifact.name,
+                artifact_sha256=sha256_file(artifact),
+            )
+        phase_payload = {
+            "ok": bool(identity_current_result.get("ok") or identity_current_payload is not None) and bool(release_identity.get("ok")),
+            "status": release_identity.get("status"),
+            "command_result": identity_current_result,
+            "identity": release_identity,
+        }
+        phases.append(_record_phase(evidence_dir, "release-identity-preflight", phase_payload))
+        if not phase_payload.get("ok"):
+            stop_reason = str(release_identity.get("status") or "release_identity_preflight_failed")
+
+    already_current = bool((release_identity or {}).get("already_current"))
+
     source_evidence_path = evidence_dir / "project-source-add.json"
     source_payload: dict[str, Any] | None = None
-    if stop_reason is None and publish:
+    if stop_reason is None and publish and not already_current:
         source_command = [*_pb_command(), "src", "add", str(artifact), "--no-overwrite", "--json"]
         source_result = _command_result(
             source_command,
@@ -577,7 +611,7 @@ def execute_release_pipeline(
             stop_reason = "project_source_publish_failed"
 
     adoption_payload: dict[str, Any] | None = None
-    if stop_reason is None and adopt:
+    if stop_reason is None and adopt and not already_current:
         adopt_command = [
             *_pb_command(),
             "artifact",
@@ -623,19 +657,24 @@ def execute_release_pipeline(
 
     current_payload: dict[str, Any] | None = None
     if stop_reason is None and verify_current:
-        current_result = _command_result(
-            [*_pb_command(), "artifact", "current", "--all", "--json"],
-            repo=repo,
-            evidence_path=evidence_dir / "artifact-current-command.json",
-            timeout=180.0,
-            runner=runner,
-        )
-        current_payload = current_result.get("payload") if isinstance(current_result.get("payload"), dict) else None
+        if already_current:
+            current_result = {"ok": True, "status": "reused_release_identity_preflight", "payload": identity_current_payload}
+            current_payload = identity_current_payload
+            _write_json(evidence_dir / "artifact-current-command.json", current_result)
+        else:
+            current_result = _command_result(
+                [*_pb_command(), "artifact", "current", "--all", "--json"],
+                repo=repo,
+                evidence_path=evidence_dir / "artifact-current-command.json",
+                timeout=180.0,
+                runner=runner,
+            )
+            current_payload = current_result.get("payload") if isinstance(current_result.get("payload"), dict) else None
         selected_repo = ((current_payload or {}).get("repos") or {}).get(repo_id) or {}
         repo_state = selected_repo.get("state") or {}
         registry_current = selected_repo.get("registry_current") or {}
         consistency = selected_repo.get("consistency") or {}
-        expected_source_ref = str((source_payload or {}).get("assigned_filename") or "")
+        expected_source_ref = str((source_payload or {}).get("assigned_filename") or repo_state.get("source_ref") or "")
         current_verified = bool(
             current_result.get("ok")
             and current_payload
@@ -671,7 +710,7 @@ def execute_release_pipeline(
         "schema": PIPELINE_SCHEMA,
         "schema_version": PIPELINE_SCHEMA_VERSION,
         "action": "release_pipeline_apply",
-        "status": "release_pipeline_completed" if final_ok else "release_pipeline_failed",
+        "status": ("release_pipeline_completed_idempotent" if final_ok and already_current else ("release_pipeline_completed" if final_ok else "release_pipeline_failed")),
         "repo_path": str(repo),
         "repository": contract["repository"],
         "version": version,
@@ -689,6 +728,8 @@ def execute_release_pipeline(
         "source": source_payload,
         "adoption": adoption_payload,
         "current": current_payload,
+        "release_identity": release_identity,
+        "already_current": already_current,
         "mutating_actions_executed": any(
             bool((item.get("payload") or {}).get("commit_performed"))
             or item.get("phase") in {"local-build", "committed-tree-build", "project-source-publish", "artifact-adopt"}
@@ -697,7 +738,7 @@ def execute_release_pipeline(
         "safety": {
             "explicit_version_confirmation": True,
             "publication_after_push": not publish or push,
-            "adoption_evidence_bound": not adopt or source_payload is not None,
+            "adoption_evidence_bound": not adopt or already_current or source_payload is not None,
             "accepted_current_verified": not verify_current or final_ok,
             "later_phases_skipped_after_failure": True,
         },

@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 import httpx
 
 from promptbranch_automation.service import ChatGPTAutomationService, ChatGPTAutomationSettings
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, ArtifactRegistryStateError, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
+from promptbranch_artifacts import ArtifactIdentityConflictError, ArtifactRecord, ArtifactRegistry, ArtifactRegistryStateError, build_source_sync_preflight, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, infer_repo_id_from_artifact_filename, normalize_repo_id, parse_canonical_artifact_filename, plan_repo_snapshot, utc_now, valid_version_text, verify_zip_artifact
 from promptbranch_artifact_guardian import guard_zip_artifact
 from promptbranch_mcp import (
     DEFAULT_OLLAMA_TOOL_MODEL,
@@ -16222,7 +16222,25 @@ async def cmd_release_adopt(backend: Any, args: argparse.Namespace) -> int:
         source_ref=matched_source_ref,
         project_url=project_url,
     )
-    artifact_record = registry.add(record)
+    try:
+        artifact_record = registry.add(record)
+    except ArtifactIdentityConflictError as exc:
+        return emit({
+            **base_payload,
+            **exc.to_payload(),
+            "artifact_ref": artifact_filename,
+            "artifact_version": artifact_version,
+            "source_ref": matched_source_ref,
+            "source_version": artifact_version,
+            "local_path": str(artifact_path),
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "adoption_performed": False,
+            "mutating_actions_executed": False,
+            "error": str(exc),
+            "next_safe_action": "Bump VERSION and rebuild, or restore the exact already adopted bytes.",
+        }, 1)
     _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=artifact_filename,
@@ -21175,7 +21193,25 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         source_ref=filename,
         project_url=project_url,
     )
-    artifact_payload = registry.add(record)
+    try:
+        artifact_payload = registry.add(record)
+    except ArtifactIdentityConflictError as exc:
+        return emit({
+            **preflight,
+            **exc.to_payload(),
+            "artifact_ref": filename,
+            "artifact_version": candidate_version,
+            "source_ref": filename,
+            "source_version": candidate_version,
+            "local_path": str(candidate_path),
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "adoption_performed": False,
+            "mutating_actions_executed": False,
+            "error": str(exc),
+            "next_safe_action": "Bump VERSION and rerun candidate validation, or restore the exact already adopted bytes.",
+        }, 1)
     _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=filename,
@@ -21429,6 +21465,85 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         }
         return emit(payload, 1)
 
+    candidate_sha256 = str(zip_check.get("sha256") or "")
+    existing_same_version = [
+        item for item in registry.list()
+        if item.get("kind") == "adopted_release"
+        and normalize_repo_id(item.get("repo_id")) == repo_id
+        and canonical_version_tag(item.get("version")) == filename_version
+    ]
+    conflicting = next(
+        (
+            item for item in existing_same_version
+            if not str(item.get("sha256") or "")
+            or str(item.get("sha256") or "") != candidate_sha256
+        ),
+        None,
+    )
+    if conflicting is not None:
+        return emit({
+            **base_payload,
+            "status": "immutable_release_identity_conflict",
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "local_path": str(local_zip),
+            "candidate_sha256": candidate_sha256,
+            "existing_sha256": conflicting.get("sha256"),
+            "existing_record": conflicting,
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "adoption_performed": False,
+            "mutating_actions_executed": False,
+            "error": "an adopted release version is immutable; the same version cannot be adopted with different or missing hash evidence",
+            "next_safe_action": "Bump VERSION and rebuild the artifact, or restore the exact previously adopted bytes.",
+        }, 1)
+
+    current_record = registry.current(repo_id)
+    current_state = _state_artifact_summary(before_state)
+    expected_source_ref = matched_source_ref
+    already_current = (
+        isinstance(current_record, dict)
+        and canonical_version_tag(current_record.get("version")) == filename_version
+        and str(current_record.get("sha256") or "") == candidate_sha256
+        and str(current_record.get("filename") or "") == filename
+        and current_state.get("artifact_ref") == filename
+        and current_state.get("artifact_version") == filename_version
+        and current_state.get("source_ref") == expected_source_ref
+        and current_state.get("source_version") == filename_version
+    )
+    if already_current:
+        return emit({
+            **base_payload,
+            "ok": True,
+            "status": "already_adopted",
+            "artifact_ref": filename,
+            "artifact_version": filename_version,
+            "source_ref": expected_source_ref,
+            "source_version": filename_version,
+            "local_path": str(local_zip),
+            "candidate_sha256": candidate_sha256,
+            "existing_record": current_record,
+            "idempotent": True,
+            "source_verified": bool(from_project_source and len(matched_sources) == 1),
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "project_source_mutated": False,
+            "adoption_performed": False,
+            "mutating_actions_executed": False,
+            "checks": {
+                "same_version": True,
+                "same_sha256": True,
+                "registry_current_matches": True,
+                "state_matches": True,
+            },
+            "after_snapshot": {
+                "artifact_registry": before_registry,
+                "state": current_state,
+            },
+        }, 0)
+
     record = ArtifactRecord(
         path=str(local_zip),
         filename=filename,
@@ -21446,7 +21561,22 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         source_processed_file_id=source_processed_file_id,
         source_library_metadata_object_id=source_library_metadata_object_id,
     )
-    artifact_payload = registry.add(record)
+    try:
+        artifact_payload = registry.add(record)
+    except ArtifactIdentityConflictError as exc:
+        return emit({
+            **base_payload,
+            **exc.to_payload(),
+            "artifact_version": filename_version,
+            "source_version": filename_version,
+            "local_path": str(local_zip),
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "adoption_performed": False,
+            "mutating_actions_executed": False,
+            "error": str(exc),
+        }, 1)
     _artifact_state_store(registry).remember_artifact(
         project_url=project_url,
         artifact_ref=filename,

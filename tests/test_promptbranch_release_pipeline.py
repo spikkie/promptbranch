@@ -85,6 +85,7 @@ def _write_minimal_repo(tmp_path: Path) -> Path:
 class FakeRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
+        self.adopted = False
 
     def __call__(self, argv, **kwargs):
         args = [str(value) for value in argv]
@@ -105,6 +106,7 @@ class FakeRunner:
                 }
             )
         elif "artifact" in args and "adopt" in args:
+            self.adopted = True
             stdout = json.dumps(
                 {
                     "ok": True,
@@ -117,6 +119,12 @@ class FakeRunner:
                 }
             )
         elif "artifact" in args and "current" in args:
+            if not self.adopted:
+                stdout = json.dumps({"ok": True, "missing_repo_count": 1, "repos": {}})
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+            artifact_path = Path(kwargs.get("cwd", ".")) / "demo-repo_v1.2.3.zip"
+            import hashlib
+            artifact_sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
             stdout = json.dumps(
                 {
                     "ok": True,
@@ -133,6 +141,7 @@ class FakeRunner:
                             "registry_current": {
                                 "filename": "demo-repo_v1.2.3.zip",
                                 "version": "v1.2.3",
+                                "sha256": artifact_sha,
                             },
                             "consistency": {
                                 "registry_current_matches_state_artifact": True,
@@ -223,8 +232,11 @@ def test_runtime_repository_is_rollout_ready_at_structural_level():
 class MismatchedCurrentRunner(FakeRunner):
     def __call__(self, argv, **kwargs):
         args = [str(value) for value in argv]
-        if "artifact" in args and "current" in args:
+        if "artifact" in args and "current" in args and self.adopted:
             self.calls.append(args)
+            artifact_path = Path(kwargs.get("cwd", ".")) / "demo-repo_v1.2.3.zip"
+            import hashlib
+            artifact_sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
             stdout = json.dumps(
                 {
                     "ok": True,
@@ -241,6 +253,7 @@ class MismatchedCurrentRunner(FakeRunner):
                             "registry_current": {
                                 "filename": "demo-repo_v1.2.3.zip",
                                 "version": "v1.2.3",
+                                "sha256": artifact_sha,
                             },
                             "consistency": {
                                 "registry_current_matches_state_artifact": True,
@@ -332,3 +345,51 @@ def test_release_validation_group_runner_help_and_contract_binding():
         for step in test_steps
     )
 
+
+
+class ExistingIdentityRunner(FakeRunner):
+    def __init__(self, *, conflict: bool) -> None:
+        super().__init__()
+        self.conflict = conflict
+
+    def __call__(self, argv, **kwargs):
+        args = [str(value) for value in argv]
+        if "artifact" in args and "current" in args:
+            self.calls.append(args)
+            artifact_path = Path(kwargs.get("cwd", ".")) / "demo-repo_v1.2.3.zip"
+            import hashlib
+            artifact_sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+            current_sha = ("f" * 64) if self.conflict else artifact_sha
+            stdout = json.dumps({
+                "ok": True,
+                "missing_repo_count": 0,
+                "repos": {"demo-repo": {
+                    "ok": True,
+                    "state": {"artifact_ref": "demo-repo_v1.2.3.zip", "artifact_version": "v1.2.3", "source_ref": "demo-repo_v1.2.3(1).zip", "source_version": "v1.2.3"},
+                    "registry_current": {"filename": "demo-repo_v1.2.3.zip", "version": "v1.2.3", "sha256": current_sha},
+                    "consistency": {"registry_current_matches_state_artifact": True, "state_source_matches_state_artifact": True},
+                }},
+            })
+            return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+        return super().__call__(args, **kwargs)
+
+
+def test_pipeline_same_version_same_hash_is_idempotent_and_skips_publication(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    runner = ExistingIdentityRunner(conflict=False)
+    payload = execute_release_pipeline(repo, confirm_version="v1.2.3", stage_all=True, commit=True, push=True, publish=True, adopt=True, verify_current=True, runner=runner)
+    assert payload["ok"] is True
+    assert payload["status"] == "release_pipeline_completed_idempotent"
+    assert payload["already_current"] is True
+    assert not any("src" in call and "add" in call for call in runner.calls)
+    assert not any("artifact" in call and "adopt" in call for call in runner.calls)
+
+
+def test_pipeline_same_version_different_hash_fails_before_publication(tmp_path: Path):
+    repo = _write_minimal_repo(tmp_path)
+    runner = ExistingIdentityRunner(conflict=True)
+    payload = execute_release_pipeline(repo, confirm_version="v1.2.3", stage_all=True, commit=True, push=True, publish=True, adopt=True, verify_current=True, runner=runner)
+    assert payload["ok"] is False
+    assert payload["stop_reason"] == "immutable_release_identity_conflict"
+    assert not any("src" in call and "add" in call for call in runner.calls)
+    assert not any("artifact" in call and "adopt" in call for call in runner.calls)

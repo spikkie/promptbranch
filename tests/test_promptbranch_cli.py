@@ -5058,6 +5058,70 @@ def test_artifact_adopt_rejects_zip_version_mismatch(capsys, tmp_path) -> None:
 
 
 
+def test_artifact_adopt_same_version_same_hash_is_idempotent(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "v1.2.3")
+    repo_path, profile = _initialize_test_project_scope(tmp_path)
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(
+        artifact=filename, from_project_source=True, local_only=False, local_path=str(zip_path),
+        keep_open=False, json=True, profile_dir=str(profile), repo_path=str(repo_path),
+        repo="chatgpt_claudecode_workflow", source_evidence_json=None,
+    )
+
+    assert asyncio.run(cmd_artifact_adopt(backend, args)) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["status"] == "adopted"
+    registry_path = profile / "promptbranch_artifacts.json"
+    registry_before = registry_path.read_bytes()
+
+    assert asyncio.run(cmd_artifact_adopt(backend, args)) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["status"] == "already_adopted"
+    assert second["idempotent"] is True
+    assert second["artifact_registry_updated"] is False
+    assert second["state_artifact_updated"] is False
+    assert second["state_source_updated"] is False
+    assert second["mutating_actions_executed"] is False
+    assert registry_path.read_bytes() == registry_before
+
+
+def test_artifact_adopt_same_version_different_hash_fails_before_mutation(capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v1.2.3.zip"
+    zip_path = tmp_path / filename
+    _write_test_release_zip(zip_path, "v1.2.3")
+    repo_path, profile = _initialize_test_project_scope(tmp_path)
+    project_url = "https://chatgpt.com/g/g-p-demo/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
+    args = argparse.Namespace(
+        artifact=filename, from_project_source=True, local_only=False, local_path=str(zip_path),
+        keep_open=False, json=True, profile_dir=str(profile), repo_path=str(repo_path),
+        repo="chatgpt_claudecode_workflow", source_evidence_json=None,
+    )
+
+    assert asyncio.run(cmd_artifact_adopt(backend, args)) == 0
+    json.loads(capsys.readouterr().out)
+    registry_path = profile / "promptbranch_artifacts.json"
+    registry_before = registry_path.read_bytes()
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("VERSION", "v1.2.3\n")
+        archive.writestr("README.md", "different bytes\n")
+        archive.writestr("extra.txt", "same version, different identity\n")
+
+    assert asyncio.run(cmd_artifact_adopt(backend, args)) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "immutable_release_identity_conflict"
+    assert payload["candidate_sha256"] != payload["existing_sha256"]
+    assert payload["artifact_registry_updated"] is False
+    assert payload["state_artifact_updated"] is False
+    assert payload["state_source_updated"] is False
+    assert payload["mutating_actions_executed"] is False
+    assert registry_path.read_bytes() == registry_before
+
+
 def _write_candidate_registry(profile: Path, *, filename: str, zip_path: Path, version: str, tested: bool = False) -> dict[str, object]:
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     candidate = {
@@ -9991,9 +10055,9 @@ def test_artifact_accept_candidate_rejects_untested_candidate(capsys, tmp_path) 
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
+    repo, profile = _initialize_test_project_scope(tmp_path, repo_root=repo)
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    profile = tmp_path / "profile"
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
     args = argparse.Namespace(
@@ -10019,7 +10083,7 @@ def test_artifact_accept_candidate_rejects_untested_candidate(capsys, tmp_path) 
     assert payload["status"] == "candidate_not_tested"
     assert payload["candidate_test_gate"]["ok"] is False
     assert payload["adoption_performed"] is False
-    assert not (profile / "promptbranch_artifacts.json").exists()
+    assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
 
 
 def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_control(monkeypatch, capsys, tmp_path) -> None:
@@ -10076,9 +10140,9 @@ def test_artifact_accept_candidate_rejects_release_control_runner(capsys, tmp_pa
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
+    repo, profile = _initialize_test_project_scope(tmp_path, repo_root=repo)
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    profile = tmp_path / "profile"
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225", tested=True)
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
     args = argparse.Namespace(
@@ -10103,7 +10167,7 @@ def test_artifact_accept_candidate_rejects_release_control_runner(capsys, tmp_pa
     assert exit_code == 2
     assert payload["status"] == "candidate_acceptance_runner_not_allowed"
     assert payload["adoption_performed"] is False
-    assert not (profile / "promptbranch_artifacts.json").exists()
+    assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
 
 
 def test_artifact_accept_candidate_rejects_sha_mismatch_before_adoption(capsys, tmp_path) -> None:

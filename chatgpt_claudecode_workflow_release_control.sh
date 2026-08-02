@@ -842,6 +842,9 @@ import_smoke_log="${release_log_dir}/pb_test.import_smoke.${ver}.log"
 artifact_guard_log="${release_log_dir}/pb_artifact_guard.${ver}.log"
 sandbox_mutation_rollback_gate_log="${release_log_dir}/pb_test.sandbox_mutation_rollback_gate.${ver}.json"
 project_source_add_log="${release_log_dir}/pb_src_add.release_artifact.${ver}.json"
+release_identity_preflight_json="${release_log_dir}/release_identity_preflight.${ver}.json"
+release_identity_current_json="${release_log_dir}/release_identity_current.${ver}.json"
+release_identity_already_current=0
 adoption_source_evidence_json="${release_log_dir}/pb_src_add.release_artifact.${ver}.evidence.json"
 project_join_json="${release_log_dir}/pb_project_join.release_identity.${ver}.json"
 validation_evidence_dir="${release_log_dir}/validation_evidence"
@@ -2683,9 +2686,98 @@ if not all(checks.values()):
 INNERPY_JOIN
 }
 
+release_identity_preflight() {
+  [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before identity preflight: ${canonical_artifact_zip}"
+  local current_rc=0
+  set +e
+  pb artifact current --all --json >"${release_identity_current_json}" 2>"${release_identity_current_json}.stderr"
+  current_rc=$?
+  set -e
+  python3 - "${release_identity_current_json}" "${release_identity_preflight_json}" "${release_repo_id}" "${ver}" "${artifact_zip}" "$(sha256sum "${canonical_artifact_zip}" | awk '{print $1}')" "${current_rc}" <<'INNERPY_IDENTITY'
+from pathlib import Path
+import json
+import sys
+current_path, output_path, repo_id, version, artifact, candidate_sha, current_rc = sys.argv[1:]
+raw = Path(current_path).read_text(encoding="utf-8", errors="replace") if Path(current_path).is_file() else ""
+idx = raw.find("{")
+payload = None
+if idx >= 0:
+    try:
+        parsed = json.loads(raw[idx:])
+        if isinstance(parsed, dict):
+            payload = parsed
+    except json.JSONDecodeError:
+        payload = None
+repos = payload.get("repos") if isinstance(payload, dict) and isinstance(payload.get("repos"), dict) else {}
+selected = repos.get(repo_id) if isinstance(repos.get(repo_id), dict) else None
+result = {
+    "schema": "promptbranch.release_control.release_identity_preflight",
+    "schema_version": "1.0",
+    "repo_id": repo_id,
+    "candidate_version": version,
+    "candidate_artifact": artifact,
+    "candidate_sha256": candidate_sha,
+    "artifact_current_exit_code": int(current_rc),
+    "selected_repo": selected,
+}
+if int(current_rc) != 0 or not isinstance(payload, dict) or payload.get("ok") is not True:
+    result.update(ok=False, status="release_identity_current_unavailable", already_current=False, conflict=True)
+    code = 1
+elif selected is None:
+    result.update(ok=True, status="new_release_identity", already_current=False, conflict=False)
+    code = 0
+else:
+    state = selected.get("state") if isinstance(selected.get("state"), dict) else {}
+    current = selected.get("registry_current") if isinstance(selected.get("registry_current"), dict) else {}
+    consistency = selected.get("consistency") if isinstance(selected.get("consistency"), dict) else {}
+    current_version = str(current.get("version") or state.get("artifact_version") or "")
+    current_sha = str(current.get("sha256") or "")
+    result.update(current_version=current_version or None, current_sha256=current_sha or None, current_artifact=current.get("filename") or state.get("artifact_ref"), consistency=consistency)
+    if current_version != version:
+        result.update(ok=True, status="new_release_identity", already_current=False, conflict=False)
+        code = 0
+    elif not current_sha:
+        result.update(ok=False, status="immutable_release_identity_hash_missing", already_current=False, conflict=True)
+        code = 1
+    elif current_sha != candidate_sha:
+        result.update(ok=False, status="immutable_release_identity_conflict", already_current=False, conflict=True)
+        code = 1
+    else:
+        exact = (
+            current.get("filename") == artifact
+            and current.get("version") == version
+            and state.get("artifact_ref") == artifact
+            and state.get("artifact_version") == version
+            and consistency.get("registry_current_matches_state_artifact") is True
+            and consistency.get("state_source_matches_state_artifact") is True
+        )
+        if exact:
+            result.update(ok=True, status="release_identity_already_current", already_current=True, conflict=False)
+            code = 10
+        else:
+            result.update(ok=False, status="immutable_release_identity_state_mismatch", already_current=False, conflict=True)
+            code = 1
+Path(output_path).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(result, indent=2, sort_keys=True))
+raise SystemExit(code)
+INNERPY_IDENTITY
+}
+
 # Add release ZIP to ChatGPT Project Sources. The exact backend-assigned source
 # identity is captured before tests and bound to the later adoption transaction.
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
+  set +e
+  release_identity_preflight
+  release_identity_rc=$?
+  set -e
+  case "${release_identity_rc}" in
+    0) release_identity_already_current=0 ;;
+    10) release_identity_already_current=1 ;;
+    *) fail "immutable release identity preflight failed before Project Source mutation; inspect ${release_identity_preflight_json}" ;;
+  esac
+  if [[ ${release_identity_already_current} -eq 1 ]]; then
+    echo "Project Source add skipped: exact version/hash is already accepted/current"
+  else
   ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
   pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
   [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before Project Source add: ${canonical_artifact_zip}"
@@ -2699,6 +2791,7 @@ if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" !
       "${adoption_source_evidence_json}" \
       "${project_join_json}" \
       || fail "authoritative adoption identity preflight failed before validation"
+  fi
   fi
 else
   if [[ ${auth_only_validation} -eq 1 ]]; then
@@ -3211,6 +3304,12 @@ adopt_after_validation_if_green() {
     verify_auth_only_validation_green
   else
     verify_validation_reports_green
+  fi
+  if [[ ${release_identity_already_current} -eq 1 ]]; then
+    echo "Adoption skipped: exact version/hash is already accepted/current"
+    pb artifact current --all --json | tee "${release_identity_current_json}"
+    release_identity_preflight || [[ $? -eq 10 ]]
+    return 0
   fi
   adopt_current_artifact
 }
@@ -4370,10 +4469,12 @@ INNERPY
 
 release_validation_artifact_sha256() {
   local candidate=""
-  if [[ -n "${download_zip:-}" && -f "${download_zip}" ]]; then
-    candidate="${download_zip}"
+  if [[ -n "${canonical_artifact_zip:-}" && -f "${canonical_artifact_zip}" ]]; then
+    candidate="${canonical_artifact_zip}"
   elif [[ -f "${artifact_zip}" ]]; then
     candidate="${artifact_zip}"
+  elif [[ -n "${download_zip:-}" && -f "${download_zip}" ]]; then
+    candidate="${download_zip}"
   fi
   if [[ -z "${candidate}" ]]; then
     printf 'missing'
@@ -4429,7 +4530,9 @@ write_release_validation_evidence() {
   local report_json_path="${10}"
   local release_validation_groups_ok="${11}"
   mkdir -p "$(dirname "${evidence_path}")"
-  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${test_rc}" "${report_rc}" "${summary_json}" "${full_log_path}" "${report_json_path}" "${release_validation_groups_ok}" "${ver}" "${artifact_zip}" "$(release_validation_artifact_sha256)" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" <<'INNERPY'
+  local git_commit
+  git_commit="$(git -C "${repo_root}" rev-parse HEAD 2>/dev/null || printf unavailable)"
+  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${test_rc}" "${report_rc}" "${summary_json}" "${full_log_path}" "${report_json_path}" "${release_validation_groups_ok}" "${ver}" "${artifact_zip}" "$(release_validation_artifact_sha256)" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" "${release_repo_id}" "${git_commit}" <<'INNERPY'
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
@@ -4452,7 +4555,9 @@ import sys
     artifact_sha256,
     runtime_mode,
     strict_source_kind_matrix,
-) = sys.argv[1:17]
+    repo_id,
+    git_commit,
+) = sys.argv[1:19]
 payload = {
     "schema": "promptbranch.release_control.validation_evidence",
     "schema_version": "1.0",
@@ -4464,6 +4569,8 @@ payload = {
     "version": version,
     "artifact": artifact,
     "artifact_sha256": artifact_sha256,
+    "repo_id": repo_id,
+    "git_commit": git_commit,
     "test_group_id": group_id,
     "transport": transport,
     "service_base": base_url,
@@ -4490,7 +4597,9 @@ validate_release_validation_reuse_evidence() {
   local current_sha
   current_sha="$(release_validation_artifact_sha256)"
   [[ -f "${evidence_path}" ]] || return 1
-  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${ver}" "${artifact_zip}" "${current_sha}" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" <<'INNERPY'
+  local git_commit
+  git_commit="$(git -C "${repo_root}" rev-parse HEAD 2>/dev/null || printf unavailable)"
+  python3 - "${evidence_path}" "${group_id}" "${transport}" "${base_url}" "${command_signature}" "${ver}" "${artifact_zip}" "${current_sha}" "${runtime_mode}" "${run_all_strict_source_kind_matrix}" "${release_repo_id}" "${git_commit}" <<'INNERPY'
 from __future__ import annotations
 from pathlib import Path
 import json
@@ -4506,7 +4615,9 @@ import sys
     artifact_sha256,
     runtime_mode,
     strict_source_kind_matrix,
-) = sys.argv[1:11]
+    repo_id,
+    git_commit,
+) = sys.argv[1:13]
 try:
     payload = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
 except Exception:
@@ -4519,6 +4630,8 @@ checks = [
     payload.get("version") == version,
     payload.get("artifact") == artifact,
     payload.get("artifact_sha256") == artifact_sha256,
+    payload.get("repo_id") == repo_id,
+    payload.get("git_commit") == git_commit,
     payload.get("test_group_id") == group_id,
     payload.get("transport") == transport,
     payload.get("service_base") == base_url,
@@ -6926,6 +7039,8 @@ require_chatgpt_live_validation: ${require_chatgpt_live_validation}
 run_failing_tests: ${run_failing_tests}
 run_all_strict_source_kind_matrix: ${run_all_strict_source_kind_matrix}
 force_fresh_full_transport_evidence: ${force_fresh_full_transport_evidence}
+release_identity_already_current: ${release_identity_already_current}
+release_identity_preflight: ${release_identity_preflight_json}
 sandbox_mutation_rollback_gate: $(summary_value "${run_all_tests}" "${sandbox_mutation_rollback_gate_log}")
 all_tests_summary: $(summary_value "${run_all_tests}" "${all_tests_summary_json}")
 test_project:   ${release_test_project_name}

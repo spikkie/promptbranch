@@ -2739,7 +2739,9 @@ def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audi
                 "service_base": "http://localhost:8000",
                 "runtime_mode": "single_default",
                 "strict_source_kind_matrix": True,
-                "command_signature": "pb test full --keep-project --fail-fast --json --source-kind-matrix=strict --run-failing-tests=0 --duplicate-release-validation-groups-skip=0",
+                "repo_id": "repo",
+                "git_commit": "unavailable",
+                "command_signature": "pb test full --keep-project --json --source-kind-matrix=strict --run-failing-tests=0 --duplicate-release-validation-groups-skip=0 --release-validation-manifest-sha256= --fresh-full-transport-evidence=0 --fail-fast=1",
                 "test_exit_code": 0,
                 "report_exit_code": 0,
                 "release_validation_groups_ok": True,
@@ -2750,6 +2752,14 @@ def test_release_control_run_all_reuses_prior_run_tests_direct_evidence_and_audi
             indent=2,
         )
         + "\n",
+        encoding="utf-8",
+    )
+
+    scripts_dir = repo / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "verify-sandbox-mutation-rollback-release-gate.py").write_text(
+        "import json\n"
+        "print(json.dumps({\"schema\": \"promptbranch.release_control.sandbox_mutation_rollback_gate\", \"schema_version\": \"1.0\", \"ok\": True, \"status\": \"sandbox_mutation_verified_and_rolled_back\", \"mandatory_release_gate\": True, \"gate_count\": 13, \"passed_gate_count\": 13, \"failed_gate_count\": 0, \"failed_gates\": []}))\n",
         encoding="utf-8",
     )
 
@@ -4221,3 +4231,16 @@ def test_release_validation_group_includes_cross_process_profile_handoff_regress
     source = (Path(__file__).resolve().parents[1] / "promptbranch_test_suite.py").read_text(encoding="utf-8")
     assert "test_cross_process_profile_lock_waits_until_external_owner_releases" in source
     assert "test_cross_process_profile_lock_timeout_honors_queue_deadline_and_reports_owner" in source
+
+
+def test_release_control_uses_canonical_hash_and_immutable_identity_preflight():
+    release_script = Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh"
+    script = release_script.read_text(encoding="utf-8")
+    hash_body = script.split("release_validation_artifact_sha256()", 1)[1].split("release_validation_manifest_sha256()", 1)[0]
+    assert 'canonical_artifact_zip' in hash_body
+    assert hash_body.index('canonical_artifact_zip') < hash_body.index('download_zip')
+    assert 'immutable_release_identity_conflict' in script
+    assert 'release_identity_already_current' in script
+    assert 'Project Source add skipped: exact version/hash is already accepted/current' in script
+    assert '"repo_id": repo_id' in script
+    assert '"git_commit": git_commit' in script

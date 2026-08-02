@@ -1,5 +1,12 @@
 # Release Status
 
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.117.zip` (`v0.1.117`).
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.117.1.zip` (`v0.1.117.1`).
+Next normal slice: `v0.1.118 — Resumable/importable release-pipeline evidence and recovery`.
+
+| v0.1.117 | normal | PBAI compliance inventory and evidence-bound generic release pipeline | accepted/current | strict host validation 10/10 GO and evidence-bound adoption | DOD-342 through DOD-346 accepted | a7516dbc88049cd229ae7fdc6b012bb876e1f42de85199e13b3f71c66f22b01c |
+| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | candidate | focused and full validation pending | DOD-347 through DOD-349 focused candidate; no normal scope advance | pending |
+
 Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.116.zip` (`v0.1.116`), assigned Project Source `chatgpt_claudecode_workflow-2_v0.1.116(1).zip`.
 
 Active candidate: `chatgpt_claudecode_workflow-2_v0.1.117.zip` — PBAI compliance inventory and evidence-bound generic release pipeline.
@@ -10,6 +17,7 @@ Planned after acceptance: `v0.1.118 — resumable/importable release-pipeline ev
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
+| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | candidate | focused local validation pending; strict host validation not run | immutable same-version hash gate and canonical evidence binding | pending |
 | v0.1.117 | normal | PBAI compliance inventory and generic release pipeline | candidate | focused validation in progress; strict host validation pending | DOD-342 through DOD-346 candidate | pending |
 | v0.1.116 | normal | PBAI templates, migration, differential validation, method domain proof | accepted/current | strict lifecycle and adoption verified by operator | PBAI runtime/domain baseline complete | 1349f162… |
 | v0.1.115.1 | repair | release-live profile ownership handoff | accepted historical | strict 10/10 + operational PBAI passed | repair accepted | eff2bd7a… |

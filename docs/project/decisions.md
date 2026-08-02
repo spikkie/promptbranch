@@ -1187,3 +1187,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Safety:** plan mode is read-only, apply requires exact version confirmation, mutation flags are opt-in, and later phases are skipped after failure.
 - **Independence:** `promptbranch-method` continues independently on Promptbranch `>= v0.1.116` and may adopt this pipeline later through an explicit compatibility release.
 - **Next:** `v0.1.118` adds resumable/importable evidence and recovery without replaying completed mutation phases.
+
+## ADR-REL-117.1 — Adopted release identity is immutable and reusable evidence is canonical-artifact bound
+
+- **Baseline:** `v0.1.117` accepted/current.
+- **Decision:** once a repository/version is adopted, a different SHA-256 for that same version fails closed before Project Source mutation or artifact-registry mutation.
+- **Idempotence:** the same version, canonical filename, SHA-256 and consistent accepted/current state is an idempotent success; duplicate upload and adoption are skipped.
+- **Evidence reuse:** reusable direct validation evidence binds to the canonical rebuilt artifact SHA-256, repository identity, Git commit, transport, service base, runtime mode, source-kind matrix and command signature. The transport ZIP is not acceptance authority.
+- **Versioning:** changed bytes require a new version. No override or silent replacement path is introduced.

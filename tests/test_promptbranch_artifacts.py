@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, default_artifact_filename, infer_repo_id_from_artifact_filename, iter_repo_files, parse_canonical_artifact_filename, release_entry_hygiene_violations, verify_zip_artifact
+from promptbranch_artifacts import ArtifactIdentityConflictError, ArtifactRecord, ArtifactRegistry, canonical_artifact_filename, canonical_version_tag, create_repo_snapshot, default_artifact_filename, infer_repo_id_from_artifact_filename, iter_repo_files, parse_canonical_artifact_filename, release_entry_hygiene_violations, verify_zip_artifact
 
 
 def test_canonical_artifact_filename_accepts_extended_numeric_versions() -> None:
@@ -532,3 +532,14 @@ def test_repo_snapshot_includes_tracked_project_binding(tmp_path: Path) -> None:
     with zipfile.ZipFile(record.path) as archive:
         assert ".promptbranch-repo.json" in archive.namelist()
     assert verify_zip_artifact(record.path)["ok"] is True
+
+
+def test_adopted_release_version_hash_is_immutable(tmp_path: Path) -> None:
+    registry = ArtifactRegistry(tmp_path / "profile")
+    registry.initialize()
+    first = ArtifactRecord(path=str(tmp_path / "demo_v1.2.3.zip"), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256="a" * 64, size_bytes=1, file_count=1, created_at="2026-08-02T00:00:00Z")
+    registry.add(first)
+    second = ArtifactRecord(path=str(tmp_path / "other" / "demo_v1.2.3.zip"), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256="b" * 64, size_bytes=1, file_count=1, created_at="2026-08-02T00:01:00Z")
+    import pytest
+    with pytest.raises(ArtifactIdentityConflictError):
+        registry.add(second)

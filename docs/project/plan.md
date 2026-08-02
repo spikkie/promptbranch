@@ -1,41 +1,44 @@
-# Project Plan
+# Promptbranch plan
+
+accepted/current baseline: v0.1.117
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+active candidate version: v0.1.117.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+active slice: v0.1.117.1 — Immutable release identity and hash-bound evidence reuse
+next normal version: v0.1.118
+next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.116
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.116(1).zip
-active candidate version: v0.1.117
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-active slice: v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline
+accepted/current version: v0.1.117
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+active candidate version: v0.1.117.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+next normal version: v0.1.118
+next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 ```
+
+## Active repair
+
+1. Bind reusable release-validation evidence to the canonical rebuilt artifact SHA-256, repository identity, Git commit, and existing validation dimensions.
+2. Fail closed before Project Source mutation when an adopted version exists with a different or missing hash.
+3. Treat the same version and exact same hash as idempotent and skip duplicate publication/adoption.
+4. Preserve `v0.1.118` as the next normal slice after this repair is adopted.
 
 ## Active normal slice
 
-In scope:
-
-- read-only PBAI compliance inventory across one or more repositories;
-- explicit rollout readiness from declaration, proof level, migration status, and release contract;
-- generic release pipeline planning with immutable phase order;
-- local repository-owned validate/test/build/verify operations;
-- explicit guarded Git staging, commit, and same-run push;
-- committed-tree artifact rebuild and verification before publication;
-- exact Project Source publication evidence capture;
-- source-evidence-bound adoption and accepted/current verification;
-- fail-closed dependency rules: commit requires stage-all, push requires commit, publication requires push, adoption requires publication, and current verification requires adoption;
-- no mutation in plan mode and no silent phase enablement.
-
-Out of scope: multi-repository release-set execution, cross-repository dependency solving, automatic rollback, silent project-local orchestrator retirement, deployment, and ChatGPT Project deletion.
+No normal slice is active while `v0.1.117.1` is in repair mode. The accepted normal baseline is `v0.1.117`.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.117` — active: PBAI compliance inventory and evidence-bound generic release pipeline.
-2. `v0.1.118` — planned: resumable/importable pipeline evidence and recovery after partial external failure.
-3. `v0.1.119` — planned: read-only multi-repository release-set dependency planner.
-4. `v0.1.120` — planned: guarded multi-repository rollout execution and rollback evidence.
+1. `v0.1.117` — accepted/current: PBAI compliance inventory and evidence-bound generic release pipeline.
+2. `v0.1.117.1` — active repair: immutable release identity and hash-bound evidence reuse.
+3. `v0.1.118` — planned after acceptance: Resumable/importable release-pipeline evidence and recovery.
+4. `v0.1.119` — planned: read-only multi-repository release-set dependency planner.
+5. `v0.1.120` — planned: guarded multi-repository rollout execution and rollback evidence.
 
 Repair releases must not advance normal scope.
 

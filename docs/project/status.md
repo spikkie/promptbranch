@@ -1,44 +1,34 @@
-# Project Status
+# Promptbranch status
+
+accepted/current baseline: v0.1.117
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.117(2).zip
+active candidate version: v0.1.117.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+active slice: v0.1.117.1 — Immutable release identity and hash-bound evidence reuse
+next normal version: v0.1.118
+next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
+
+`v0.1.117` is accepted/current. `v0.1.117.1` is a repair candidate. It prevents same-version/different-hash adoption, makes exact same-version/same-hash reruns idempotent, binds reusable release evidence to the final canonical artifact SHA-256, repository identity, Git commit, validation profile, and skip matrix, and blocks duplicate Project Source publication before mutation. No adoption is claimed for this candidate.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.116
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.116.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.116(1).zip
-active candidate version: v0.1.117
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
-active slice: v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline
-next planned version: v0.1.118
-next planned slice: v0.1.118 — resumable/importable release-pipeline evidence and recovery
+accepted/current version: v0.1.117
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.117.zip
+active candidate version: v0.1.117.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.117.1.zip
+next normal version: v0.1.118
+next normal slice: v0.1.118 — Resumable/importable release-pipeline evidence and recovery
 ```
-
-<!-- v0.1.117 current control-surface header -->
-- Accepted/current version: `v0.1.116`
-- Accepted/current artifact: `chatgpt_claudecode_workflow-2_v0.1.116.zip`
-- Accepted/current Project Source: `chatgpt_claudecode_workflow-2_v0.1.116(1).zip`
-- Active candidate version: `v0.1.117`
-- Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.117.zip`
-- Active slice: `v0.1.117 — PBAI compliance inventory and evidence-bound generic release pipeline`
-- Next planned version: `v0.1.118`
-- Next planned slice: `v0.1.118 — resumable/importable release-pipeline evidence and recovery`
 
 ## Current release state
 
-`v0.1.116` is accepted/current with runtime, adopted artifact, exact assigned Project Source, registry current, and code/source consistency aligned. `v0.1.117` develops independently from `promptbranch-method` and treats Promptbranch `v0.1.116` as the immutable baseline.
-
-Focused candidate implementation now provides:
-
-- `pb application architecture inventory` for read-only multi-repository PBAI compliance inventory;
-- `pb release pipeline plan` for a read-only phase and mutation plan;
-- `pb release pipeline apply` for local proof plus explicitly requested Git, Project Source, adoption, and current verification;
-- source-evidence-bound adoption using the exact publication result;
-- a committed-tree rebuild/verify boundary before Project Source publication;
-- fail-closed dependency and version-confirmation gates.
+The immutable baseline is `chatgpt_claudecode_workflow-2_v0.1.117.zip`. The active repair artifact is `chatgpt_claudecode_workflow-2_v0.1.117.1.zip`. The standard browser profile default and all existing release gates remain unchanged. Normal scope does not advance.
 
 ## Next safe action
 
-Run focused and full local validation, build `chatgpt_claudecode_workflow-2_v0.1.117.zip`, validate clean extraction, and then run the unchanged strict host release workflow. Candidate creation does not claim commit, push, publication, adoption, accepted/current, or operational proof.
+Run repository-owned validation, build and verify `chatgpt_claudecode_workflow-2_v0.1.117.1.zip`, then execute the strict host release workflow. Adoption must prove a new `v0.1.117.1` identity; it must not replace a different hash for an already adopted version. After successful adoption, continue with `v0.1.118 — Resumable/importable release-pipeline evidence and recovery`.
 
 ## v0.1.102 candidate status
 

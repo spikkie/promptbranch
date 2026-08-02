@@ -1283,3 +1283,7 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 ## v0.1.117 to v0.1.118 migration note
 
 `v0.1.118` is planned to add resumable/importable release-pipeline evidence and recovery. It must consume the immutable evidence emitted by `v0.1.117`, detect already completed phases, and avoid replaying successful Git, Project Source publication, adoption, or accepted/current mutation phases. No automatic migration is performed by `v0.1.117`.
+
+## v0.1.117 to v0.1.117.1 migration note
+
+`v0.1.117.1` introduces no registry schema migration. Existing adopted records that include SHA-256 remain valid. A same-version adoption with missing or different SHA-256 now fails closed; operators must restore the exact adopted bytes or bump `VERSION`. Exact same-version/same-hash reruns are idempotent and do not upload or adopt another Project Source. Validation evidence created by older releases without repository identity, Git commit, or canonical artifact binding is not reusable.

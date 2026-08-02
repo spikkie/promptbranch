@@ -405,6 +405,26 @@ class ArtifactRecord:
         return asdict(self)
 
 
+class ArtifactIdentityConflictError(RuntimeError):
+    def __init__(self, *, repo_id: str, version: str, existing_sha256: str, candidate_sha256: str) -> None:
+        self.repo_id = repo_id
+        self.version = version
+        self.existing_sha256 = existing_sha256
+        self.candidate_sha256 = candidate_sha256
+        super().__init__(f"immutable release identity conflict for {repo_id} {version}: {existing_sha256} != {candidate_sha256}")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "status": "immutable_release_identity_conflict",
+            "repo_id": self.repo_id,
+            "version": self.version,
+            "existing_sha256": self.existing_sha256,
+            "candidate_sha256": self.candidate_sha256,
+            "mutation_performed": False,
+        }
+
+
 class ArtifactRegistryStateError(RuntimeError):
     def __init__(
         self,
@@ -614,6 +634,21 @@ class ArtifactRegistry:
         record_error = self._record_validation_error(record_payload)
         if record_error:
             raise ValueError(f"artifact record is invalid: {record_error}")
+        if record.kind == "adopted_release":
+            for existing in artifacts:
+                if (
+                    existing.get("kind") == "adopted_release"
+                    and existing.get("repo_id") == record.repo_id
+                    and canonical_version_tag(existing.get("version")) == canonical_version_tag(record.version)
+                ):
+                    existing_sha = str(existing.get("sha256") or "")
+                    if not existing_sha or existing_sha != record.sha256:
+                        raise ArtifactIdentityConflictError(
+                            repo_id=str(record.repo_id or ""),
+                            version=str(canonical_version_tag(record.version) or record.version or ""),
+                            existing_sha256=existing_sha,
+                            candidate_sha256=record.sha256,
+                        )
         artifacts = [item for item in artifacts if item.get("path") != record.path]
         artifacts.append(record_payload)
         artifacts.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)

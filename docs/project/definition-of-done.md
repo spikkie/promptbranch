@@ -908,3 +908,7 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-339 | A cross-process timeout reports the observed owner and proves the actual queue wait instead of returning after approximately 0.001 seconds | focused_candidate | structured busy payload and timeout regression | v0.1.115.1 |
 | DOD-340 | Live preflight and continuous live use the same service owner and are separated by service-idle plus host-flock release proof | focused_candidate | release controller and shell regressions | v0.1.115.1 |
 | DOD-341 | Strict direct, localhost, external-live, rollback, Guardian, operational-evidence, adoption and current-verification gates remain unchanged | open | full all-all release-control adoption log required | v0.1.115.1 |
+
+| DOD-347 | Same adopted version with a different or missing artifact SHA-256 fails before Project Source or registry mutation | focused_candidate | release identity and artifact registry tests | v0.1.117.1 |
+| DOD-348 | Same version and same SHA-256 is idempotent and skips duplicate publication/adoption | focused_candidate | release pipeline idempotence test | v0.1.117.1 |
+| DOD-349 | Reusable release evidence binds to canonical rebuilt artifact SHA-256, repository identity, Git commit and validation dimensions | focused_candidate | release-control contract tests | v0.1.117.1 |

@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
-  "accepted_current_version": "v0.1.116",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
-  "active_candidate_version": "v0.1.117",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
+  "accepted_current_version": "v0.1.117",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.1.zip",
+  "active_candidate_version": "v0.1.117.1",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.117 \u2014 PBAI compliance inventory and evidence-bound generic release pipeline",
+  "active_slice": "v0.1.117.1 \u2014 Immutable release identity and hash-bound evidence reuse",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -343,56 +343,56 @@
       "version": "v0.1.111.5.1"
     },
     {
-      "version": "v0.1.111.5.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip",
+      "created_at": "2026-07-29T09:02:00+02:00",
       "slice": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
       "status": "candidate",
       "validation": "Source-tree and clean-extraction corrective surfaces passed 299 tests each; compileall, shell syntax, control surface, authority graph, behavioural surface, Artifact Guardian, and installed package contract planning passed. Strict host release validation remains pending.",
-      "created_at": "2026-07-29T09:02:00+02:00"
+      "version": "v0.1.111.5.2"
     },
     {
-      "version": "v0.1.114",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
+      "created_at": "2026-07-29T15:37:00+02:00",
       "slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
       "status": "repair_required",
-      "created_at": "2026-07-29T15:37:00+02:00",
-      "validation": "Strict host validation completed 10/10 with final verdict FIX. full_direct, full_localhost, and import_smoke failed because ambient PATH resolved pb/python from /home/spikkie/git/ai-aip/py_env and promptbranch_container_api import raised Router.__init__() got an unexpected keyword argument on_startup. PBAI structural, registry, executable, and Artifact Guardian gates passed; adoption was refused and accepted/current remained v0.1.113."
+      "validation": "Strict host validation completed 10/10 with final verdict FIX. full_direct, full_localhost, and import_smoke failed because ambient PATH resolved pb/python from /home/spikkie/git/ai-aip/py_env and promptbranch_container_api import raised Router.__init__() got an unexpected keyword argument on_startup. PBAI structural, registry, executable, and Artifact Guardian gates passed; adoption was refused and accepted/current remained v0.1.113.",
+      "version": "v0.1.114"
     },
     {
-      "version": "v0.1.114.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
+      "created_at": "2026-07-29T20:29:00+02:00",
       "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
       "status": "repair_required",
       "validation": "Strict host direct transport bound the correct candidate runtime and passed package import smoke, then failed project_control_surface because the candidate venv lacked pytest; fail-fast skipped the remaining validation groups and adoption could not proceed.",
-      "created_at": "2026-07-29T20:29:00+02:00"
+      "version": "v0.1.114.1"
     },
     {
-      "version": "v0.1.114.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
-      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
-      "status": "candidate",
       "created_at": "2026-07-30T07:48:00+02:00",
       "kind": "repair",
-      "summary": "Pins pytest in the candidate package, verifies its version and module path inside the exact pipx venv, and binds release-validation subprocesses to that interpreter without advancing PBAI scope."
+      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
+      "status": "candidate",
+      "summary": "Pins pytest in the candidate package, verifies its version and module path inside the exact pipx venv, and binds release-validation subprocesses to that interpreter without advancing PBAI scope.",
+      "version": "v0.1.114.2"
     },
     {
-      "version": "v0.1.115",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
+      "created_at": "2026-07-30T11:17:00+02:00",
+      "kind": "normal",
       "slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
       "status": "repair_required",
-      "kind": "normal",
-      "created_at": "2026-07-30T11:17:00+02:00",
-      "validation": "Strict host validation ended FIX at live_project_ensure due immediate cross-process browser profile lock failure; adoption refused."
+      "validation": "Strict host validation ended FIX at live_project_ensure due immediate cross-process browser profile lock failure; adoption refused.",
+      "version": "v0.1.115"
     },
     {
-      "version": "v0.1.115.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
-      "kind": "repair",
-      "status": "candidate",
       "created_at": "2026-07-30T13:26:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
+      "status": "candidate",
       "summary": "Makes cross-process flock acquisition honor the bounded queue timeout and inserts explicit service-idle plus host-flock release proof before release-live-continuous.",
-      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending."
+      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending.",
+      "version": "v0.1.115.1"
     }
   ],
   "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
@@ -793,23 +793,24 @@
       "version": "v0.1.111.5.1"
     },
     {
-      "version": "v0.1.111.5.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip",
+      "created_at": "2026-07-29T09:02:00+02:00",
       "slice": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
       "status": "candidate",
       "validation": "Source-tree and clean-extraction corrective surfaces passed 299 tests each; compileall, shell syntax, control surface, authority graph, behavioural surface, Artifact Guardian, and installed package contract planning passed. Strict host release validation remains pending.",
-      "created_at": "2026-07-29T09:02:00+02:00"
+      "version": "v0.1.111.5.2"
     }
   ],
-  "last_completed_normal_slice": "v0.1.116 \u2014 PBAI-001 templates, migration reports, differential validation, and first promptbranch-method domain-module proof",
-  "last_completed_normal_slice_version": "v0.1.116",
+  "last_completed_normal_slice": "v0.1.117 \u2014 PBAI compliance inventory and evidence-bound generic release pipeline",
+  "last_completed_normal_slice_version": "v0.1.117",
   "last_completed_repair": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
   "last_completed_repair_version": "v0.1.115.1",
   "last_updated": "2026-08-01T09:12:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
-  "next_normal_slice": "v0.1.117 \u2014 PBAI compliance inventory and evidence-bound generic release pipeline",
-  "next_normal_version": "v0.1.117",
-  "next_planned_slice_after_acceptance": "v0.1.118 \u2014 resumable/importable release-pipeline evidence and recovery",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.118.zip",
+  "next_normal_slice": "v0.1.118 \u2014 Resumable/importable release-pipeline evidence and recovery",
+  "next_normal_version": "v0.1.118",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.118.zip",
+  "next_planned_slice_after_acceptance": "v0.1.118 \u2014 Resumable/importable release-pipeline evidence and recovery",
   "next_planned_version_after_acceptance": "v0.1.118",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
@@ -1365,14 +1366,14 @@
       "version": "v0.1.109"
     },
     {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
       "kind": "repair",
+      "scope": "normalised browser progress passed; reproducible external-live idle-handoff blocker and ETA defect remain",
+      "slice": "v0.1.111.3 \u2014 Normalised browser progress and genuine step-level fail-fast",
       "status": "repair_required",
       "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
-      "version": "v0.1.111.3",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.3.zip",
-      "slice": "v0.1.111.3 \u2014 Normalised browser progress and genuine step-level fail-fast",
       "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5.",
-      "scope": "normalised browser progress passed; reproducible external-live idle-handoff blocker and ETA defect remain"
+      "version": "v0.1.111.3"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.4.zip",
@@ -1380,91 +1381,91 @@
       "slice": "v0.1.111.4 \u2014 Deterministic external-live idle handoff",
       "status": "repair_required",
       "summary": "Use the trusted conversation only for authenticated Project identity, hand off to the exact Project home, require an idle composer, create a dedicated release-live conversation, never click Stop, and report downstream live gates as dependency skips after one causal failure.",
-      "version": "v0.1.111.4",
-      "validation": "Strict retry stopped before tests: Project Source upload successfully pruned one obsolete release, uploaded the new indexed candidate, and removed the previous family member, but the final verifier incorrectly required the source count to equal the hard limit. Adoption was not attempted."
+      "validation": "Strict retry stopped before tests: Project Source upload successfully pruned one obsolete release, uploaded the new indexed candidate, and removed the previous family member, but the final verifier incorrectly required the source count to equal the hard limit. Adoption was not attempted.",
+      "version": "v0.1.111.4"
     },
     {
       "kind": "repair",
       "status": "accepted_current",
-      "version": "v0.1.111.4.1",
       "summary": "Calculates the authoritative final Project Source count from proven prune, upload, and previous-family removal deltas; verifies the exact final identity multiset, assigned-family singleton, pruned-source absence, and no unexpected disappearance while preserving fail-closed mutation semantics.",
-      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, the deterministic external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified."
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, the deterministic external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.",
+      "version": "v0.1.111.4.1"
     },
     {
-      "kind": "repair",
-      "status": "accepted_current",
-      "version": "v0.1.111.5",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
-      "slice": "v0.1.111.5 \u2014 Named-step ETA planning and stable countdown",
-      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
-      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects."
-    },
-    {
       "kind": "repair",
-      "status": "repair_required",
-      "version": "v0.1.111.5.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
-      "slice": "v0.1.111.5.1 \u2014 Empty-step-safe ETA progress and stable range countdown",
-      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority.",
-      "validation": "Strict host validation exposed a deterministic informational ETA exception after full_direct: previous active-step state was null, causing TypeError in estimate_named_step_eta. The run was stopped before adoption; accepted/current remained v0.1.111.5."
+      "slice": "v0.1.111.5 \u2014 Named-step ETA planning and stable countdown",
+      "status": "accepted_current",
+      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects.",
+      "version": "v0.1.111.5"
     },
     {
-      "version": "v0.1.111.5.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "kind": "repair",
+      "slice": "v0.1.111.5.1 \u2014 Empty-step-safe ETA progress and stable range countdown",
+      "status": "repair_required",
+      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority.",
+      "validation": "Strict host validation exposed a deterministic informational ETA exception after full_direct: previous active-step state was null, causing TypeError in estimate_named_step_eta. The run was stopped before adoption; accepted/current remained v0.1.111.5.",
+      "version": "v0.1.111.5.1"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip",
+      "kind": "repair",
       "slice": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
       "status": "candidate",
+      "summary": "Normalises missing or null previous active-step state at both the release-controller caller boundary and the ETA estimator boundary, preserving empty-step safety, stable range clamping, and informational-only ETA authority.",
       "validation": "Source-tree and clean-extraction corrective surfaces passed 299 tests each; compileall, shell syntax, control surface, authority graph, behavioural surface, Artifact Guardian, and installed package contract planning passed. Strict host release validation remains pending.",
-      "kind": "repair",
-      "summary": "Normalises missing or null previous active-step state at both the release-controller caller boundary and the ETA estimator boundary, preserving empty-step safety, stable range clamping, and informational-only ETA authority."
+      "version": "v0.1.111.5.2"
     },
     {
-      "version": "v0.1.114",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.zip",
-      "slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
       "kind": "normal",
+      "slice": "v0.1.114 \u2014 PBAI-001 executable validation and SkillRun evidence",
       "status": "repair_required",
       "summary": "Added executable PBAI proof and SkillRun evidence.",
-      "validation": "Strict host validation completed 10/10 with final verdict FIX. full_direct, full_localhost, and import_smoke failed because ambient PATH resolved pb/python from /home/spikkie/git/ai-aip/py_env and promptbranch_container_api import raised Router.__init__() got an unexpected keyword argument on_startup. PBAI structural, registry, executable, and Artifact Guardian gates passed; adoption was refused and accepted/current remained v0.1.113."
+      "validation": "Strict host validation completed 10/10 with final verdict FIX. full_direct, full_localhost, and import_smoke failed because ambient PATH resolved pb/python from /home/spikkie/git/ai-aip/py_env and promptbranch_container_api import raised Router.__init__() got an unexpected keyword argument on_startup. PBAI structural, registry, executable, and Artifact Guardian gates passed; adoption was refused and accepted/current remained v0.1.113.",
+      "version": "v0.1.114"
     },
     {
-      "version": "v0.1.114.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
-      "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
       "kind": "repair",
+      "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
       "status": "candidate",
       "summary": "Binds strict release validation to the installed candidate runtime and pins a compatible FastAPI/Starlette pair without changing PBAI executable semantics.",
-      "validation": "Focused candidate-runtime, import-smoke, dependency compatibility, PBAI, control, package, and clean-extraction validation pending."
+      "validation": "Focused candidate-runtime, import-smoke, dependency compatibility, PBAI, control, package, and clean-extraction validation pending.",
+      "version": "v0.1.114.1"
     },
     {
-      "version": "v0.1.114.2",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.2.zip",
-      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
       "kind": "repair",
+      "slice": "v0.1.114.2 \u2014 Deterministic candidate test-runner dependency repair",
       "status": "accepted_current",
       "summary": "Bound pytest 9.0.2 to the exact candidate venv and preserved executable PBAI behavior.",
-      "validation": "Strict host validation passed 10/10; Artifact Guardian passed; evidence-bound adoption and release_adopted_and_verified succeeded."
+      "validation": "Strict host validation passed 10/10; Artifact Guardian passed; evidence-bound adoption and release_adopted_and_verified succeeded.",
+      "version": "v0.1.114.2"
     },
     {
-      "version": "v0.1.115",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.zip",
-      "slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
       "kind": "normal",
+      "slice": "v0.1.115 \u2014 PBAI-001 operational validation, lifecycle evidence, and impact-based fast testing",
       "status": "repair_required",
       "summary": "Adds PBAI operational lifecycle evidence and deterministic impact-based fast development testing.",
-      "validation": "Strict host validation ended FIX: direct, localhost, import-smoke, rollback, and Artifact Guardian passed; live_project_ensure failed because cross-process flock contention returned browser_profile_busy after 0.001s instead of honoring the 600s queue timeout. Adoption was refused."
+      "validation": "Strict host validation ended FIX: direct, localhost, import-smoke, rollback, and Artifact Guardian passed; live_project_ensure failed because cross-process flock contention returned browser_profile_busy after 0.001s instead of honoring the 600s queue timeout. Adoption was refused.",
+      "version": "v0.1.115"
     },
     {
-      "version": "v0.1.115.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
-      "kind": "repair",
-      "status": "candidate",
       "created_at": "2026-07-30T13:26:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
+      "status": "candidate",
       "summary": "Makes cross-process flock acquisition honor the bounded queue timeout and inserts explicit service-idle plus host-flock release proof before release-live-continuous.",
-      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending."
+      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending.",
+      "version": "v0.1.115.1"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -1691,66 +1692,74 @@
       "kind": "repair",
       "status": "repair_required",
       "summary": "Normalises expected browser results before progress accounting, propagates fail-fast into the browser integration step boundary, stops before the next main browser step after a genuine failure, and marks remaining work units skipped.",
-      "version": "v0.1.111.3",
-      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5."
+      "validation": "Two complete strict release logs passed product transports but reproduced the same external-live target_conversation_busy bootstrap failure because the trusted development conversation exposed a Stop answering control. Adoption was refused. The logs also proved the elapsed/completed ETA is operationally misleading; ETA repair is deferred to v0.1.111.5.",
+      "version": "v0.1.111.3"
     },
     {
       "kind": "repair",
       "status": "repair_required",
-      "version": "v0.1.111.4",
       "summary": "Use the trusted conversation only for authenticated Project identity, hand off to the exact Project home, require an idle composer, create a dedicated release-live conversation, never click Stop, and report downstream live gates as dependency skips after one causal failure.",
-      "validation": "Strict retry stopped before tests after the source transaction succeeded but final capacity verification falsely required the hard limit; adoption was not attempted."
+      "validation": "Strict retry stopped before tests after the source transaction succeeded but final capacity verification falsely required the hard limit; adoption was not attempted.",
+      "version": "v0.1.111.4"
     },
     {
       "kind": "repair",
       "status": "accepted_current",
-      "version": "v0.1.111.4.1",
       "summary": "Derives final Project Source capacity and identities from proven prune, upload, and previous-family removal deltas while preserving exact singleton and fail-closed verification.",
-      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, the deterministic external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified."
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, the deterministic external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified.",
+      "version": "v0.1.111.4.1"
     },
     {
-      "kind": "repair",
-      "status": "accepted_current",
-      "version": "v0.1.111.5",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.zip",
-      "slice": "v0.1.111.5 \u2014 Named-step ETA planning and stable countdown",
-      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
-      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects."
-    },
-    {
       "kind": "repair",
-      "status": "repair_required",
-      "version": "v0.1.111.5.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
-      "slice": "v0.1.111.5.1 \u2014 Empty-step-safe ETA progress and stable range countdown",
-      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority.",
-      "validation": "Strict host validation exposed a deterministic informational ETA exception after full_direct: previous active-step state was null, causing TypeError in estimate_named_step_eta. The run was stopped before adoption; accepted/current remained v0.1.111.5."
+      "slice": "v0.1.111.5 \u2014 Named-step ETA planning and stable countdown",
+      "status": "accepted_current",
+      "summary": "Replaces elapsed/completed extrapolation with informational named-step timing history, transport-aware medians, phase fallback, known-skip exclusion, confidence-labelled ranges, and a stable countdown without changing validation authority.",
+      "validation": "Strict host release validation passed 10/10 with fresh full_direct, independent full_localhost, external-live idle handoff, visual-artifact roundtrip, Artifact Guardian, evidence-bound adoption, and release_adopted_and_verified. Post-adoption log review exposed informational empty-key and ETA-range defects.",
+      "version": "v0.1.111.5"
     },
     {
-      "version": "v0.1.111.5.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.1.zip",
+      "kind": "repair",
+      "slice": "v0.1.111.5.1 \u2014 Empty-step-safe ETA progress and stable range countdown",
+      "status": "repair_required",
+      "summary": "Makes top-level progress emission safe when no step is active and clamps the ETA high bound as well as the midpoint while the active plan is unchanged or shrinking, without changing validation authority.",
+      "validation": "Strict host validation exposed a deterministic informational ETA exception after full_direct: previous active-step state was null, causing TypeError in estimate_named_step_eta. The run was stopped before adoption; accepted/current remained v0.1.111.5.",
+      "version": "v0.1.111.5.1"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.111.5.2.zip",
+      "kind": "repair",
       "slice": "v0.1.111.5.2 \u2014 Null-safe previous active-step ETA state",
       "status": "candidate",
+      "summary": "Normalises missing or null previous active-step state at both the release-controller caller boundary and the ETA estimator boundary, preserving empty-step safety, stable range clamping, and informational-only ETA authority.",
       "validation": "Source-tree and clean-extraction corrective surfaces passed 299 tests each; compileall, shell syntax, control surface, authority graph, behavioural surface, Artifact Guardian, and installed package contract planning passed. Strict host release validation remains pending.",
-      "kind": "repair",
-      "summary": "Normalises missing or null previous active-step state at both the release-controller caller boundary and the ETA estimator boundary, preserving empty-step safety, stable range clamping, and informational-only ETA authority."
+      "version": "v0.1.111.5.2"
     },
     {
-      "version": "v0.1.114.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.114.1.zip",
+      "created_at": "2026-07-29T20:29:00+02:00",
       "slice": "v0.1.114.1 \u2014 Candidate runtime resolution and FastAPI/Starlette compatibility repair",
       "status": "candidate",
-      "created_at": "2026-07-29T20:29:00+02:00"
+      "version": "v0.1.114.1"
     },
     {
-      "version": "v0.1.115.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
-      "kind": "repair",
-      "status": "candidate",
       "created_at": "2026-07-30T13:26:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
+      "status": "candidate",
       "summary": "Makes cross-process flock acquisition honor the bounded queue timeout and inserts explicit service-idle plus host-flock release proof before release-live-continuous.",
-      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending."
+      "validation": "Focused lock, release-controller, control-surface, clean-extraction, installed-package, and strict host validation pending.",
+      "version": "v0.1.115.1"
+    },
+    {
+      "kind": "repair",
+      "slice": "v0.1.117.1 \u2014 Immutable release identity and hash-bound evidence reuse",
+      "status": "candidate",
+      "summary": "Fails closed on same-version/different-hash adoption, makes exact identity reruns idempotent, and binds reusable validation evidence to the final canonical artifact, repository identity, and Git commit.",
+      "validation": "Focused implementation and deterministic release validation pending.",
+      "version": "v0.1.117.1"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -1785,63 +1794,54 @@
   ],
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.115.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.115.1.zip",
-      "slice": "v0.1.115.1 \u2014 Release-live profile ownership handoff repair",
-      "status": "accepted_historical",
-      "release_mode": "repair",
-      "scope": "last accepted repair before the current runtime baseline"
-    },
-    {
-      "version": "v0.1.116",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.116.zip",
-      "slice": "v0.1.116 \u2014 PBAI templates, migration reports, differential validation, and first promptbranch-method domain-module proof",
-      "status": "accepted_current",
-      "release_mode": "normal",
-      "scope": "stable runtime contract and domain-module proof"
-    },
-    {
-      "version": "v0.1.117",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
+      "release_mode": "normal",
+      "scope": "PBAI compliance inventory and evidence-bound generic release pipeline",
       "slice": "v0.1.117 \u2014 PBAI compliance inventory and evidence-bound generic release pipeline",
+      "status": "accepted_current",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.zip",
+      "version": "v0.1.117"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.117.1.zip",
+      "release_mode": "repair",
+      "scope": "immutable same-version artifact identity and canonical hash-bound evidence reuse; no normal scope advance",
+      "slice": "v0.1.117.1 \u2014 Immutable release identity and hash-bound evidence reuse",
       "status": "active",
-      "release_mode": "normal",
-      "scope": "inventory plus explicit local/Git/publication/adoption/current pipeline"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.117.1.zip",
+      "version": "v0.1.117.1"
     },
     {
-      "version": "v0.1.118",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.118.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.118.zip",
-      "slice": "v0.1.118 \u2014 resumable/importable release-pipeline evidence and recovery",
-      "status": "planned_after_acceptance",
       "release_mode": "normal",
-      "scope": "resume partial pipelines without replaying successful mutation phases"
+      "scope": "resume partial pipelines without replaying successful mutation phases",
+      "slice": "v0.1.118 \u2014 Resumable/importable release-pipeline evidence and recovery",
+      "status": "planned_after_acceptance",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.118.zip",
+      "version": "v0.1.118"
     },
     {
-      "version": "v0.1.119",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+      "release_mode": "normal",
+      "scope": "read-only dependencies and compatibility matrix",
       "slice": "v0.1.119 \u2014 multi-repository release-set dependency planner",
       "status": "planned",
-      "release_mode": "normal",
-      "scope": "read-only dependencies and compatibility matrix"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+      "version": "v0.1.119"
     },
     {
-      "version": "v0.1.120",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
+      "release_mode": "normal",
+      "scope": "explicit release-set execution and rollback",
       "slice": "v0.1.120 \u2014 guarded multi-repository rollout execution and rollback evidence",
       "status": "planned",
-      "release_mode": "normal",
-      "scope": "explicit release-set execution and rollback"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
+      "version": "v0.1.120"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1852,5 +1852,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.117"
+  "updated_for": "v0.1.117.1"
 }
