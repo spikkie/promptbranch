@@ -2,11 +2,11 @@
 
 accepted/current baseline: v0.1.119
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-active candidate version: v0.1.120
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
-active slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
-next normal version: v0.1.120
-next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+active candidate version: v0.1.120.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+active slice: v0.1.120.1 — Checkpoint resume exit-code handling repair
+next normal version: v0.1.121
+next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 
 ## Current baseline
 
@@ -15,24 +15,21 @@ accepted/current version: v0.1.119
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
 accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
-active candidate version: v0.1.120
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
-next normal version: v0.1.120
-next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+active candidate version: v0.1.120.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+next normal version: v0.1.121
+next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 next planned after acceptance: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 ```
 
-## Active normal slice
+## Active repair slice — v0.1.120.1
 
-1. Recompute and exact-bind a compatible, execution-ready `promptbranch.release_set` plan immediately before mutation.
-2. Require exact release-set ID and plan SHA-256 confirmation plus explicit complete lifecycle authorization.
-3. Execute repository release pipelines in dependency-wave order and deterministic repository order within each wave.
-4. Capture pre-rollout accepted/current artifact and Project Source identities for every target repository.
-5. Atomically checkpoint every rollout transition and preserve a SHA-256 hash chain across all events.
-6. Stop on the first failed repository and invoke repository-owned rollback contracts in reverse completion order.
-7. Verify rollback restores exact previous version, artifact SHA-256, assigned source, processed file ID and Library metadata ID.
-8. Fail closed with explicit incomplete-rollback evidence when exact restoration cannot be proved.
-9. Keep ChatGPT Project deletion, implicit commands, parallel mutation and automatic interrupted-run resume out of scope.
+1. Preserve the exact `v0.1.120` checkpoint, artifact hash and Project Source identity on retry.
+2. Keep `set +e` / return-code capture / `set -e` ownership in the checkpoint caller.
+3. Allow checkpoint preflight code `10` to reach the caller and select source reuse instead of terminating release control.
+4. Prove the real extracted shell function continues to the source-reuse and test-execution markers.
+5. Preserve all guarded release-set execution, rollback and evidence behavior from `v0.1.120`.
+6. Preserve the unchanged strict 10/10 adoption gate and do not advance normal scope.
 
 ## Rolling horizon authority
 
@@ -41,8 +38,9 @@ The machine-readable authority is `docs/project/plan-state.json`.
 1. `v0.1.118` — accepted historical normal release.
 2. `v0.1.118.1` — accepted historical repair release.
 3. `v0.1.119` — accepted/current normal baseline.
-4. `v0.1.120` — active normal candidate.
-5. `v0.1.121` — planned after acceptance.
+4. `v0.1.120` — repair-required normal candidate.
+5. `v0.1.120.1` — active repair candidate.
+6. `v0.1.121` — planned after repair acceptance.
 
 ## Repair definition — v0.1.71.1
 

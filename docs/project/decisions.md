@@ -1230,3 +1230,10 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Decision:** Every transition is atomically checkpointed. Events are SHA-256 hash chained and the complete summary has a canonical evidence SHA-256 validated by `pb release set evidence-validate`.
 - **Consequence:** Arbitrary shell execution, implicit lifecycle flags, plan drift, unverified artifacts, parallel mutation, Project deletion and automatic interrupted-run resume remain unavailable.
 - **Next:** `v0.1.121` may add import/resume and operator reconciliation for interrupted or incompletely rolled-back release sets without weakening the exact-plan and evidence rules.
+
+## Decision D-0120.1 — Checkpoint helper must not restore caller-owned errexit
+
+- **Status:** accepted for repair candidate `v0.1.120.1`.
+- **Decision:** `release_control_checkpoint_preflight` may return control codes `0` and `10` but must not enable Bash `errexit` internally. The caller owns the `set +e` / capture / `set -e` envelope and is the only layer permitted to classify those codes.
+- **Reason:** `v0.1.120` correctly imported the exact provisional identity and returned `10`, but its inner `set -e` caused the shell to terminate before the caller selected the source-reuse branch.
+- **Consequence:** The original `v0.1.120` bytes are repair-required. `v0.1.120.1` must execute the actual checkpoint function under code `10` and prove continuation to test execution.

@@ -7,7 +7,8 @@
 | v0.1.118 | Resumable/importable release-pipeline evidence and recovery | accepted_historical | normal | incremental checkpoints, read-only import and guarded resume without mutation replay |
 | v0.1.118.1 | Deterministic canonical rebuild and failed-attempt identity binding | accepted_historical | repair | deterministic ZIP bytes, provisional identity and automatic exact-source recovery |
 | v0.1.119 | Read-only multi-repository release-set dependency planner | accepted_current | normal | dependency ordering, waves, compatibility matrix and immutable target inspection |
-| v0.1.120 | Guarded multi-repository rollout execution and rollback evidence | active | normal | exact plan binding, explicit per-repository pipeline execution, reverse rollback and tamper-evident evidence |
+| v0.1.120 | Guarded multi-repository rollout execution and rollback evidence | repair_required | normal | feature gates passed; retry control path exits before tests on intentional checkpoint code 10 |
+| v0.1.120.1 | Checkpoint resume exit-code handling repair | active | repair | caller-owned errexit handling and executable resume continuation proof |
 | v0.1.121 | Resumable release-set rollout recovery and operator reconciliation | planned_after_acceptance | normal | interrupted-run import/resume and controlled recovery from incomplete rollback |
 
 ## Independence rule
@@ -16,15 +17,16 @@ Promptbranch and `promptbranch-method` develop independently. Method releases re
 
 ## Repair horizon rule
 
-Repair releases must not advance normal scope. `v0.1.119` is accepted/current. `v0.1.120` is the active normal slice and grants mutation authority only through an exact compatible plan, explicit complete lifecycle confirmation, repository-owned release contracts, and mandatory reverse rollback evidence.
+Repair releases must not advance normal scope. `v0.1.119` is accepted/current. `v0.1.120` is repair-required. `v0.1.120.1` is the active repair and may only restore correct checkpoint resume control flow; it does not change the mutation authority introduced by the normal slice.
 
-## Current rolling horizon — v0.1.120 normal candidate
+## Current rolling horizon — v0.1.120.1 repair candidate
 
 - `v0.1.118` — accepted historical normal release.
 - `v0.1.118.1` — accepted historical repair release.
 - `v0.1.119` — accepted/current read-only release-set planner.
-- `v0.1.120` — active normal candidate: guarded release-set rollout and rollback evidence.
-- `v0.1.121` — planned after acceptance: resumable rollout recovery and operator reconciliation.
+- `v0.1.120` — repair-required normal candidate: guarded release-set rollout and rollback evidence.
+- `v0.1.120.1` — active repair candidate: checkpoint resume exit-code handling.
+- `v0.1.121` — planned after repair acceptance: resumable rollout recovery and operator reconciliation.
 
 ## Historical continuity
 

@@ -522,6 +522,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "pytest",
             "-q",
             "tests/test_promptbranch_release_contract.py",
+            "tests/test_promptbranch_release_attempt.py",
             "tests/test_promptbranch_release_pipeline.py",
         ),
     },

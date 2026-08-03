@@ -1314,3 +1314,7 @@ Repositories participating in automatic rollback must add an `operations.rollbac
 Operators should first run `pb release set plan --json`, preserve its `release_set_id` and `plan_sha256`, then invoke `pb release set apply` with every explicit lifecycle flag and mandatory `--rollback-on-failure`. Rollout evidence is written under `.pb_profile/release_set_rollouts/<release_set_id>/<run_id>/`. `pb release set evidence-validate` is read-only and can verify either the summary file, checkpoint file or containing evidence directory.
 
 Interrupted rollout import/resume and controlled reconciliation after an incomplete rollback are intentionally deferred to `v0.1.121`.
+
+## v0.1.120 to v0.1.120.1 migration note
+
+No repository, registry, release-set manifest or Project Source migration is required. Do not adopt the original `v0.1.120` bytes. Install `v0.1.120.1` and run the normal strict release lifecycle. On an exact retry, the release-control checkpoint may reuse only evidence bound to the `v0.1.120.1` artifact hash, Git commit and release-contract hash.

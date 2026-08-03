@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
   "accepted_current_version": "v0.1.119",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-  "active_candidate_version": "v0.1.120",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+  "active_candidate_version": "v0.1.120.1",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
+  "active_slice": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -425,6 +425,26 @@
       "summary": "Adds deterministic read-only dependency ordering, compatibility matrix, immutable target inspection, and fail-closed cycle/constraint validation for project-scoped multi-repository release sets.",
       "validation": "Focused planner, CLI, control-surface, package, clean-extraction and strict host validation pending.",
       "version": "v0.1.119"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
+      "created_at": "2026-08-03T15:55:00+02:00",
+      "kind": "normal",
+      "slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
+      "status": "repair_required",
+      "summary": "Adds exact-plan-bound multi-repository execution, reverse rollback, and tamper-evident rollout evidence.",
+      "validation": "Focused and packaged validation passed. Strict host validation failed in external live service; exact retry then exited with code 10 before tests because the checkpoint helper re-enabled errexit before returning the intentional resume code.",
+      "version": "v0.1.120"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+      "created_at": "2026-08-03T16:12:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
+      "status": "candidate",
+      "summary": "Keeps shell error-mode ownership at the checkpoint caller so intentional resume code 10 is handled instead of terminating release control.",
+      "validation": "Executable extracted-function regression, focused release-attempt, shell, control-surface, version, clean-extraction and strict host validation pending.",
+      "version": "v0.1.120.1"
     }
   ],
   "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
@@ -848,9 +868,9 @@
   "last_completed_repair": "v0.1.118.1 \u2014 Deterministic canonical rebuild and failed-attempt identity binding",
   "last_completed_repair_version": "v0.1.118.1",
   "last_updated": "2026-08-03T13:32:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-  "next_normal_slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
-  "next_normal_version": "v0.1.120",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
+  "next_normal_slice": "v0.1.121 \u2014 Resumable release-set rollout recovery and operator reconciliation",
+  "next_normal_version": "v0.1.121",
   "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
   "next_planned_slice_after_acceptance": "v0.1.121 \u2014 Resumable release-set rollout recovery and operator reconciliation",
   "next_planned_version_after_acceptance": "v0.1.121",
@@ -1528,7 +1548,7 @@
       "version": "v0.1.118.1"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -1897,11 +1917,20 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
       "release_mode": "normal",
-      "scope": "explicit release-set execution and rollback",
+      "scope": "guarded release-set execution and rollback evidence; release-control retry exits before tests when checkpoint preflight returns the intentional resume code 10",
       "slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
-      "status": "active",
+      "status": "repair_required",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
       "version": "v0.1.120"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+      "release_mode": "repair",
+      "scope": "preserve checkpoint resume code 10 for caller handling without advancing rollout scope",
+      "slice": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+      "version": "v0.1.120.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
@@ -1915,7 +1944,7 @@
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -1926,5 +1955,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.120"
+  "updated_for": "v0.1.120.1"
 }

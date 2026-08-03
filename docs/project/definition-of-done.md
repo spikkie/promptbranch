@@ -954,3 +954,9 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-368 | The first failed repository stops later execution and completed repositories roll back in exact reverse completion order through repository-owned rollback contracts | focused_candidate | apply-failure and reverse rollback regressions | v0.1.120 |
 | DOD-369 | Any rollback command failure or artifact/source identity mismatch fails closed as incomplete rollback evidence | focused_candidate | rollback failure and registry mismatch regressions | v0.1.120 |
 | DOD-370 | Rollout checkpoints are atomic and tamper-evident through a per-event SHA-256 chain plus final evidence SHA-256, independently validated by `pb release set evidence-validate` | focused_candidate | valid evidence and tamper-detection regressions | v0.1.120 |
+
+## v0.1.120.1 checkpoint resume exit-code handling repair
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-371 | An exact failed-release retry receiving checkpoint code `10` reuses the bound source identity and continues into validation without duplicate publication or premature shell exit | focused_candidate | executable extracted-function regression plus strict host retry | v0.1.120.1 |

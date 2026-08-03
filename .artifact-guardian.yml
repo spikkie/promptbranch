@@ -46,6 +46,7 @@ required_entries:
   - "promptbranch_protocol/schemas/release-set-rollout-evidence.schema.json"
   - "scripts/rollback-release-artifact.py"
   - "docs/release-v0.1.120.md"
+  - "docs/release-v0.1.120.1.md"
 
 forbidden_entries:
   - ".git/"

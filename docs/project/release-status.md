@@ -3,14 +3,14 @@
 Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.119.zip` (`v0.1.119`).
 Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.119(1).zip`.
 Accepted SHA-256: `3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857`.
-Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.120.zip` (`v0.1.120 — Guarded multi-repository rollout execution and rollback evidence`).
-Next normal slice after acceptance: `v0.1.121 — Resumable release-set rollout recovery and operator reconciliation`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.120.1.zip` (`v0.1.120.1`).
+Next normal slice: `v0.1.121 — Resumable release-set rollout recovery and operator reconciliation`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | candidate | focused plan-binding, guarded apply, reverse rollback, evidence-chain, CLI and control-surface validation; strict host validation pending | DOD-365 through DOD-370 candidate | pending |
-| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/current | strict host 10/10 GO; deterministic canonical SHA, Project Source `(1)`, adoption and current verification passed | DOD-360 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
-| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | accepted historical | strict host 10/10 GO; superseded by v0.1.119 | DOD-355 through DOD-359 accepted | 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076 |
+| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | candidate | executable actual-function resume-code regression plus focused/packaged validation; strict host validation pending | DOD-371 candidate; no scope advance | pending |
+| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | repair_required | focused/package gates passed; first strict run failed external live; exact retry exited `10` before tests due nested `set -e` | DOD-365 through DOD-370 implemented but original bytes never adoptable | pending/rejected |
+| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/current | strict 10/10 GO, deterministic canonical build, exact Project Source, adoption/current verification | DOD-359 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
 
 ## Status rule
 

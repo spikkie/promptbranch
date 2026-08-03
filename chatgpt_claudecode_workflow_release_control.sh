@@ -2809,7 +2809,6 @@ release_control_checkpoint_preflight() {
     --source-log "${project_source_add_log}" \
     >"${release_control_checkpoint_import_json}"
   checkpoint_rc=$?
-  set -e
   cat "${release_control_checkpoint_import_json}"
   return "${checkpoint_rc}"
 }

@@ -4,13 +4,13 @@ accepted/current baseline: v0.1.119
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
 accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
-active candidate version: v0.1.120
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
-active slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
-next normal version: v0.1.120
-next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+active candidate version: v0.1.120.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+active slice: v0.1.120.1 — Checkpoint resume exit-code handling repair
+next normal version: v0.1.121
+next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 
-`v0.1.119` is accepted/current after strict 10/10 validation, deterministic canonical rebuild proof, exact Project Source publication, evidence-bound adoption and current verification. `v0.1.120` adds explicit, plan-bound multi-repository rollout and reverse-order rollback evidence.
+`v0.1.119` remains accepted/current. `v0.1.120` implemented guarded multi-repository rollout and rollback evidence, but its strict retry path terminates with exit code `10` before tests because checkpoint preflight re-enables `errexit` before returning the intentional source-reuse result. `v0.1.120.1` repairs only that shell-control defect.
 
 ## Current baseline
 
@@ -19,26 +19,24 @@ accepted/current version: v0.1.119
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
 accepted/current source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
 accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
-active candidate version: v0.1.120
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
+active candidate version: v0.1.120.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
 candidate adoption: not performed
-next normal version: v0.1.120
-next planned after acceptance: v0.1.121
+next normal version: v0.1.121
+next planned after repair acceptance: v0.1.121
 ```
 
 ## Candidate behavior
 
-- `pb release set apply` recomputes the read-only plan and requires exact `release_set_id` plus `plan_sha256` confirmation.
-- The complete per-repository release pipeline must be explicitly authorized: stage, commit, push, publish, adopt and verify-current.
-- Rollback-on-failure is mandatory; later repositories stop after the first failure.
-- Successfully completed repositories roll back in reverse completion order through repository-owned `operations.rollback` contracts.
-- Pre-rollout version, artifact SHA-256 and Project Source identities are captured before mutation and verified after rollback.
-- Every transition is atomically checkpointed and hash-chained; `pb release set evidence-validate` detects tampering.
-- Parallel mutation, implicit shell commands, Project deletion and automatic interrupted-run resume remain out of scope.
+- `release_control_checkpoint_preflight` no longer owns restoration of Bash `errexit`.
+- Its caller continues to surround the function with `set +e`, capture the return code, and restore `set -e`.
+- Return code `10` now reaches the existing source-reuse branch and continues into adoption preflight, service startup and tests.
+- The exact provisional `v0.1.120.1` artifact and Project Source identity remain immutable across retries.
+- All release-set apply, reverse rollback, checkpoint-chain and evidence-validation behavior from `v0.1.120` is unchanged.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.120.zip`, then run strict host release control. Treat `v0.1.119` as accepted/current until adoption/current evidence proves `v0.1.120`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.120.1.zip`, then run strict host release control. Treat `v0.1.119` as accepted/current until adoption/current evidence proves `v0.1.120.1`.
 
 ## v0.1.102 candidate status
 
