@@ -179,6 +179,23 @@
         "candidate"
       ],
       "transport_independent": false
+    },
+    "release_set_planner": {
+      "commands": [
+        [
+          "python3",
+          "-m",
+          "pytest",
+          "-q",
+          "tests/test_promptbranch_release_set.py"
+        ]
+      ],
+      "modes": [
+        "edit",
+        "component",
+        "candidate"
+      ],
+      "transport_independent": true
     }
   },
   "dependencies": {
@@ -209,6 +226,11 @@
       "compile",
       "project_control_surface",
       "application_architecture"
+    ],
+    "release_set_planner": [
+      "compile",
+      "project_control_surface",
+      "artifact_contracts"
     ]
   },
   "rules": [
@@ -222,6 +244,18 @@
         "impact_planner"
       ],
       "reason": "impact-selection implementation or policy changed"
+    },
+    {
+      "patterns": [
+        "promptbranch_release_set.py",
+        "promptbranch_protocol/schemas/release-set.schema.json",
+        "examples/release-set/**",
+        "tests/test_promptbranch_release_set.py"
+      ],
+      "groups": [
+        "release_set_planner"
+      ],
+      "reason": "release-set manifest, dependency ordering, compatibility matrix, or immutable target planning changed"
     },
     {
       "patterns": [

@@ -1,42 +1,43 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.118
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118(2).zip
-accepted/current SHA-256: d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365
-active candidate version: v0.1.118.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-active slice: v0.1.118.1 — Deterministic canonical rebuild and failed-attempt identity binding
+accepted/current baseline: v0.1.118.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
+accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
+active candidate version: v0.1.119
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+active slice: v0.1.119 — Read-only multi-repository release-set dependency planner
 next normal version: v0.1.119
 next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
 
-`v0.1.118` is accepted/current after strict 10/10 release validation, exact Project Source publication, evidence-bound adoption and current verification. The interrupted first run and clean rerun produced different canonical ZIP hashes from the same Git commit, and the rerun replaced the first published source instead of importing its recovery evidence. `v0.1.118.1` is a repair-only candidate that closes those release-integrity gaps without advancing normal scope.
+`v0.1.118.1` is accepted/current after strict 10/10 validation, deterministic canonical rebuild proof, exact Project Source publication, evidence-bound adoption and current verification. `v0.1.119` advances the normal roadmap with read-only project-scoped release-set planning only.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.118
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.118(2).zip
-accepted/current SHA-256: d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365
-active candidate version: v0.1.118.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+accepted/current version: v0.1.118.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
+accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
+active candidate version: v0.1.119
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
 candidate adoption: not performed
 next normal version: v0.1.119
-next planned after repair acceptance: v0.1.119
+next planned after acceptance: v0.1.120
 ```
 
 ## Candidate behavior
 
-- The repository-owned builder fixes file order, timestamps, permissions and archive method, then release control rebuilds twice and requires byte identity.
-- A crash-consistent release-control checkpoint binds repository, version, Git commit, release-contract SHA-256 and canonical artifact SHA-256 before Project Source mutation.
-- Successful Project Source publication adds the exact assigned filename, processed file id, Library metadata id and local canonical SHA-256 to the provisional immutable identity.
-- An exact rerun imports the checkpoint and reuses the existing Project Source evidence; a changed hash or binding fails before source mutation.
-- Adoption finalizes the same checkpoint only after authoritative accepted/current verification.
+- `pb release set plan` reads one strict manifest and the existing project-scoped repo/artifact registries.
+- It computes a deterministic dependency-first order and parallel-safe waves.
+- The compatibility matrix records each consumer, dependency, constraint, resolved version and whether resolution came from a release-set target or accepted/current state.
+- Local candidate artifacts are verified read-only for canonical naming, CRC/hygiene, VERSION and SHA-256.
+- Cycles, unknown repos, missing external current state, incompatible versions and artifact identity drift block the plan.
+- No rollout, Git, Project Source, publication, adoption or registry mutation authority is granted.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.118.1.zip`, then run strict host release control. Treat `v0.1.118` as accepted/current until adoption/current evidence proves `v0.1.118.1`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.119.zip`, then run strict host release control. Treat `v0.1.118.1` as accepted/current until adoption/current evidence proves `v0.1.119`.
 
 ## v0.1.102 candidate status
 

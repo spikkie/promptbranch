@@ -1050,3 +1050,14 @@ pb application architecture differential-validate --repo-path ../domain-module -
 ```
 
 Template planning and migration reporting are read-only by default. Differential validation runs both validators against isolated copies and fails closed if Promptbranch accepts a case the reference validator rejects.
+
+## Read-only multi-repository release-set planning
+
+```bash
+pb release set plan \
+  --repo-path /path/to/any/joined/repository \
+  --manifest /path/to/release-set.json \
+  --json
+```
+
+The `promptbranch.release_set` v1.0 manifest declares canonical target artifacts and numeric dependency constraints. The planner reads joined-repository configuration and accepted/current project artifact state, then emits dependency order, parallel waves, compatibility rows, immutable artifact observations, and `plan_sha256`. It performs no Git, repository, registry, Project Source, publication, adoption, rollout, or rollback mutation.

@@ -90,3 +90,12 @@ For candidate installation and release validation:
 
 Use `pb application architecture template` as a deterministic plan; repository writes require explicit `--write`. Use `migration-report` for read-only gap analysis. Keep project-local validators until `differential-validate` proves Promptbranch equivalent or stronger on identical isolated cases. A domain module may report only its highest actual proof level and may not self-grant mutation, publication, release, or adoption authority.
 
+
+## Release-set planner rules
+
+- Treat `pb release set plan` as a read-only operation.
+- Require the manifest project id to match the tracked `.promptbranch-repo.json` project binding.
+- Resolve a dependency from another release-set target when present; otherwise use only accepted/current project-registry evidence.
+- Never infer missing versions, repositories, artifacts, hashes, or compatibility constraints.
+- Reject cycles, unsupported constraint grammar, path traversal, noncanonical artifact names, ZIP failures, VERSION mismatch, and SHA-256 mismatch.
+- Do not execute, publish, adopt, modify registries, mutate Project Sources, or create rollback evidence from the planner.

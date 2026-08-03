@@ -1,0 +1,31 @@
+{
+  "schema": "promptbranch.release_set",
+  "schema_version": "1.0",
+  "release_set_id": "kubernetes-example",
+  "project_id": "kubernetes",
+  "repositories": [
+    {
+      "repo_id": "platform-gitops",
+      "target": {
+        "version": "v0.0.7.1",
+        "artifact": "platform-gitops_v0.0.7.1.zip",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "depends_on": []
+    },
+    {
+      "repo_id": "my_awx",
+      "target": {
+        "version": "v0.0.236.1",
+        "artifact": "my_awx_v0.0.236.1.zip",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "depends_on": [
+        {
+          "repo_id": "platform-gitops",
+          "constraint": ">=v0.0.7.1,<v0.1.0"
+        }
+      ]
+    }
+  ]
+}

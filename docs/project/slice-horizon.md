@@ -5,10 +5,10 @@
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
 | v0.1.117.1 | Immutable release identity and hash-bound evidence reuse | accepted_historical | repair | same-version hash immutability, idempotent accepted-current rerun and canonical evidence binding |
-| v0.1.118 | Resumable/importable release-pipeline evidence and recovery | accepted_current | normal | incremental checkpoints, read-only import and guarded resume without mutation replay |
-| v0.1.118.1 | Deterministic canonical rebuild and failed-attempt identity binding | active | repair | deterministic ZIP bytes, provisional identity and automatic exact-source recovery |
-| v0.1.119 | Read-only multi-repository release-set dependency planner | planned_after_repair_acceptance | normal | dependency ordering and compatibility matrix |
-| v0.1.120 | Guarded multi-repository rollout execution and rollback evidence | planned | normal | explicit per-repository execution, rollback and final project consistency |
+| v0.1.118 | Resumable/importable release-pipeline evidence and recovery | accepted_historical | normal | incremental checkpoints, read-only import and guarded resume without mutation replay |
+| v0.1.118.1 | Deterministic canonical rebuild and failed-attempt identity binding | accepted_current | repair | deterministic ZIP bytes, provisional identity and automatic exact-source recovery |
+| v0.1.119 | Read-only multi-repository release-set dependency planner | active | normal | dependency ordering, waves, compatibility matrix and immutable target inspection |
+| v0.1.120 | Guarded multi-repository rollout execution and rollback evidence | planned_after_acceptance | normal | explicit per-repository execution, rollback and final project consistency |
 
 ## Independence rule
 
@@ -16,15 +16,15 @@ Promptbranch and `promptbranch-method` develop independently. Method releases re
 
 ## Repair horizon rule
 
-Repair releases must not advance normal scope. `v0.1.118` is accepted/current; `v0.1.118.1` repairs release identity determinism and recovery only. `v0.1.119` remains the next normal slice after repair acceptance.
+Repair releases must not advance normal scope. `v0.1.118.1` is accepted/current. `v0.1.119` is the active normal slice and grants read-only planning authority only; rollout execution remains reserved for `v0.1.120`.
 
-## Current rolling horizon — v0.1.118.1 repair candidate
+## Current rolling horizon — v0.1.119 normal candidate
 
 - `v0.1.117.1` — accepted historical repair baseline.
-- `v0.1.118` — accepted/current normal release.
-- `v0.1.118.1` — active repair candidate: deterministic canonical rebuild and failed-attempt identity binding.
-- `v0.1.119` — planned after repair acceptance: read-only multi-repository release-set dependency planner.
-- `v0.1.120` — planned: guarded multi-repository rollout execution and rollback evidence.
+- `v0.1.118` — accepted historical normal release.
+- `v0.1.118.1` — accepted/current deterministic repair baseline.
+- `v0.1.119` — active normal candidate: read-only multi-repository release-set dependency planner.
+- `v0.1.120` — planned after acceptance: guarded rollout execution and rollback evidence.
 
 ## Historical continuity
 

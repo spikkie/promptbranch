@@ -1,16 +1,16 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.118.zip` (`v0.1.118`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.118(2).zip`.
-Accepted SHA-256: `d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.118.1.zip` (`v0.1.118.1`).
-Next normal slice: `v0.1.119 — Read-only multi-repository release-set dependency planner`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.118.1.zip` (`v0.1.118.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip`.
+Accepted SHA-256: `9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.119.zip` (`v0.1.119 — Read-only multi-repository release-set dependency planner`).
+Next normal slice after acceptance: `v0.1.120 — Guarded multi-repository rollout execution and rollback evidence`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | candidate | focused deterministic builder, provisional checkpoint, exact source reuse and control-surface validation; strict host validation pending | DOD-355 through DOD-359 candidate | pending |
-| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | accepted/current | strict host 10/10 GO; Project Source `(2)`, adoption and current verification passed; post-run comparison exposed same-commit ZIP nondeterminism requiring repair | DOD-350 through DOD-354 accepted | d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365 |
-| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | accepted historical | strict host 10/10 GO; Git push, Project Source publication, adoption and current verification passed | DOD-347 through DOD-349 accepted | 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719 |
+| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | candidate | focused planner, constraints, cycle, artifact identity, CLI and control-surface validation; strict host validation pending | DOD-360 through DOD-364 candidate | pending |
+| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | accepted/current | strict host 10/10 GO; deterministic canonical SHA, Project Source `(1)`, adoption and current verification passed | DOD-355 through DOD-359 accepted | 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076 |
+| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | accepted historical | strict host 10/10 GO; superseded by deterministic repair | DOD-350 through DOD-354 accepted | d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365 |
 
 ## Status rule
 

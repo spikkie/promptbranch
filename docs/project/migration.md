@@ -1298,3 +1298,9 @@ No automatic state migration is performed. Import remains read-only; resume crea
 `v0.1.118.1` introduces a repository-owned deterministic ZIP format and a release-control checkpoint at `.pb_profile/release_logs/<version>/release_control_checkpoint.<version>.json`. No accepted/current registry migration is performed. Existing `v0.1.118` remains accepted/current.
 
 For a new `v0.1.118.1` attempt, release control creates the checkpoint automatically after the committed-tree canonical build. After Project Source publication it records the exact assigned filename and backing identifiers. If validation is interrupted, preserve `.pb_profile/release_logs/v0.1.118.1/`; a rerun of the same full command imports that checkpoint automatically. Exact identity reuses the prior source. Changed artifact bytes, Git commit, release contract or source evidence fail closed before Project Source mutation.
+
+## v0.1.118.1 to v0.1.119 migration note
+
+No registry or Project Source migration is required. Existing joined repository configuration and accepted/current artifact records are read as-is. Teams may add a release-set manifest outside or inside a repository and run `pb release set plan --manifest <path> --json`. The command performs no writes.
+
+Manifests must use schema `promptbranch.release_set` version `1.0`, canonical `<repo_id>_<version>.zip` target names, and the supported numeric constraint grammar. Optional repository-relative `local_path` plus SHA-256 binds a target to verified local bytes. Plans without verified target bytes can remain compatibility-valid but report `execution_ready=false`. No execution is available in `v0.1.119`; guarded rollout and rollback remain planned for `v0.1.120`.

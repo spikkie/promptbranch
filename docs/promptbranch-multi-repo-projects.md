@@ -121,3 +121,18 @@ pb artifact adopt candlecast-src_v0.19.5.94.1.zip --repo candlecast-src --local-
 ```
 
 `--from-project-source` remains available when the ZIP is already present exactly once in ChatGPT Project Sources.
+
+## Read-only release-set planning
+
+`v0.1.119` adds a project-scoped planner without adding rollout authority:
+
+```bash
+pb release set plan \
+  --repo-path ~/git/platform-gitops \
+  --manifest ./release-set.json \
+  --json
+```
+
+The manifest uses schema `promptbranch.release_set` version `1.0`. It lists canonical target artifacts and dependency constraints. Dependencies included in the release set resolve to their target versions; dependencies outside the set resolve only to accepted/current project registry records. The result includes dependency-first order, parallel waves, compatibility rows, immutable artifact observations, and `plan_sha256`.
+
+A valid compatibility plan may have `execution_ready=false` when target ZIPs are not locally verified and hash-bound. The planner never changes repositories, registries, Project Sources, publication, adoption, deployment, or rollback state.

@@ -1211,3 +1211,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Decision:** Release control writes an atomic checkpoint before source mutation. The first successful publication binds the exact canonical hash and backend-assigned source identity as a provisional immutable release identity, even before validation or adoption.
 - **Decision:** Full reruns automatically import this checkpoint. Exact bindings reuse the existing source; artifact, Git or contract drift fails before source mutation. Successful adoption finalizes the same checkpoint.
 - **Consequence:** Interrupted releases no longer create indexed replacement sources or silently change same-version bytes. The normal roadmap remains at `v0.1.119`; this repair advances no normal scope.
+
+## ADR-PROJ-119 — Release-set planning is project-scoped, deterministic, and read-only
+
+- **Status:** accepted for candidate `v0.1.119`.
+- **Decision:** Add `pb release set plan` using schema `promptbranch.release_set` version `1.0`. Resolve repositories through the tracked project binding and joined-repo configuration. Resolve dependencies from release-set targets first and accepted/current project registry state second. Emit deterministic dependency order, parallel waves, a compatibility matrix, artifact verification observations, and a canonical plan SHA-256.
+- **Fail-closed rule:** Unknown repositories, project mismatch, cycles, unsupported constraints, missing external current state, incompatible versions, noncanonical artifacts, unsafe paths, invalid ZIPs, VERSION mismatch, and SHA-256 drift block the plan.
+- **Mutation boundary:** No Git, repository, registry, Project Source, publication, adoption, deployment, or rollback mutation is permitted.
+- **Consequence:** `v0.1.120` may consume only an explicit compatible and immutable plan under a separately authorized guarded execution contract.

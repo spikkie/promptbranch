@@ -1,53 +1,46 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.118
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
-active candidate version: v0.1.118.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-active slice: v0.1.118.1 — Deterministic canonical rebuild and failed-attempt identity binding
+accepted/current baseline: v0.1.118.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+active candidate version: v0.1.119
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+active slice: v0.1.119 — Read-only multi-repository release-set dependency planner
 next normal version: v0.1.119
 next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.118
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118(2).zip
-accepted/current SHA-256: d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365
-active candidate version: v0.1.118.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+accepted/current version: v0.1.118.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
+accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
+active candidate version: v0.1.119
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
 next normal version: v0.1.119
 next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
+next planned after acceptance: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
 ```
 
-## Active repair slice
+## Active normal slice
 
-1. Make canonical release packaging independent of filesystem mtimes, external packager compression behavior and zlib implementation variance.
-2. Rebuild the canonical archive twice from the same committed tree and fail if bytes or SHA-256 differ.
-3. Create an atomic release-control checkpoint before Project Source mutation, bound to repository, version, Git commit, release contract and canonical artifact SHA-256.
-4. Promote successful Project Source publication to a provisional immutable release identity before validation/adoption.
-5. On rerun, import the prior checkpoint: exact identity reuses the assigned source and backing ids; any artifact, commit or contract drift fails before source mutation.
-6. Finalize the checkpoint after adoption/current verification and preserve full recovery provenance.
-7. Add interrupted-validation regression evidence proving commit, artifact hash, assigned filename, processed file id and Library metadata id remain unchanged after cleanup and rerun.
-
-## Repair invariants
-
-- Repair releases do not advance normal scope.
-- The bundled deterministic builder defines canonical release bytes; custom packagers may prepare files but cannot define the final ZIP identity.
-- Project Source publication is never replayed when exact valid provisional evidence exists.
-- A different hash for the same release attempt is a conflict even when adoption has not yet occurred.
-- `v0.1.118` remains accepted/current until strict adoption proves this repair.
+1. Define the strict `promptbranch.release_set` manifest contract for repositories, immutable targets, and dependency constraints.
+2. Resolve every repository from the joined project registry and compare target state with accepted/current state.
+3. Resolve dependencies from release-set targets or accepted/current external project state.
+4. Emit deterministic dependency-first order, parallel waves, and compatibility matrix rows.
+5. Verify local candidate ZIP identity, VERSION and optional SHA-256 without mutation.
+6. Fail closed for project drift, unknown repositories, invalid constraints, cycles, incompatibility, path traversal, ZIP failures and hash mismatch.
+7. Keep Git, repository files, registries, Project Sources, publication, adoption and execution untouched.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.117.1` — accepted historical repair baseline.
-2. `v0.1.118` — accepted/current normal release.
-3. `v0.1.118.1` — active repair candidate.
-4. `v0.1.119` — planned after repair acceptance.
-5. `v0.1.120` — planned.
+1. `v0.1.117.1` — accepted historical repair.
+2. `v0.1.118` — accepted historical normal release.
+3. `v0.1.118.1` — accepted/current repair baseline.
+4. `v0.1.119` — active normal candidate.
+5. `v0.1.120` — planned after acceptance.
 
 ## Repair definition — v0.1.71.1
 

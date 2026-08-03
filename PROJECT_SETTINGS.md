@@ -91,3 +91,7 @@ Development testing uses `pb test impacted`. Its checked-in map must select test
 
 Use `pb application architecture template` as a deterministic plan; repository writes require explicit `--write`. Use `migration-report` for read-only gap analysis. Keep project-local validators until `differential-validate` proves Promptbranch equivalent or stronger on identical isolated cases. A domain module may report only its highest actual proof level and may not self-grant mutation, publication, release, or adoption authority.
 
+
+## v0.1.119 release-set planning policy
+
+Release-set planning is read-only. A `promptbranch.release_set` manifest may describe repositories, canonical target artifacts, immutable SHA-256 bindings, and required numeric version constraints. The planner may read tracked repo identities, joined-repo configuration, accepted/current project artifact state, and local candidate ZIP bytes. It may compute dependency order, parallel waves, compatibility rows, and a deterministic plan digest. It must not change repository files, project registries, Project Sources, Git state, publication state, adoption state, deployments, or rollback state. Cycles, unresolved dependencies, incompatible versions, identity drift, unsupported constraints, or ambiguous project scope must fail closed. Guarded execution is reserved for a later explicitly authorized slice.

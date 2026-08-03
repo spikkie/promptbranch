@@ -525,6 +525,16 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_release_pipeline.py",
         ),
     },
+    "release_set_planner": {
+        "required": True,
+        "description": "Read-only multi-repository release-set manifest, dependency ordering, compatibility matrix, immutable target verification, and fail-closed cycle/constraint coverage.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_release_set.py",
+        ),
+    },
     "sandbox_mutation_rollback_gate": {
         "required": True,
         "description": "Mandatory sandbox mutation verification, validation immutability, exact rollback, repository immutability, and workspace cleanup gate.",

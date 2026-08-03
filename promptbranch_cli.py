@@ -101,6 +101,7 @@ from promptbranch_release_pipeline import (
     build_release_pipeline_plan,
     execute_release_pipeline,
 )
+from promptbranch_release_set import build_release_set_plan
 from promptbranch_orchestration import (
     accepted_event_example_paths,
     accepted_event_ledger_status,
@@ -18675,7 +18676,33 @@ async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+async def cmd_release_set(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    if args.release_set_command != "plan":
+        raise RuntimeError(f"Unknown release set command: {args.release_set_command}")
+    payload = build_release_set_plan(
+        repo_path=getattr(args, "repo_path", "."),
+        manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"ok={str(bool(payload.get('ok'))).lower()}")
+        print(f"release_set_id={payload.get('release_set_id') or ''}")
+        print(f"execution_ready={str(bool(payload.get('execution_ready'))).lower()}")
+        if payload.get("execution_order"):
+            print(f"execution_order={','.join(payload.get('execution_order') or [])}")
+        for blocker in payload.get("blockers") or []:
+            print(f"blocker={blocker.get('code')}: {blocker.get('message')}", file=sys.stderr)
+        for warning in payload.get("warnings") or []:
+            print(f"warning={warning.get('code')}: {warning.get('message')}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "set":
+        return await cmd_release_set(backend, args)
     if args.release_command == "pipeline":
         return await cmd_release_pipeline(backend, args)
     if args.release_command in {"contract-plan", "contract-execute", "contract-publish", "contract-adopt"}:
@@ -25071,6 +25098,12 @@ def make_parser() -> argparse.ArgumentParser:
 
     release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
+    release_set = release_subparsers.add_parser("set", help="Read-only multi-repository release-set dependency planning and compatibility analysis.")
+    release_set_subparsers = release_set.add_subparsers(dest="release_set_command", required=True)
+    release_set_plan = release_set_subparsers.add_parser("plan", help="Validate a release-set manifest and emit deterministic dependency order, waves, and compatibility matrix without mutation.")
+    release_set_plan.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project. Defaults to current directory.")
+    release_set_plan.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
+    release_set_plan.add_argument("--json", action="store_true", help="Emit the deterministic release-set plan as JSON.")
     release_pipeline = release_subparsers.add_parser("pipeline", help="Plan, import, apply, or resume the evidence-bound generic release pipeline with explicit Git, publication, adoption, and current-verification phases.")
     release_pipeline_subparsers = release_pipeline.add_subparsers(dest="release_pipeline_command", required=True)
     for pipeline_name, pipeline_help in (

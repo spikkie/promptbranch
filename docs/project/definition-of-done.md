@@ -933,3 +933,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-357 | Successful Project Source publication becomes a provisional immutable identity containing exact assigned filename, processed file id, Library metadata id, persistence proof and canonical SHA-256 before validation/adoption | focused_candidate | checkpoint source-recording implementation and evidence validation regression | v0.1.118.1 |
 | DOD-358 | A same-version rerun with changed artifact/commit/contract fails before Project Source mutation; an exact rerun imports the checkpoint and reuses the existing source without indexed replacement | focused_candidate | conflict and exact-source-reuse regressions plus release-controller ordering assertions | v0.1.118.1 |
 | DOD-359 | Failed validation followed by cleanup and rerun preserves Git commit, artifact SHA-256, assigned source filename, processed file id and Library metadata id, then strict host validation/adoption verifies the repair | open | focused interrupted-run regression passed; strict host lifecycle evidence pending | v0.1.118.1 |
+
+## v0.1.119 read-only multi-repository release-set dependency planner
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-360 | A strict `promptbranch.release_set` v1.0 manifest resolves only repositories joined to the same tracked Promptbranch Project | focused_candidate | `promptbranch_release_set.py`, schema, project mismatch and unconfigured-repo regressions | v0.1.119 |
+| DOD-361 | The planner emits deterministic dependency-first order, parallel execution waves, compatibility matrix rows and canonical `plan_sha256` | focused_candidate | happy-path and deterministic-repeat regressions | v0.1.119 |
+| DOD-362 | Dependencies resolve from release-set targets or accepted/current project registry evidence, and cycles, missing dependencies or incompatible constraints fail closed | focused_candidate | cycle, unknown dependency, external current and incompatibility regressions | v0.1.119 |
+| DOD-363 | Canonical target artifact names, repository-relative paths, ZIP integrity, VERSION and SHA-256 are validated without mutation | focused_candidate | artifact name, SHA mismatch, ZIP and read-only regressions | v0.1.119 |
+| DOD-364 | `pb release set plan` performs no repository, Git, registry, Project Source, publication, adoption, execution or rollback mutation | focused_candidate | safety payload, before/after digest regression, CLI contract | v0.1.119 |
