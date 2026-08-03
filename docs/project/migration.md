@@ -1328,3 +1328,10 @@ Interrupted rollout import/resume and controlled reconciliation after an incompl
 No repository, registry, release-set manifest or Project Source migration is required. Do not adopt the original `v0.1.120` bytes. Install `v0.1.120.1` and run the normal strict release lifecycle. On an exact retry, the release-control checkpoint may reuse only evidence bound to the `v0.1.120.1` artifact hash, Git commit and release-contract hash.
 
 Next planned after acceptance: `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.
+
+## v0.1.122 migration note — canonical MVP proof cycle 1
+
+| Existing file | Current role | Migrated to | Migration status | Notes |
+|---|---|---|---|---|
+| `docs/mvp-definition-of-done.md` | canonical historical MVP verdict rule | `promptbranch_mvp_proof.py`, `scripts/verify-mvp-proof-cycle.py`, `scripts/finalize-mvp-proof-cycle.sh`, `docs/release-v0.1.122.md` | proof contract implemented | The two-consecutive-normal-release rule is preserved. `v0.1.122` is cycle 1 and `v0.1.123` is cycle 2. Bounded parallel release-set waves move post-MVP. |
+| `docs/project/plan-state.json` | mutable release and horizon authority | `v0.1.122` active, `v0.1.123` planned after acceptance | updated | Accepted/current is `v0.1.121.1`; no accepted/current mutation occurs from this documentation change. |

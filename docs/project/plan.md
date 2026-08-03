@@ -1,47 +1,48 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.120.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-active candidate version: v0.1.121.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
-active slice: v0.1.121.1 — Backend 403/429 auth-bootstrap guardrail classification repair
+accepted/current baseline: v0.1.121.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+active candidate version: v0.1.122
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
+active slice: v0.1.122 — Canonical MVP proof cycle 1
 next normal version: v0.1.122
-next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
+next normal slice: v0.1.122 — Canonical MVP proof cycle 1
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.120.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
-accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+accepted/current version: v0.1.121.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.121.1(1).zip
+accepted/current SHA-256: 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc
+active candidate version: v0.1.122
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
 next normal version: v0.1.122
-next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
-next planned after acceptance: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
+next normal slice: v0.1.122 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict
 ```
 
-## Active repair slice — v0.1.121.1
+## Active normal slice — v0.1.122
 
-1. Preserve the complete `v0.1.121` release-set reconciliation and resume implementation.
-2. Remove generic `backend_api_guardrail_seen=true` as standalone proof of backend HTTP 403.
-3. Require a structured `backend_api_guardrail` event with numeric status exactly `403`.
-4. Treat explicit HTTP 429 events as rate-limit telemetry, not browser challenge evidence.
-5. Add executable detector regressions for both 429 and 403 logs.
-6. Include those regressions in the mandatory `release_pipeline` validation group.
-7. Keep real backend 403 handling terminal and fail-closed.
+1. Freeze product scope; bounded parallel release-set execution moves post-MVP.
+2. Preserve all accepted `v0.1.121.1` behavior and authority boundaries.
+3. Add a read-only, machine-checkable `promptbranch.mvp.proof_cycle` evaluator.
+4. Require explicit evidence for real artifact download and release verification.
+5. Require strict 10/10 GO, visual smoke ZIP transport, adoption, and accepted/current identity.
+6. Issue the continuation protocol ask from the newly adopted baseline toward `v0.1.123`.
+7. Fail closed on repair-version candidates, stale continuation baselines, skipped gates, or missing evidence.
+8. Count cycle 1 only after strict-host evidence produces `mvp_proof_cycle_passed`.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.119` — accepted historical normal release.
-2. `v0.1.120` — repair-required normal artifact.
-3. `v0.1.120.1` — accepted/current repair baseline.
-4. `v0.1.121` — repair-required normal artifact; functionality preserved in its repair successor.
-5. `v0.1.121.1` — active scope-neutral repair candidate.
-6. `v0.1.122` — planned after acceptance.
+1. `v0.1.120` — repair-required original rollout artifact.
+2. `v0.1.120.1` — accepted historical repair.
+3. `v0.1.121` — repair-required original recovery artifact.
+4. `v0.1.121.1` — accepted/current repair baseline.
+5. `v0.1.122` — active normal MVP proof cycle 1.
+6. `v0.1.123` — planned normal MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.1
 

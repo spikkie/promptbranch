@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/mvp.proof_cycle.schema.json",
+  "title": "Promptbranch MVP proof cycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "cycle",
+    "release_mode",
+    "version",
+    "baseline_version",
+    "next_version",
+    "artifact",
+    "checks",
+    "details",
+    "failed_checks",
+    "ok",
+    "status",
+    "proof_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.mvp.proof_cycle"},
+    "schema_version": {"const": "1.0"},
+    "cycle": {"type": "integer", "minimum": 1},
+    "release_mode": {"const": "normal"},
+    "version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "baseline_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$"},
+    "next_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "artifact": {"type": "string", "minLength": 1},
+    "checks": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "boolean"}
+    },
+    "details": {"type": "object"},
+    "failed_checks": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "ok": {"type": "boolean"},
+    "status": {"enum": ["mvp_proof_cycle_passed", "mvp_proof_cycle_failed"]},
+    "proof_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

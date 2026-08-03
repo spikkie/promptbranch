@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
-  "accepted_current_version": "v0.1.120.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-  "active_candidate_version": "v0.1.121.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
+  "accepted_current_version": "v0.1.121.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+  "active_candidate_version": "v0.1.122",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.121.1 \u2014 Backend 403/429 auth-bootstrap guardrail classification repair",
+  "active_slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -437,6 +437,7 @@
       "version": "v0.1.120"
     },
     {
+      "accepted_sha256": "2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
       "created_at": "2026-08-03T16:12:00+02:00",
       "kind": "repair",
@@ -444,8 +445,7 @@
       "status": "accepted_current",
       "summary": "Keeps shell error-mode ownership at the checkpoint caller so intentional resume code 10 is handled instead of terminating release control.",
       "validation": "Strict host validation passed 10/10 with deterministic canonical SHA, exact Project Source publication, Artifact Guardian, evidence-bound adoption and release_adopted_and_verified.",
-      "version": "v0.1.120.1",
-      "accepted_sha256": "2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49"
+      "version": "v0.1.120.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
@@ -466,9 +466,18 @@
       "summary": "Requires explicit HTTP 403 evidence for auth-bootstrap challenge classification and preserves HTTP 429 as rate-limit telemetry.",
       "validation": "Focused detector, release-control, version, authority, control-surface, clean-extraction and strict host validation pending.",
       "version": "v0.1.121.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+      "kind": "normal",
+      "slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
+      "status": "candidate",
+      "summary": "Scope-frozen normal release that converts the canonical MVP verdict into machine-checkable proof evidence without adding autonomous mutation authority.",
+      "validation": "Focused candidate validation pending.",
+      "version": "v0.1.122"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -902,19 +911,28 @@
       "summary": "Requires explicit HTTP 403 evidence for auth-bootstrap challenge classification and preserves HTTP 429 as rate-limit telemetry.",
       "validation": "Focused detector, release-control, version, authority, control-surface, clean-extraction and strict host validation pending.",
       "version": "v0.1.121.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+      "kind": "normal",
+      "slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
+      "status": "candidate",
+      "summary": "Scope-frozen normal release that converts the canonical MVP verdict into machine-checkable proof evidence without adding autonomous mutation authority.",
+      "validation": "Focused candidate validation pending.",
+      "version": "v0.1.122"
     }
   ],
-  "last_completed_normal_slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
-  "last_completed_normal_slice_version": "v0.1.120",
-  "last_completed_repair": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
-  "last_completed_repair_version": "v0.1.120.1",
-  "last_updated": "2026-08-03T17:49:00+02:00",
+  "last_completed_normal_slice": "v0.1.121 \u2014 Resumable release-set rollout recovery and operator reconciliation",
+  "last_completed_normal_slice_version": "v0.1.121",
+  "last_completed_repair": "v0.1.121.1 \u2014 Backend 403/429 auth-bootstrap guardrail classification repair",
+  "last_completed_repair_version": "v0.1.121.1",
+  "last_updated": "2026-08-03T20:30:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
-  "next_normal_slice": "v0.1.122 \u2014 Bounded parallel release-set wave execution and concurrency evidence",
+  "next_normal_slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
   "next_normal_version": "v0.1.122",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
-  "next_planned_slice_after_acceptance": "v0.1.122 \u2014 Bounded parallel release-set wave execution and concurrency evidence",
-  "next_planned_version_after_acceptance": "v0.1.122",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+  "next_planned_slice_after_acceptance": "v0.1.123 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
+  "next_planned_version_after_acceptance": "v0.1.123",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1607,9 +1625,18 @@
       "summary": "Requires explicit HTTP 403 evidence for auth-bootstrap challenge classification and preserves HTTP 429 as rate-limit telemetry.",
       "validation": "Focused detector, release-control, version, authority, control-surface, clean-extraction and strict host validation pending.",
       "version": "v0.1.121.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+      "kind": "normal",
+      "slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
+      "status": "candidate",
+      "summary": "Scope-frozen normal release that converts the canonical MVP verdict into machine-checkable proof evidence without adding autonomous mutation authority.",
+      "validation": "Focused candidate validation pending.",
+      "version": "v0.1.122"
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -1917,12 +1944,12 @@
       "version": "v0.1.118.1"
     },
     {
+      "accepted_sha256": "2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
       "created_at": "2026-08-03T16:12:00+02:00",
       "kind": "repair",
       "slice": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
       "status": "accepted_current",
-      "accepted_sha256": "2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49",
       "summary": "Preserves checkpoint resume code 10 for caller handling without duplicate Project Source publication.",
       "validation": "Strict host validation passed 10/10 and evidence-bound adoption/current verification completed."
     }
@@ -1959,63 +1986,63 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
-      "version": "v0.1.119",
-      "release_mode": "normal",
-      "slice": "v0.1.119 \u2014 Read-only multi-repository release-set dependency planner",
-      "scope": "read-only dependency ordering, compatibility matrix and hash-bound target inspection",
-      "status": "accepted_historical"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
-      "version": "v0.1.120",
       "release_mode": "normal",
+      "scope": "guarded execution and reverse rollback; original retry bytes remain non-adoptable",
       "slice": "v0.1.120 \u2014 Guarded multi-repository rollout execution and rollback evidence",
-      "scope": "guarded release-set execution and rollback evidence; original bytes remain repair-required",
-      "status": "repair_required"
+      "status": "repair_required",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
+      "version": "v0.1.120"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
-      "version": "v0.1.120.1",
       "release_mode": "repair",
+      "scope": "caller-owned checkpoint return-code handling and strict 10/10 adoption",
       "slice": "v0.1.120.1 \u2014 Checkpoint resume exit-code handling repair",
-      "scope": "scope-neutral checkpoint resume control-code repair",
-      "status": "accepted_current"
+      "status": "accepted_historical",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.120.1.zip",
+      "version": "v0.1.120.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
-      "version": "v0.1.121",
       "release_mode": "normal",
+      "scope": "normal recovery scope completed by repair successor; original bytes misclassify 429 as 403",
       "slice": "v0.1.121 \u2014 Resumable release-set rollout recovery and operator reconciliation",
-      "scope": "normal recovery/reconciliation scope preserved in repair successor; original bytes misclassify HTTP 429 as 403",
-      "status": "repair_required"
+      "status": "repair_required",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
+      "version": "v0.1.121"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-      "version": "v0.1.121.1",
       "release_mode": "repair",
+      "scope": "scope-neutral classifier repair with strict 10/10 adoption",
       "slice": "v0.1.121.1 \u2014 Backend 403/429 auth-bootstrap guardrail classification repair",
-      "scope": "scope-neutral auth-bootstrap guardrail status classification repair",
-      "status": "active"
+      "status": "accepted_current",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
+      "version": "v0.1.121.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
-      "version": "v0.1.122",
       "release_mode": "normal",
-      "slice": "v0.1.122 \u2014 Bounded parallel release-set wave execution and concurrency evidence",
-      "scope": "bounded parallel execution inside dependency waves with deterministic isolation and evidence",
-      "status": "planned_after_acceptance"
+      "scope": "scope-frozen proof release requiring explicit intake, live transport, GO/adoption/current and continuation evidence",
+      "slice": "v0.1.122 \u2014 Canonical MVP proof cycle 1",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+      "version": "v0.1.122"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+      "release_mode": "normal",
+      "scope": "repeat the canonical proof from accepted v0.1.122 and close MVP only if both normal cycles remain clean",
+      "slice": "v0.1.123 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
+      "status": "planned_after_acceptance",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+      "version": "v0.1.123"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -2026,5 +2053,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.121.1"
+  "updated_for": "v0.1.122"
 }

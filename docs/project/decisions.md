@@ -1255,3 +1255,13 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Safety:** Explicit 403 remains terminal and fail-closed. HTTP 429 remains rate-limit telemetry and does not bypass authentication or strict validation requirements.
 - **Scope:** Repair-only. Release-set reconciliation, resume, rollback, publication, adoption, and mutation authority are unchanged.
 - **Next:** `v0.1.122` remains the next normal slice after repair acceptance.
+
+## D-0122 — Freeze scope and require explicit evidence for MVP proof cycle 1
+
+- **Status:** accepted for candidate `v0.1.122`.
+- **Baseline:** `v0.1.121.1` is accepted/current after strict 10/10 validation and evidence-bound adoption.
+- **Decision:** Defer bounded parallel release-set wave execution until after MVP completion. Reserve `v0.1.122` and `v0.1.123` for two consecutive normal proof cycles.
+- **Decision:** A proof cycle is valid only when explicit evidence confirms real artifact download and verification, strict 10/10 GO with no failed or skipped outer gates, visual smoke ZIP transport, adoption, exact accepted/current identity, and a continuation protocol request whose baseline is the newly adopted release.
+- **Decision:** Proof evaluation is deterministic and read-only. The evaluator emits a canonical SHA-256 and fails closed on missing, malformed, stale, ambiguous, repair-version, or mismatched evidence.
+- **Consequence:** `v0.1.122` does not claim MVP completion at package build time. Cycle 1 completes only after strict host evidence produces `mvp_proof_cycle_passed`. A repair resets the consecutive normal-cycle count.
+- **Next:** `v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict`.

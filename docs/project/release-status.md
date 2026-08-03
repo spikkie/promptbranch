@@ -1,18 +1,19 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.120.1.zip` (`v0.1.120.1`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip`.
-Accepted SHA-256: `2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.121.1.zip` (`v0.1.121.1`).
-Next normal slice: `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.121.1.zip` (`v0.1.121.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.121.1(1).zip`.
+Accepted SHA-256: `733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.122.zip` (`v0.1.122`).
+Next normal slice: `v0.1.122 — Canonical MVP proof cycle 1`.
+Planned after acceptance: `v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.121.1 | repair | Backend 403/429 auth-bootstrap guardrail classification repair | candidate | focused detector and package validation; strict host validation pending | DOD-380 through DOD-382 candidate; no scope advance | pending |
-| v0.1.121 | normal | Resumable release-set rollout recovery and operator reconciliation | repair_required | focused/package gates passed; strict host stopped before Project Source add because 429 was misclassified as 403 | DOD-372 through DOD-378 preserved in repair successor | rejected |
-| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | accepted/current | strict 10/10 GO; deterministic canonical SHA; exact Project Source; Guardian; adoption/current verification | DOD-371 accepted; no scope advance | 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49 |
-| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | repair_required | focused/package gates passed; original retry path exited `10` before tests | DOD-365 through DOD-370 delivered through accepted repair baseline | rejected |
-| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/historical | strict 10/10 GO and evidence-bound adoption/current verification | DOD-359 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
+| v0.1.122 | normal | Canonical MVP proof cycle 1 | candidate | focused evaluator/wrapper/control/package validation; strict host and proof evidence pending | DOD-384 through DOD-387 candidate | pending |
+| v0.1.121.1 | repair | Backend 403/429 auth-bootstrap guardrail classification repair | accepted/current | strict 10/10 GO with real 429 telemetry, exact Project Source, Guardian and adoption/current verification | DOD-380 through DOD-383 accepted; no scope advance | 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc |
+| v0.1.121 | normal | Resumable release-set rollout recovery and operator reconciliation | repair_required | focused/package gates passed; strict host stopped before Project Source add because 429 was misclassified as 403 | DOD-372 through DOD-378 delivered through accepted repair successor | rejected |
+| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | accepted/historical | strict 10/10 GO; deterministic canonical SHA; exact Project Source; Guardian; adoption/current verification | DOD-371 accepted; no scope advance | 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49 |
+| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | repair_required | focused/package gates passed; original retry path exited `10` before tests | DOD-365 through DOD-370 delivered through repair successor | rejected |
 
 ## Status rule
 

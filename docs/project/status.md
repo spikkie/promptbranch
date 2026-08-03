@@ -1,42 +1,45 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.120.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
-accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
-active slice: v0.1.121.1 — Backend 403/429 auth-bootstrap guardrail classification repair
+accepted/current baseline: v0.1.121.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.121.1(1).zip
+accepted/current SHA-256: 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc
+active candidate version: v0.1.122
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
+active slice: v0.1.122 — Canonical MVP proof cycle 1
 next normal version: v0.1.122
-next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
+next normal slice: v0.1.122 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.120.1` remains accepted/current. Original `v0.1.121` completed focused and packaged validation but strict host release control stopped before Project Source publication because conversation-history HTTP 429 telemetry was falsely promoted to a backend-api 403 challenge. `v0.1.121.1` preserves the complete release-set recovery scope and repairs only that classifier.
+`v0.1.121.1` passed strict host validation 10/10 and is accepted/current. `v0.1.122` intentionally adds no platform feature. It converts the canonical MVP definition into explicit proof evidence so cycle 1 cannot be claimed from a generic green release alone.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.120.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
-accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+accepted/current version: v0.1.121.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.121.1(1).zip
+accepted/current SHA-256: 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc
+active candidate version: v0.1.122
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
 candidate adoption: not performed
 next normal version: v0.1.122
-next planned after acceptance: v0.1.122
+next planned after acceptance: v0.1.123
 ```
 
 ## Candidate behavior
 
-- Auth-bootstrap 403 classification requires an explicit structured `backend_api_guardrail` event whose status is exactly `403`.
-- Generic `backend_api_guardrail_seen=true` is not sufficient because it is also emitted for HTTP 429 telemetry.
-- HTTP 429 remains rate-limit evidence and does not poison an otherwise authenticated, composer-visible browser profile.
-- Explicit backend 403 challenge evidence remains terminal and fail-closed.
-- All `v0.1.121` release-set reconcile/resume behavior is preserved unchanged.
+- `scripts/verify-mvp-proof-cycle.py` evaluates only explicit evidence files and performs no mutation.
+- `scripts/finalize-mvp-proof-cycle.sh` issues one post-adoption continuation ask using `--from-current-baseline` and then invokes the evaluator.
+- A real intake record must show `download_performed=true` and `verification_performed=true`.
+- The strict host all-tests summary must show 10/10 GO with no failed or skipped outer gates.
+- Visual-artifact transport, adoption, current identity, and continuation baseline/target must all match.
+- A repair version cannot satisfy a normal MVP proof cycle.
+- The standard browser profile default and all accepted Docker/live validation policies remain unchanged.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.121.1.zip`, then run strict host release control. Treat `v0.1.120.1` as accepted/current until adoption/current evidence proves `v0.1.121.1`.
+Download and explicitly intake `chatgpt_claudecode_workflow-2_v0.1.122.zip`, run strict host release control, then run `scripts/finalize-mvp-proof-cycle.sh`. Keep `v0.1.121.1` accepted/current until adoption and proof evidence both pass.
 
 ## v0.1.102 candidate status
 

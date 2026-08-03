@@ -1061,3 +1061,7 @@ pb release set plan \
 ```
 
 The `promptbranch.release_set` v1.0 manifest declares canonical target artifacts and numeric dependency constraints. The planner reads joined-repository configuration and accepted/current project artifact state, then emits dependency order, parallel waves, compatibility rows, immutable artifact observations, and `plan_sha256`. It performs no Git, repository, registry, Project Source, publication, adoption, rollout, or rollback mutation.
+
+## Canonical MVP proof cycles
+
+`v0.1.122` introduces explicit read-only evidence evaluation for the first of two required consecutive normal MVP proof releases. Use `scripts/finalize-mvp-proof-cycle.sh` after strict adoption to verify artifact intake, 10/10 GO, visual ZIP transport, adoption/current identity, and continuation from the newly accepted baseline. The next normal release, `v0.1.123`, repeats the same contract for the final MVP verdict.

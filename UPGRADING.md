@@ -761,3 +761,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 - Adoption updates local artifact/source baseline state only after candidate ZIP verification, candidate-test verification, and artifact-current verification.
 - No Project Source upload or source-sync behavior was added; `--from-project-source` remains optional verification only.
 
+
+## v0.1.122 — canonical MVP proof cycle 1
+
+No data migration is required. Product scope is frozen for MVP finalization. After strict release-control adoption, run `scripts/finalize-mvp-proof-cycle.sh` with the explicit artifact-intake JSON to prove cycle 1. The wrapper is read-only except for issuing the continuation protocol ask; it does not publish, adopt, commit, push, or remove Project Sources.

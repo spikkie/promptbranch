@@ -4333,3 +4333,13 @@ def test_release_control_uses_canonical_hash_and_immutable_identity_preflight():
     assert 'Project Source add skipped: exact version/hash is already accepted/current' in script
     assert '"repo_id": repo_id' in script
     assert '"git_commit": git_commit' in script
+
+
+def test_finalize_mvp_proof_cycle_contract() -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-mvp-proof-cycle.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "--from-current-baseline" in text
+    assert "--intent-kind mvp_proof_continuation" in text
+    assert "scripts/verify-mvp-proof-cycle.py" in text
+    assert "pb artifact adopt" not in text
+    assert "pb src add" not in text
