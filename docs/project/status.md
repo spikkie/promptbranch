@@ -4,13 +4,13 @@ accepted/current baseline: v0.1.120.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
 accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
-active slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
-next normal version: v0.1.121
-next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
+active candidate version: v0.1.121.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+active slice: v0.1.121.1 — Backend 403/429 auth-bootstrap guardrail classification repair
+next normal version: v0.1.122
+next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
 
-`v0.1.120.1` is accepted/current after strict 10/10 validation, deterministic artifact verification, exact Project Source publication, Artifact Guardian, evidence-bound adoption, and accepted/current verification. `v0.1.121` advances the normal release-set roadmap with hash-bound recovery and reconciliation.
+`v0.1.120.1` remains accepted/current. Original `v0.1.121` completed focused and packaged validation but strict host release control stopped before Project Source publication because conversation-history HTTP 429 telemetry was falsely promoted to a backend-api 403 challenge. `v0.1.121.1` preserves the complete release-set recovery scope and repairs only that classifier.
 
 ## Current baseline
 
@@ -19,27 +19,24 @@ accepted/current version: v0.1.120.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
 accepted/current source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
 accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
+active candidate version: v0.1.121.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
 candidate adoption: not performed
-next normal version: v0.1.121
+next normal version: v0.1.122
 next planned after acceptance: v0.1.122
 ```
 
 ## Candidate behavior
 
-- `pb release set reconcile` validates interrupted or incomplete rollout evidence without mutation and emits a canonical reconciliation digest.
-- Every repository is classified against the exact pre-rollout identity and exact target identity.
-- `pb release set resume` requires exact release-set, original-plan, and reconciliation confirmations plus the complete mutation envelope.
-- Verified target repositories are not replayed; pending repositories continue in deterministic dependency order.
-- Interrupted rollback resumes only repositories still at target identity, in reverse dependency order.
-- Operator-repaired incomplete rollback can be finalized only when authoritative current identity proves every repository is restored exactly.
-- Ambiguous or missing identity remains fail-closed and requires operator reconciliation before retry.
-- Resume events extend the original SHA-256 event chain and terminal evidence remains independently verifiable.
+- Auth-bootstrap 403 classification requires an explicit structured `backend_api_guardrail` event whose status is exactly `403`.
+- Generic `backend_api_guardrail_seen=true` is not sufficient because it is also emitted for HTTP 429 telemetry.
+- HTTP 429 remains rate-limit evidence and does not poison an otherwise authenticated, composer-visible browser profile.
+- Explicit backend 403 challenge evidence remains terminal and fail-closed.
+- All `v0.1.121` release-set reconcile/resume behavior is preserved unchanged.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.121.zip`, then run strict host release control. Treat `v0.1.120.1` as accepted/current until adoption/current evidence proves `v0.1.121`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.121.1.zip`, then run strict host release control. Treat `v0.1.120.1` as accepted/current until adoption/current evidence proves `v0.1.121.1`.
 
 ## v0.1.102 candidate status
 

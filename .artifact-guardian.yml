@@ -48,6 +48,7 @@ required_entries:
   - "docs/release-v0.1.120.md"
   - "docs/release-v0.1.120.1.md"
   - "docs/release-v0.1.121.md"
+  - "docs/release-v0.1.121.1.md"
   - "promptbranch_protocol/schemas/release-set-rollout-reconciliation.schema.json"
 
 forbidden_entries:

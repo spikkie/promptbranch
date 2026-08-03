@@ -1,3 +1,7 @@
+## v0.1.121.1 auth-bootstrap guardrail classification migration
+
+No operator data migration is required. Existing browser profiles, release checkpoints, Project Source identities, and release-set reconciliation evidence remain valid. Retry with `v0.1.121.1`; the wrapper now distinguishes explicit backend HTTP 403 challenge events from HTTP 429 rate-limit telemetry. Original `v0.1.121` bytes remain repair-required.
+
 ## v0.1.121 release-set recovery migration
 
 `v0.1.120.1` is accepted/current. Existing `v0.1.120` rollout checkpoints remain valid inputs. No checkpoint conversion is required. Operators must first run `pb release set reconcile --evidence ... --json`; the command reconstructs the original plan binding from the stored pre-rollout identities and classifies authoritative current state. A subsequent `pb release set resume` requires the exact reconciliation SHA-256 and complete mutation envelope. Missing or ambiguous current identity must be repaired outside Promptbranch and reconciled again; there is no automatic override or legacy fallback.

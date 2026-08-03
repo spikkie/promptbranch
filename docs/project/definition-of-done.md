@@ -973,3 +973,12 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-377 | Interrupted reverse rollback resumes only unreverted target-current repositories in reverse dependency order and fails closed on incomplete restoration | focused_candidate | interrupted rollback recovery regression | v0.1.121 |
 | DOD-378 | Operator-repaired incomplete rollback finalizes without command replay only after every repository is authoritatively restored to its exact pre-rollout artifact and Project Source identity | focused_candidate | manual-repair reconciliation/finalization regression | v0.1.121 |
 | DOD-379 | Candidate passes strict direct/localhost/live validation, Artifact Guardian, exact Project Source publication, adoption and accepted/current verification | open | strict host release-control log required | v0.1.121 |
+
+## v0.1.121.1 backend 403/429 auth-bootstrap classification repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-380 | Auth-bootstrap 403 detection ignores generic guardrail summaries and explicit HTTP 429 events | focused_candidate | executable real-function regression with representative 429 telemetry | v0.1.121.1 |
+| DOD-381 | Auth-bootstrap 403 detection remains terminal for an explicit structured backend guardrail event with status 403 | focused_candidate | executable real-function positive 403 regression | v0.1.121.1 |
+| DOD-382 | Repair preserves all v0.1.121 release-set recovery semantics and is included in mandatory deterministic release validation | focused_candidate | release_pipeline group plus release-set planner/rollout groups | v0.1.121.1 |
+| DOD-383 | Candidate passes strict direct/localhost/live validation, Artifact Guardian, exact Project Source publication, adoption and accepted/current verification | open | strict host release-control log required | v0.1.121.1 |

@@ -2,11 +2,11 @@
 
 accepted/current baseline: v0.1.120.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-active candidate version: v0.1.121
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
-active slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
-next normal version: v0.1.121
-next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
+active candidate version: v0.1.121.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+active slice: v0.1.121.1 — Backend 403/429 auth-bootstrap guardrail classification repair
+next normal version: v0.1.122
+next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
 
 ## Current baseline
 
@@ -15,35 +15,32 @@ accepted/current version: v0.1.120.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
 accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
-active candidate version: v0.1.121
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
-next normal version: v0.1.121
-next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
+active candidate version: v0.1.121.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
+next normal version: v0.1.122
+next normal slice: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
 next planned after acceptance: v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence
 ```
 
-## Active normal slice — v0.1.121
+## Active repair slice — v0.1.121.1
 
-1. Add read-only `pb release set reconcile` for interrupted or incomplete rollout checkpoints.
-2. Reconstruct the original plan digest from the manifest plus exact pre-rollout current identities so completed adoption does not invalidate recovery binding.
-3. Classify each repository as exact target, exact previous, missing, or ambiguous current identity.
-4. Emit deterministic pending forward order, reverse rollback order, recovery mode, and canonical reconciliation SHA-256 without mutation.
-5. Add guarded `pb release set resume` requiring exact release-set, original-plan, and reconciliation confirmations plus the complete mutation envelope.
-6. Skip already verified target repositories and continue only exact previous-current repositories.
-7. Resume interrupted rollback only for repositories still at target identity, in reverse dependency order.
-8. Finalize operator-repaired incomplete rollback only after authoritative registry proof of every exact pre-rollout artifact and Project Source identity.
-9. Extend the original event hash chain with resume history and preserve independent final evidence validation.
-10. Keep ambiguous identity fail-closed; no operator override is inferred automatically.
+1. Preserve the complete `v0.1.121` release-set reconciliation and resume implementation.
+2. Remove generic `backend_api_guardrail_seen=true` as standalone proof of backend HTTP 403.
+3. Require a structured `backend_api_guardrail` event with numeric status exactly `403`.
+4. Treat explicit HTTP 429 events as rate-limit telemetry, not browser challenge evidence.
+5. Add executable detector regressions for both 429 and 403 logs.
+6. Include those regressions in the mandatory `release_pipeline` validation group.
+7. Keep real backend 403 handling terminal and fail-closed.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.118.1` — accepted historical repair release.
-2. `v0.1.119` — accepted historical normal release.
-3. `v0.1.120` — repair-required normal artifact; functionality delivered through the repair baseline.
-4. `v0.1.120.1` — accepted/current repair baseline.
-5. `v0.1.121` — active normal candidate.
+1. `v0.1.119` — accepted historical normal release.
+2. `v0.1.120` — repair-required normal artifact.
+3. `v0.1.120.1` — accepted/current repair baseline.
+4. `v0.1.121` — repair-required normal artifact; functionality preserved in its repair successor.
+5. `v0.1.121.1` — active scope-neutral repair candidate.
 6. `v0.1.122` — planned after acceptance.
 
 ## Repair definition — v0.1.71.1

@@ -1362,8 +1362,6 @@ if re.search(r"backend-api[^\n'\"]+\b403\b", text, flags=re.IGNORECASE):
     raise SystemExit(0)
 if re.search(r"status[=:]\s*403", text, flags=re.IGNORECASE) and "backend-api" in text.lower():
     raise SystemExit(0)
-if '"backend_api_guardrail_seen": true' in text.lower() or "'backend_api_guardrail_seen': true" in text.lower():
-    raise SystemExit(0)
 if "browser_backend_403_guardrail" in text or "docker_standard_profile_challenged" in text or "docker_live_profile_challenged" in text:
     if "backend_api_guardrail" in text or "backend-api" in text.lower():
         raise SystemExit(0)
@@ -1382,15 +1380,12 @@ for idx, ch in enumerate(text):
         cur = stack.pop()
         if not isinstance(cur, dict):
             continue
-        if cur.get("backend_api_guardrail_seen") is True:
-            raise SystemExit(0)
         if cur.get("kind") == "backend_api_guardrail":
             try:
-                if int(cur.get("status") or 0) == 403:
-                    raise SystemExit(0)
-            except SystemExit:
-                raise
-            except Exception:
+                status = int(cur.get("status") or 0)
+            except (TypeError, ValueError):
+                status = 0
+            if status == 403:
                 raise SystemExit(0)
         for nested in cur.values():
             if isinstance(nested, dict):

@@ -3624,6 +3624,95 @@ def test_release_control_auth_bootstrap_backend_api_guardrail_is_terminal_static
     assert "status: browser_backend_403_guardrail" in script
 
 
+def _release_control_auth_bootstrap_403_detector() -> str:
+    script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    body = script.split("release_control_log_has_backend_api_guardrail_403() {", 1)[1].split(
+        "release_control_wait_for_no_held_auth_session() {", 1
+    )[0]
+    return "release_control_log_has_backend_api_guardrail_403() {" + body
+
+
+def test_release_control_auth_bootstrap_403_detector_ignores_http_429(tmp_path: Path) -> None:
+    detector = _release_control_auth_bootstrap_403_detector()
+    log_path = tmp_path / "auth-bootstrap-429.log"
+    log_path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "status": "auth_preflight_ready",
+                "rate_limit_telemetry": {
+                    "backend_api_guardrail_seen": True,
+                    "conversation_history_429_seen": True,
+                    "rate_limit_modal_detected": True,
+                    "service_rate_limit_events": [
+                        {
+                            "kind": "backend_api_guardrail",
+                            "status": 429,
+                            "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28",
+                        },
+                        {
+                            "kind": "conversation_history_rate_limit",
+                            "status": 429,
+                            "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28",
+                        },
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", detector + '\nrelease_control_log_has_backend_api_guardrail_403 "$1"', "bash", str(log_path)],
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1, result.stderr
+
+
+def test_release_control_auth_bootstrap_403_detector_accepts_explicit_http_403(tmp_path: Path) -> None:
+    detector = _release_control_auth_bootstrap_403_detector()
+    log_path = tmp_path / "auth-bootstrap-403.log"
+    log_path.write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "status": "auth_preflight_failed",
+                "rate_limit_telemetry": {
+                    "backend_api_guardrail_seen": True,
+                    "conversation_history_429_seen": False,
+                    "service_rate_limit_events": [
+                        {
+                            "kind": "backend_api_guardrail",
+                            "status": 403,
+                            "url": "https://chatgpt.com/backend-api/conversations?offset=0&limit=28",
+                        }
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", detector + '\nrelease_control_log_has_backend_api_guardrail_403 "$1"', "bash", str(log_path)],
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_release_control_auth_bootstrap_403_detector_requires_explicit_status_static() -> None:
+    detector = _release_control_auth_bootstrap_403_detector()
+    assert '"backend_api_guardrail_seen": true' not in detector
+    assert 'cur.get("backend_api_guardrail_seen") is True' not in detector
+    assert 'status == 403' in detector
+
+
 def test_release_control_full_validation_guardrail_is_terminal_even_when_command_succeeds_static() -> None:
     script = Path("chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
     assert "if [[ ${run_all_tests} -eq 1 ]] && run_all_log_has_backend_api_guardrail_403" in script

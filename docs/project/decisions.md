@@ -1247,3 +1247,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 **Consequences:** Verified target repositories are skipped, pending repositories continue in deterministic order, rollback resumes in reverse dependency order, manually repaired rollback can be finalized without command replay, and ambiguous or missing state blocks automatically. No operator override is inferred.
 
 - **Next planned after acceptance:** `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.
+
+## D-0121.1 — Require explicit HTTP status for auth-bootstrap 403 classification
+
+- **Decision:** The release-control auth-bootstrap wrapper may classify a backend challenge only from an explicit structured `backend_api_guardrail` event with numeric status `403` or an already terminal explicit 403 challenge status.
+- **Reason:** `v0.1.121` proved that the generic `backend_api_guardrail_seen=true` summary flag is also emitted for conversation-history HTTP 429 events and therefore cannot identify the status class.
+- **Safety:** Explicit 403 remains terminal and fail-closed. HTTP 429 remains rate-limit telemetry and does not bypass authentication or strict validation requirements.
+- **Scope:** Repair-only. Release-set reconciliation, resume, rollback, publication, adoption, and mutation authority are unchanged.
+- **Next:** `v0.1.122` remains the next normal slice after repair acceptance.
