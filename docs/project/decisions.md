@@ -1203,3 +1203,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Decision:** `v0.1.118` writes incremental checkpoints, validates imported evidence read-only, and resumes only from immutable phase evidence.
 - **Safety:** successful remote mutation phases are reused rather than silently replayed; changed bytes, divergent Git identity, ambiguous Project Source identity, or stale accepted/current evidence fail closed.
 - **Next planned after acceptance:** `v0.1.119 — Read-only multi-repository release-set dependency planner`.
+
+## ADR-REL-118.1 — Canonical ZIP bytes and pre-adoption publication identity are immutable
+
+- **Context:** The first `v0.1.118` run published SHA-256 `e45cb908...` and then failed from host disk exhaustion. A clean rerun from the same Git commit rebuilt a byte-different ZIP with SHA-256 `d28cae9...`, uploaded an indexed replacement and removed the first source before adoption.
+- **Decision:** The repository-owned builder is the only authority for canonical release bytes. It fixes ordering, timestamps, permissions and uses stored ZIP entries to eliminate compressor implementation variance. Release control rebuilds twice and requires exact byte identity.
+- **Decision:** Release control writes an atomic checkpoint before source mutation. The first successful publication binds the exact canonical hash and backend-assigned source identity as a provisional immutable release identity, even before validation or adoption.
+- **Decision:** Full reruns automatically import this checkpoint. Exact bindings reuse the existing source; artifact, Git or contract drift fails before source mutation. Successful adoption finalizes the same checkpoint.
+- **Consequence:** Interrupted releases no longer create indexed replacement sources or silently change same-version bytes. The normal roadmap remains at `v0.1.119`; this repair advances no normal scope.

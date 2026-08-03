@@ -923,3 +923,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-352 | `pb release pipeline resume` requires the exact imported mutation envelope, re-runs safe repository-owned local gates, and reuses exact successful Git and Project Source mutation evidence instead of replaying those mutations | focused_candidate | publication/adoption partial-failure recovery regressions | v0.1.118 |
 | DOD-353 | Successful imported adoption/current evidence is accepted only when authoritative current identity reconfirms it; divergence blocks automatic replay and records explicit recovery failure | focused_candidate | adoption/current recovery and divergence tests | v0.1.118 |
 | DOD-354 | Candidate passes strict direct/localhost/live validation and exact evidence-bound adoption/current verification | open | full release-control log and adopted registry evidence required | v0.1.118 |
+
+## v0.1.118.1 deterministic canonical rebuild and failed-attempt identity binding
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-355 | Rebuilding the same committed repository and release contract produces byte-identical canonical ZIP bytes with fixed entry order, timestamps, permissions and archive method | focused_candidate | `scripts/build-release-artifact.py`, deterministic mtime/rebuild regression, release-control double-build comparison | v0.1.118.1 |
+| DOD-356 | Release control atomically binds repository, version, canonical artifact SHA-256, Git commit and release-contract SHA-256 before Project Source mutation | focused_candidate | `promptbranch_release_attempt.py`, checkpoint preflight regression | v0.1.118.1 |
+| DOD-357 | Successful Project Source publication becomes a provisional immutable identity containing exact assigned filename, processed file id, Library metadata id, persistence proof and canonical SHA-256 before validation/adoption | focused_candidate | checkpoint source-recording implementation and evidence validation regression | v0.1.118.1 |
+| DOD-358 | A same-version rerun with changed artifact/commit/contract fails before Project Source mutation; an exact rerun imports the checkpoint and reuses the existing source without indexed replacement | focused_candidate | conflict and exact-source-reuse regressions plus release-controller ordering assertions | v0.1.118.1 |
+| DOD-359 | Failed validation followed by cleanup and rerun preserves Git commit, artifact SHA-256, assigned source filename, processed file id and Library metadata id, then strict host validation/adoption verifies the repair | open | focused interrupted-run regression passed; strict host lifecycle evidence pending | v0.1.118.1 |

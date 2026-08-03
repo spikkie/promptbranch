@@ -1292,3 +1292,9 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 ## v0.1.118 recovery evidence migration
 
 No automatic state migration is performed. Import remains read-only; resume creates a new evidence run and requires exact repository, version, canonical artifact SHA-256, Git and Project Source bindings before reusing mutation evidence. The next planned slice after acceptance is `v0.1.119 — Read-only multi-repository release-set dependency planner`.
+
+## v0.1.118 to v0.1.118.1 migration note
+
+`v0.1.118.1` introduces a repository-owned deterministic ZIP format and a release-control checkpoint at `.pb_profile/release_logs/<version>/release_control_checkpoint.<version>.json`. No accepted/current registry migration is performed. Existing `v0.1.118` remains accepted/current.
+
+For a new `v0.1.118.1` attempt, release control creates the checkpoint automatically after the committed-tree canonical build. After Project Source publication it records the exact assigned filename and backing identifiers. If validation is interrupted, preserve `.pb_profile/release_logs/v0.1.118.1/`; a rerun of the same full command imports that checkpoint automatically. Exact identity reuses the prior source. Changed artifact bytes, Git commit, release contract or source evidence fail closed before Project Source mutation.

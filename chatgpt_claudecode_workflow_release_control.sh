@@ -14,7 +14,7 @@ set -Eeuo pipefail
 #   ga .    -> git add .
 #   gcm ... -> git commit -m ...
 #   gp      -> git push
-#   zip_it  -> ~/scripts/zip_with_not_to_zip.sh, with Python fallback
+#   package -> repository-owned deterministic release builder, with Python fallback
 #   pbsa    -> promptbranch src add ...
 #
 # Important fix: ./run_chatgpt_service.sh is started DETACHED by default so this
@@ -119,7 +119,7 @@ candidate_python=""
 candidate_pb=""
 candidate_promptbranch=""
 
-default_packager="${HOME}/scripts/zip_with_not_to_zip.sh"
+default_packager="${repo_root}/scripts/build-release-artifact.py"
 packager="${PROMPTBRANCH_PACKAGER:-${default_packager}}"
 
 usage() {
@@ -459,6 +459,7 @@ if [[ "${PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0:-0}" != "1" ]]; then
     echo "candidate_zip: ${candidate_stage0_zip}"
     echo "stage0_script: ${candidate_stage0_script}"
     export PROMPTBRANCH_RELEASE_WORKFLOW_REPO_ROOT="${repo_root}"
+    export PROMPTBRANCH_RELEASE_WORKFLOW_ORIGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     export PROMPTBRANCH_RELEASE_WORKFLOW_CANDIDATE_STAGE0=1
     if args_include_skip_source_add "$@"; then
       export PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD=1
@@ -845,6 +846,11 @@ project_source_add_log="${release_log_dir}/pb_src_add.release_artifact.${ver}.js
 release_identity_preflight_json="${release_log_dir}/release_identity_preflight.${ver}.json"
 release_identity_current_json="${release_log_dir}/release_identity_current.${ver}.json"
 release_identity_already_current=0
+release_control_checkpoint_json="${release_log_dir}/release_control_checkpoint.${ver}.json"
+release_control_checkpoint_import_json="${release_log_dir}/release_control_checkpoint_import.${ver}.json"
+release_control_checkpoint_source_json="${release_log_dir}/release_control_checkpoint_source.${ver}.json"
+release_control_checkpoint_helper="${repo_root}/promptbranch_release_attempt.py"
+release_control_resume_source_reuse=0
 adoption_source_evidence_json="${release_log_dir}/pb_src_add.release_artifact.${ver}.evidence.json"
 project_join_json="${release_log_dir}/pb_project_join.release_identity.${ver}.json"
 validation_evidence_dir="${release_log_dir}/validation_evidence"
@@ -1841,6 +1847,29 @@ fi
 
 [[ -f "${artifact_zip}" ]] || fail "could not find packaging output for version ${ver}; expected ${artifact_zip}, source_* variants, ${repo_basename}_${ver}.zip, or git-sha variants"
 
+# Canonicalize the release archive with the repository-owned deterministic builder.
+# Any external/custom packager may prepare generated source files, but it cannot
+# define the final release bytes. The canonical builder fixes order, timestamps,
+# permissions and uses ZIP_STORED to remove zlib implementation variance.
+deterministic_builder="${repo_root}/scripts/build-release-artifact.py"
+if [[ ! -x "${deterministic_builder}" ]]; then
+  release_control_script_dir="${PROMPTBRANCH_RELEASE_WORKFLOW_ORIGIN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  deterministic_builder="${release_control_script_dir}/scripts/build-release-artifact.py"
+fi
+[[ -x "${deterministic_builder}" ]] || fail "deterministic release builder missing or not executable: ${deterministic_builder}"
+deterministic_rebuild_probe="$(mktemp "${TMPDIR:-/tmp}/promptbranch-deterministic-${ver}.XXXXXX.zip")"
+trap 'rm -f "${deterministic_rebuild_probe:-}"' EXIT
+python3 "${deterministic_builder}" --repo "${repo_root}" --output "${canonical_artifact_zip}"
+first_canonical_sha="$(sha256sum "${canonical_artifact_zip}" | awk '{print $1}')"
+python3 "${deterministic_builder}" --repo "${repo_root}" --output "${deterministic_rebuild_probe}"
+second_canonical_sha="$(sha256sum "${deterministic_rebuild_probe}" | awk '{print $1}')"
+if [[ "${first_canonical_sha}" != "${second_canonical_sha}" ]] || ! cmp -s "${canonical_artifact_zip}" "${deterministic_rebuild_probe}"; then
+  fail "deterministic canonical rebuild mismatch: first=${first_canonical_sha} second=${second_canonical_sha}"
+fi
+rm -f "${deterministic_rebuild_probe}"
+deterministic_rebuild_probe=""
+echo "Deterministic canonical rebuild verified: ${first_canonical_sha}"
+
 # Verify ZIP hygiene before using it.
 python3 - "${artifact_zip}" "${ver}" <<'PY'
 import sys
@@ -2763,6 +2792,48 @@ raise SystemExit(code)
 INNERPY_IDENTITY
 }
 
+release_control_checkpoint_preflight() {
+  [[ -f "${release_control_checkpoint_helper}" ]] || fail "release-control checkpoint helper missing: ${release_control_checkpoint_helper}"
+  [[ -f "${repo_root}/.promptbranch-release.json" ]] || fail "release contract missing before checkpoint import: ${repo_root}/.promptbranch-release.json"
+  local git_commit contract_sha checkpoint_rc
+  git_commit="$(git rev-parse HEAD 2>/dev/null)" || fail "unable to resolve Git commit before checkpoint import"
+  contract_sha="$(sha256sum "${repo_root}/.promptbranch-release.json" | awk '{print $1}')"
+  set +e
+  python3 "${release_control_checkpoint_helper}" preflight \
+    --checkpoint "${release_control_checkpoint_json}" \
+    --repo-id "${release_repo_id}" \
+    --version "${ver}" \
+    --artifact "${canonical_artifact_zip}" \
+    --git-commit "${git_commit}" \
+    --contract-sha256 "${contract_sha}" \
+    --source-log "${project_source_add_log}" \
+    >"${release_control_checkpoint_import_json}"
+  checkpoint_rc=$?
+  set -e
+  cat "${release_control_checkpoint_import_json}"
+  return "${checkpoint_rc}"
+}
+
+release_control_checkpoint_record_source() {
+  python3 "${release_control_checkpoint_helper}" record-source \
+    --checkpoint "${release_control_checkpoint_json}" \
+    --source-log "${project_source_add_log}" \
+    | tee "${release_control_checkpoint_source_json}"
+}
+
+release_control_checkpoint_record_adoption() {
+  local adoption_log="$1"
+  local current_log="$2"
+  local output="${release_log_dir}/release_control_checkpoint_adoption.${ver}.json"
+  [[ -f "${release_control_checkpoint_json}" ]] || return 0
+  python3 "${release_control_checkpoint_helper}" record-adoption \
+    --checkpoint "${release_control_checkpoint_json}" \
+    --adoption-log "${adoption_log}" \
+    --current-log "${current_log}" \
+    | tee "${output}"
+  json_file_is_ok_true "${output}"
+}
+
 # Add release ZIP to ChatGPT Project Sources. The exact backend-assigned source
 # identity is captured before tests and bound to the later adoption transaction.
 if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" != "1" ]]; then
@@ -2778,20 +2849,42 @@ if [[ ${skip_source_add} -eq 0 && "${PROMPTBRANCH_RELEASE_SKIP_SOURCE_ADD:-0}" !
   if [[ ${release_identity_already_current} -eq 1 ]]; then
     echo "Project Source add skipped: exact version/hash is already accepted/current"
   else
-  ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
-  pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
-  [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before Project Source add: ${canonical_artifact_zip}"
-  echo "candidate_transport_zip: ${candidate_transport_zip}"
-  echo "canonical_artifact_zip: ${canonical_artifact_zip}"
-  echo "+ promptbranch src add ${canonical_artifact_zip} --json"
-  promptbranch src add "${canonical_artifact_zip}" --json | tee "${project_source_add_log}"
-  if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
-    release_control_capture_source_evidence_and_join_identity \
-      "${project_source_add_log}" \
-      "${adoption_source_evidence_json}" \
-      "${project_join_json}" \
-      || fail "authoritative adoption identity preflight failed before validation"
-  fi
+    set +e
+    release_control_checkpoint_preflight
+    release_checkpoint_rc=$?
+    set -e
+    case "${release_checkpoint_rc}" in
+      0)
+        release_control_resume_source_reuse=0
+        ;;
+      10)
+        release_control_resume_source_reuse=1
+        echo "Project Source add skipped: imported checkpoint preserves exact provisional version/hash/source identity"
+        ;;
+      *)
+        fail "release-control checkpoint import failed before Project Source mutation; inspect ${release_control_checkpoint_import_json}"
+        ;;
+    esac
+
+    if [[ ${release_control_resume_source_reuse} -eq 0 ]]; then
+      ensure_service_before_source_add || fail "pre-source-add service bootstrap failed"
+      pb_auth_bootstrap "pre_source_add" || fail "release-control auth bootstrap failed before Project Source add"
+      [[ -f "${canonical_artifact_zip}" ]] || fail "canonical release artifact missing before Project Source add: ${canonical_artifact_zip}"
+      echo "candidate_transport_zip: ${candidate_transport_zip}"
+      echo "canonical_artifact_zip: ${canonical_artifact_zip}"
+      echo "+ promptbranch src add ${canonical_artifact_zip} --json"
+      promptbranch src add "${canonical_artifact_zip}" --json | tee "${project_source_add_log}"
+      release_control_checkpoint_record_source \
+        || fail "failed to bind provisional immutable release identity after Project Source publication"
+    fi
+
+    if [[ ${adopt_after_validation} -eq 1 && ${auth_only_validation} -eq 0 ]]; then
+      release_control_capture_source_evidence_and_join_identity \
+        "${project_source_add_log}" \
+        "${adoption_source_evidence_json}" \
+        "${project_join_json}" \
+        || fail "authoritative adoption identity preflight failed before validation"
+    fi
   fi
 else
   if [[ ${auth_only_validation} -eq 1 ]]; then
@@ -3441,6 +3534,10 @@ INNERPY
     echo "PBAI-001 operational lifecycle evidence verified: ${operational_evidence_json}"
   else
     verify_current_matches_version "${current_json}"
+  fi
+  if declare -F release_control_checkpoint_record_adoption >/dev/null 2>&1 && [[ -f "${release_control_checkpoint_json:-}" ]]; then
+    release_control_checkpoint_record_adoption "${adopt_json}" "${current_json}" \
+      || fail "failed to finalize release-control checkpoint after adoption"
   fi
 }
 

@@ -1,17 +1,16 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.117.1.zip` (`v0.1.117.1`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.117.1(1).zip`.
-Accepted SHA-256: `44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719`.
-Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.118.zip` (`v0.1.118`).
-Next normal slice: `v0.1.118 — Resumable/importable release-pipeline evidence and recovery`.
-Next planned after acceptance: `v0.1.119 — Read-only multi-repository release-set dependency planner`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.118.zip` (`v0.1.118`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.118(2).zip`.
+Accepted SHA-256: `d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.118.1.zip` (`v0.1.118.1`).
+Next normal slice: `v0.1.119 — Read-only multi-repository release-set dependency planner`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | candidate | focused recovery, authority, test-suite and all 14 deterministic release groups passed; strict host validation pending | DOD-350 through DOD-354 candidate | pending |
-| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | accepted/current | strict host 10/10 GO; Git push, Project Source publication, adoption and current verification passed | DOD-347 through DOD-349 accepted | 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719 |
-| v0.1.117 | normal | PBAI compliance inventory and evidence-bound generic release pipeline | accepted historical | strict host validation 10/10 GO and evidence-bound adoption | DOD-342 through DOD-346 accepted | a7516dbc88049cd229ae7fdc6b012bb876e1f42de85199e13b3f71c66f22b01c |
+| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | candidate | focused deterministic builder, provisional checkpoint, exact source reuse and control-surface validation; strict host validation pending | DOD-355 through DOD-359 candidate | pending |
+| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | accepted/current | strict host 10/10 GO; Project Source `(2)`, adoption and current verification passed; post-run comparison exposed same-commit ZIP nondeterminism requiring repair | DOD-350 through DOD-354 accepted | d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365 |
+| v0.1.117.1 | repair | Immutable release identity and hash-bound evidence reuse | accepted historical | strict host 10/10 GO; Git push, Project Source publication, adoption and current verification passed | DOD-347 through DOD-349 accepted | 44c18b9248bf1e2add7af3e2a156ff21204bb59954f14159f334a09343735719 |
 
 ## Status rule
 
