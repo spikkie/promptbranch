@@ -1219,3 +1219,14 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Fail-closed rule:** Unknown repositories, project mismatch, cycles, unsupported constraints, missing external current state, incompatible versions, noncanonical artifacts, unsafe paths, invalid ZIPs, VERSION mismatch, and SHA-256 drift block the plan.
 - **Mutation boundary:** No Git, repository, registry, Project Source, publication, adoption, deployment, or rollback mutation is permitted.
 - **Consequence:** `v0.1.120` may consume only an explicit compatible and immutable plan under a separately authorized guarded execution contract.
+
+## Decision D-0120 — Exact-plan-bound release-set execution with mandatory reverse rollback
+
+- **Status:** accepted for candidate `v0.1.120`.
+- **Decision:** `pb release set apply` may execute only a freshly recomputed `promptbranch.release_set` plan that is compatible, locally artifact-verified and SHA-256-bound. Mutation requires exact `release_set_id` and `plan_sha256` confirmation plus explicit `--execute`, `--rollback-on-failure`, `--stage-all`, `--commit`, `--push`, `--publish`, `--adopt` and `--verify-current` flags.
+- **Decision:** Each target repository executes through its existing generic release pipeline. Dependency waves determine order, while repositories inside a wave execute deterministically rather than concurrently.
+- **Decision:** Before mutation, Promptbranch records every target repository's accepted/current version, canonical artifact, SHA-256, assigned Project Source, processed file ID and Library metadata ID. The first repository failure stops the rollout. Previously completed repositories invoke their repository-owned `operations.rollback` contract in reverse completion order.
+- **Decision:** Rollback succeeds only when the exact previous artifact and Project Source identity are observed again. Any command failure or identity mismatch yields `release_set_rollout_failed_rollback_incomplete`.
+- **Decision:** Every transition is atomically checkpointed. Events are SHA-256 hash chained and the complete summary has a canonical evidence SHA-256 validated by `pb release set evidence-validate`.
+- **Consequence:** Arbitrary shell execution, implicit lifecycle flags, plan drift, unverified artifacts, parallel mutation, Project deletion and automatic interrupted-run resume remain unavailable.
+- **Next:** `v0.1.121` may add import/resume and operator reconciliation for interrupted or incompletely rolled-back release sets without weakening the exact-plan and evidence rules.

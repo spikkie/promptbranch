@@ -630,6 +630,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         "release_lifecycle_plan",
         "release_pipeline",
         "release_set_planner",
+        "release_set_rollout",
         "execution_envelope_validation_gate",
         "compileall",
     }

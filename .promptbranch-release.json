@@ -9,7 +9,7 @@
     "format": "plain"
   },
   "artifact": {
-    "path": "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+    "path": "chatgpt_claudecode_workflow-2_v0.1.120.zip",
     "kind": "zip",
     "required_root_entries": [
       "VERSION",
@@ -70,7 +70,7 @@
           "--repo",
           ".",
           "--output",
-          "chatgpt_claudecode_workflow-2_v0.1.119.zip"
+          "chatgpt_claudecode_workflow-2_v0.1.120.zip"
         ],
         "timeout_seconds": 600
       }
@@ -84,9 +84,9 @@
           "--repo",
           ".",
           "--zip",
-          "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.120.zip",
           "--version",
-          "v0.1.119",
+          "v0.1.120",
           "--json"
         ],
         "timeout_seconds": 600
@@ -99,7 +99,7 @@
           "pb",
           "src",
           "add",
-          "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.120.zip",
           "--json"
         ],
         "timeout_seconds": 900
@@ -112,9 +112,9 @@
           "pb",
           "artifact",
           "adopt",
-          "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.120.zip",
           "--version",
-          "v0.1.119",
+          "v0.1.120",
           "--json"
         ],
         "timeout_seconds": 900
@@ -127,12 +127,25 @@
           "python3",
           "scripts/verify-release-adoption-current.py",
           "--version",
-          "v0.1.119",
+          "v0.1.120",
           "--artifact",
-          "chatgpt_claudecode_workflow-2_v0.1.119.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.120.zip",
           "--json"
         ],
         "timeout_seconds": 600
+      }
+    ],
+    "rollback": [
+      {
+        "id": "restore-previous-accepted-current",
+        "argv": [
+          "python3",
+          "scripts/rollback-release-artifact.py",
+          "--repo",
+          ".",
+          "--json"
+        ],
+        "timeout_seconds": 1800
       }
     ]
   },

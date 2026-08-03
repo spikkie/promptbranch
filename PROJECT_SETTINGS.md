@@ -95,3 +95,9 @@ Use `pb application architecture template` as a deterministic plan; repository w
 ## v0.1.119 release-set planning policy
 
 Release-set planning is read-only. A `promptbranch.release_set` manifest may describe repositories, canonical target artifacts, immutable SHA-256 bindings, and required numeric version constraints. The planner may read tracked repo identities, joined-repo configuration, accepted/current project artifact state, and local candidate ZIP bytes. It may compute dependency order, parallel waves, compatibility rows, and a deterministic plan digest. It must not change repository files, project registries, Project Sources, Git state, publication state, adoption state, deployments, or rollback state. Cycles, unresolved dependencies, incompatible versions, identity drift, unsupported constraints, or ambiguous project scope must fail closed. Guarded execution is reserved for a later explicitly authorized slice.
+
+## Guarded release-set rollout policy
+
+Multi-repository rollout authority exists only through a freshly recomputed, compatible and immutable release-set plan. Exact release-set ID and plan SHA-256 confirmation are mandatory. Every target artifact must be locally verified and SHA-256-bound. The operator must explicitly authorize the complete per-repository release pipeline and mandatory rollback-on-failure.
+
+Promptbranch may execute only repository-owned generic release pipelines and tracked no-shell rollback contracts. It must stop after the first repository failure, roll back completed repositories in reverse order, verify the exact previous artifact and Project Source identity, and preserve atomic hash-chained evidence. An incomplete rollback is a failed and inconsistent outcome; it must never be described as recovered. Parallel repository mutation, Project deletion, implicit command execution and automatic interrupted-run resume are outside this authority.

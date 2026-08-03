@@ -1,46 +1,48 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.118.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-active candidate version: v0.1.119
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-active slice: v0.1.119 — Read-only multi-repository release-set dependency planner
-next normal version: v0.1.119
-next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
+accepted/current baseline: v0.1.119
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+active candidate version: v0.1.120
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
+active slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+next normal version: v0.1.120
+next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.118.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
-accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
-active candidate version: v0.1.119
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-next normal version: v0.1.119
-next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
-next planned after acceptance: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+accepted/current version: v0.1.119
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
+accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
+active candidate version: v0.1.120
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
+next normal version: v0.1.120
+next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+next planned after acceptance: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 ```
 
 ## Active normal slice
 
-1. Define the strict `promptbranch.release_set` manifest contract for repositories, immutable targets, and dependency constraints.
-2. Resolve every repository from the joined project registry and compare target state with accepted/current state.
-3. Resolve dependencies from release-set targets or accepted/current external project state.
-4. Emit deterministic dependency-first order, parallel waves, and compatibility matrix rows.
-5. Verify local candidate ZIP identity, VERSION and optional SHA-256 without mutation.
-6. Fail closed for project drift, unknown repositories, invalid constraints, cycles, incompatibility, path traversal, ZIP failures and hash mismatch.
-7. Keep Git, repository files, registries, Project Sources, publication, adoption and execution untouched.
+1. Recompute and exact-bind a compatible, execution-ready `promptbranch.release_set` plan immediately before mutation.
+2. Require exact release-set ID and plan SHA-256 confirmation plus explicit complete lifecycle authorization.
+3. Execute repository release pipelines in dependency-wave order and deterministic repository order within each wave.
+4. Capture pre-rollout accepted/current artifact and Project Source identities for every target repository.
+5. Atomically checkpoint every rollout transition and preserve a SHA-256 hash chain across all events.
+6. Stop on the first failed repository and invoke repository-owned rollback contracts in reverse completion order.
+7. Verify rollback restores exact previous version, artifact SHA-256, assigned source, processed file ID and Library metadata ID.
+8. Fail closed with explicit incomplete-rollback evidence when exact restoration cannot be proved.
+9. Keep ChatGPT Project deletion, implicit commands, parallel mutation and automatic interrupted-run resume out of scope.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.117.1` — accepted historical repair.
-2. `v0.1.118` — accepted historical normal release.
-3. `v0.1.118.1` — accepted/current repair baseline.
-4. `v0.1.119` — active normal candidate.
-5. `v0.1.120` — planned after acceptance.
+1. `v0.1.118` — accepted historical normal release.
+2. `v0.1.118.1` — accepted historical repair release.
+3. `v0.1.119` — accepted/current normal baseline.
+4. `v0.1.120` — active normal candidate.
+5. `v0.1.121` — planned after acceptance.
 
 ## Repair definition — v0.1.71.1
 

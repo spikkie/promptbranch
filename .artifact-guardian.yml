@@ -21,6 +21,7 @@ required_entries:
   - "promptbranch_artifact_guardian.py"
   - "chatgpt_claudecode_workflow_release_control.sh"
   - "scripts/post-release-validation.sh"
+  - "scripts/rollback-release-artifact.py"
   - "docs/project/README.md"
   - "docs/project/mvp.md"
   - "docs/project/definition-of-done.md"
@@ -41,6 +42,10 @@ required_entries:
   - "promptbranch_protocol/schemas/release-set.schema.json"
   - "examples/release-set/kubernetes-release-set.example.json"
   - "docs/release-v0.1.119.md"
+  - "promptbranch_release_set_rollout.py"
+  - "promptbranch_protocol/schemas/release-set-rollout-evidence.schema.json"
+  - "scripts/rollback-release-artifact.py"
+  - "docs/release-v0.1.120.md"
 
 forbidden_entries:
   - ".git/"
@@ -67,6 +72,7 @@ forbidden_entries:
 executable_entries:
   - "chatgpt_claudecode_workflow_release_control.sh"
   - "scripts/post-release-validation.sh"
+  - "scripts/rollback-release-artifact.py"
 
 version_checks:
   require_version_file_equals_cli_version: true

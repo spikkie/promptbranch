@@ -1304,3 +1304,13 @@ For a new `v0.1.118.1` attempt, release control creates the checkpoint automatic
 No registry or Project Source migration is required. Existing joined repository configuration and accepted/current artifact records are read as-is. Teams may add a release-set manifest outside or inside a repository and run `pb release set plan --manifest <path> --json`. The command performs no writes.
 
 Manifests must use schema `promptbranch.release_set` version `1.0`, canonical `<repo_id>_<version>.zip` target names, and the supported numeric constraint grammar. Optional repository-relative `local_path` plus SHA-256 binds a target to verified local bytes. Plans without verified target bytes can remain compatibility-valid but report `execution_ready=false`. No execution is available in `v0.1.119`; guarded rollout and rollback remain planned for `v0.1.120`.
+
+## v0.1.119 to v0.1.120 migration note
+
+No automatic repository or registry migration is performed. Existing `promptbranch.release_set` version `1.0` manifests remain valid. Execution additionally requires every target artifact to be locally verified and SHA-256-bound and every target repository to expose a tracked `.promptbranch-release.json` compatible with the generic release pipeline.
+
+Repositories participating in automatic rollback must add an `operations.rollback` array to their release contract. Rollback steps use the same no-shell, bounded-timeout command rules as other release operations. Promptbranch supplies the exact pre-rollout artifact and Project Source identity through `PROMPTBRANCH_ROLLBACK_*` environment variables. The repository must restore accepted/current state and return structured success evidence; Promptbranch independently verifies the project registry afterward.
+
+Operators should first run `pb release set plan --json`, preserve its `release_set_id` and `plan_sha256`, then invoke `pb release set apply` with every explicit lifecycle flag and mandatory `--rollback-on-failure`. Rollout evidence is written under `.pb_profile/release_set_rollouts/<release_set_id>/<run_id>/`. `pb release set evidence-validate` is read-only and can verify either the summary file, checkpoint file or containing evidence directory.
+
+Interrupted rollout import/resume and controlled reconciliation after an incomplete rollback are intentionally deferred to `v0.1.121`.

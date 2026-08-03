@@ -1,43 +1,44 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.118.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
-accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
-active candidate version: v0.1.119
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-active slice: v0.1.119 — Read-only multi-repository release-set dependency planner
-next normal version: v0.1.119
-next normal slice: v0.1.119 — Read-only multi-repository release-set dependency planner
+accepted/current baseline: v0.1.119
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
+accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
+active candidate version: v0.1.120
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
+active slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
+next normal version: v0.1.120
+next normal slice: v0.1.120 — Guarded multi-repository rollout execution and rollback evidence
 
-`v0.1.118.1` is accepted/current after strict 10/10 validation, deterministic canonical rebuild proof, exact Project Source publication, evidence-bound adoption and current verification. `v0.1.119` advances the normal roadmap with read-only project-scoped release-set planning only.
+`v0.1.119` is accepted/current after strict 10/10 validation, deterministic canonical rebuild proof, exact Project Source publication, evidence-bound adoption and current verification. `v0.1.120` adds explicit, plan-bound multi-repository rollout and reverse-order rollback evidence.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.118.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.118.1.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip
-accepted/current SHA-256: 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076
-active candidate version: v0.1.119
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+accepted/current version: v0.1.119
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
+accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
+active candidate version: v0.1.120
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.zip
 candidate adoption: not performed
-next normal version: v0.1.119
-next planned after acceptance: v0.1.120
+next normal version: v0.1.120
+next planned after acceptance: v0.1.121
 ```
 
 ## Candidate behavior
 
-- `pb release set plan` reads one strict manifest and the existing project-scoped repo/artifact registries.
-- It computes a deterministic dependency-first order and parallel-safe waves.
-- The compatibility matrix records each consumer, dependency, constraint, resolved version and whether resolution came from a release-set target or accepted/current state.
-- Local candidate artifacts are verified read-only for canonical naming, CRC/hygiene, VERSION and SHA-256.
-- Cycles, unknown repos, missing external current state, incompatible versions and artifact identity drift block the plan.
-- No rollout, Git, Project Source, publication, adoption or registry mutation authority is granted.
+- `pb release set apply` recomputes the read-only plan and requires exact `release_set_id` plus `plan_sha256` confirmation.
+- The complete per-repository release pipeline must be explicitly authorized: stage, commit, push, publish, adopt and verify-current.
+- Rollback-on-failure is mandatory; later repositories stop after the first failure.
+- Successfully completed repositories roll back in reverse completion order through repository-owned `operations.rollback` contracts.
+- Pre-rollout version, artifact SHA-256 and Project Source identities are captured before mutation and verified after rollback.
+- Every transition is atomically checkpointed and hash-chained; `pb release set evidence-validate` detects tampering.
+- Parallel mutation, implicit shell commands, Project deletion and automatic interrupted-run resume remain out of scope.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.119.zip`, then run strict host release control. Treat `v0.1.118.1` as accepted/current until adoption/current evidence proves `v0.1.119`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.120.zip`, then run strict host release control. Treat `v0.1.119` as accepted/current until adoption/current evidence proves `v0.1.120`.
 
 ## v0.1.102 candidate status
 

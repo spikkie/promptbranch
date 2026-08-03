@@ -1,20 +1,20 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.118.1.zip` (`v0.1.118.1`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.118.1(1).zip`.
-Accepted SHA-256: `9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076`.
-Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.119.zip` (`v0.1.119 — Read-only multi-repository release-set dependency planner`).
-Next normal slice after acceptance: `v0.1.120 — Guarded multi-repository rollout execution and rollback evidence`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.119.zip` (`v0.1.119`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.119(1).zip`.
+Accepted SHA-256: `3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.120.zip` (`v0.1.120 — Guarded multi-repository rollout execution and rollback evidence`).
+Next normal slice after acceptance: `v0.1.121 — Resumable release-set rollout recovery and operator reconciliation`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | candidate | focused planner, constraints, cycle, artifact identity, CLI and control-surface validation; strict host validation pending | DOD-360 through DOD-364 candidate | pending |
-| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | accepted/current | strict host 10/10 GO; deterministic canonical SHA, Project Source `(1)`, adoption and current verification passed | DOD-355 through DOD-359 accepted | 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076 |
-| v0.1.118 | normal | Resumable/importable release-pipeline evidence and recovery | accepted historical | strict host 10/10 GO; superseded by deterministic repair | DOD-350 through DOD-354 accepted | d28cae9cad8c2ac6d1f6fabc2f0b06ddb04bec1aa8efcebf5560e5a1d1f5c365 |
+| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | candidate | focused plan-binding, guarded apply, reverse rollback, evidence-chain, CLI and control-surface validation; strict host validation pending | DOD-365 through DOD-370 candidate | pending |
+| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/current | strict host 10/10 GO; deterministic canonical SHA, Project Source `(1)`, adoption and current verification passed | DOD-360 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
+| v0.1.118.1 | repair | Deterministic canonical rebuild and failed-attempt identity binding | accepted historical | strict host 10/10 GO; superseded by v0.1.119 | DOD-355 through DOD-359 accepted | 9e448a26a24197ce1e7c3c65ba66da39a8b69c0a5bd948da297f8a40283bf076 |
 
 ## Status rule
 
-A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. Imported recovery evidence cannot independently advance accepted/current state.
+A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. A release-set rollout is complete only when every repository reaches its exact target identity, or a failed rollout proves exact reverse-order rollback of every completed repository.
 
 | v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | repair_required | release-control passed validation groups but failed live browser source remove under 120s source-mutation wait | DOD-029 done; DOD-030 required | pending |
 

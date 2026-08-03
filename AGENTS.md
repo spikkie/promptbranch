@@ -99,3 +99,12 @@ Use `pb application architecture template` as a deterministic plan; repository w
 - Never infer missing versions, repositories, artifacts, hashes, or compatibility constraints.
 - Reject cycles, unsupported constraint grammar, path traversal, noncanonical artifact names, ZIP failures, VERSION mismatch, and SHA-256 mismatch.
 - Do not execute, publish, adopt, modify registries, mutate Project Sources, or create rollback evidence from the planner.
+
+## Release-set rollout operating rules
+
+- Treat `pb release set plan` and `pb release set evidence-validate` as read-only operations.
+- Never run `pb release set apply` without exact plan digest confirmation and every required lifecycle authorization flag.
+- Require rollback-on-failure for every release-set mutation.
+- Stop on the first failed repository and roll back only repositories proven completed, in reverse completion order.
+- Never claim recovery unless the exact previous artifact SHA and Project Source identities are independently verified.
+- Preserve rollout checkpoints and hash-chain evidence; do not rewrite or normalize completed evidence files.

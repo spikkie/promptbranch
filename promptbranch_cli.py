@@ -102,6 +102,7 @@ from promptbranch_release_pipeline import (
     execute_release_pipeline,
 )
 from promptbranch_release_set import build_release_set_plan
+from promptbranch_release_set_rollout import execute_release_set, validate_rollout_evidence
 from promptbranch_orchestration import (
     accepted_event_example_paths,
     accepted_event_ledger_status,
@@ -18678,19 +18679,44 @@ async def cmd_release_pipeline(backend: Any, args: argparse.Namespace) -> int:
 
 async def cmd_release_set(backend: Any, args: argparse.Namespace) -> int:
     del backend
-    if args.release_set_command != "plan":
-        raise RuntimeError(f"Unknown release set command: {args.release_set_command}")
-    payload = build_release_set_plan(
-        repo_path=getattr(args, "repo_path", "."),
-        manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
-    )
+    command = args.release_set_command
+    if command == "plan":
+        payload = build_release_set_plan(
+            repo_path=getattr(args, "repo_path", "."),
+            manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
+        )
+    elif command == "apply":
+        payload = execute_release_set(
+            repo_path=getattr(args, "repo_path", "."),
+            manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
+            confirm_release_set_id=getattr(args, "confirm_release_set_id", None),
+            confirm_plan_sha256=getattr(args, "confirm_plan_sha256", None),
+            execute=bool(getattr(args, "execute", False)),
+            rollback_on_failure=bool(getattr(args, "rollback_on_failure", False)),
+            stage_all=bool(getattr(args, "stage_all", False)),
+            commit=bool(getattr(args, "commit", False)),
+            push=bool(getattr(args, "push", False)),
+            publish=bool(getattr(args, "publish", False)),
+            adopt=bool(getattr(args, "adopt", False)),
+            verify_current=bool(getattr(args, "verify_current", False)),
+            timeout_seconds=float(getattr(args, "timeout_seconds", 14400.0)),
+        )
+    elif command == "evidence-validate":
+        payload = validate_rollout_evidence(getattr(args, "evidence"))
+    else:
+        raise RuntimeError(f"Unknown release set command: {command}")
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     else:
         print(f"status={payload.get('status')}")
         print(f"ok={str(bool(payload.get('ok'))).lower()}")
         print(f"release_set_id={payload.get('release_set_id') or ''}")
-        print(f"execution_ready={str(bool(payload.get('execution_ready'))).lower()}")
+        if "execution_ready" in payload:
+            print(f"execution_ready={str(bool(payload.get('execution_ready'))).lower()}")
+        if payload.get("plan_sha256"):
+            print(f"plan_sha256={payload.get('plan_sha256')}")
+        if payload.get("evidence_dir"):
+            print(f"evidence_dir={payload.get('evidence_dir')}")
         if payload.get("execution_order"):
             print(f"execution_order={','.join(payload.get('execution_order') or [])}")
         for blocker in payload.get("blockers") or []:
@@ -25104,6 +25130,24 @@ def make_parser() -> argparse.ArgumentParser:
     release_set_plan.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project. Defaults to current directory.")
     release_set_plan.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
     release_set_plan.add_argument("--json", action="store_true", help="Emit the deterministic release-set plan as JSON.")
+    release_set_apply = release_set_subparsers.add_parser("apply", help="Execute an immutable release-set plan through each repository's guarded release pipeline and roll back completed repositories in reverse order on failure.")
+    release_set_apply.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project.")
+    release_set_apply.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
+    release_set_apply.add_argument("--confirm-release-set-id", required=True, help="Exact release_set_id confirmation from the plan.")
+    release_set_apply.add_argument("--confirm-plan-sha256", required=True, help="Exact recomputed plan SHA-256 confirmation.")
+    release_set_apply.add_argument("--execute", action="store_true", help="Explicitly authorize rollout mutation.")
+    release_set_apply.add_argument("--rollback-on-failure", action="store_true", help="Required: roll back successfully completed repositories in reverse dependency order after any failure.")
+    release_set_apply.add_argument("--stage-all", action="store_true", help="Required: authorize each repository pipeline to stage all contract-safe release paths.")
+    release_set_apply.add_argument("--commit", action="store_true", help="Required: authorize guarded release commits.")
+    release_set_apply.add_argument("--push", action="store_true", help="Required: authorize guarded pushes.")
+    release_set_apply.add_argument("--publish", action="store_true", help="Required: authorize exact Project Source publication.")
+    release_set_apply.add_argument("--adopt", action="store_true", help="Required: authorize evidence-bound adoption.")
+    release_set_apply.add_argument("--verify-current", action="store_true", help="Required: verify accepted/current after each repository rollout.")
+    release_set_apply.add_argument("--timeout-seconds", type=float, default=14400.0, help="Per-repository apply or rollback command timeout; maximum 14400 seconds.")
+    release_set_apply.add_argument("--json", action="store_true", help="Emit rollout and rollback evidence as JSON.")
+    release_set_evidence = release_set_subparsers.add_parser("evidence-validate", help="Validate hash-chained release-set rollout or rollback evidence without mutation.")
+    release_set_evidence.add_argument("--evidence", required=True, help="Rollout summary, checkpoint, or evidence directory.")
+    release_set_evidence.add_argument("--json", action="store_true", help="Emit evidence validation as JSON.")
     release_pipeline = release_subparsers.add_parser("pipeline", help="Plan, import, apply, or resume the evidence-bound generic release pipeline with explicit Git, publication, adoption, and current-verification phases.")
     release_pipeline_subparsers = release_pipeline.add_subparsers(dest="release_pipeline_command", required=True)
     for pipeline_name, pipeline_help in (
@@ -25137,7 +25181,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_contract_plan.add_argument("--json", action="store_true")
 
     release_contract_execute = release_subparsers.add_parser("contract-execute", help="Execute one repository-owned local lifecycle operation with bounded evidence capture; never publishes or adopts.")
-    release_contract_execute.add_argument("operation", choices=["validate", "test", "build", "verify", "verify_current"])
+    release_contract_execute.add_argument("operation", choices=["validate", "test", "build", "verify", "verify_current", "rollback"])
     release_contract_execute.add_argument("--config", default=".promptbranch-release.json")
     release_contract_execute.add_argument("--repo-path", default=".")
     release_contract_execute.add_argument("--json", action="store_true")

@@ -15,7 +15,7 @@ def test_tracked_contract_is_valid_and_plan_is_read_only():
     assert payload['safety']['planning_mutated_state'] is False
     assert '.pb_profile' in payload['preserve']
     assert '.promptbranch-repo.json' in payload['preserve']
-    assert [p['operation'] for p in payload['phases']]==['validate','test','build','verify','publish','adopt','verify_current']
+    assert [p['operation'] for p in payload['phases']]==['validate','test','build','verify','publish','adopt','verify_current','rollback']
 
 def test_unknown_fields_fail_closed(tmp_path: Path):
     data=json.loads((ROOT/'.promptbranch-release.json').read_text())

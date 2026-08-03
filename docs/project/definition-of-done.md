@@ -943,3 +943,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-362 | Dependencies resolve from release-set targets or accepted/current project registry evidence, and cycles, missing dependencies or incompatible constraints fail closed | focused_candidate | cycle, unknown dependency, external current and incompatibility regressions | v0.1.119 |
 | DOD-363 | Canonical target artifact names, repository-relative paths, ZIP integrity, VERSION and SHA-256 are validated without mutation | focused_candidate | artifact name, SHA mismatch, ZIP and read-only regressions | v0.1.119 |
 | DOD-364 | `pb release set plan` performs no repository, Git, registry, Project Source, publication, adoption, execution or rollback mutation | focused_candidate | safety payload, before/after digest regression, CLI contract | v0.1.119 |
+
+## v0.1.120 guarded multi-repository rollout execution and rollback evidence
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-365 | `pb release set apply` recomputes the plan and blocks before mutation unless the plan is compatible, execution-ready and confirmed by exact release-set ID plus plan SHA-256 | focused_candidate | confirmation, drift and unbound-target regressions | v0.1.120 |
+| DOD-366 | The rollout requires the complete per-repository release pipeline authorization and executes repositories in dependency-wave order with deterministic order inside each wave | focused_candidate | CLI parser, command construction and happy-path order regressions | v0.1.120 |
+| DOD-367 | Accepted/current artifact and Project Source identities are captured before the first mutation and verified after each apply or rollback transition | focused_candidate | registry target verification and previous-identity restoration regressions | v0.1.120 |
+| DOD-368 | The first failed repository stops later execution and completed repositories roll back in exact reverse completion order through repository-owned rollback contracts | focused_candidate | apply-failure and reverse rollback regressions | v0.1.120 |
+| DOD-369 | Any rollback command failure or artifact/source identity mismatch fails closed as incomplete rollback evidence | focused_candidate | rollback failure and registry mismatch regressions | v0.1.120 |
+| DOD-370 | Rollout checkpoints are atomic and tamper-evident through a per-event SHA-256 chain plus final evidence SHA-256, independently validated by `pb release set evidence-validate` | focused_candidate | valid evidence and tamper-detection regressions | v0.1.120 |

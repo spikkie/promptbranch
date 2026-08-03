@@ -533,6 +533,20 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "pytest",
             "-q",
             "tests/test_promptbranch_release_set.py",
+            "-k",
+            "not release_set_apply and not rollout_evidence and not guarded_apply and not repository_owned_rollback",
+        ),
+    },
+    "release_set_rollout": {
+        "required": True,
+        "description": "Exact-plan-bound release-set execution, complete lifecycle authorization, reverse rollback, exact previous identity restoration, and tamper-evident rollout evidence.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_promptbranch_release_set.py",
+            "-k",
+            "release_set_apply or rollout_evidence or guarded_apply or repository_owned_rollback",
         ),
     },
     "sandbox_mutation_rollback_gate": {

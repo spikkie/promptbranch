@@ -136,3 +136,11 @@ pb release set plan \
 The manifest uses schema `promptbranch.release_set` version `1.0`. It lists canonical target artifacts and dependency constraints. Dependencies included in the release set resolve to their target versions; dependencies outside the set resolve only to accepted/current project registry records. The result includes dependency-first order, parallel waves, compatibility rows, immutable artifact observations, and `plan_sha256`.
 
 A valid compatibility plan may have `execution_ready=false` when target ZIPs are not locally verified and hash-bound. The planner never changes repositories, registries, Project Sources, publication, adoption, deployment, or rollback state.
+
+## Guarded release-set rollout
+
+After `pb release set plan` reports `execution_ready=true`, `pb release set apply` can run the target repositories through their generic release pipelines. The command does not trust a previously printed plan blindly: it recomputes the plan, compares exact `release_set_id` and `plan_sha256` confirmations, and requires explicit authorization for staging, commit, push, Project Source publication, adoption and accepted/current verification.
+
+Execution follows dependency waves and deterministic repository order. Promptbranch captures each repository's current artifact and Project Source identity before the first mutation. A failure stops the set and invokes each completed repository's tracked rollback contract in reverse completion order. The rollout is not reported safely recovered unless exact previous version, artifact SHA-256, source reference, processed file ID and Library metadata ID are restored.
+
+Evidence is atomically checkpointed and hash-chained. Use `pb release set evidence-validate --evidence <path> --json` to detect event or summary tampering.

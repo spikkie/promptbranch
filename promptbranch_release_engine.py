@@ -19,8 +19,8 @@ _ALLOWED_TOP = {
     "operations", "preserve", "forbid_mutation", "environment", "evidence",
     "delegation", "git",
 }
-_ALLOWED_OPS = {"validate", "test", "build", "verify", "publish", "adopt", "verify_current"}
-_MUTATING_OPS = {"build", "publish", "adopt"}
+_ALLOWED_OPS = {"validate", "test", "build", "verify", "publish", "adopt", "verify_current", "rollback"}
+_MUTATING_OPS = {"build", "publish", "adopt", "rollback"}
 
 
 class ReleaseContractError(ValueError):
@@ -176,7 +176,7 @@ def load_contract(repo: Path, config: str = ".promptbranch-release.json") -> dic
 def plan(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
     artifact = repo / contract["artifact"]["path"]
     phases = []
-    for name in ("validate", "test", "build", "verify", "publish", "adopt", "verify_current"):
+    for name in ("validate", "test", "build", "verify", "publish", "adopt", "verify_current", "rollback"):
         steps = contract["operations"].get(name, [])
         phases.append({
             "operation": name,
@@ -241,7 +241,7 @@ def execute(
 ) -> dict[str, Any]:
     if operation not in _ALLOWED_OPS:
         raise ReleaseContractError(f"unsupported operation: {operation}")
-    if operation in {"publish", "adopt"} and not contract["operations"].get(operation):
+    if operation in {"publish", "adopt", "rollback"} and not contract["operations"].get(operation):
         raise ReleaseContractError(f"operation {operation} is not declared")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + f"-{operation}"
     evidence_dir = repo / contract["evidence"]["directory"] / run_id
