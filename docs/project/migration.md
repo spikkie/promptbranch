@@ -1,3 +1,7 @@
+## v0.1.121 release-set recovery migration
+
+`v0.1.120.1` is accepted/current. Existing `v0.1.120` rollout checkpoints remain valid inputs. No checkpoint conversion is required. Operators must first run `pb release set reconcile --evidence ... --json`; the command reconstructs the original plan binding from the stored pre-rollout identities and classifies authoritative current state. A subsequent `pb release set resume` requires the exact reconciliation SHA-256 and complete mutation envelope. Missing or ambiguous current identity must be repaired outside Promptbranch and reconciled again; there is no automatic override or legacy fallback.
+
 ## v0.1.114 PBAI-001 executable migration
 
 `v0.1.113` is accepted/current. `v0.1.114` requires declaration schema `1.2`, registry schema `1.1`, one explicit executable proof-skill contract, and the `promptbranch.ai.skill_run` evidence contract. There is no silent fallback for registry `1.0` or declaration `1.1` when executable proof is requested. Existing PB repositories must explicitly define a portable read-only proof skill or continue to report registry as their highest proven level. Executable validation may run bounded registered tools only after the operator explicitly requests `--level executable` or `architecture evidence`; it does not mutate repository, Project Source, release, publication, or adoption state. Operational proof remains unimplemented. The next planned slice after acceptance is `v0.1.115 — PBAI-001 operational validation and lifecycle evidence`.
@@ -1318,3 +1322,5 @@ Interrupted rollout import/resume and controlled reconciliation after an incompl
 ## v0.1.120 to v0.1.120.1 migration note
 
 No repository, registry, release-set manifest or Project Source migration is required. Do not adopt the original `v0.1.120` bytes. Install `v0.1.120.1` and run the normal strict release lifecycle. On an exact retry, the release-control checkpoint may reuse only evidence bound to the `v0.1.120.1` artifact hash, Git commit and release-contract hash.
+
+Next planned after acceptance: `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.

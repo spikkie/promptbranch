@@ -19,9 +19,15 @@
     "evidence_sha256"
   ],
   "properties": {
-    "schema": {"const": "promptbranch.release_set.rollout.evidence"},
-    "schema_version": {"const": "1.0"},
-    "action": {"const": "release_set_apply"},
+    "schema": {
+      "const": "promptbranch.release_set.rollout.evidence"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "action": {
+      "const": "release_set_apply"
+    },
     "status": {
       "enum": [
         "release_set_rollout_verified",
@@ -29,29 +35,129 @@
         "release_set_rollout_failed_rollback_incomplete"
       ]
     },
-    "release_set_id": {"type": "string", "minLength": 1},
-    "project_id": {"type": "string", "minLength": 1},
-    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "release_set_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "events": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["sequence", "recorded_at", "kind", "previous_event_sha256", "details", "event_sha256"],
+        "required": [
+          "sequence",
+          "recorded_at",
+          "kind",
+          "previous_event_sha256",
+          "details",
+          "event_sha256"
+        ],
         "properties": {
-          "sequence": {"type": "integer", "minimum": 1},
-          "recorded_at": {"type": "string", "minLength": 1},
-          "kind": {"type": "string", "minLength": 1},
-          "repo_id": {"type": ["string", "null"]},
-          "previous_event_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
-          "details": {"type": "object"},
-          "event_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recorded_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repo_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous_event_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "details": {
+            "type": "object"
+          },
+          "event_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
         }
       }
     },
-    "repository_results": {"type": "array"},
-    "rollback_results": {"type": "array"},
-    "final_event_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    "repository_results": {
+      "type": "array"
+    },
+    "rollback_results": {
+      "type": "array"
+    },
+    "final_event_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "resume_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "resume_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "resume_sequence",
+          "resumed_at",
+          "checkpoint_sha256",
+          "reconciliation_sha256",
+          "mode"
+        ],
+        "properties": {
+          "resume_sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resumed_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prior_evidence_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "checkpoint_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "reconciliation_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "mode": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "last_reconciliation": {
+      "type": "object"
+    }
   }
 }

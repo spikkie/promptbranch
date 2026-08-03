@@ -535,7 +535,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "-q",
             "tests/test_promptbranch_release_set.py",
             "-k",
-            "not release_set_apply and not rollout_evidence and not guarded_apply and not repository_owned_rollback",
+            "not release_set_apply and not rollout_evidence and not guarded_apply and not repository_owned_rollback and not release_set_reconcile and not release_set_resume",
         ),
     },
     "release_set_rollout": {
@@ -547,7 +547,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "-q",
             "tests/test_promptbranch_release_set.py",
             "-k",
-            "release_set_apply or rollout_evidence or guarded_apply or repository_owned_rollback",
+            "release_set_apply or rollout_evidence or guarded_apply or repository_owned_rollback or release_set_reconcile or release_set_resume",
         ),
     },
     "sandbox_mutation_rollback_gate": {

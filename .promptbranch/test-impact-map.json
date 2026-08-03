@@ -230,7 +230,7 @@
           "-q",
           "tests/test_promptbranch_release_set.py",
           "-k",
-          "release_set_apply or rollout_evidence or guarded_apply or repository_owned_rollback"
+          "release_set_apply or rollout_evidence or guarded_apply or repository_owned_rollback or release_set_reconcile or release_set_resume"
         ]
       ],
       "modes": [
@@ -427,9 +427,10 @@
       "patterns": [
         "promptbranch_release_set_rollout.py",
         "scripts/rollback-release-artifact.py",
-        "promptbranch_protocol/schemas/release-set-rollout-evidence.schema.json"
+        "promptbranch_protocol/schemas/release-set-rollout-evidence.schema.json",
+        "promptbranch_protocol/schemas/release-set-rollout-reconciliation.schema.json"
       ],
-      "reason": "guarded release-set execution, reverse rollback, or tamper-evident rollout evidence changed"
+      "reason": "guarded release-set execution, resumable recovery, operator reconciliation, reverse rollback, or tamper-evident rollout evidence changed"
     }
   ],
   "schema": "promptbranch.test.impact_map",

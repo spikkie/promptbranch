@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/release-set-rollout-reconciliation.schema.json",
+  "title": "Promptbranch release-set rollout reconciliation",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "schema_version",
+    "action",
+    "status",
+    "release_set_id",
+    "project_id",
+    "plan_sha256",
+    "checkpoint_sha256",
+    "checkpoint_status",
+    "mode",
+    "repository_states",
+    "pending_execution_order",
+    "rollback_order",
+    "reconciliation_sha256",
+    "blockers",
+    "state_mutated",
+    "mutation_performed"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.release_set.rollout.reconciliation"},
+    "schema_version": {"const": "1.0"},
+    "action": {"const": "release_set_reconcile"},
+    "status": {
+      "enum": [
+        "release_set_rollout_reconciliation_blocked",
+        "release_set_rollout_resume_ready",
+        "release_set_rollout_rollback_resume_ready",
+        "release_set_rollout_success_reconciliation_ready",
+        "release_set_rollout_rollback_reconciliation_ready",
+        "release_set_rollout_already_terminal"
+      ]
+    },
+    "release_set_id": {"type": "string", "minLength": 1},
+    "project_id": {"type": "string", "minLength": 1},
+    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "current_plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "recovered_plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checkpoint_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checkpoint_status": {"type": "string"},
+    "mode": {
+      "enum": [
+        "blocked",
+        "continue_rollout",
+        "resume_rollback",
+        "finalize_success",
+        "finalize_rollback",
+        "already_terminal"
+      ]
+    },
+    "repository_states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "repo_id",
+          "classification",
+          "target_current",
+          "previous_current",
+          "observed_identity",
+          "previous_identity",
+          "target_identity"
+        ],
+        "properties": {
+          "repo_id": {"type": "string", "minLength": 1},
+          "classification": {
+            "enum": [
+              "target_current",
+              "previous_current",
+              "missing_current",
+              "ambiguous_current"
+            ]
+          },
+          "target_current": {"type": "boolean"},
+          "previous_current": {"type": "boolean"},
+          "observed_identity": {"type": ["object", "null"]},
+          "previous_identity": {"type": ["object", "null"]},
+          "target_identity": {"type": "object"}
+        }
+      }
+    },
+    "pending_execution_order": {"type": "array", "items": {"type": "string"}},
+    "rollback_order": {"type": "array", "items": {"type": "string"}},
+    "reconciliation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "blockers": {"type": "array"},
+    "warnings": {"type": "array"},
+    "state_mutated": {"const": false},
+    "mutation_performed": {"const": false}
+  }
+}

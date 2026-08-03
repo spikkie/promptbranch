@@ -102,7 +102,12 @@ from promptbranch_release_pipeline import (
     execute_release_pipeline,
 )
 from promptbranch_release_set import build_release_set_plan
-from promptbranch_release_set_rollout import execute_release_set, validate_rollout_evidence
+from promptbranch_release_set_rollout import (
+    execute_release_set,
+    reconcile_rollout_evidence,
+    resume_release_set,
+    validate_rollout_evidence,
+)
 from promptbranch_orchestration import (
     accepted_event_example_paths,
     accepted_event_ledger_status,
@@ -18701,6 +18706,30 @@ async def cmd_release_set(backend: Any, args: argparse.Namespace) -> int:
             verify_current=bool(getattr(args, "verify_current", False)),
             timeout_seconds=float(getattr(args, "timeout_seconds", 14400.0)),
         )
+    elif command == "reconcile":
+        payload = reconcile_rollout_evidence(
+            repo_path=getattr(args, "repo_path", "."),
+            manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
+            evidence=getattr(args, "evidence"),
+        )
+    elif command == "resume":
+        payload = resume_release_set(
+            repo_path=getattr(args, "repo_path", "."),
+            manifest=getattr(args, "manifest", ".promptbranch-release-set.json"),
+            evidence=getattr(args, "evidence"),
+            confirm_release_set_id=getattr(args, "confirm_release_set_id", None),
+            confirm_plan_sha256=getattr(args, "confirm_plan_sha256", None),
+            confirm_reconciliation_sha256=getattr(args, "confirm_reconciliation_sha256", None),
+            execute=bool(getattr(args, "execute", False)),
+            rollback_on_failure=bool(getattr(args, "rollback_on_failure", False)),
+            stage_all=bool(getattr(args, "stage_all", False)),
+            commit=bool(getattr(args, "commit", False)),
+            push=bool(getattr(args, "push", False)),
+            publish=bool(getattr(args, "publish", False)),
+            adopt=bool(getattr(args, "adopt", False)),
+            verify_current=bool(getattr(args, "verify_current", False)),
+            timeout_seconds=float(getattr(args, "timeout_seconds", 14400.0)),
+        )
     elif command == "evidence-validate":
         payload = validate_rollout_evidence(getattr(args, "evidence"))
     else:
@@ -25134,7 +25163,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_set_apply.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project.")
     release_set_apply.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
     release_set_apply.add_argument("--confirm-release-set-id", required=True, help="Exact release_set_id confirmation from the plan.")
-    release_set_apply.add_argument("--confirm-plan-sha256", required=True, help="Exact recomputed plan SHA-256 confirmation.")
+    release_set_apply.add_argument("--confirm-plan-sha256", required=True, help="Exact original plan SHA-256 confirmation from the latest read-only reconciliation.")
     release_set_apply.add_argument("--execute", action="store_true", help="Explicitly authorize rollout mutation.")
     release_set_apply.add_argument("--rollback-on-failure", action="store_true", help="Required: roll back successfully completed repositories in reverse dependency order after any failure.")
     release_set_apply.add_argument("--stage-all", action="store_true", help="Required: authorize each repository pipeline to stage all contract-safe release paths.")
@@ -25145,6 +25174,28 @@ def make_parser() -> argparse.ArgumentParser:
     release_set_apply.add_argument("--verify-current", action="store_true", help="Required: verify accepted/current after each repository rollout.")
     release_set_apply.add_argument("--timeout-seconds", type=float, default=14400.0, help="Per-repository apply or rollback command timeout; maximum 14400 seconds.")
     release_set_apply.add_argument("--json", action="store_true", help="Emit rollout and rollback evidence as JSON.")
+    release_set_reconcile = release_set_subparsers.add_parser("reconcile", help="Read-only reconciliation of an interrupted or incomplete release-set rollout against authoritative current identities.")
+    release_set_reconcile.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project.")
+    release_set_reconcile.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
+    release_set_reconcile.add_argument("--evidence", required=True, help="Interrupted rollout checkpoint, terminal evidence, or evidence directory.")
+    release_set_reconcile.add_argument("--json", action="store_true", help="Emit hash-bound reconciliation evidence as JSON.")
+    release_set_resume = release_set_subparsers.add_parser("resume", help="Resume an interrupted rollout or rollback from exact checkpoint and reconciliation evidence without replaying verified repositories.")
+    release_set_resume.add_argument("--repo-path", default=".", help="Any joined repository root in the target Promptbranch project.")
+    release_set_resume.add_argument("--manifest", default=".promptbranch-release-set.json", help="Release-set manifest path. Relative paths are resolved from --repo-path.")
+    release_set_resume.add_argument("--evidence", required=True, help="Interrupted rollout checkpoint, terminal evidence, or evidence directory.")
+    release_set_resume.add_argument("--confirm-release-set-id", required=True, help="Exact release_set_id confirmation from the recomputed plan.")
+    release_set_resume.add_argument("--confirm-plan-sha256", required=True, help="Exact recomputed plan SHA-256 confirmation.")
+    release_set_resume.add_argument("--confirm-reconciliation-sha256", required=True, help="Exact SHA-256 from the latest read-only release-set reconciliation.")
+    release_set_resume.add_argument("--execute", action="store_true", help="Explicitly authorize recovery mutation.")
+    release_set_resume.add_argument("--rollback-on-failure", action="store_true", help="Required: preserve automatic rollback-on-failure during resumed execution.")
+    release_set_resume.add_argument("--stage-all", action="store_true", help="Required: authorize each resumed repository pipeline to stage all contract-safe release paths.")
+    release_set_resume.add_argument("--commit", action="store_true", help="Required: authorize guarded release commits for pending repositories.")
+    release_set_resume.add_argument("--push", action="store_true", help="Required: authorize guarded pushes for pending repositories.")
+    release_set_resume.add_argument("--publish", action="store_true", help="Required: authorize exact Project Source publication for pending repositories.")
+    release_set_resume.add_argument("--adopt", action="store_true", help="Required: authorize evidence-bound adoption for pending repositories.")
+    release_set_resume.add_argument("--verify-current", action="store_true", help="Required: verify accepted/current after each resumed apply or rollback.")
+    release_set_resume.add_argument("--timeout-seconds", type=float, default=14400.0, help="Per-repository apply or rollback command timeout; maximum 14400 seconds.")
+    release_set_resume.add_argument("--json", action="store_true", help="Emit resumed rollout and rollback evidence as JSON.")
     release_set_evidence = release_set_subparsers.add_parser("evidence-validate", help="Validate hash-chained release-set rollout or rollback evidence without mutation.")
     release_set_evidence.add_argument("--evidence", required=True, help="Rollout summary, checkpoint, or evidence directory.")
     release_set_evidence.add_argument("--json", action="store_true", help="Emit evidence validation as JSON.")

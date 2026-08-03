@@ -1,20 +1,21 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.119.zip` (`v0.1.119`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.119(1).zip`.
-Accepted SHA-256: `3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.120.1.zip` (`v0.1.120.1`).
-Next normal slice: `v0.1.121 — Resumable release-set rollout recovery and operator reconciliation`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.120.1.zip` (`v0.1.120.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip`.
+Accepted SHA-256: `2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.121.zip` (`v0.1.121`).
+Next normal slice: `v0.1.121 — Resumable release-set rollout recovery and operator reconciliation`. Next planned after acceptance: `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | candidate | executable actual-function resume-code regression plus focused/packaged validation; strict host validation pending | DOD-371 candidate; no scope advance | pending |
-| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | repair_required | focused/package gates passed; first strict run failed external live; exact retry exited `10` before tests due nested `set -e` | DOD-365 through DOD-370 implemented but original bytes never adoptable | pending/rejected |
-| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/current | strict 10/10 GO, deterministic canonical build, exact Project Source, adoption/current verification | DOD-359 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
+| v0.1.121 | normal | Resumable release-set rollout recovery and operator reconciliation | candidate | focused recovery/reconciliation/schema/control-surface and packaged validation; strict host validation pending | DOD-372 through DOD-378 candidate | pending |
+| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | accepted/current | strict 10/10 GO; deterministic canonical SHA; exact Project Source; Guardian; adoption/current verification | DOD-371 accepted; no scope advance | 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49 |
+| v0.1.120 | normal | Guarded multi-repository rollout execution and rollback evidence | repair_required | focused/package gates passed; original retry path exited `10` before tests | DOD-365 through DOD-370 delivered through accepted repair baseline | rejected |
+| v0.1.119 | normal | Read-only multi-repository release-set dependency planner | accepted/historical | strict 10/10 GO and evidence-bound adoption/current verification | DOD-359 through DOD-364 accepted | 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857 |
 
 ## Status rule
 
-A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. A release-set rollout is complete only when every repository reaches its exact target identity, or a failed rollout proves exact reverse-order rollback of every completed repository.
+A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. A release-set recovery may mutate only after a read-only reconciliation proves every repository is exactly at its target or pre-rollout identity and the operator confirms the exact reconciliation SHA-256.
 
 | v0.1.74.2 | repair | Release-lifecycle plan test profile isolation | repair_required | release-control passed validation groups but failed live browser source remove under 120s source-mutation wait | DOD-029 done; DOD-030 required | pending |
 

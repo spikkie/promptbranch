@@ -1,42 +1,45 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.119
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
-accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
-active candidate version: v0.1.120.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
-active slice: v0.1.120.1 — Checkpoint resume exit-code handling repair
+accepted/current baseline: v0.1.120.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
+accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
+active candidate version: v0.1.121
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
+active slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 next normal version: v0.1.121
 next normal slice: v0.1.121 — Resumable release-set rollout recovery and operator reconciliation
 
-`v0.1.119` remains accepted/current. `v0.1.120` implemented guarded multi-repository rollout and rollback evidence, but its strict retry path terminates with exit code `10` before tests because checkpoint preflight re-enables `errexit` before returning the intentional source-reuse result. `v0.1.120.1` repairs only that shell-control defect.
+`v0.1.120.1` is accepted/current after strict 10/10 validation, deterministic artifact verification, exact Project Source publication, Artifact Guardian, evidence-bound adoption, and accepted/current verification. `v0.1.121` advances the normal release-set roadmap with hash-bound recovery and reconciliation.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.119
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.119.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.119(1).zip
-accepted/current SHA-256: 3ef76504c886531b387ce06ccd1addf0ba34c812757c329589a9b4d3f0e26857
-active candidate version: v0.1.120.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+accepted/current version: v0.1.120.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.120.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.120.1(1).zip
+accepted/current SHA-256: 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49
+active candidate version: v0.1.121
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.121.zip
 candidate adoption: not performed
 next normal version: v0.1.121
-next planned after repair acceptance: v0.1.121
+next planned after acceptance: v0.1.122
 ```
 
 ## Candidate behavior
 
-- `release_control_checkpoint_preflight` no longer owns restoration of Bash `errexit`.
-- Its caller continues to surround the function with `set +e`, capture the return code, and restore `set -e`.
-- Return code `10` now reaches the existing source-reuse branch and continues into adoption preflight, service startup and tests.
-- The exact provisional `v0.1.120.1` artifact and Project Source identity remain immutable across retries.
-- All release-set apply, reverse rollback, checkpoint-chain and evidence-validation behavior from `v0.1.120` is unchanged.
+- `pb release set reconcile` validates interrupted or incomplete rollout evidence without mutation and emits a canonical reconciliation digest.
+- Every repository is classified against the exact pre-rollout identity and exact target identity.
+- `pb release set resume` requires exact release-set, original-plan, and reconciliation confirmations plus the complete mutation envelope.
+- Verified target repositories are not replayed; pending repositories continue in deterministic dependency order.
+- Interrupted rollback resumes only repositories still at target identity, in reverse dependency order.
+- Operator-repaired incomplete rollback can be finalized only when authoritative current identity proves every repository is restored exactly.
+- Ambiguous or missing identity remains fail-closed and requires operator reconciliation before retry.
+- Resume events extend the original SHA-256 event chain and terminal evidence remains independently verifiable.
 
 ## Next safe action
 
-Build and verify `chatgpt_claudecode_workflow-2_v0.1.120.1.zip`, then run strict host release control. Treat `v0.1.119` as accepted/current until adoption/current evidence proves `v0.1.120.1`.
+Build and verify `chatgpt_claudecode_workflow-2_v0.1.121.zip`, then run strict host release control. Treat `v0.1.120.1` as accepted/current until adoption/current evidence proves `v0.1.121`.
 
 ## v0.1.102 candidate status
 

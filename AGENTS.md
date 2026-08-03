@@ -108,3 +108,14 @@ Use `pb application architecture template` as a deterministic plan; repository w
 - Stop on the first failed repository and roll back only repositories proven completed, in reverse completion order.
 - Never claim recovery unless the exact previous artifact SHA and Project Source identities are independently verified.
 - Preserve rollout checkpoints and hash-chain evidence; do not rewrite or normalize completed evidence files.
+
+## Release-set recovery operating rules
+
+- Run `pb release set reconcile` before every interrupted rollout or rollback recovery attempt.
+- Treat reconciliation as read-only and preserve the emitted checkpoint SHA-256, original plan SHA-256, repository classifications, recovery mode, and reconciliation SHA-256.
+- Do not run `pb release set resume` unless all exact confirmation fields and lifecycle authorization flags are present.
+- Never replay a repository already proven at its exact target identity.
+- Continue forward execution only from repositories proven at their exact pre-rollout identity.
+- Resume rollback only for repositories still proven at the exact target identity and follow reverse dependency order.
+- Do not invent an operator resolution for `missing_current` or `ambiguous_current`; report the blocker and require explicit external repair followed by a fresh reconciliation.
+- Preserve the original event chain and append resume history; never discard or silently rewrite prior checkpoint evidence.

@@ -613,10 +613,280 @@ def test_release_set_rollout_schema_module_and_rollback_script_are_packaged() ->
 
     root = Path(__file__).resolve().parents[1]
     schema = json.loads((root / "promptbranch_protocol" / "schemas" / "release-set-rollout-evidence.schema.json").read_text(encoding="utf-8"))
+    reconciliation_schema = json.loads((root / "promptbranch_protocol" / "schemas" / "release-set-rollout-reconciliation.schema.json").read_text(encoding="utf-8"))
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     rollback_script = root / "scripts" / "rollback-release-artifact.py"
     assert schema["properties"]["schema"]["const"] == "promptbranch.release_set.rollout.evidence"
     assert schema["properties"]["schema_version"]["const"] == "1.0"
+    assert reconciliation_schema["properties"]["schema"]["const"] == "promptbranch.release_set.rollout.reconciliation"
+    assert reconciliation_schema["properties"]["schema_version"]["const"] == "1.0"
     assert "promptbranch_release_set_rollout" in pyproject["tool"]["setuptools"]["py-modules"]
     assert rollback_script.is_file()
     assert os.access(rollback_script, os.X_OK)
+
+
+def _latest_rollout_checkpoint(repo: Path, release_set_id: str) -> Path:
+    root = repo / ".pb_profile" / "release_set_rollouts" / release_set_id
+    checkpoints = sorted(root.glob(f"*/release-set-rollout-checkpoint.json"))
+    assert checkpoints
+    return checkpoints[-1]
+
+
+def _resume_rollout(repos: dict[str, Path], manifest: Path, plan: dict, evidence: Path, reconciliation: dict, runner):
+    from promptbranch_release_set_rollout import resume_release_set
+
+    return resume_release_set(
+        repos["platform-gitops"],
+        manifest=manifest,
+        evidence=evidence,
+        confirm_release_set_id=plan["release_set_id"],
+        confirm_plan_sha256=plan["plan_sha256"],
+        confirm_reconciliation_sha256=reconciliation["reconciliation_sha256"],
+        execute=True,
+        rollback_on_failure=True,
+        stage_all=True,
+        commit=True,
+        push=True,
+        publish=True,
+        adopt=True,
+        verify_current=True,
+        runner=runner,
+    )
+
+
+def test_release_set_reconcile_classifies_interrupted_rollout_without_mutation(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+    from promptbranch_release_set_rollout import execute_release_set, reconcile_rollout_evidence
+
+    repos = _setup(monkeypatch, tmp_path)
+    _setup_rollout_currents(tmp_path)
+    manifest = _rollout_manifest(repos)
+    plan = build_release_set_plan(repos["platform-gitops"], manifest=manifest)
+    base_runner, calls = _rollout_runner(plan)
+
+    def interrupt_after_first(argv, **kwargs):
+        command = list(argv)
+        if "pipeline" in command and "apply" in command:
+            repo_root = Path(command[command.index("--repo-path") + 1])
+            if repo_root.name == "my_awx":
+                raise KeyboardInterrupt("simulated interruption")
+        return base_runner(argv, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        _execute_rollout(repos, manifest, plan, interrupt_after_first)
+
+    checkpoint = _latest_rollout_checkpoint(repos["platform-gitops"], plan["release_set_id"])
+    before = checkpoint.read_bytes()
+    first = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
+    second = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
+
+    assert first == second
+    assert first["ok"] is True
+    assert first["status"] == "release_set_rollout_resume_ready"
+    assert first["mode"] == "continue_rollout"
+    assert first["pending_execution_order"] == ["my_awx", "my_gitlab"]
+    assert next(item for item in first["repository_states"] if item["repo_id"] == "platform-gitops")["classification"] == "target_current"
+    assert checkpoint.read_bytes() == before
+    assert [Path(item["argv"][item["argv"].index("--repo-path") + 1]).name for item in calls if "pipeline" in item["argv"]] == ["platform-gitops"]
+
+
+def test_release_set_resume_continues_without_replaying_verified_repository(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+    from promptbranch_release_set_rollout import execute_release_set, reconcile_rollout_evidence, validate_rollout_evidence
+
+    repos = _setup(monkeypatch, tmp_path)
+    _setup_rollout_currents(tmp_path)
+    manifest = _rollout_manifest(repos)
+    plan = build_release_set_plan(repos["platform-gitops"], manifest=manifest)
+    base_runner, calls = _rollout_runner(plan)
+
+    def interrupt_after_first(argv, **kwargs):
+        command = list(argv)
+        if "pipeline" in command and "apply" in command:
+            repo_root = Path(command[command.index("--repo-path") + 1])
+            if repo_root.name == "my_awx":
+                raise KeyboardInterrupt("simulated interruption")
+        return base_runner(argv, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        execute_release_set(
+            repos["platform-gitops"],
+            manifest=manifest,
+            confirm_release_set_id=plan["release_set_id"],
+            confirm_plan_sha256=plan["plan_sha256"],
+            execute=True,
+            rollback_on_failure=True,
+            stage_all=True,
+            commit=True,
+            push=True,
+            publish=True,
+            adopt=True,
+            verify_current=True,
+            runner=interrupt_after_first,
+        )
+
+    checkpoint = _latest_rollout_checkpoint(repos["platform-gitops"], plan["release_set_id"])
+    reconciliation = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
+    result = _resume_rollout(repos, manifest, plan, checkpoint, reconciliation, base_runner)
+
+    assert result["ok"] is True
+    assert result["status"] == "release_set_rollout_verified"
+    assert result["resume_count"] == 1
+    assert validate_rollout_evidence(result["summary_path"])["ok"] is True
+    apply_repos = [
+        Path(item["argv"][item["argv"].index("--repo-path") + 1]).name
+        for item in calls
+        if "pipeline" in item["argv"] and "apply" in item["argv"]
+    ]
+    assert apply_repos == ["platform-gitops", "my_awx", "my_gitlab"]
+    assert any(item["kind"] == "rollout_resume_started" for item in result["events"])
+
+
+def test_release_set_resume_continues_interrupted_reverse_rollback(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+    from promptbranch_release_set_rollout import execute_release_set, reconcile_rollout_evidence
+
+    repos = _setup(monkeypatch, tmp_path)
+    _setup_rollout_currents(tmp_path)
+    manifest = _rollout_manifest(repos)
+    plan = build_release_set_plan(repos["platform-gitops"], manifest=manifest)
+    failing_runner, _ = _rollout_runner(plan, fail_repo="my_awx")
+
+    def interrupt_rollback(argv, **kwargs):
+        command = list(argv)
+        if "contract-execute" in command and "rollback" in command:
+            raise KeyboardInterrupt("simulated rollback interruption")
+        return failing_runner(argv, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        _execute_rollout(repos, manifest, plan, interrupt_rollback)
+
+    checkpoint = _latest_rollout_checkpoint(repos["platform-gitops"], plan["release_set_id"])
+    reconciliation = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
+    assert reconciliation["mode"] == "resume_rollback"
+    assert reconciliation["rollback_order"] == ["platform-gitops"]
+
+    recovery_runner, recovery_calls = _rollout_runner(plan)
+    result = _resume_rollout(repos, manifest, plan, checkpoint, reconciliation, recovery_runner)
+
+    assert result["ok"] is False
+    assert result["status"] == "release_set_rollout_failed_rollback_verified"
+    assert result["rollback_verified"] is True
+    assert [item["repo_id"] for item in result["rollback_results"]][-1:] == ["platform-gitops"]
+    assert any("rollback" in item["argv"] for item in recovery_calls)
+    assert not any("pipeline" in item["argv"] and "apply" in item["argv"] for item in recovery_calls)
+
+
+def test_release_set_reconcile_finalizes_operator_repaired_incomplete_rollback(monkeypatch, tmp_path: Path) -> None:
+    from datetime import datetime, timezone
+    from promptbranch_release_set_rollout import reconcile_rollout_evidence
+
+    repos = _setup(monkeypatch, tmp_path)
+    _setup_rollout_currents(tmp_path)
+    manifest = _rollout_manifest(repos)
+    plan = build_release_set_plan(repos["platform-gitops"], manifest=manifest)
+    runner, _ = _rollout_runner(plan, fail_repo="my_awx", fail_rollback=True)
+    failed = _execute_rollout(repos, manifest, plan, runner)
+    assert failed["status"] == "release_set_rollout_failed_rollback_incomplete"
+
+    previous = failed["pre_rollout_current"]["platform-gitops"]
+    ArtifactRegistry(project_registry_dir(PROJECT_ID)).add(ArtifactRecord(
+        path=str(repos["platform-gitops"] / previous["filename"]),
+        filename=previous["filename"],
+        kind="adopted_release",
+        version=previous["version"],
+        repo_path=None,
+        repo_id="platform-gitops",
+        sha256=previous["sha256"],
+        size_bytes=1,
+        file_count=1,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        source_ref=previous["source_ref"],
+        source_requested_ref=previous["filename"],
+        source_processed_file_id=previous["source_processed_file_id"],
+        source_library_metadata_object_id=previous["source_library_metadata_object_id"],
+        project_url=PROJECT_URL,
+    ))
+
+    reconciliation = reconcile_rollout_evidence(
+        repos["platform-gitops"], manifest=manifest, evidence=failed["summary_path"]
+    )
+    assert reconciliation["ok"] is True
+    assert reconciliation["mode"] == "finalize_rollback"
+    no_calls: list[list[str]] = []
+
+    def no_runner(argv, **kwargs):
+        no_calls.append(list(argv))
+        raise AssertionError("operator-repaired rollback finalization must not replay commands")
+
+    result = _resume_rollout(
+        repos, manifest, plan, Path(failed["summary_path"]), reconciliation, no_runner
+    )
+    assert result["status"] == "release_set_rollout_failed_rollback_verified"
+    assert result["rollback_verified"] is True
+    assert no_calls == []
+
+
+def test_release_set_reconcile_blocks_ambiguous_current_identity(monkeypatch, tmp_path: Path) -> None:
+    import pytest
+    from datetime import datetime, timezone
+    from promptbranch_release_set_rollout import execute_release_set, reconcile_rollout_evidence
+
+    repos = _setup(monkeypatch, tmp_path)
+    _setup_rollout_currents(tmp_path)
+    manifest = _rollout_manifest(repos)
+    plan = build_release_set_plan(repos["platform-gitops"], manifest=manifest)
+    base_runner, _ = _rollout_runner(plan)
+
+    def interrupt_after_first(argv, **kwargs):
+        command = list(argv)
+        if "pipeline" in command and "apply" in command:
+            repo_root = Path(command[command.index("--repo-path") + 1])
+            if repo_root.name == "my_awx":
+                raise KeyboardInterrupt("simulated interruption")
+        return base_runner(argv, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        _execute_rollout(repos, manifest, plan, interrupt_after_first)
+    checkpoint = _latest_rollout_checkpoint(repos["platform-gitops"], plan["release_set_id"])
+
+    ArtifactRegistry(project_registry_dir(PROJECT_ID)).add(ArtifactRecord(
+        path=str(repos["platform-gitops"] / "platform-gitops_v9.9.9.zip"),
+        filename="platform-gitops_v9.9.9.zip",
+        kind="adopted_release",
+        version="v9.9.9",
+        repo_path=None,
+        repo_id="platform-gitops",
+        sha256="f" * 64,
+        size_bytes=1,
+        file_count=1,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        source_ref="platform-gitops_v9.9.9.zip",
+        source_requested_ref="platform-gitops_v9.9.9.zip",
+        source_processed_file_id="file_ambiguous",
+        source_library_metadata_object_id="libfile_ambiguous",
+        project_url=PROJECT_URL,
+    ))
+
+    reconciliation = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
+    assert reconciliation["ok"] is False
+    assert reconciliation["status"] == "release_set_rollout_reconciliation_blocked"
+    assert any(item["code"] == "release_set_operator_reconciliation_required" for item in reconciliation["blockers"])
+
+
+def test_release_set_cli_parser_exposes_reconcile_and_resume_commands() -> None:
+    reconcile_args = make_parser().parse_args([
+        "release", "set", "reconcile", "--evidence", "/tmp/checkpoint", "--json"
+    ])
+    assert reconcile_args.release_set_command == "reconcile"
+    resume_args = make_parser().parse_args([
+        "release", "set", "resume",
+        "--evidence", "/tmp/checkpoint",
+        "--confirm-release-set-id", "set-1",
+        "--confirm-plan-sha256", "a" * 64,
+        "--confirm-reconciliation-sha256", "b" * 64,
+        "--execute", "--rollback-on-failure", "--stage-all", "--commit", "--push", "--publish", "--adopt", "--verify-current",
+        "--json",
+    ])
+    assert resume_args.release_set_command == "resume"
+    assert resume_args.confirm_reconciliation_sha256 == "b" * 64

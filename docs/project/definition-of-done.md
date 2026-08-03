@@ -960,3 +960,16 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | ID | Requirement | Status | Evidence | Release |
 |---|---|---|---|---|
 | DOD-371 | An exact failed-release retry receiving checkpoint code `10` reuses the bound source identity and continues into validation without duplicate publication or premature shell exit | focused_candidate | executable extracted-function regression plus strict host retry | v0.1.120.1 |
+
+## v0.1.121 resumable release-set rollout recovery and operator reconciliation
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-372 | `pb release set reconcile` validates checkpoint/evidence integrity and performs no repository, Git, registry, Project Source, publication, adoption, or current-state mutation | focused_candidate | deterministic before/after checkpoint regression and reconciliation safety payload | v0.1.121 |
+| DOD-373 | Reconciliation reconstructs the original plan SHA-256 from the manifest plus exact pre-rollout current identities even after some repositories have reached target current | focused_candidate | interrupted-forward reconciliation regression | v0.1.121 |
+| DOD-374 | Every repository is classified as exact target, exact previous, missing, or ambiguous current identity and the result emits deterministic pending order, rollback order, recovery mode, and reconciliation SHA-256 | focused_candidate | classification, repeatability and ambiguous-state regressions | v0.1.121 |
+| DOD-375 | `pb release set resume` requires exact release-set ID, original plan SHA-256, reconciliation SHA-256, rollback-on-failure, and the complete release-pipeline mutation envelope | focused_candidate | parser and authorization regressions | v0.1.121 |
+| DOD-376 | Interrupted forward rollout resumes without replaying repositories already verified at target identity and preserves final tamper-evident evidence validation | focused_candidate | interrupted apply/resume and evidence-chain regression | v0.1.121 |
+| DOD-377 | Interrupted reverse rollback resumes only unreverted target-current repositories in reverse dependency order and fails closed on incomplete restoration | focused_candidate | interrupted rollback recovery regression | v0.1.121 |
+| DOD-378 | Operator-repaired incomplete rollback finalizes without command replay only after every repository is authoritatively restored to its exact pre-rollout artifact and Project Source identity | focused_candidate | manual-repair reconciliation/finalization regression | v0.1.121 |
+| DOD-379 | Candidate passes strict direct/localhost/live validation, Artifact Guardian, exact Project Source publication, adoption and accepted/current verification | open | strict host release-control log required | v0.1.121 |

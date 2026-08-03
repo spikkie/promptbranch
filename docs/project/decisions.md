@@ -1237,3 +1237,13 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Decision:** `release_control_checkpoint_preflight` may return control codes `0` and `10` but must not enable Bash `errexit` internally. The caller owns the `set +e` / capture / `set -e` envelope and is the only layer permitted to classify those codes.
 - **Reason:** `v0.1.120` correctly imported the exact provisional identity and returned `10`, but its inner `set -e` caused the shell to terminate before the caller selected the source-reuse branch.
 - **Consequence:** The original `v0.1.120` bytes are repair-required. `v0.1.120.1` must execute the actual checkpoint function under code `10` and prove continuation to test execution.
+
+## DEC-2026-08-03-121 — Recovery requires read-only identity reconciliation and exact digest confirmation
+
+**Decision:** An interrupted release-set rollout or rollback may resume only from an existing atomic checkpoint after a read-only reconciliation proves each repository is exactly at its pre-rollout identity or exact target identity. The reconciliation result is canonically hashed and must be explicitly confirmed by the operator before mutation.
+
+**Rationale:** Process interruption can occur between a successful external mutation and checkpoint persistence. Replaying the repository pipeline risks duplicate Git, Project Source, publication, or adoption mutations. Current registry identity is therefore authoritative for deciding which repositories are already complete, pending, require rollback, or are ambiguous.
+
+**Consequences:** Verified target repositories are skipped, pending repositories continue in deterministic order, rollback resumes in reverse dependency order, manually repaired rollback can be finalized without command replay, and ambiguous or missing state blocks automatically. No operator override is inferred.
+
+- **Next planned after acceptance:** `v0.1.122 — Bounded parallel release-set wave execution and concurrency evidence`.
