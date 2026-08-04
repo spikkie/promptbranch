@@ -986,3 +986,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-385 | MVP proof fails closed when real download/verification evidence is missing, the candidate is a repair version, any outer release gate failed or skipped, or continuation resolves from a stale baseline | focused_candidate | negative evaluator regressions in `tests/test_promptbranch_mvp_proof.py` | v0.1.122 |
 | DOD-386 | Post-adoption continuation proof uses `pb ask --protocol --from-current-baseline` targeting the next normal version and performs no publication or adoption mutation | focused_candidate | `scripts/finalize-mvp-proof-cycle.sh`, shell contract regression | v0.1.122 |
 | DOD-387 | Strict host `v0.1.122` lifecycle plus proof finalization produces `mvp_proof_cycle_passed` and a canonical proof SHA-256 | open | strict host release log, artifact intake JSON, continuation ask JSON, `mvp-proof-cycle-1.v0.1.122.json` | v0.1.122 |
+
+## v0.1.122.1 MVP proof finalizer fail-closed repair
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-388 | MVP proof resolves accepted/current identity from the authoritative project-level `repos.<repo-id>` payload returned by `pb artifact current --json` | focused_candidate | `promptbranch_mvp_proof.py`, project-level current regression | v0.1.122.1 |
+| DOD-389 | Canonical candidate, artifact intake, adoption result, and accepted/current registry all expose the same non-empty SHA-256 before proof can pass | focused_candidate | evaluator SHA-binding checks and mismatch regressions | v0.1.122.1 |
+| DOD-390 | Invalid or incomplete intake/release/adoption/current evidence fails a read-only preflight before any continuation Ask is issued | focused_candidate | `--preflight-only`, no-Ask executable regression | v0.1.122.1 |
+| DOD-391 | Failed preflight or failed complete proof exits nonzero and never prints a verified-success message | focused_candidate | `set -Eeuo pipefail`, explicit verifier-result handling, shell regressions | v0.1.122.1 |
+| DOD-392 | Strict host validation and adoption prove the repair while accepted/current remains immutable until evidence is green | open | strict host release log, exact Project Source, Artifact Guardian, adoption/current verification | v0.1.122.1 |

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://promptbranch.local/schemas/mvp.proof_cycle.schema.json",
-  "title": "Promptbranch MVP proof cycle",
+  "$id": "https://promptbranch.local/schemas/mvp.proof_cycle_preflight.schema.json",
+  "title": "Promptbranch MVP proof-cycle preflight",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,10 +20,10 @@
     "failed_checks",
     "ok",
     "status",
-    "proof_sha256"
+    "preflight_sha256"
   ],
   "properties": {
-    "schema": {"const": "promptbranch.mvp.proof_cycle"},
+    "schema": {"const": "promptbranch.mvp.proof_cycle_preflight"},
     "schema_version": {"const": "1.1"},
     "cycle": {"type": "integer", "minimum": 1},
     "release_mode": {"const": "normal"},
@@ -45,7 +45,7 @@
       "uniqueItems": true
     },
     "ok": {"type": "boolean"},
-    "status": {"enum": ["mvp_proof_cycle_passed", "mvp_proof_cycle_failed"]},
-    "proof_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    "status": {"enum": ["mvp_proof_preflight_passed", "mvp_proof_preflight_failed"]},
+    "preflight_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   }
 }

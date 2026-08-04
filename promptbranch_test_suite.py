@@ -524,6 +524,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_release_contract.py",
             "tests/test_promptbranch_release_attempt.py",
             "tests/test_promptbranch_release_pipeline.py",
+            "tests/test_promptbranch_mvp_proof.py",
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_ignores_http_429",
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_accepts_explicit_http_403",
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_requires_explicit_status_static",

@@ -1265,3 +1265,13 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Decision:** Proof evaluation is deterministic and read-only. The evaluator emits a canonical SHA-256 and fails closed on missing, malformed, stale, ambiguous, repair-version, or mismatched evidence.
 - **Consequence:** `v0.1.122` does not claim MVP completion at package build time. Cycle 1 completes only after strict host evidence produces `mvp_proof_cycle_passed`. A repair resets the consecutive normal-cycle count.
 - **Next:** `v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict`.
+
+## ADR-PROJ-123 — MVP proof continuation is authorized only after exact evidence preflight
+
+**Status:** accepted for candidate `v0.1.122.1`
+
+**Context:** Accepted/current `v0.1.122` passed strict release validation, but the post-adoption MVP proof finalizer could not read the real project-level `repos.<repo-id>` current shape, did not bind intake/adoption/current evidence to the candidate SHA-256, issued the continuation Ask before validating intake, and could print `verified` after a failed verifier because shell errexit was not enabled.
+
+**Decision:** Treat continuation as an action authorized only by a successful read-only proof preflight. The preflight must resolve the requested repository from project-level current output and prove exact version, artifact filename, and SHA-256 equality across candidate, intake, adoption, and current evidence. The finalizer uses `set -Eeuo pipefail`, preserves verifier exit status, and prints success only after `mvp_proof_cycle_passed`.
+
+**Consequence:** `v0.1.122` remains accepted/current but does not count as a completed normal MVP proof cycle. `v0.1.122.1` is repair-only. The clean consecutive sequence resets to `v0.1.123` for cycle 1 and `v0.1.124` for cycle 2/final verdict.

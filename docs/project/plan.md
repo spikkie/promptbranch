@@ -1,48 +1,48 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.121.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
-active candidate version: v0.1.122
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-active slice: v0.1.122 — Canonical MVP proof cycle 1
-next normal version: v0.1.122
-next normal slice: v0.1.122 — Canonical MVP proof cycle 1
+accepted/current baseline: v0.1.122
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
+active candidate version: v0.1.122.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+active slice: v0.1.122.1 — MVP proof finalizer fail-closed evidence repair
+next normal version: v0.1.123
+next normal slice: v0.1.123 — Canonical MVP proof cycle 1
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.121.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.121.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.121.1(1).zip
-accepted/current SHA-256: 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc
-active candidate version: v0.1.122
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-next normal version: v0.1.122
-next normal slice: v0.1.122 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict
+accepted/current version: v0.1.122
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122(1).zip
+accepted/current SHA-256: e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e
+active candidate version: v0.1.122.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+next normal version: v0.1.123
+next normal slice: v0.1.123 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 1
 ```
 
-## Active normal slice — v0.1.122
+## Active repair slice — v0.1.122.1
 
-1. Freeze product scope; bounded parallel release-set execution moves post-MVP.
-2. Preserve all accepted `v0.1.121.1` behavior and authority boundaries.
-3. Add a read-only, machine-checkable `promptbranch.mvp.proof_cycle` evaluator.
-4. Require explicit evidence for real artifact download and release verification.
-5. Require strict 10/10 GO, visual smoke ZIP transport, adoption, and accepted/current identity.
-6. Issue the continuation protocol ask from the newly adopted baseline toward `v0.1.123`.
-7. Fail closed on repair-version candidates, stale continuation baselines, skipped gates, or missing evidence.
-8. Count cycle 1 only after strict-host evidence produces `mvp_proof_cycle_passed`.
+1. Preserve accepted `v0.1.122` runtime and proof capability without scope advance.
+2. Parse project-level current identity at `repos.<repo-id>`.
+3. Bind canonical candidate, intake, adoption, and current artifact SHA-256 exactly.
+4. Run a read-only intake/identity preflight before issuing a continuation Ask.
+5. Use `set -Eeuo pipefail` and preserve failed-verifier exit status.
+6. Never print a verified message after failed preflight or failed complete proof.
+7. Put executable proof-finalizer regressions in the mandatory `release_pipeline` group.
+8. Reset consecutive normal proof evidence; this repair cannot count as a proof cycle.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.120` — repair-required original rollout artifact.
-2. `v0.1.120.1` — accepted historical repair.
-3. `v0.1.121` — repair-required original recovery artifact.
-4. `v0.1.121.1` — accepted/current repair baseline.
-5. `v0.1.122` — active normal MVP proof cycle 1.
-6. `v0.1.123` — planned normal MVP proof cycle 2 and final verdict.
+1. `v0.1.121` — repair-required original recovery artifact.
+2. `v0.1.121.1` — accepted historical classifier repair.
+3. `v0.1.122` — accepted/current normal proof instrumentation; formal proof not counted.
+4. `v0.1.122.1` — active fail-closed proof-finalizer repair.
+5. `v0.1.123` — planned canonical MVP proof cycle 1.
+6. `v0.1.124` — planned canonical MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.1
 

@@ -56,3 +56,9 @@ The candidate is not accepted/current and cycle 1 is not complete until strict h
 ## Next
 
 `v0.1.123 — Canonical MVP proof cycle 2 and final MVP verdict`.
+
+## Post-release outcome
+
+Strict host release validation and adoption passed, making `v0.1.122` accepted/current with SHA-256 `e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e` and Project Source `chatgpt_claudecode_workflow-2_v0.1.122(1).zip`.
+
+Formal proof cycle 1 was not counted. Finalization exposed defects in project-level current parsing, SHA-256 evidence binding, pre-continuation preflight ordering, and wrapper exit handling. These are repaired in `v0.1.122.1`; the next clean normal proof sequence is `v0.1.123` then `v0.1.124`.
