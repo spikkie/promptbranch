@@ -6,10 +6,10 @@
 |---|---|---|---|---|
 | v0.1.121 | Resumable release-set rollout recovery and operator reconciliation | repair_required | normal | original artifact misclassifies HTTP 429 as backend 403 |
 | v0.1.121.1 | Backend 403/429 auth-bootstrap guardrail classification repair | accepted_historical | repair | explicit-status challenge classification with accepted recovery behavior |
-| v0.1.122 | Canonical MVP proof cycle 1 instrumentation | accepted_current | normal | strict release passed; formal proof was not counted because finalizer repair is required |
-| v0.1.122.1 | MVP proof finalizer fail-closed evidence repair | active | repair | project-level current parsing, exact SHA binding, preflight ordering, and truthful exit status |
-| v0.1.123 | Canonical MVP proof cycle 1 | planned_after_acceptance | normal | first clean ask/intake/validate/adopt/current/continue proof from accepted repair baseline |
-| v0.1.124 | Canonical MVP proof cycle 2 and final MVP verdict | planned | normal | second consecutive clean proof and earliest formal MVP completion |
+| v0.1.122 | Canonical MVP proof instrumentation | accepted_historical | normal | strict release passed; formal proof was not counted because a repair followed |
+| v0.1.122.1 | MVP proof finalizer fail-closed evidence repair | accepted_current | repair | project-level current parsing, exact SHA binding, preflight ordering, and truthful exit status |
+| v0.1.123 | Canonical MVP proof cycle 1 | active | normal | first clean ask/intake/validate/adopt/current/continue proof from accepted repair baseline |
+| v0.1.124 | Canonical MVP proof cycle 2 and final MVP verdict | planned_after_acceptance | normal | second consecutive clean proof and earliest formal MVP completion |
 
 ## Independence rule
 
@@ -17,7 +17,7 @@ Promptbranch and `promptbranch-method` develop independently. Method releases re
 
 ## Repair horizon rule
 
-Repair releases must not advance scope. `v0.1.122.1` repairs proof-control correctness only and cannot count as a normal proof cycle. Because `v0.1.122` required a repair after adoption, the consecutive normal proof count remains zero.
+Repair releases must not advance scope. `v0.1.122.1` is accepted/current but cannot count as a normal proof cycle. Because `v0.1.122` required a repair after adoption, the consecutive normal proof count remains zero.
 
 ## MVP finalization rule
 

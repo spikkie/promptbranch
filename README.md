@@ -1064,4 +1064,4 @@ The `promptbranch.release_set` v1.0 manifest declares canonical target artifacts
 
 ## Canonical MVP proof cycles
 
-`v0.1.122` introduces explicit read-only evidence evaluation for the first of two required consecutive normal MVP proof releases. Use `scripts/finalize-mvp-proof-cycle.sh` after strict adoption to verify artifact intake, 10/10 GO, visual ZIP transport, adoption/current identity, and continuation from the newly accepted baseline. The next normal release, `v0.1.123`, repeats the same contract for the final MVP verdict.
+`v0.1.123` is the first of two required consecutive normal MVP proof releases after accepted repair baseline `v0.1.122.1`. Use `scripts/finalize-mvp-proof-cycle.sh` after strict adoption to verify real artifact intake, 10/10 GO, visual ZIP transport, four-way SHA-256 identity, accepted/current identity, and continuation from `v0.1.123` toward `v0.1.124`. `v0.1.124` repeats the contract for the final MVP verdict.

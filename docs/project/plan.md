@@ -1,37 +1,37 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.122
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-active candidate version: v0.1.122.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-active slice: v0.1.122.1 — MVP proof finalizer fail-closed evidence repair
+accepted/current baseline: v0.1.122.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+active candidate version: v0.1.123
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+active slice: v0.1.123 — Canonical MVP proof cycle 1
 next normal version: v0.1.123
 next normal slice: v0.1.123 — Canonical MVP proof cycle 1
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.122
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122(1).zip
-accepted/current SHA-256: e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e
-active candidate version: v0.1.122.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+accepted/current version: v0.1.122.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
+accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
+active candidate version: v0.1.123
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
 next normal version: v0.1.123
 next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict
 ```
 
-## Active repair slice — v0.1.122.1
+## Active normal slice — v0.1.123
 
-1. Preserve accepted `v0.1.122` runtime and proof capability without scope advance.
-2. Parse project-level current identity at `repos.<repo-id>`.
-3. Bind canonical candidate, intake, adoption, and current artifact SHA-256 exactly.
-4. Run a read-only intake/identity preflight before issuing a continuation Ask.
-5. Use `set -Eeuo pipefail` and preserve failed-verifier exit status.
-6. Never print a verified message after failed preflight or failed complete proof.
-7. Put executable proof-finalizer regressions in the mandatory `release_pipeline` group.
-8. Reset consecutive normal proof evidence; this repair cannot count as a proof cycle.
+1. Preserve the accepted v0.1.122.1 proof-finalizer repair without new platform capability.
+2. Require a real Promptbranch reply-envelope artifact intake with download and ZIP verification evidence.
+3. Require strict release control to finish 10/10 GO with zero outer skips.
+4. Require exact SHA-256 equality across candidate, intake, adoption, and accepted/current registry evidence.
+5. Require the live visual ZIP roundtrip to pass.
+6. Finalize proof only after accepted/current is exactly v0.1.123.
+7. Issue one protocol continuation Ask from accepted v0.1.123 toward v0.1.124.
+8. Emit `mvp_proof_cycle_passed`; otherwise keep the formal consecutive proof count at zero.
 
 ## Rolling horizon authority
 
@@ -39,9 +39,9 @@ The machine-readable authority is `docs/project/plan-state.json`.
 
 1. `v0.1.121` — repair-required original recovery artifact.
 2. `v0.1.121.1` — accepted historical classifier repair.
-3. `v0.1.122` — accepted/current normal proof instrumentation; formal proof not counted.
-4. `v0.1.122.1` — active fail-closed proof-finalizer repair.
-5. `v0.1.123` — planned canonical MVP proof cycle 1.
+3. `v0.1.122` — accepted historical proof instrumentation; formal proof not counted.
+4. `v0.1.122.1` — accepted/current fail-closed proof-finalizer repair.
+5. `v0.1.123` — active canonical MVP proof cycle 1.
 6. `v0.1.124` — planned canonical MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.1

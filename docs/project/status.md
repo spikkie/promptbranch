@@ -1,46 +1,46 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.122
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122(1).zip
-accepted/current SHA-256: e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e
-active candidate version: v0.1.122.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-active slice: v0.1.122.1 — MVP proof finalizer fail-closed evidence repair
+accepted/current baseline: v0.1.122.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
+accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
+active candidate version: v0.1.123
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+active slice: v0.1.123 — Canonical MVP proof cycle 1
 next normal version: v0.1.123
 next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.123 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.122` passed strict host validation 10/10 and is accepted/current. Its formal MVP proof was not counted because post-adoption finalization exposed project-level current parsing, missing SHA-256 identity binding, missing pre-continuation preflight, and fail-open wrapper exit defects. `v0.1.122.1` repairs only those proof-control defects.
+`v0.1.122.1` passed strict host validation 10/10 and is accepted/current. Because it is a repair release, the formal consecutive normal MVP proof count remains 0/2. `v0.1.123` is the first clean normal proof cycle and adds no new platform capability.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.122
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.122(1).zip
-accepted/current SHA-256: e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e
-active candidate version: v0.1.122.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+accepted/current version: v0.1.122.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
+accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
+active candidate version: v0.1.123
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
 candidate adoption: not performed
 next normal version: v0.1.123
 next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.123
+next planned after acceptance: v0.1.124
 ```
 
-## Repair behavior
+## Proof-cycle behavior
 
-- `pb artifact current --json` is read from `repos.<repo-id>` and must resolve exactly one authoritative repository identity.
-- Candidate, intake, adoption, and accepted/current SHA-256 values must all be present and identical.
-- The finalizer performs a read-only evidence preflight before any continuation Ask.
-- Invalid intake or identity evidence creates no continuation request/run evidence.
-- `set -Eeuo pipefail` and explicit verifier result handling guarantee that failed proof exits nonzero.
-- The word `verified` is printed only after `mvp_proof_cycle_passed`.
-- The repair adds no publication, Project Source, Git, adoption, or deployment authority.
+- Artifact intake must prove real download, candidate verification, exact version, filename, and SHA-256.
+- Strict release control must pass all 10 outer steps with no failures or skips.
+- Visual ZIP transport must be independently verified.
+- Adoption and project-level accepted/current identity must match `chatgpt_claudecode_workflow-2_v0.1.123.zip` and its canonical SHA-256.
+- The fail-closed preflight must pass before any continuation Ask.
+- The continuation Ask must use `--from-current-baseline` at `v0.1.123` and target `v0.1.124`.
+- A repair, stale baseline, missing hash, failed gate, or continuation mismatch keeps the formal proof count at 0/2.
 
 ## Next safe action
 
-Download and strictly validate `chatgpt_claudecode_workflow-2_v0.1.122.1.zip`. Keep `v0.1.122` accepted/current until the repair reaches 10/10 GO, exact Project Source verification, Artifact Guardian, adoption, and accepted/current verification. After repair acceptance, create `v0.1.123` as canonical MVP proof cycle 1; `v0.1.124` remains cycle 2 and the earliest final MVP verdict.
+Download and strictly validate `chatgpt_claudecode_workflow-2_v0.1.123.zip`. Keep `v0.1.122.1` accepted/current until the candidate reaches 10/10 GO, exact Project Source verification, Artifact Guardian, adoption, accepted/current verification, real artifact intake, and `mvp_proof_cycle_passed`. Only then record cycle 1 as 1/2 and proceed to `v0.1.124`.
 
 ## v0.1.102 candidate status
 

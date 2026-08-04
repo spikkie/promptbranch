@@ -1,19 +1,19 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.122.zip` (`v0.1.122`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.122(1).zip`.
-Accepted SHA-256: `e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.122.1.zip` (`v0.1.122.1`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.122.1.zip` (`v0.1.122.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip`.
+Accepted SHA-256: `b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357`.
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.123.zip` (`v0.1.123`).
 Next normal slice: `v0.1.123 — Canonical MVP proof cycle 1`.
-Planned after that: `v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict`.
+Planned after acceptance: `v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.122.1 | repair | MVP proof finalizer fail-closed evidence repair | candidate | focused evaluator/finalizer/SHA/current parsing tests plus mandatory groups and strict host pending | DOD-388 through DOD-392 candidate; no proof-cycle count | pending |
-| v0.1.122 | normal | Canonical MVP proof cycle 1 instrumentation | accepted/current, proof_not_counted | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed; proof finalization exposed repair defects | DOD-384 through DOD-387 implementation accepted; formal consecutive proof remains 0/2 | e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e |
+| v0.1.123 | normal | Canonical MVP proof cycle 1 | candidate | focused proof/control tests, mandatory groups, deterministic ZIP and Guardian before strict host proof | DOD-393 through DOD-397 candidate; formal proof remains 0/2 until finalized | pending |
+| v0.1.122.1 | repair | MVP proof finalizer fail-closed evidence repair | accepted/current | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed | DOD-388 through DOD-392 accepted; repair does not count | b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357 |
+| v0.1.122 | normal | Canonical MVP proof instrumentation | accepted/historical, proof_not_counted | strict 10/10 GO and adoption/current passed; proof finalization required repair | DOD-384 through DOD-387 implementation accepted; formal consecutive proof remains 0/2 | e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e |
 | v0.1.121.1 | repair | Backend 403/429 auth-bootstrap guardrail classification repair | accepted/historical | strict 10/10 GO with real 429 telemetry, exact Project Source, Guardian and adoption/current verification | DOD-380 through DOD-383 accepted; no scope advance | 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc |
 | v0.1.121 | normal | Resumable release-set rollout recovery and operator reconciliation | repair_required | focused/package gates passed; strict host stopped before Project Source add because 429 was misclassified as 403 | DOD-372 through DOD-378 delivered through accepted repair successor | rejected |
-| v0.1.120.1 | repair | Checkpoint resume exit-code handling repair | accepted/historical | strict 10/10 GO; deterministic canonical SHA; exact Project Source; Guardian; adoption/current verification | DOD-371 accepted; no scope advance | 2a05ca25785a58b353e5f2647cb3392930d3565f4bb3b00aafc92ca27b855d49 |
 
 ## Status rule
 

@@ -995,4 +995,15 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-389 | Canonical candidate, artifact intake, adoption result, and accepted/current registry all expose the same non-empty SHA-256 before proof can pass | focused_candidate | evaluator SHA-binding checks and mismatch regressions | v0.1.122.1 |
 | DOD-390 | Invalid or incomplete intake/release/adoption/current evidence fails a read-only preflight before any continuation Ask is issued | focused_candidate | `--preflight-only`, no-Ask executable regression | v0.1.122.1 |
 | DOD-391 | Failed preflight or failed complete proof exits nonzero and never prints a verified-success message | focused_candidate | `set -Eeuo pipefail`, explicit verifier-result handling, shell regressions | v0.1.122.1 |
-| DOD-392 | Strict host validation and adoption prove the repair while accepted/current remains immutable until evidence is green | open | strict host release log, exact Project Source, Artifact Guardian, adoption/current verification | v0.1.122.1 |
+| DOD-392 | Strict host validation and adoption prove the repair while accepted/current remains immutable until evidence is green | done | 10/10 GO, exact Project Source, Artifact Guardian, adoption/current verification, `release_adopted_and_verified` | v0.1.122.1 |
+
+
+## v0.1.123 canonical MVP proof cycle 1
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-393 | The candidate is a normal release from accepted/current `v0.1.122.1` and adds no platform capability beyond proof execution and evidence projection | focused_candidate | plan-state, release note, control-surface validation | v0.1.123 |
+| DOD-394 | Real artifact intake proves download, ZIP verification, exact `v0.1.123` filename/version, and canonical SHA-256 before proof finalization | open | `v0.1.123.artifact-intake.json` bound to candidate bytes | v0.1.123 |
+| DOD-395 | Strict host release control passes 10/10 with zero outer skips, visual ZIP transport, Artifact Guardian, exact Project Source, adoption, and accepted/current verification | open | full release-control and adoption/current evidence | v0.1.123 |
+| DOD-396 | The post-adoption continuation Ask resolves from accepted/current `v0.1.123` and targets `v0.1.124` without publication or adoption mutation | open | continuation request/run/combined JSON evidence | v0.1.123 |
+| DOD-397 | The fail-closed evaluator emits `mvp_proof_cycle_passed` with exact four-way SHA-256 binding and records formal consecutive proof count 1/2 | open | `mvp-proof-cycle-1.v0.1.123.json` | v0.1.123 |
