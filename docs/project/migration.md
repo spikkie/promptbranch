@@ -1397,3 +1397,8 @@ No proof count is carried by this repair release.
 No tracked repository binding, local registry, artifact registry, or Project Source migration is required. Do not manually rewrite `.promptbranch-repo.json`. The repair recognizes the bare and slugged URL forms as aliases only when their immutable `g-p-<32-hex>` Project UUID matches, then continues using the existing tracked binding as authority.
 
 `v0.1.123.2` remains a failed, non-adopted candidate. After `v0.1.123.2.1` passes strict adoption, run the explicitly pinned `v0.1.124` proof-cycle command.
+
+
+## v0.1.123.2.1 to v0.1.123.2.2 migration note
+
+No operator state migration is required. The repair changes only the release-control caller-side post-join identity verifier. Existing tracked Project authority remains unchanged. `v0.1.123.2.1` remains non-adopted after failing before strict validation; accepted/current remains `v0.1.123.1` until `v0.1.123.2.2` passes strict adoption.

@@ -2687,6 +2687,7 @@ INNERPY
   python3 - "${join_out}" "${repo_root}/.promptbranch-repo.json" "${project_id}" "${project_home_url}" "${release_repo_id}" <<'INNERPY_JOIN'
 from pathlib import Path
 import json
+import re
 import sys
 join_path, identity_path, project_id, project_home_url, repo_id = sys.argv[1:]
 raw = Path(join_path).read_text(encoding="utf-8", errors="replace")
@@ -2700,13 +2701,34 @@ identity_file = Path(identity_path)
 if not identity_file.is_file():
     raise SystemExit("pb project join did not resolve tracked .promptbranch-repo.json")
 identity = json.loads(identity_file.read_text(encoding="utf-8"))
+
+immutable_project_re = re.compile(r"(?<![A-Za-z0-9])(g-p-[0-9a-fA-F]{32})(?=-|/|$)")
+
+def immutable_project_id(value):
+    match = immutable_project_re.search(str(value or "").strip())
+    return match.group(1).lower() if match else None
+
+def same_project_authority(left, right):
+    left_text = str(left or "").strip()
+    right_text = str(right or "").strip()
+    if not left_text or not right_text:
+        return False
+    left_uuid = immutable_project_id(left_text)
+    right_uuid = immutable_project_id(right_text)
+    if left_uuid or right_uuid:
+        return bool(left_uuid and right_uuid and left_uuid == right_uuid)
+    return left_text.rstrip("/") == right_text.rstrip("/")
+
 checks = {
-    "project_id": identity.get("project_id") == project_id,
-    "project_home_url": identity.get("project_home_url") == project_home_url,
+    "project_id": same_project_authority(identity.get("project_id"), project_id),
+    "project_home_url": same_project_authority(identity.get("project_home_url"), project_home_url),
     "repo_id": identity.get("repo_id") == repo_id,
+    "joined_project_id": same_project_authority(payload.get("project_id"), project_id),
+    "joined_project_home_url": same_project_authority(payload.get("project_home_url"), project_home_url),
+    "joined_repo_id": payload.get("repo_id") == repo_id,
 }
 if not all(checks.values()):
-    raise SystemExit("joined identity mismatch: " + json.dumps({"checks": checks, "identity": identity}, sort_keys=True))
+    raise SystemExit("joined identity mismatch: " + json.dumps({"checks": checks, "identity": identity, "join": payload}, sort_keys=True))
 INNERPY_JOIN
 }
 

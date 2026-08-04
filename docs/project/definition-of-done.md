@@ -1039,3 +1039,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-410 | `pb project join` accepts matching bare/slugged aliases during release adoption preflight | focused_candidate | subprocess join regression using slugged tracked and bare requested values | v0.1.123.2.1 |
 | DOD-411 | A genuinely different immutable Project UUID remains fail-closed | focused_candidate | cross-project mismatch regressions | v0.1.123.2.1 |
 | DOD-412 | Alias reconciliation preserves the tracked authority bytes and formal proof count remains 0/2 | candidate | binding immutability and project control-surface evidence | v0.1.123.2.1 |
+
+
+## v0.1.123.2.2 release-control post-join Project alias verification repair
+
+| ID | Requirement | Evidence level | Evidence | Target |
+|---|---|---|---|---|
+| DOD-413 | Release control accepts a bare requested Project identity when `pb project join` returns the matching tracked slugged alias | focused_candidate | executable embedded-verifier regression | v0.1.123.2.2 |
+| DOD-414 | Requested, returned, and tracked Project ids and URLs are compared through the immutable `g-p-<32-hex>` UUID | focused_candidate | alias success and payload/identity checks | v0.1.123.2.2 |
+| DOD-415 | True cross-project UUID mismatches remain fail-closed before strict validation | focused_candidate | executable mismatch regression | v0.1.123.2.2 |
+| DOD-416 | Caller-side alias verification preserves tracked authority bytes and repair acceptance does not advance formal proof count | candidate | binding immutability and project control-surface evidence | v0.1.123.2.2 |

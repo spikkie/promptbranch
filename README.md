@@ -1,3 +1,7 @@
+## v0.1.123.2.2 release-control post-join Project alias verification repair
+
+`v0.1.123.2.1` fixed `pb project join`, but release control still compared the returned tracked slugged Project identity to the requested bare Project identity with literal string equality. `v0.1.123.2.2` applies immutable `g-p-<32-hex>` comparison to the caller-side post-join verification, keeps `repo_id` exact, preserves `.promptbranch-repo.json`, and rejects true cross-project UUIDs before validation.
+
 ## v0.1.123.2.1 project authority URL alias reconciliation repair
 
 `v0.1.123.2` was not adopted: release control stopped before strict validation because the tracked repository binding used the slugged Project form while runtime discovery supplied the bare immutable Project form. `v0.1.123.2.1` compares authority through the immutable `g-p-<32-hex>` Project UUID, accepts only matching bare/slugged aliases, preserves the tracked authority bytes, and continues to reject true cross-project mismatches.

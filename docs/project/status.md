@@ -4,14 +4,14 @@ accepted/current baseline: v0.1.123.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
 accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
-active candidate version: v0.1.123.2.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip
-active slice: v0.1.123.2.1 — Project authority URL alias reconciliation repair
+active candidate version: v0.1.123.2.2
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
+active slice: v0.1.123.2.2 — Release-control post-join Project alias verification repair
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.123.1` passed strict host validation 10/10 and remains accepted/current. The formal proof count remains 0/2 because repair releases do not count. `v0.1.123.2` failed before strict validation when adoption preflight compared bare and slugged representations of the same Project literally. `v0.1.123.2.1` repairs only that authority-alias comparison.
+`v0.1.123.1` passed strict host validation 10/10 and remains accepted/current. The formal proof count remains 0/2 because repair releases do not count. `v0.1.123.2` failed before strict validation when adoption preflight compared bare and slugged representations of the same Project literally. `v0.1.123.2.1` fixed `pb project join`, but its caller still rejected the canonicalized tracked result with literal comparison. `v0.1.123.2.2` repairs only that post-join caller verification.
 
 ## Current baseline
 
@@ -20,8 +20,8 @@ accepted/current version: v0.1.123.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
 accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
 accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
-active candidate version: v0.1.123.2.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip
+active candidate version: v0.1.123.2.2
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
 candidate adoption: not performed
 formal MVP proof count: 0/2
 next normal version: v0.1.124
@@ -34,11 +34,12 @@ next planned after acceptance: v0.1.125
 - Exact request/message/answer identity must drive artifact intake; generic latest-answer selection is forbidden.
 - Download, verification, migration, strict release control, Project Source publication, adoption, accepted/current verification, continuation Ask, and final proof evaluation all run internally.
 - Any failure returns nonzero before a success status is printed.
-- `v0.1.123.2.1` is repair-only and cannot count toward the two consecutive normal cycles.
+- `v0.1.123.2.1` was not adopted and cannot count toward the two consecutive normal cycles.
+- `v0.1.123.2.2` is repair-only and cannot count toward the two consecutive normal cycles.
 
 ## Next safe action
 
-Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip`. After acceptance, run only:
+Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip`. After acceptance, run only:
 
 ```bash
 pb ask continue --conversation-url 'https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16' --target-version v0.1.124 --release-type normal

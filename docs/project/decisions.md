@@ -1301,3 +1301,12 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Authority preservation:** The tracked `.promptbranch-repo.json` remains authoritative and must not be rewritten during reconciliation.
 - **Failure policy:** A different immutable Project UUID remains a release-blocking mismatch.
 - **Sequence:** `v0.1.123.2.1` is repair-only; `v0.1.124` and `v0.1.125` remain normal proof cycles 1 and 2.
+
+
+## DEC-2026-08-04-123.2.2 — Release-control caller verifies Project aliases by immutable UUID
+
+- **Decision:** The release-control post-`pb project join` verifier compares requested, returned, and tracked Project identities through the immutable `g-p-<32-hex>` UUID.
+- **Exact boundary:** `repo_id` remains an exact comparison and non-UUID Project identifiers retain exact comparison.
+- **Authority preservation:** The tracked `.promptbranch-repo.json` remains authoritative and is not rewritten.
+- **Failure policy:** Missing identity, mixed UUID/non-UUID identity, or a different immutable Project UUID remains release-blocking before validation.
+- **Sequence:** `v0.1.123.2.2` is repair-only; `v0.1.124` and `v0.1.125` remain normal proof cycles 1 and 2.

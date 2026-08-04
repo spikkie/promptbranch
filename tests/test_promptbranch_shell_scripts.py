@@ -2,6 +2,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from promptbranch_eta import append_eta_observation
@@ -2482,6 +2483,100 @@ def test_release_control_adoption_identity_preflight_precedes_expensive_tests() 
     assert 'assigned_source_filename:' in script
     assert 'processed_file_id:' in script
     assert 'library_metadata_object_id:' in script
+
+def _run_release_control_join_postcheck(
+    tmp_path: Path,
+    *,
+    requested_project_id: str,
+    requested_project_url: str,
+    tracked_project_id: str,
+    tracked_project_url: str,
+) -> subprocess.CompletedProcess[str]:
+    script = (Path(__file__).resolve().parents[1] / "chatgpt_claudecode_workflow_release_control.sh").read_text(encoding="utf-8")
+    start_marker = "<<'INNERPY_JOIN'\n"
+    start = script.index(start_marker) + len(start_marker)
+    end = script.index("\nINNERPY_JOIN", start)
+    verifier = script[start:end]
+
+    join_path = tmp_path / "join.json"
+    identity_path = tmp_path / ".promptbranch-repo.json"
+    repo_id = "chatgpt_claudecode_workflow-2"
+    join_path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "action": "project_join",
+                "status": "joined",
+                "project_id": tracked_project_id,
+                "project_home_url": tracked_project_url,
+                "repo_id": repo_id,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    identity_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "project_id": tracked_project_id,
+                "project_home_url": tracked_project_url,
+                "repo_id": repo_id,
+                "artifact_pattern": "chatgpt_claudecode_workflow-2_<version>.zip",
+                "role": "release_authority",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    before = identity_path.read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-",
+            str(join_path),
+            str(identity_path),
+            requested_project_id,
+            requested_project_url,
+            repo_id,
+        ],
+        input=verifier,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert identity_path.read_bytes() == before
+    return result
+
+
+def test_release_control_join_postcheck_accepts_bare_requested_and_slugged_tracked_aliases(tmp_path: Path) -> None:
+    immutable = "g-p-6a43ea5129508191be8c8ebcf9fc7391"
+    result = _run_release_control_join_postcheck(
+        tmp_path,
+        requested_project_id=immutable,
+        requested_project_url=f"https://chatgpt.com/g/{immutable}/project",
+        tracked_project_id=f"{immutable}-promptbranch3",
+        tracked_project_url=f"https://chatgpt.com/g/{immutable}-promptbranch3/project",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_release_control_join_postcheck_rejects_true_cross_project_uuid(tmp_path: Path) -> None:
+    requested = "g-p-6a43ea5129508191be8c8ebcf9fc7391"
+    tracked = "g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    result = _run_release_control_join_postcheck(
+        tmp_path,
+        requested_project_id=requested,
+        requested_project_url=f"https://chatgpt.com/g/{requested}/project",
+        tracked_project_id=f"{tracked}-other",
+        tracked_project_url=f"https://chatgpt.com/g/{tracked}-other/project",
+    )
+    assert result.returncode != 0
+    assert "joined identity mismatch" in result.stderr
+    assert '"project_id": false' in result.stderr
+    assert '"project_home_url": false' in result.stderr
 
 def test_release_control_rejects_adopt_after_validation_without_tests(tmp_path: Path):
     repo = tmp_path / "repo"

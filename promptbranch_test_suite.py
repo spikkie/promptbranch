@@ -529,6 +529,8 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_ignores_http_429",
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_accepts_explicit_http_403",
             "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_requires_explicit_status_static",
+            "tests/test_promptbranch_shell_scripts.py::test_release_control_join_postcheck_accepts_bare_requested_and_slugged_tracked_aliases",
+            "tests/test_promptbranch_shell_scripts.py::test_release_control_join_postcheck_rejects_true_cross_project_uuid",
         ),
     },
     "release_set_planner": {
