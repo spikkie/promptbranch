@@ -1,3 +1,7 @@
+## v0.1.123.2.3 operation-scoped response waiting repair
+
+`v0.1.123.2.2` is accepted/current. During the first pinned `v0.1.124` proof attempt, a pre-submit background attachment-download 403 remained in global browser telemetry and incorrectly terminated response waiting immediately after a causally confirmed prompt submission. `v0.1.123.2.3` establishes a confirmed-submit guardrail cursor, ignores pre-submit and unrelated file-download 403 telemetry while the target conversation remains healthy, retains fail-fast behavior for current-operation conversation 403s and real challenge/root/closed-page states, raises the assistant response budget to 30 minutes, and derives a 37-minute outer lifecycle budget that also covers fresh-turn correlation and artifact materialization.
+
 ## v0.1.123.2.2 release-control post-join Project alias verification repair
 
 `v0.1.123.2.1` fixed `pb project join`, but release control still compared the returned tracked slugged Project identity to the requested bare Project identity with literal string equality. `v0.1.123.2.2` applies immutable `g-p-<32-hex>` comparison to the caller-side post-join verification, keeps `repo_id` exact, preserves `.promptbranch-repo.json`, and rejects true cross-project UUIDs before validation.

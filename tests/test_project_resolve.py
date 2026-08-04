@@ -2022,3 +2022,106 @@ def test_find_project_sidebar_container_includes_name_only_non_anchor_candidates
     assert "aside [role=\"button\"]" in page.script
     assert "[role=\"menuitem\"]" in page.script
     assert "[data-sidebar-item=\"true\"]" in page.script
+
+
+def test_response_wait_ignores_backend_403_recorded_before_confirmed_submit(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/files/download/file_old?inline=false",
+        status=403,
+    )
+    response_context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": client._rate_limit_events[-1]["monotonic_time"] + 0.001,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": "https://chatgpt.com/g/g-p-demo/c/conversation-current",
+    }
+
+    class ConversationPage:
+        url = "https://chatgpt.com/g/g-p-demo/c/conversation-current"
+
+        async def title(self) -> str:
+            return "Promptbranch"
+
+        async def evaluate(self, _script: str):
+            return ""
+
+    asyncio.run(
+        client._raise_fail_fast_midrun_challenge_if_configured(
+            ConversationPage(),
+            stage="response-wait-poll",
+            response_context=response_context,
+        )
+    )
+
+
+def test_response_wait_ignores_unrelated_post_submit_file_download_403(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    response_context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": 0.0,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": "https://chatgpt.com/g/g-p-demo/c/conversation-current",
+    }
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/files/download/file_background?inline=false",
+        status=403,
+    )
+
+    class ConversationPage:
+        url = "https://chatgpt.com/g/g-p-demo/c/conversation-current"
+
+        async def title(self) -> str:
+            return "Promptbranch"
+
+        async def evaluate(self, _script: str):
+            return ""
+
+    asyncio.run(
+        client._raise_fail_fast_midrun_challenge_if_configured(
+            ConversationPage(),
+            stage="response-wait-poll",
+            response_context=response_context,
+        )
+    )
+
+
+def test_response_wait_rejects_post_submit_conversation_403(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    client.config.fail_fast_on_challenge = True
+    response_context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": 0.0,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": "https://chatgpt.com/g/g-p-demo/c/conversation-current",
+    }
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/f/conversation",
+        status=403,
+    )
+
+    class ConversationPage:
+        url = "https://chatgpt.com/g/g-p-demo/c/conversation-current"
+
+        async def title(self) -> str:
+            return "Promptbranch"
+
+        async def evaluate(self, _script: str):
+            return "visible conversation"
+
+    with pytest.raises(AuthChallengeRequiredError) as raised:
+        asyncio.run(
+            client._raise_fail_fast_midrun_challenge_if_configured(
+                ConversationPage(),
+                stage="response-wait-poll",
+                response_context=response_context,
+            )
+        )
+
+    assert raised.value.challenge_type == "docker_standard_profile_challenged"
+    assert "current operation" in str(raised.value)

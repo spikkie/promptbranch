@@ -1049,3 +1049,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-414 | Requested, returned, and tracked Project ids and URLs are compared through the immutable `g-p-<32-hex>` UUID | focused_candidate | alias success and payload/identity checks | v0.1.123.2.2 |
 | DOD-415 | True cross-project UUID mismatches remain fail-closed before strict validation | focused_candidate | executable mismatch regression | v0.1.123.2.2 |
 | DOD-416 | Caller-side alias verification preserves tracked authority bytes and repair acceptance does not advance formal proof count | candidate | binding immutability and project control-surface evidence | v0.1.123.2.2 |
+## v0.1.123.2.3 operation-scoped response wait repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-417 | Response waiting ignores backend-403 events recorded before the current causally confirmed submit boundary | focused_candidate | executable pre-submit file-download 403 regression | v0.1.123.2.3 |
+| DOD-418 | Unrelated post-submit attachment-download 403 telemetry remains diagnostic and does not terminate a healthy pinned conversation | focused_candidate | executable post-submit unrelated-file regression | v0.1.123.2.3 |
+| DOD-419 | Current-operation conversation 403s and real challenge/root/closed-target states remain fail-closed | focused_candidate | executable conversation-submit 403 and existing challenge regressions | v0.1.123.2.3 |
+| DOD-420 | The integrated outer step timeout exceeds response, fresh-turn, artifact-materialization, and safety budgets without an extra operator flag | focused_candidate | executable timeout-budget invariant and generated ask command assertions | v0.1.123.2.3 |
+| DOD-421 | Repair acceptance preserves formal proof count 0/2 and leaves `v0.1.124` and `v0.1.125` as normal proof cycles 1 and 2 | candidate | project control-surface and release-status authority | v0.1.123.2.3 |
+

@@ -1,23 +1,21 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.1.zip` (`v0.1.123.1`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip`.
-Accepted SHA-256: `fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip` (`v0.1.123.2.2`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip` (`v0.1.123.2.2`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.2.2(1).zip`.
+Accepted SHA-256: `e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip` (`v0.1.123.2.3`).
 Next normal slice: `v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command`.
 Planned after cycle 1: `v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict`.
 Formal consecutive MVP proof count: `0/2`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.123.2.2 | repair | Release-control post-join Project alias verification | candidate | exact embedded caller verifier, bare/slugged alias success, true mismatch rejection, tracked-binding immutability, mandatory groups, deterministic ZIP and Guardian | DOD-413 through DOD-416 candidate; repair cannot count | pending |
+| v0.1.123.2.3 | repair | Operation-scoped response guardrails and nested timeout budget | candidate | pre-submit and unrelated-file 403 ignore regressions, current-operation 403 fail-fast regression, nested timeout invariant, mandatory groups, deterministic ZIP and Guardian | DOD-417 through DOD-421 candidate; repair cannot count | pending |
+| v0.1.123.2.2 | repair | Release-control post-join Project alias verification | accepted/current | strict release validation, exact Project Source, runtime/registry/current alignment, adoption verified | DOD-413 through DOD-416 accepted; repair cannot count | e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683 |
 | v0.1.123.2.1 | repair | Project authority URL alias reconciliation | failed_pre_validation | `pb project join` succeeded but release-control literal post-join verification rejected equivalent bare/slugged identities before strict tests | DOD-409 through DOD-412 implemented; repair not adopted and cannot count | rejected/non-adopted |
 | v0.1.123.2 | repair | Explicit conversation pinning for integrated MVP proof lifecycle | failed_pre_validation | Git push and Project Source upload succeeded; adoption identity preflight rejected equivalent bare/slugged Project forms before strict tests | DOD-404 through DOD-408 implemented; repair not adopted and cannot count | rejected/non-adopted |
-| v0.1.123.1 | repair | Integrate complete proof lifecycle into `pb ask` | accepted/current | strict 10/10 GO, exact Project Source, Guardian, Git push, adoption/current passed | DOD-398 through DOD-403 accepted; repair cannot count | fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf |
-| v0.1.123 | normal | Canonical MVP proof cycle 1 attempt | accepted/current, proof_not_counted | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed; post-hoc intake selected historical no_artifact answer | DOD-393/DOD-395 implementation evidence passed; DOD-394/DOD-396/DOD-397 not satisfied chronologically | 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc |
-| v0.1.122.1 | repair | MVP proof finalizer fail-closed evidence repair | accepted/historical | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed | DOD-388 through DOD-392 accepted; repair does not count | b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357 |
-| v0.1.122 | normal | Canonical MVP proof instrumentation | accepted/historical, proof_not_counted | strict 10/10 GO and adoption/current passed; proof finalization required repair | DOD-384 through DOD-387 implementation accepted; formal consecutive proof remains 0/2 | e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e |
-| v0.1.121.1 | repair | Backend 403/429 auth-bootstrap guardrail classification repair | accepted/historical | strict 10/10 GO with real 429 telemetry, exact Project Source, Guardian and adoption/current verification | DOD-380 through DOD-383 accepted; no scope advance | 733be42b0ff0fe9afec64d038cfc49f7440217944f38dca94276129b5b38ebdc |
+| v0.1.123.1 | repair | Integrate complete proof lifecycle into `pb ask` | accepted/historical | strict 10/10 GO, exact Project Source, Guardian, Git push, adoption/current passed | DOD-398 through DOD-403 accepted; repair cannot count | fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf |
+| v0.1.123 | normal | Canonical MVP proof cycle 1 attempt | accepted/historical, proof_not_counted | strict 10/10 GO and adoption passed; chronological artifact intake did not count | formal consecutive proof remains 0/2 | 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc |
 
 ## Status rule
 

@@ -17,7 +17,7 @@ class ChatGPTBrowserConfig:
     challenge_wait_timeout_ms: int = 20_000
     use_patchright: bool = True
     navigation_timeout_ms: int = 45_000
-    response_timeout_ms: int = 600_000
+    response_timeout_ms: int = 1_800_000
     manual_login_timeout_ms: int = 600_000
     slow_mo_ms: int = 0
     viewport_width: int = 1440

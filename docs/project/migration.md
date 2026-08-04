@@ -1402,3 +1402,7 @@ No tracked repository binding, local registry, artifact registry, or Project Sou
 ## v0.1.123.2.1 to v0.1.123.2.2 migration note
 
 No operator state migration is required. The repair changes only the release-control caller-side post-join identity verifier. Existing tracked Project authority remains unchanged. `v0.1.123.2.1` remains non-adopted after failing before strict validation; accepted/current remains `v0.1.123.1` until `v0.1.123.2.2` passes strict adoption.
+## v0.1.123.2.2 to v0.1.123.2.3 migration note
+
+No operator-state migration is required. The repair changes browser response-wait guardrail causality and derives nested timeout budgets internally. Existing project binding, accepted artifact registry, and pinned conversation selection remain unchanged. After strict adoption, retry the one-command `v0.1.124` proof lifecycle.
+

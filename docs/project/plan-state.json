@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
-  "accepted_current_version": "v0.1.123.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-  "active_candidate_version": "v0.1.123.2.2",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
+  "accepted_current_version": "v0.1.123.2.2",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+  "active_candidate_version": "v0.1.123.2.3",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+  "active_slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -532,16 +532,27 @@
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "created_at": "2026-08-04T18:20:00+02:00",
+      "created_at": "2026-08-04T19:35:14+02:00",
       "kind": "repair",
       "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+      "status": "accepted_current",
+      "summary": "Completed immutable Project UUID alias verification in both project join and the release-control caller.",
+      "validation": "Strict release validation and adoption completed; runtime, artifact registry, Project Source, and accepted/current resolved to v0.1.123.2.2.",
+      "version": "v0.1.123.2.2",
+      "accepted_sha256": "e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "created_at": "2026-08-04T20:14:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
       "status": "candidate",
-      "summary": "Canonicalizes the release-control caller post-join checks through the immutable Project UUID while preserving tracked authority and exact repo identity.",
-      "validation": "Exact embedded-verifier alias and cross-project regressions plus mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
-      "version": "v0.1.123.2.2"
+      "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
+      "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.2.3"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1041,20 +1052,31 @@
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "created_at": "2026-08-04T18:20:00+02:00",
+      "created_at": "2026-08-04T19:35:14+02:00",
       "kind": "repair",
       "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+      "status": "accepted_current",
+      "summary": "Completed immutable Project UUID alias verification in both project join and the release-control caller.",
+      "validation": "Strict release validation and adoption completed; runtime, artifact registry, Project Source, and accepted/current resolved to v0.1.123.2.2.",
+      "version": "v0.1.123.2.2",
+      "accepted_sha256": "e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "created_at": "2026-08-04T20:14:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
       "status": "candidate",
-      "summary": "Canonicalizes the release-control caller post-join checks through the immutable Project UUID while preserving tracked authority and exact repo identity.",
-      "validation": "Exact embedded-verifier alias and cross-project regressions plus mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
-      "version": "v0.1.123.2.2"
+      "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
+      "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.2.3"
     }
   ],
   "last_completed_normal_slice": "v0.1.122 \u2014 Canonical MVP proof instrumentation; strict release accepted but formal proof not counted because a repair was required",
   "last_completed_normal_slice_version": "v0.1.122",
-  "last_completed_repair": "v0.1.123.1 \u2014 Integrated complete MVP proof lifecycle into pb ask",
-  "last_completed_repair_version": "v0.1.123.1",
-  "last_updated": "2026-08-04T18:20:00+02:00",
+  "last_completed_repair": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+  "last_completed_repair_version": "v0.1.123.2.2",
+  "last_updated": "2026-08-04T20:14:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
   "next_normal_slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
   "next_normal_version": "v0.1.124",
@@ -1819,13 +1841,24 @@
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "created_at": "2026-08-04T18:20:00+02:00",
+      "created_at": "2026-08-04T19:35:14+02:00",
       "kind": "repair",
       "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+      "status": "accepted_current",
+      "summary": "Completed immutable Project UUID alias verification in both project join and the release-control caller.",
+      "validation": "Strict release validation and adoption completed; runtime, artifact registry, Project Source, and accepted/current resolved to v0.1.123.2.2.",
+      "version": "v0.1.123.2.2",
+      "accepted_sha256": "e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "created_at": "2026-08-04T20:14:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
       "status": "candidate",
-      "summary": "Canonicalizes the release-control caller post-join checks through the immutable Project UUID while preserving tracked authority and exact repo identity.",
-      "validation": "Exact embedded-verifier alias and cross-project regressions plus mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
-      "version": "v0.1.123.2.2"
+      "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
+      "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.2.3"
     }
   ],
   "release_mode": "repair",
@@ -2178,13 +2211,24 @@
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "created_at": "2026-08-04T18:20:00+02:00",
+      "created_at": "2026-08-04T19:35:14+02:00",
       "kind": "repair",
       "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
+      "status": "accepted_current",
+      "summary": "Completed immutable Project UUID alias verification in both project join and the release-control caller.",
+      "validation": "Strict release validation and adoption completed; runtime, artifact registry, Project Source, and accepted/current resolved to v0.1.123.2.2.",
+      "version": "v0.1.123.2.2",
+      "accepted_sha256": "e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "created_at": "2026-08-04T20:14:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
       "status": "candidate",
-      "summary": "Canonicalizes the release-control caller post-join checks through the immutable Project UUID while preserving tracked authority and exact repo identity.",
-      "validation": "Exact embedded-verifier alias and cross-project regressions plus mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
-      "version": "v0.1.123.2.2"
+      "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
+      "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.2.3"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2219,58 +2263,58 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
-      "release_mode": "repair",
-      "scope": "single-command pb ask proof lifecycle ownership with exact request/message/answer correlation and fail-closed sequencing",
-      "slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
-      "status": "accepted_current",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
-      "version": "v0.1.123.1"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.zip",
-      "release_mode": "repair",
-      "scope": "explicit conversation pinning implemented; authority alias comparison blocked adoption before validation",
-      "slice": "v0.1.123.2 \u2014 Explicit conversation pinning for integrated MVP proof lifecycle",
-      "status": "failed_pre_validation",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.zip",
-      "version": "v0.1.123.2"
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+      "slice": "v0.1.123 \u2014 Canonical MVP proof cycle attempt",
+      "status": "accepted_historical_proof_not_counted",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+      "version": "v0.1.123",
+      "release_mode": "normal",
+      "scope": "strict host release passed; formal proof did not count because exact candidate intake chronology was absent"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip",
-      "release_mode": "repair",
-      "scope": "pb project join fixed; caller-side literal verification still rejected equivalent Project aliases",
       "slice": "v0.1.123.2.1 \u2014 Project authority URL alias reconciliation repair",
       "status": "failed_pre_validation",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip",
-      "version": "v0.1.123.2.1"
+      "version": "v0.1.123.2.1",
+      "release_mode": "repair",
+      "scope": "project join alias reconciliation implemented; caller literal verification still blocked strict validation"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "release_mode": "repair",
-      "scope": "caller-side immutable Project UUID verification with exact repo id and tracked-authority preservation",
       "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
-      "status": "active",
+      "status": "accepted_current",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "version": "v0.1.123.2.2"
+      "version": "v0.1.123.2.2",
+      "release_mode": "repair",
+      "scope": "strictly adopted immutable Project UUID alias verification across join and release-control caller"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+      "version": "v0.1.123.2.3",
+      "release_mode": "repair",
+      "scope": "confirmed-submit guardrail cursor, non-causal 403 filtering, and nested response/artifact timeout budget"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "release_mode": "normal",
-      "scope": "first canonical proof cycle driven only by explicitly pinned pb ask continue",
       "slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
       "status": "planned_after_acceptance",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "version": "v0.1.124"
+      "version": "v0.1.124",
+      "release_mode": "normal",
+      "scope": "first canonical proof cycle driven only by explicitly pinned pb ask continue"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "release_mode": "normal",
-      "scope": "second consecutive canonical proof cycle and final MVP verdict driven only by explicitly pinned pb ask continue",
-      "slice": "v0.1.125 \u2014 Canonical MVP proof cycle 2 and final verdict",
+      "slice": "v0.1.125 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
       "status": "planned",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "version": "v0.1.125"
+      "version": "v0.1.125",
+      "release_mode": "normal",
+      "scope": "second consecutive canonical proof cycle and final MVP verdict driven only by explicitly pinned pb ask continue"
     }
   ],
   "schema": "promptbranch.project.plan_state",
@@ -2286,5 +2330,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.123.2.2"
+  "updated_for": "v0.1.123.2.3"
 }

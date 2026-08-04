@@ -168,7 +168,7 @@ class ChatGPTAutomation:
             os.getenv("CHATGPT_NAVIGATION_TIMEOUT_MS", "45000")
         )
         self.response_timeout_ms = response_timeout_ms or int(
-            os.getenv("CHATGPT_RESPONSE_TIMEOUT_MS", "600000")
+            os.getenv("CHATGPT_RESPONSE_TIMEOUT_MS", "1800000")
         )
         self.manual_login_timeout_ms = manual_login_timeout_ms or int(
             os.getenv("CHATGPT_MANUAL_LOGIN_TIMEOUT_MS", "600000")

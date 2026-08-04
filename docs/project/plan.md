@@ -1,60 +1,43 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.123.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
-active candidate version: v0.1.123.2.2
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
-active slice: v0.1.123.2.2 — Release-control post-join Project alias verification repair
+accepted/current baseline: v0.1.123.2.2
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
+active candidate version: v0.1.123.2.3
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+active slice: v0.1.123.2.3 — Operation-scoped response guardrails and nested timeout budget repair
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
-accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
-active candidate version: v0.1.123.2.2
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
+accepted/current version: v0.1.123.2.2
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.2(1).zip
+accepted/current SHA-256: e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683
+active candidate version: v0.1.123.2.3
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
 next normal version: v0.1.124
 next planned after acceptance: v0.1.125
 ```
 
-## Active repair slice — v0.1.123.2.2
+## Active repair slice — v0.1.123.2.3
 
-1. Preserve accepted/current `v0.1.123.1`; the repair cannot count as an MVP proof cycle.
-2. Extract the immutable `g-p-<32-hex>` Project UUID from ids, Project URLs, and Project conversation URLs.
-3. Accept bare and slugged representations only when their immutable UUIDs match.
-4. Preserve the tracked `.promptbranch-repo.json` bytes and continue using that tracked binding as authority.
-5. Reject true cross-project UUID mismatches before validation or adoption.
+1. Preserve accepted/current `v0.1.123.2.2`; the repair cannot count as an MVP proof cycle.
+2. Bind backend-403 evaluation to the causally confirmed submit boundary for the current response wait.
+3. Ignore pre-submit and unrelated background file-download 403 telemetry when the pinned conversation remains healthy.
+4. Retain fail-fast behavior for current-operation conversation 403s and visible challenge/root/closed-target states.
+5. Use a 1800-second response budget and an automatically derived outer budget of at least 2220 seconds.
 6. Keep `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.123` — accepted historical normal release; formal proof not counted due wrong historical answer intake.
-2. `v0.1.123.1` — accepted/current integrated one-command lifecycle repair.
-3. `v0.1.123.2` — failed before strict validation because bare and slugged Project aliases were compared literally.
-4. `v0.1.123.2.1` — failed before strict validation because the release-control caller still compared joined aliases literally.
-5. `v0.1.123.2.2` — active caller-side immutable Project authority verification repair.
-5. `v0.1.124` — planned canonical MVP proof cycle 1.
-6. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
-
-## Repair definition — v0.1.71.1
-
-```text
-Release: v0.1.71.1
-Base release: v0.1.71
-Type: repair candidate
-Slice advanced: no
-Reason: v0.1.71 field testing showed `pb repo list` and `pb repo doctor` used the new project registry while `pb artifact current --all` could still use the resolved repo-local `.pb_profile`, because default profile resolution was mistaken for an explicit `--profile-dir`.
-In scope: track whether `--profile-dir` was actually provided, create the project registry during `pb project join`, include locally configured repo IDs in project `current --all`, and ensure repo/list/doctor/artifact-current share the project registry by default from joined repos.
-Out of scope: release-set orchestration, automatic Project Source upload, automatic artifact adoption, registry import/migration command, dependency solving, deployment behavior.
-Expected validation: focused project/repo/artifact-current tests, project control-surface test, compileall, ZIP hygiene, clean extraction focused validation.
-```
-
+1. `v0.1.123.2.2` — accepted/current Project identity alias repair.
+2. `v0.1.123.2.3` — active response-wait and nested timeout repair.
+3. `v0.1.124` — planned canonical MVP proof cycle 1.
+4. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.2
 

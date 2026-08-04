@@ -286,7 +286,11 @@ DEFAULT_PROTOCOL_ASK_TIMEOUT_SECONDS = 120.0
 DEFAULT_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS = 12.0
 DEFAULT_PROTOCOL_FRESH_TURN_POLL_SECONDS = 1.0
 DEFAULT_PROTOCOL_SERVICE_TIMEOUT_BUFFER_SECONDS = 90.0
-DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1200.0
+DEFAULT_BROWSER_RESPONSE_TIMEOUT_SECONDS = 1800.0
+DEFAULT_MVP_PROOF_PROTOCOL_TIMEOUT_SECONDS = 1800.0
+DEFAULT_MVP_PROOF_FRESH_TURN_TIMEOUT_SECONDS = 120.0
+DEFAULT_MVP_PROOF_ARTIFACT_MATERIALIZATION_TIMEOUT_SECONDS = 180.0
+DEFAULT_MVP_PROOF_STEP_TIMEOUT_BUFFER_SECONDS = 120.0
 DEFAULT_PROFILE_WAIT_TIMEOUT_SECONDS = 600.0
 DEFAULT_BROWSER_WAIT_IDLE_TIMEOUT_SECONDS = 180.0
 DEFAULT_BROWSER_WAIT_IDLE_POLL_SECONDS = 2.0
@@ -6854,6 +6858,43 @@ def _protocol_service_timeout_floor(args: argparse.Namespace) -> float:
     return max(protocol_timeout, browser_response_timeout) + fresh_turn_timeout + buffer_seconds
 
 
+def _mvp_proof_timeout_budget(args: argparse.Namespace) -> dict[str, float]:
+    """Return nested timeout budgets for one integrated release-candidate Ask.
+
+    The outer lifecycle subprocess must outlive the browser response wait,
+    fresh-turn correlation, attachment materialization, and a final safety
+    margin. Operators keep the one-command interface; a smaller hidden/manual
+    step timeout cannot truncate an otherwise valid ChatGPT generation.
+    """
+
+    browser_response_timeout = max(
+        float(DEFAULT_MVP_PROOF_PROTOCOL_TIMEOUT_SECONDS),
+        float(_browser_response_timeout_seconds()),
+    )
+    fresh_turn_timeout = float(DEFAULT_MVP_PROOF_FRESH_TURN_TIMEOUT_SECONDS)
+    artifact_materialization_timeout = float(DEFAULT_MVP_PROOF_ARTIFACT_MATERIALIZATION_TIMEOUT_SECONDS)
+    safety_buffer = float(DEFAULT_MVP_PROOF_STEP_TIMEOUT_BUFFER_SECONDS)
+    requested_outer_timeout = max(
+        0.0,
+        float(getattr(args, "mvp_proof_step_timeout_seconds", 0.0) or 0.0),
+    )
+    required_outer_timeout = (
+        browser_response_timeout
+        + fresh_turn_timeout
+        + artifact_materialization_timeout
+        + safety_buffer
+    )
+    return {
+        "protocol_timeout_seconds": browser_response_timeout,
+        "fresh_turn_timeout_seconds": fresh_turn_timeout,
+        "artifact_materialization_timeout_seconds": artifact_materialization_timeout,
+        "safety_buffer_seconds": safety_buffer,
+        "required_outer_timeout_seconds": required_outer_timeout,
+        "requested_outer_timeout_seconds": requested_outer_timeout,
+        "outer_step_timeout_seconds": max(requested_outer_timeout, required_outer_timeout),
+    }
+
+
 def _apply_protocol_timeout(args: argparse.Namespace) -> None:
     if not _is_protocol_parse_ask(args):
         return
@@ -8012,8 +8053,12 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
     })
 
     cli_prefix = _mvp_cli_prefix(args, profile_root)
-    step_timeout = float(getattr(args, "mvp_proof_step_timeout_seconds", 900.0) or 900.0)
+    timeout_budget = _mvp_proof_timeout_budget(args)
+    step_timeout = float(timeout_budget["outer_step_timeout_seconds"])
+    protocol_timeout = float(timeout_budget["protocol_timeout_seconds"])
+    fresh_turn_timeout = float(timeout_budget["fresh_turn_timeout_seconds"])
     release_timeout = float(getattr(args, "mvp_proof_release_timeout_seconds", 14400.0) or 14400.0)
+    base["release_candidate_timeout_budget"] = timeout_budget
 
     ask_command = cli_prefix + [
         "ask-release",
@@ -8024,7 +8069,8 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "--expect-version", target_version,
         "--expect-repo", repo_id,
         "--conversation-url", explicit_conversation_url,
-        "--protocol-timeout-seconds", str(step_timeout),
+        "--protocol-timeout-seconds", str(protocol_timeout),
+        "--protocol-fresh-turn-timeout-seconds", str(fresh_turn_timeout),
         "--json",
     ]
     ask_step = _run_mvp_lifecycle_command(

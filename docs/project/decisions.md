@@ -1310,3 +1310,10 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Authority preservation:** The tracked `.promptbranch-repo.json` remains authoritative and is not rewritten.
 - **Failure policy:** Missing identity, mixed UUID/non-UUID identity, or a different immutable Project UUID remains release-blocking before validation.
 - **Sequence:** `v0.1.123.2.2` is repair-only; `v0.1.124` and `v0.1.125` remain normal proof cycles 1 and 2.
+## DEC-184 — Scope backend-403 response failure to confirmed submission
+
+- **Decision:** response waiting evaluates only backend-403 events at or after the current confirmed-submit cursor; unrelated attachment-download telemetry is non-terminal while the pinned conversation remains healthy.
+- **Fail-closed boundary:** current-operation conversation 403s, challenge/root transitions, or target closure remain terminal.
+- **Timeout invariant:** browser response 1800s, fresh-turn 120s, artifact materialization 180s, safety 120s; outer lifecycle step is at least 2220s.
+- **Sequence:** `v0.1.123.2.3` is repair-only; `v0.1.124` and `v0.1.125` remain proof cycles 1 and 2.
+

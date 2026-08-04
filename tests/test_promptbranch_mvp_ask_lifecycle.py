@@ -170,6 +170,8 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
     assert "--target-version" in ask_command
     assert TARGET_VERSION in ask_command
     assert ask_command[ask_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
+    assert float(ask_command[ask_command.index("--protocol-timeout-seconds") + 1]) >= 1800.0
+    assert float(ask_command[ask_command.index("--protocol-fresh-turn-timeout-seconds") + 1]) >= 120.0
     assert "--message-id" in intake_command
     assert intake_command[intake_command.index("--message-id") + 1] == "message-exact"
     assert "--answer-id" in intake_command
@@ -331,3 +333,116 @@ def test_lifecycle_command_keeps_full_output_on_disk_but_returns_bounded_tails(t
     assert "parsed_json" not in public
     assert len(public["stdout_tail"]) <= 4000
     assert public["stdout_path"] == str(stdout_path)
+
+
+def test_integrated_mvp_timeout_budget_outlives_nested_response_pipeline(tmp_path: Path) -> None:
+    args = _args(tmp_path / "profile")
+    budget = cli._mvp_proof_timeout_budget(args)
+
+    assert budget["protocol_timeout_seconds"] >= 1800.0
+    assert budget["fresh_turn_timeout_seconds"] >= 120.0
+    assert budget["artifact_materialization_timeout_seconds"] >= 180.0
+    assert budget["safety_buffer_seconds"] >= 120.0
+    assert budget["outer_step_timeout_seconds"] >= (
+        budget["protocol_timeout_seconds"]
+        + budget["fresh_turn_timeout_seconds"]
+        + budget["artifact_materialization_timeout_seconds"]
+        + budget["safety_buffer_seconds"]
+    )
+
+
+def _guardrail_client(tmp_path: Path):
+    from promptbranch_browser_auth import ChatGPTBrowserClient, ChatGPTBrowserConfig
+
+    client = ChatGPTBrowserClient(
+        ChatGPTBrowserConfig(
+            project_url="https://chatgpt.com/g/g-p-demo/project",
+            profile_dir=str(tmp_path / "profile"),
+            fail_fast_on_challenge=True,
+            debug=False,
+        )
+    )
+    return client
+
+
+class _HealthyConversationPage:
+    url = "https://chatgpt.com/g/g-p-demo/c/conversation-current"
+
+    async def title(self) -> str:
+        return "Promptbranch"
+
+    async def evaluate(self, _script: str):
+        return "visible conversation"
+
+
+def test_mvp_response_wait_ignores_pre_submit_background_download_403(tmp_path: Path) -> None:
+    client = _guardrail_client(tmp_path)
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/files/download/file_old?inline=false",
+        status=403,
+    )
+    context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": float(client._rate_limit_events[-1]["monotonic_time"]) + 0.001,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": _HealthyConversationPage.url,
+    }
+
+    asyncio.run(
+        client._raise_fail_fast_midrun_challenge_if_configured(
+            _HealthyConversationPage(),
+            stage="response-wait-poll",
+            response_context=context,
+        )
+    )
+
+
+def test_mvp_response_wait_ignores_unrelated_post_submit_download_403(tmp_path: Path) -> None:
+    client = _guardrail_client(tmp_path)
+    context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": 0.0,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": _HealthyConversationPage.url,
+    }
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/files/download/file_background?inline=false",
+        status=403,
+    )
+
+    asyncio.run(
+        client._raise_fail_fast_midrun_challenge_if_configured(
+            _HealthyConversationPage(),
+            stage="response-wait-poll",
+            response_context=context,
+        )
+    )
+
+
+def test_mvp_response_wait_rejects_current_conversation_submit_403(tmp_path: Path) -> None:
+    from promptbranch_browser_auth.exceptions import AuthChallengeRequiredError
+
+    client = _guardrail_client(tmp_path)
+    context = {
+        "submit_confirmed": True,
+        "submit_confirmed_monotonic": 0.0,
+        "guardrail_event_cursor": len(client._rate_limit_events),
+        "guardrail_scope_conversation_url": _HealthyConversationPage.url,
+    }
+    client._note_backend_api_guardrail(
+        trigger="response",
+        url="https://chatgpt.com/backend-api/f/conversation",
+        status=403,
+    )
+
+    import pytest
+    with pytest.raises(AuthChallengeRequiredError):
+        asyncio.run(
+            client._raise_fail_fast_midrun_challenge_if_configured(
+                _HealthyConversationPage(),
+                stage="response-wait-poll",
+                response_context=context,
+            )
+        )

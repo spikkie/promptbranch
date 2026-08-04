@@ -3977,6 +3977,7 @@ class ChatGPTBrowserClient:
                     page,
                     stage=f"{operation_name}-exception",
                     exc=exc,
+                    response_context=getattr(self, "_active_response_guardrail_context", None),
                 )
                 current_url = await self._safe_page_url(page)
                 self._log(
@@ -3989,6 +3990,7 @@ class ChatGPTBrowserClient:
                 await self._dump_failure_artifacts(page, operation_name, exc)
                 raise
             finally:
+                self._active_response_guardrail_context = None
                 await self._finalize_context(context, operation_name)
                 _PROFILE_LAST_CONTEXT_CLOSED_AT[self._profile_key] = time.monotonic()
 
@@ -5420,6 +5422,18 @@ class ChatGPTBrowserClient:
         if isinstance(response_context, dict):
             response_context["submit_confirmed"] = bool(submit_evidence.get("submit_confirmed")) if isinstance(submit_evidence, dict) else False
             response_context["submit_confirmed_by"] = submit_evidence.get("submit_confirmed_by") if isinstance(submit_evidence, dict) else []
+            # Establish an operation-scoped guardrail boundary only after the
+            # current prompt has been causally confirmed. Backend 403 events
+            # observed before this point remain telemetry, but cannot abort the
+            # response wait for this newly submitted request.
+            response_context["submit_confirmed_monotonic"] = time.monotonic()
+            response_context["guardrail_event_cursor"] = len(self._rate_limit_events)
+            response_context["guardrail_scope_conversation_url"] = target_url if self._is_conversation_url(target_url) else None
+            response_context["guardrail_scope_request_id"] = self._protocol_request_id_from_prompt(prompt)
+            self._active_response_guardrail_context = response_context
+            phase_timings["guardrail_event_cursor"] = response_context["guardrail_event_cursor"]
+            phase_timings["submit_confirmed_monotonic"] = response_context["submit_confirmed_monotonic"]
+            phase_timings["guardrail_scope_request_id"] = response_context["guardrail_scope_request_id"]
             self._configure_backend_answer_wait_context(
                 response_context,
                 submit_evidence=submit_evidence,
@@ -5526,6 +5540,7 @@ class ChatGPTBrowserClient:
                 page,
                 stage="response-wait-exception",
                 exc=exc,
+                response_context=response_context,
             )
             raise
         if expect_json:
@@ -33060,6 +33075,7 @@ class ChatGPTBrowserClient:
             await self._raise_fail_fast_midrun_challenge_if_configured(
                 page,
                 stage="response-wait-poll",
+                response_context=response_context,
             )
 
             await self._maybe_open_new_project_conversation(
@@ -33288,6 +33304,7 @@ class ChatGPTBrowserClient:
                     page,
                     stage="response-wait-page-closed",
                     exc=exc,
+                    response_context=response_context,
                 )
                 raise
 
@@ -33891,23 +33908,60 @@ class ChatGPTBrowserClient:
             return True
         return any(hint.lower() in normalized_url or hint.lower() in normalized_title for hint in CLOUDFLARE_CHALLENGE_HINTS)
 
+    def _backend_api_guardrail_403_events(
+        self,
+        *,
+        event_cursor: int | None = None,
+        since_monotonic: float | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
+        start = max(0, int(event_cursor or 0))
+        events: list[dict[str, object]] = []
+        for raw_event in self._rate_limit_events[start:]:
+            if not isinstance(raw_event, dict):
+                continue
+            if raw_event.get('kind') != 'backend_api_guardrail' or int(raw_event.get('status') or 0) != 403:
+                continue
+            event_time = float(raw_event.get('monotonic_time') or 0.0)
+            if since_monotonic is not None and event_time < float(since_monotonic):
+                continue
+            events.append(dict(raw_event))
+        if limit is not None:
+            return events[-max(1, int(limit)):]
+        return events
+
     def _backend_api_guardrail_403_seen(self) -> bool:
-        return any(
-            isinstance(event, dict)
-            and event.get('kind') == 'backend_api_guardrail'
-            and int(event.get('status') or 0) == 403
-            for event in self._rate_limit_events
-        )
+        return bool(self._backend_api_guardrail_403_events())
 
     def _recent_backend_api_guardrail_events(self, *, limit: int = 8) -> list[dict[str, object]]:
-        events = [
-            dict(event)
-            for event in self._rate_limit_events
-            if isinstance(event, dict)
-            and event.get('kind') == 'backend_api_guardrail'
-            and int(event.get('status') or 0) == 403
-        ]
-        return events[-max(1, int(limit)):]
+        return self._backend_api_guardrail_403_events(limit=limit)
+
+    def _response_wait_guardrail_events(
+        self,
+        response_context: Optional[dict[str, Any]],
+    ) -> tuple[list[dict[str, object]], bool]:
+        if not isinstance(response_context, dict) or response_context.get("submit_confirmed") is not True:
+            return self._backend_api_guardrail_403_events(), False
+        cursor = int(response_context.get("guardrail_event_cursor") or 0)
+        since = float(response_context.get("submit_confirmed_monotonic") or 0.0)
+        return self._backend_api_guardrail_403_events(event_cursor=cursor, since_monotonic=since), True
+
+    @staticmethod
+    def _backend_403_event_affects_current_response(
+        event: dict[str, object],
+        response_context: Optional[dict[str, Any]],
+    ) -> bool:
+        url = str(event.get("url") or "").lower()
+        if "/backend-api/f/conversation" in url:
+            return True
+        conversation_url = str((response_context or {}).get("guardrail_scope_conversation_url") or "")
+        conversation_id = conversation_url.rstrip("/").split("/c/")[-1].split("/")[0] if "/c/" in conversation_url else ""
+        if conversation_id and (
+            f"/backend-api/conversation/{conversation_id}" in url
+            or f"/backend-api/conversations/{conversation_id}" in url
+        ):
+            return True
+        return False
 
     async def _raise_fail_fast_midrun_challenge_if_configured(
         self,
@@ -33915,25 +33969,45 @@ class ChatGPTBrowserClient:
         *,
         stage: str,
         exc: Exception | None = None,
+        response_context: Optional[dict[str, Any]] = None,
     ) -> None:
         if not bool(getattr(self.config, "fail_fast_on_challenge", False)):
             return
         current_url = await self._safe_page_url(page)
         current_title = await self._safe_page_title(page)
         normalized_url = (current_url or "").strip().lower().rstrip("/")
-        backend_403_seen = self._backend_api_guardrail_403_seen()
+        guardrail_events, operation_scoped = self._response_wait_guardrail_events(response_context)
+        backend_403_seen = bool(guardrail_events)
+        current_operation_guardrail_events = [
+            event
+            for event in guardrail_events
+            if self._backend_403_event_affects_current_response(event, response_context)
+        ]
         target_closed_after_guardrail = bool(
             backend_403_seen
             and exc is not None
             and (type(exc).__name__ == "TargetClosedError" or "target page, context or browser has been closed" in str(exc).lower())
         )
-        root_after_guardrail = bool(backend_403_seen and normalized_url in {"https://chatgpt.com", "https://chat.openai.com"})
+        root_after_guardrail = bool(
+            normalized_url in {"https://chatgpt.com", "https://chat.openai.com"}
+            and (backend_403_seen or operation_scoped)
+        )
         challenge_url_or_title = self._looks_like_challenge(current_url, current_title)
-        backend_403_guardrail_terminal = bool(backend_403_seen)
+        backend_403_guardrail_terminal = bool(current_operation_guardrail_events)
         if not (challenge_url_or_title or root_after_guardrail or target_closed_after_guardrail or backend_403_guardrail_terminal):
+            if backend_403_seen:
+                self._log(
+                    "auth",
+                    "ignoring non-causal backend-403 telemetry during current response wait",
+                    challenge_stage=stage,
+                    current_url=current_url,
+                    operation_scoped=operation_scoped,
+                    guardrail_event_cursor=(response_context or {}).get("guardrail_event_cursor"),
+                    submit_confirmed_monotonic=(response_context or {}).get("submit_confirmed_monotonic"),
+                    guardrail_events=guardrail_events[-8:],
+                )
             return
         text_preview = await self._visible_text_preview(page)
-        guardrail_events = self._recent_backend_api_guardrail_events()
         challenge_type = self._browser_challenge_type_for_guardrail()
         self._log(
             "auth",
@@ -33945,14 +34019,18 @@ class ChatGPTBrowserClient:
             challenge_type=challenge_type,
             backend_api_guardrail_403_seen=backend_403_seen,
             backend_403_guardrail_terminal=backend_403_guardrail_terminal,
+            operation_scoped_guardrail=operation_scoped,
+            guardrail_event_cursor=(response_context or {}).get("guardrail_event_cursor"),
+            submit_confirmed_monotonic=(response_context or {}).get("submit_confirmed_monotonic"),
+            current_operation_guardrail_events=current_operation_guardrail_events[-8:],
             target_closed_after_guardrail=target_closed_after_guardrail,
             root_after_guardrail=root_after_guardrail,
             exception_type=type(exc).__name__ if exc is not None else None,
             exception=str(exc) if exc is not None else None,
-            guardrail_events=guardrail_events,
+            guardrail_events=guardrail_events[-8:],
         )
         raise AuthChallengeRequiredError(
-            "Browser profile hit a Cloudflare/backend-403 guardrail; release validation must fail fast instead of retrying, waiting for timeout, or persisting cooldown.",
+            "Browser profile hit a Cloudflare/backend-403 guardrail that affects the current operation; release validation must fail fast instead of retrying, waiting for timeout, or persisting cooldown.",
             challenge_type=challenge_type,
             page_url=current_url,
             page_title=current_title,
