@@ -13,6 +13,7 @@ REPO_ID = "chatgpt_claudecode_workflow-2"
 BASELINE_VERSION = "v0.1.123.1"
 TARGET_VERSION = "v0.1.124"
 NEXT_VERSION = "v0.1.125"
+PINNED_CONVERSATION = "https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16"
 ARTIFACT = f"{REPO_ID}_{TARGET_VERSION}.zip"
 CANDIDATE_BYTES = b"candidate-v0.1.124"
 CANDIDATE_SHA = hashlib.sha256(CANDIDATE_BYTES).hexdigest()
@@ -27,7 +28,7 @@ def _args(profile_dir: Path, *, target: str = TARGET_VERSION) -> argparse.Namesp
         file=None,
         attachments=[],
         new_task=False,
-        conversation_url=None,
+        conversation_url=PINNED_CONVERSATION,
         protocol=False,
         parse_reply=False,
         print_request_json=False,
@@ -52,6 +53,8 @@ def _baseline() -> dict:
         "version": BASELINE_VERSION,
         "artifact": f"{REPO_ID}_{BASELINE_VERSION}.zip",
         "sha256": "a" * 64,
+        "project_home_url": "https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/project",
+        "project_id": "g-p-6a43ea5129508191be8c8ebcf9fc7391",
         "artifact_current": {"ok": True},
         "selected": {},
     }
@@ -73,7 +76,8 @@ def _prepare_repo(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_parser_accepts_one_command_mvp_proof_spelling() -> None:
     args = cli.make_parser().parse_args([
-        "ask", "continue", "--target-version", TARGET_VERSION, "--release-type", "normal"
+        "ask", "continue", "--conversation-url", PINNED_CONVERSATION,
+        "--target-version", TARGET_VERSION, "--release-type", "normal"
     ])
     assert args.command == "ask"
     assert args.prompt == "continue"
@@ -100,7 +104,7 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
                 "ask_release_validation": {"ok": True},
                 "selected_protocol_reply": {
                     "request_id": "req-exact",
-                    "conversation_url": "https://chatgpt.com/g/project/c/task",
+                    "conversation_url": PINNED_CONVERSATION,
                     "message_id": "message-exact",
                     "answer_id": "answer-exact",
                 },
@@ -165,15 +169,18 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
     assert "ask-release" in ask_command
     assert "--target-version" in ask_command
     assert TARGET_VERSION in ask_command
+    assert ask_command[ask_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
     assert "--message-id" in intake_command
     assert intake_command[intake_command.index("--message-id") + 1] == "message-exact"
     assert "--answer-id" in intake_command
     assert intake_command[intake_command.index("--answer-id") + 1] == "answer-exact"
     assert "--task" in intake_command
+    assert intake_command[intake_command.index("--task") + 1] == PINNED_CONVERSATION
     assert "--latest" not in intake_command
     assert "--adopt-after-validation" in release_command
     assert "--cycle" in finalizer_command
     assert finalizer_command[finalizer_command.index("--cycle") + 1] == "1"
+    assert finalizer_command[finalizer_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
 
 
 def test_integrated_mvp_ask_stops_before_intake_when_candidate_ask_is_wrong(monkeypatch, tmp_path, capsys) -> None:
@@ -224,7 +231,7 @@ def test_integrated_cycle_2_returns_final_mvp_status(monkeypatch, tmp_path, caps
         release_dir = profile / "release_logs" / target
         release_dir.mkdir(parents=True, exist_ok=True)
         if "ask-release" in command:
-            payload = {"ok": True, "ask_release_validation": {"ok": True}, "selected_protocol_reply": {"conversation_url": "https://chatgpt.com/g/p/c/t", "message_id": "m", "answer_id": "a"}}
+            payload = {"ok": True, "ask_release_validation": {"ok": True}, "selected_protocol_reply": {"conversation_url": PINNED_CONVERSATION, "message_id": "m", "answer_id": "a"}}
         elif "intake" in command:
             (repo / artifact).write_bytes(candidate_bytes)
             payload = {"ok": True, "status": "migrated_candidate", "download_performed": True, "verification_performed": True, "migration_performed": True, "download": {"sha256": candidate_sha}}
@@ -246,6 +253,55 @@ def test_integrated_cycle_2_returns_final_mvp_status(monkeypatch, tmp_path, caps
     assert result["consecutive_proof_count"] == "2/2"
     assert result["mvp_status"] == "complete"
 
+
+
+def test_integrated_mvp_ask_requires_explicit_conversation(monkeypatch, tmp_path, capsys) -> None:
+    repo, profile = _prepare_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_mvp_current_baseline", lambda *a, **k: _baseline())
+    args = _args(profile)
+    args.conversation_url = None
+    rc = asyncio.run(cli.cmd_ask(object(), args))
+    assert rc == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "mvp_proof_conversation_required"
+
+
+def test_integrated_mvp_ask_rejects_conversation_project_mismatch(monkeypatch, tmp_path, capsys) -> None:
+    repo, profile = _prepare_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_mvp_current_baseline", lambda *a, **k: _baseline())
+    args = _args(profile)
+    args.conversation_url = "https://chatgpt.com/g/g-p-11111111111111111111111111111111/c/other"
+    rc = asyncio.run(cli.cmd_ask(object(), args))
+    assert rc == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "mvp_proof_conversation_project_mismatch"
+
+
+def test_integrated_mvp_ask_rejects_returned_conversation_mismatch(monkeypatch, tmp_path, capsys) -> None:
+    repo, profile = _prepare_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(cli, "_mvp_current_baseline", lambda *a, **k: _baseline())
+    monkeypatch.setattr(cli, "_mvp_next_cycle", lambda *a, **k: {"ok": True, "cycle": 1, "status": "mvp_cycle_1_required", "records": []})
+
+    def fake_run(command, **kwargs):
+        payload = {
+            "ok": True,
+            "ask_release_validation": {"ok": True},
+            "selected_protocol_reply": {
+                "conversation_url": "https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/different",
+                "message_id": "m",
+                "answer_id": "a",
+            },
+        }
+        return {"ok": True, "returncode": 0, "parsed_json": payload, "command": command, "status": "passed", "duration_seconds": 0.01, "timeout_seconds": 10, "stdout_tail": "", "stderr_tail": "", "stdout_path": None, "stderr_path": None}
+
+    monkeypatch.setattr(cli, "_run_mvp_lifecycle_command", fake_run)
+    rc = asyncio.run(cli.cmd_ask(object(), _args(profile)))
+    assert rc != 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "mvp_release_candidate_conversation_mismatch"
 
 def test_lifecycle_command_keeps_full_output_on_disk_but_returns_bounded_tails(tmp_path) -> None:
     stdout_path = tmp_path / "full.stdout.log"

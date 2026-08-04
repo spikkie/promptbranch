@@ -1283,3 +1283,12 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Consequence:** `pb ask` must create the candidate-producing request, retain exact request/message/answer identity, perform intake, strict validation/adoption, current verification, continuation proof, and final proof evaluation as one fail-closed transaction.
 - **Safety:** Attachments, explicit conversation override, and `--new-task` are rejected for this exact integrated spelling. Ordinary `pb ask` behavior is unchanged.
 - **MVP sequence:** `v0.1.123.1` is repair-only; `v0.1.124` is cycle 1 and `v0.1.125` is cycle 2.
+
+
+## DEC-2026-08-04 — Explicit conversation pinning is mandatory for MVP proof
+
+- **Decision:** `pb ask continue` proof mode requires `--conversation-url`.
+- **Authority:** the CLI argument is authoritative for candidate Ask, response correlation, artifact intake, and continuation Ask.
+- **Failure policy:** missing, malformed, cross-project, or mismatched conversation identity fails before release mutation.
+- **No fallback:** remembered task state, project home, latest chat, and visible browser tab are not valid implicit selectors for formal proof.
+- **Sequence:** `v0.1.123.2` is repair-only; `v0.1.124` and `v0.1.125` remain proof cycles 1 and 2.

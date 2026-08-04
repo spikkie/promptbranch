@@ -15,6 +15,7 @@ REPO_ID = "chatgpt_claudecode_workflow-2"
 VERSION = "v0.1.123"
 BASELINE = "v0.1.122.1"
 NEXT_VERSION = "v0.1.124"
+PINNED_CONVERSATION = "https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16"
 ARTIFACT = f"{REPO_ID}_{VERSION}.zip"
 ARTIFACT_SHA = hashlib.sha256(b"canonical candidate bytes").hexdigest()
 
@@ -244,7 +245,7 @@ def _write_finalizer_fixture(tmp_path: Path, *, invalid_intake: bool = False) ->
         "if [[ \" $* \" == *\" --print-request-json \"* ]]; then\n"
         f"  printf '%s\\n' '{json.dumps(parts['continuation_ask'])}'\n"
         "else\n"
-        "  printf '%s\\n' '{\"ok\":true,\"status\":\"reply_validated\"}'\n"
+        f"  printf '%s\\n' '{{\"ok\":true,\"status\":\"reply_validated\",\"conversation_url\":\"{PINNED_CONVERSATION}\"}}'\n"
         "fi\n",
         encoding="utf-8",
     )
@@ -270,7 +271,7 @@ def _run_finalizer(
             "if [[ \" $* \" == *\" --print-request-json \"* ]]; then\n"
             f"  printf '%s\\n' '{{\"ok\":true,\"request\":{{\"schema\":\"promptbranch.ask.request\",\"baseline\":{{\"version\":\"{BASELINE}\"}},\"target\":{{\"version\":\"{NEXT_VERSION}\"}}}}}}'\n"
             "else\n"
-            "  printf '%s\\n' '{\"ok\":true,\"status\":\"reply_validated\"}'\n"
+            f"  printf '%s\\n' '{{\"ok\":true,\"status\":\"reply_validated\",\"conversation_url\":\"{PINNED_CONVERSATION}\"}}'\n"
             "fi\n",
             encoding="utf-8",
         )
@@ -290,6 +291,7 @@ def _run_finalizer(
             "--artifact-path", str(artifact_path),
             "--release-log-dir", str(release_log_dir),
             "--pb-cmd", str(fake_pb),
+            "--conversation-url", PINNED_CONVERSATION,
         ],
         cwd=repo_root,
         text=True,
@@ -342,6 +344,7 @@ def test_finalize_wrapper_executes_continuation_and_forbids_release_mutation() -
     assert text.index("--preflight-only") < text.index("--from-current-baseline")
     assert "--from-current-baseline" in text
     assert "--intent-kind mvp_proof_continuation" in text
+    assert '--conversation-url "$conversation_url"' in text
     assert "--parse-reply" in text
     assert "scripts/verify-mvp-proof-cycle.py" in text
     assert "pb artifact adopt" not in text

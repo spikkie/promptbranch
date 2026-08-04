@@ -1370,3 +1370,23 @@ pb ask continue --target-version v0.1.124 --release-type normal
 ```
 
 The command internally uses exact request/message/answer selectors for intake. Existing `pb task answer parse`, `pb artifact intake`, release-control, and proof-finalizer commands remain available as diagnostics, but they are no longer part of the canonical MVP operator procedure.
+
+
+## v0.1.123.1 to v0.1.123.2 migration note
+
+The integrated proof command now requires an explicit Project conversation URL. Replace:
+
+```bash
+pb ask continue --target-version v0.1.124 --release-type normal
+```
+
+with:
+
+```bash
+pb ask continue \
+  --conversation-url 'https://chatgpt.com/g/<project>/c/<conversation-id>' \
+  --target-version v0.1.124 \
+  --release-type normal
+```
+
+No proof count is carried by this repair release.

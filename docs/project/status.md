@@ -1,48 +1,47 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.123
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123(1).zip
-accepted/current SHA-256: 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc
-active candidate version: v0.1.123.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
-active slice: v0.1.123.1 — Integrate complete MVP proof lifecycle into pb ask
+accepted/current baseline: v0.1.123.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
+accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
+active candidate version: v0.1.123.2
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.zip
+active slice: v0.1.123.2 — Explicit conversation pinning for integrated MVP proof lifecycle
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.123` passed strict host validation 10/10 and is accepted/current, but formal proof cycle 1 did not count because the later artifact-intake command selected an older `no_artifact` continuation reply. The formal count therefore remains 0/2. `v0.1.123.1` repairs the operator boundary so one exact `pb ask continue` command owns the complete chronological lifecycle.
+`v0.1.123.1` passed strict host validation 10/10 and is accepted/current. The formal proof count remains 0/2 because repair releases do not count. `v0.1.123.2` requires one explicit Project conversation URL and pins every Ask and correlation stage to that URL.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123(1).zip
-accepted/current SHA-256: 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc
-active candidate version: v0.1.123.1
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+accepted/current version: v0.1.123.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
+accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
+active candidate version: v0.1.123.2
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.zip
 candidate adoption: not performed
 formal MVP proof count: 0/2
 next normal version: v0.1.124
-next normal slice: v0.1.124 — Canonical MVP proof cycle 1
 next planned after acceptance: v0.1.125
 ```
 
 ## One-command proof behavior
 
-- `pb ask continue --target-version v0.1.124 --release-type normal` must create and correlate the release-candidate Ask itself.
+- `pb ask continue --conversation-url <project-conversation-url> --target-version v0.1.124 --release-type normal` must create and correlate the release-candidate Ask itself.
 - Exact request/message/answer identity must drive artifact intake; generic latest-answer selection is forbidden.
 - Download, verification, migration, strict release control, Project Source publication, adoption, accepted/current verification, continuation Ask, and final proof evaluation all run internally.
 - Any failure returns nonzero before a success status is printed.
-- `v0.1.123.1` is repair-only and cannot count toward the two consecutive normal cycles.
+- `v0.1.123.2` is repair-only and cannot count toward the two consecutive normal cycles.
 
 ## Next safe action
 
-Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.1.zip`. After acceptance, run only:
+Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.zip`. After acceptance, run only:
 
 ```bash
-pb ask continue --target-version v0.1.124 --release-type normal
+pb ask continue --conversation-url 'https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16' --target-version v0.1.124 --release-type normal
 ```
 
 ## v0.1.102 candidate status

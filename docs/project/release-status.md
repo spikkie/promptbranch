@@ -1,16 +1,17 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.zip` (`v0.1.123`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123(1).zip`.
-Accepted SHA-256: `7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.1.zip` (`v0.1.123.1`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.1.zip` (`v0.1.123.1`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip`.
+Accepted SHA-256: `fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.zip` (`v0.1.123.2`).
 Next normal slice: `v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command`.
 Planned after cycle 1: `v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict`.
 Formal consecutive MVP proof count: `0/2`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.123.1 | repair | Integrate complete proof lifecycle into `pb ask` | candidate | focused exact-correlation/one-command lifecycle regressions, mandatory groups, deterministic ZIP and Guardian before strict host validation | DOD-398 through DOD-403 candidate; repair cannot count | pending |
+| v0.1.123.2 | repair | Explicit conversation pinning for integrated MVP proof lifecycle | candidate | focused explicit URL, project mismatch, returned-conversation mismatch, finalizer pinning, mandatory groups, deterministic ZIP and Guardian | DOD-404 through DOD-408 candidate; repair cannot count | pending |
+| v0.1.123.1 | repair | Integrate complete proof lifecycle into `pb ask` | accepted/current | strict 10/10 GO, exact Project Source, Guardian, Git push, adoption/current passed | DOD-398 through DOD-403 accepted; repair cannot count | fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf |
 | v0.1.123 | normal | Canonical MVP proof cycle 1 attempt | accepted/current, proof_not_counted | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed; post-hoc intake selected historical no_artifact answer | DOD-393/DOD-395 implementation evidence passed; DOD-394/DOD-396/DOD-397 not satisfied chronologically | 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc |
 | v0.1.122.1 | repair | MVP proof finalizer fail-closed evidence repair | accepted/historical | strict 10/10 GO, exact Project Source, Guardian, adoption/current passed | DOD-388 through DOD-392 accepted; repair does not count | b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357 |
 | v0.1.122 | normal | Canonical MVP proof instrumentation | accepted/historical, proof_not_counted | strict 10/10 GO and adoption/current passed; proof finalization required repair | DOD-384 through DOD-387 implementation accepted; formal consecutive proof remains 0/2 | e552438231227a3f190f8ad4930f01d6c11ff6c1079372228e4634128de0812e |

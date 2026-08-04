@@ -211,6 +211,7 @@ from promptbranch_state import (
     PROFILE_DIR_NAME,
     resolve_profile_dir,
     conversation_id_from_url,
+    is_project_conversation_url,
     project_home_url_from_url,
     project_name_from_url,
 )
@@ -7853,12 +7854,20 @@ def _mvp_current_baseline(
     baseline_artifact = Path(str(current.get("filename") or state.get("artifact_ref") or "")).name or None
     baseline_sha256 = str(current.get("sha256") or "").strip().lower() or None
     selected_repo_id = repo_id or state.get("repo_id") or current.get("repo_id")
+    project_home_url = str(
+        state.get("project_home_url")
+        or current.get("project_url")
+        or (payload.get("scope") or {}).get("project_home_url")
+        or ""
+    ).strip() or None
     return {
-        "ok": bool(payload.get("ok") is True and selected_repo_id and baseline_version and baseline_artifact and baseline_sha256),
+        "ok": bool(payload.get("ok") is True and selected_repo_id and baseline_version and baseline_artifact and baseline_sha256 and project_home_url),
         "repo_id": selected_repo_id,
         "version": baseline_version,
         "artifact": baseline_artifact,
         "sha256": baseline_sha256,
+        "project_home_url": project_home_url,
+        "project_id": _project_identity_from_url(project_home_url),
         "artifact_current": payload,
         "selected": selected,
     }
@@ -7926,16 +7935,31 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
     target_version = _candidate_version_normalized(getattr(args, "target_version", None))
     release_type = str(getattr(args, "release_type", "normal") or "normal")
     baseline = _mvp_current_baseline(backend, args, repo_root=repo_root)
+    explicit_conversation_url = str(getattr(args, "conversation_url", "") or "").strip()
+    conversation_id = conversation_id_from_url(explicit_conversation_url)
+    conversation_project_home_url = project_home_url_from_url(explicit_conversation_url)
+    conversation_project_id = _project_identity_from_url(explicit_conversation_url)
+    baseline_project_home_url = str(baseline.get("project_home_url") or "").strip() or None
+    conversation_selection = {
+        "selection": "explicit_cli_argument" if explicit_conversation_url else "missing",
+        "conversation_url": explicit_conversation_url or None,
+        "conversation_id": conversation_id,
+        "project_home_url": conversation_project_home_url,
+        "project_id": conversation_project_id,
+        "baseline_project_home_url": baseline_project_home_url,
+        "baseline_project_id": baseline.get("project_id"),
+    }
     base: dict[str, Any] = {
         "ok": False,
         "action": "ask_mvp_proof_lifecycle",
         "status": "mvp_proof_lifecycle_preflight",
-        "operator_command": "pb ask continue --target-version <version> --release-type normal",
+        "operator_command": "pb ask continue --conversation-url <project-conversation-url> --target-version <version> --release-type normal",
         "repo_path": str(repo_root),
         "profile_dir": str(profile_root),
         "target_version": target_version,
         "release_type": release_type,
         "baseline": baseline,
+        "conversation_selection": conversation_selection,
         "stages": [],
         "download_performed": False,
         "verification_performed": False,
@@ -7955,8 +7979,14 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
 
     if release_type != "normal" or not target_version or not re.fullmatch(r"v\d+\.\d+\.\d+", target_version):
         return fail("mvp_proof_invalid_target", "integrated MVP proof requires a normal three-component --target-version and --release-type normal", code=2)
+    if not explicit_conversation_url:
+        return fail("mvp_proof_conversation_required", "integrated MVP proof requires an explicit --conversation-url; implicit task state and browser context are forbidden", code=2)
+    if not is_project_conversation_url(explicit_conversation_url) or not conversation_id or not conversation_project_home_url:
+        return fail("mvp_proof_conversation_invalid", "--conversation-url must be a complete ChatGPT Project conversation URL containing /g/<project>/c/<conversation-id>", code=2)
     if not baseline.get("ok"):
         return fail("mvp_proof_baseline_unresolved", "accepted/current repository identity, artifact, version, and SHA-256 could not be resolved", code=2)
+    if not baseline_project_home_url or not _same_project_url_identity(explicit_conversation_url, baseline_project_home_url):
+        return fail("mvp_proof_conversation_project_mismatch", "explicit --conversation-url does not belong to the accepted/current release-authority project", code=2)
     baseline_version = str(baseline["version"])
     expected_target = _release_expected_next_normal_version(baseline_version)
     if target_version != expected_target:
@@ -7993,6 +8023,7 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "--expect-artifact", artifact_name,
         "--expect-version", target_version,
         "--expect-repo", repo_id,
+        "--conversation-url", explicit_conversation_url,
         "--protocol-timeout-seconds", str(step_timeout),
         "--json",
     ]
@@ -8010,6 +8041,12 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
     message_id = selection.get("message_id") or ask_payload.get("selected_message_id")
     answer_id = selection.get("answer_id") or ask_payload.get("selected_answer_id")
     conversation_url = selection.get("conversation_url") or ask_payload.get("conversation_url")
+    returned_conversation_id = conversation_id_from_url(str(conversation_url or ""))
+    if conversation_url and (
+        returned_conversation_id != conversation_id
+        or not _same_project_url_identity(str(conversation_url), explicit_conversation_url)
+    ):
+        return fail("mvp_release_candidate_conversation_mismatch", "release-candidate Ask returned a conversation different from the explicitly pinned --conversation-url", stage=base["stages"][-1])
     if not (
         ask_step.get("ok")
         and ask_payload.get("ok") is True
@@ -8024,7 +8061,7 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
     intake_command = cli_prefix + [
         "artifact", "intake",
         "--from-last-answer",
-        "--task", str(conversation_url),
+        "--task", explicit_conversation_url,
         "--message-id", str(message_id),
         "--answer-id", str(answer_id),
         "--expect-artifact", artifact_name,
@@ -8121,6 +8158,7 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "--artifact-path", str(candidate_path),
         "--release-log-dir", str(release_log_dir),
         "--pb-cmd", pb_cmd,
+        "--conversation-url", explicit_conversation_url,
     ]
     finalizer_step = _run_mvp_lifecycle_command(
         finalizer_command,
@@ -8180,12 +8218,12 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
         return 2
 
     if _integrated_mvp_ask_requested(args, prompt):
-        if attachment_paths or getattr(args, "new_task", False) or getattr(args, "conversation_url", None):
+        if attachment_paths or getattr(args, "new_task", False):
             payload = {
                 "ok": False,
                 "action": "ask_mvp_proof_lifecycle",
                 "status": "mvp_proof_invalid_arguments",
-                "error": "the integrated proof lifecycle forbids attachments, --new-task, and --conversation-url; it resolves the bound release-authority conversation itself",
+                "error": "the integrated proof lifecycle forbids attachments and --new-task; an explicit --conversation-url is required",
             }
             print(json.dumps(payload, indent=2, ensure_ascii=False))
             return 2

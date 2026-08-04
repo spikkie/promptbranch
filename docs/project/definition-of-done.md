@@ -1018,3 +1018,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-401 | Strict release control, Project Source publication, 10/10 validation, adoption, accepted/current evidence, continuation Ask, and proof finalization are owned by the same command | focused_candidate | command-plan regression and canonical evidence path checks | v0.1.123.1 |
 | DOD-402 | Any failed stage returns nonzero and cannot emit `mvp_proof_cycle_passed` or `mvp_verified` | focused_candidate | failed candidate-Ask regression and finalizer proof checks | v0.1.123.1 |
 | DOD-403 | Repair acceptance preserves formal count 0/2 and schedules `v0.1.124` and `v0.1.125` as the two normal one-command proof cycles | candidate | plan-state, status, release-status, and slice-horizon authority | v0.1.123.1 |
+
+
+## v0.1.123.2 explicit conversation pinning repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-404 | Integrated proof requires an explicit `--conversation-url` and never falls back to remembered task state, project home, latest chat, or visible browser tab | focused_candidate | missing-argument regression and command construction assertions | v0.1.123.2 |
+| DOD-405 | The explicit URL must be a complete ChatGPT Project conversation and must belong to the accepted/current release-authority project | focused_candidate | malformed and cross-project fail-closed regressions | v0.1.123.2 |
+| DOD-406 | Release-candidate Ask, exact response correlation, and artifact intake use the same pinned conversation ID | focused_candidate | ask command, returned conversation mismatch, and intake task assertions | v0.1.123.2 |
+| DOD-407 | Post-adoption continuation Ask uses the same pinned conversation and fails when the observed continuation conversation differs | focused_candidate | finalizer argument and observed conversation checks | v0.1.123.2 |
+| DOD-408 | Repair acceptance preserves formal proof count 0/2 and leaves `v0.1.124` and `v0.1.125` as normal proof cycles 1 and 2 | candidate | plan-state and project control-surface evidence | v0.1.123.2 |

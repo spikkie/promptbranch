@@ -1,3 +1,13 @@
+## v0.1.123.2 explicit conversation pinning
+
+`v0.1.123.1` is accepted/current. `v0.1.123.2` makes the integrated MVP proof command require an explicit ChatGPT Project conversation URL and uses that same URL for the release-candidate Ask, exact reply correlation, artifact intake, and post-adoption continuation Ask. It rejects missing, malformed, cross-project, or mismatched returned conversations before mutation.
+
+```bash
+pb ask continue \
+  --conversation-url 'https://chatgpt.com/g/<project>/c/<conversation-id>' \
+  --target-version v0.1.124 \
+  --release-type normal
+```
 
 ## v0.1.123.1 one-command MVP proof lifecycle
 
