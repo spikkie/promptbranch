@@ -1007,3 +1007,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-395 | Strict host release control passes 10/10 with zero outer skips, visual ZIP transport, Artifact Guardian, exact Project Source, adoption, and accepted/current verification | open | full release-control and adoption/current evidence | v0.1.123 |
 | DOD-396 | The post-adoption continuation Ask resolves from accepted/current `v0.1.123` and targets `v0.1.124` without publication or adoption mutation | open | continuation request/run/combined JSON evidence | v0.1.123 |
 | DOD-397 | The fail-closed evaluator emits `mvp_proof_cycle_passed` with exact four-way SHA-256 binding and records formal consecutive proof count 1/2 | open | `mvp-proof-cycle-1.v0.1.123.json` | v0.1.123 |
+
+## v0.1.123.1 integrated one-command MVP proof lifecycle repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-398 | The exact operator spelling `pb ask continue --target-version <next-normal> --release-type normal` activates the integrated proof lifecycle while ordinary `pb ask` behavior remains unchanged | focused_candidate | parser/dispatch regression in `tests/test_promptbranch_mvp_ask_lifecycle.py` | v0.1.123.1 |
+| DOD-399 | Candidate intake is bound to the exact request, conversation, user message, and assistant answer returned by the candidate-producing Ask; generic `--latest` selection is absent | focused_candidate | exact selector assertions and stopped-before-intake negative test | v0.1.123.1 |
+| DOD-400 | Download, ZIP verification, migration, and candidate SHA-256 equality are required before strict release control starts | focused_candidate | integrated lifecycle stage checks and SHA mismatch fail-closed branch | v0.1.123.1 |
+| DOD-401 | Strict release control, Project Source publication, 10/10 validation, adoption, accepted/current evidence, continuation Ask, and proof finalization are owned by the same command | focused_candidate | command-plan regression and canonical evidence path checks | v0.1.123.1 |
+| DOD-402 | Any failed stage returns nonzero and cannot emit `mvp_proof_cycle_passed` or `mvp_verified` | focused_candidate | failed candidate-Ask regression and finalizer proof checks | v0.1.123.1 |
+| DOD-403 | Repair acceptance preserves formal count 0/2 and schedules `v0.1.124` and `v0.1.125` as the two normal one-command proof cycles | candidate | plan-state, status, release-status, and slice-horizon authority | v0.1.123.1 |

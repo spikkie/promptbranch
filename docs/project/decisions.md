@@ -1275,3 +1275,11 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 **Decision:** Treat continuation as an action authorized only by a successful read-only proof preflight. The preflight must resolve the requested repository from project-level current output and prove exact version, artifact filename, and SHA-256 equality across candidate, intake, adoption, and current evidence. The finalizer uses `set -Eeuo pipefail`, preserves verifier exit status, and prints success only after `mvp_proof_cycle_passed`.
 
 **Consequence:** `v0.1.122` remains accepted/current but does not count as a completed normal MVP proof cycle. `v0.1.122.1` is repair-only. The clean consecutive sequence resets to `v0.1.123` for cycle 1 and `v0.1.124` for cycle 2/final verdict.
+
+## D-0138 — One `pb ask` command owns each canonical MVP proof cycle
+
+- **Decision:** The only operator command for a normal proof cycle is `pb ask continue --target-version <next-normal> --release-type normal`.
+- **Reason:** The split operator workflow allowed a later generic answer lookup to select an unrelated historical `no_artifact` response after `v0.1.123` had already been adopted.
+- **Consequence:** `pb ask` must create the candidate-producing request, retain exact request/message/answer identity, perform intake, strict validation/adoption, current verification, continuation proof, and final proof evaluation as one fail-closed transaction.
+- **Safety:** Attachments, explicit conversation override, and `--new-task` are rejected for this exact integrated spelling. Ordinary `pb ask` behavior is unchanged.
+- **MVP sequence:** `v0.1.123.1` is repair-only; `v0.1.124` is cycle 1 and `v0.1.125` is cycle 2.

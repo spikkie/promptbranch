@@ -1,48 +1,47 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.122.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-active candidate version: v0.1.123
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
-active slice: v0.1.123 — Canonical MVP proof cycle 1
-next normal version: v0.1.123
-next normal slice: v0.1.123 — Canonical MVP proof cycle 1
+accepted/current baseline: v0.1.123
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+active candidate version: v0.1.123.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+active slice: v0.1.123.1 — Integrate complete MVP proof lifecycle into pb ask
+next normal version: v0.1.124
+next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.122.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
-accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
-active candidate version: v0.1.123
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
-next normal version: v0.1.123
-next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict
+accepted/current version: v0.1.123
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123(1).zip
+accepted/current SHA-256: 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc
+active candidate version: v0.1.123.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+next normal version: v0.1.124
+next normal slice: v0.1.124 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
 ```
 
-## Active normal slice — v0.1.123
+## Active repair slice — v0.1.123.1
 
-1. Preserve the accepted v0.1.122.1 proof-finalizer repair without new platform capability.
-2. Require a real Promptbranch reply-envelope artifact intake with download and ZIP verification evidence.
-3. Require strict release control to finish 10/10 GO with zero outer skips.
-4. Require exact SHA-256 equality across candidate, intake, adoption, and accepted/current registry evidence.
-5. Require the live visual ZIP roundtrip to pass.
-6. Finalize proof only after accepted/current is exactly v0.1.123.
-7. Issue one protocol continuation Ask from accepted v0.1.123 toward v0.1.124.
-8. Emit `mvp_proof_cycle_passed`; otherwise keep the formal consecutive proof count at zero.
+1. Preserve accepted/current `v0.1.123`; the repair itself cannot count as an MVP proof cycle.
+2. Make the exact operator spelling `pb ask continue --target-version <version> --release-type normal` own the full proof lifecycle.
+3. Correlate artifact intake with the exact request, conversation, message, and assistant answer returned by the candidate-producing Ask; generic `--latest` selection is forbidden.
+4. Require one materialized release ZIP, exact filename/version/repo identity, real download, ZIP verification, migration, and candidate SHA-256 binding before release control starts.
+5. Run strict release control, Project Source publication, 10/10 validation, adoption, and accepted/current verification internally.
+6. Run the fail-closed continuation preflight and continuation Ask internally, then emit the canonical proof artifact.
+7. Return nonzero and never print success after any failed stage.
+8. Leave `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.121` — repair-required original recovery artifact.
-2. `v0.1.121.1` — accepted historical classifier repair.
-3. `v0.1.122` — accepted historical proof instrumentation; formal proof not counted.
-4. `v0.1.122.1` — accepted/current fail-closed proof-finalizer repair.
-5. `v0.1.123` — active canonical MVP proof cycle 1.
-6. `v0.1.124` — planned canonical MVP proof cycle 2 and final verdict.
+1. `v0.1.122.1` — accepted historical proof-finalizer repair.
+2. `v0.1.123` — accepted/current normal release; formal proof not counted due wrong historical answer intake.
+3. `v0.1.123.1` — active repair integrating the complete lifecycle into one `pb ask` command.
+4. `v0.1.124` — planned canonical MVP proof cycle 1.
+5. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.1
 

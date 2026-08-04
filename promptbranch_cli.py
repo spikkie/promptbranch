@@ -7533,6 +7533,7 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
 
 
 async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> int:
+    attachment_paths = _collect_ask_attachment_paths(args)
     try:
         raw_prompt = _merge_prompt_text(getattr(args, "prompt", None), getattr(args, "prompt_file", None))
     except (OSError, UnicodeError) as exc:
@@ -7660,6 +7661,505 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
     result = _validate_ask_release_candidate_result(result, expected)
     return _emit_protocol_result(args, result)
 
+def _integrated_mvp_ask_requested(args: argparse.Namespace, prompt: str) -> bool:
+    """Return true only for the canonical one-command MVP proof spelling.
+
+    The narrow trigger prevents ordinary prompts containing release options from
+    unexpectedly mutating a repository.  The operator contract is deliberately
+    exact: ``pb ask continue --target-version ... --release-type normal``.
+    """
+
+    return (
+        str(prompt or "").strip().lower() == "continue"
+        and bool(str(getattr(args, "target_version", "") or "").strip())
+        and str(getattr(args, "release_type", "normal") or "normal") == "normal"
+        and not bool(getattr(args, "protocol", False))
+        and not bool(getattr(args, "parse_reply", False))
+        and not bool(getattr(args, "print_request_json", False))
+    )
+
+
+def _mvp_json_from_output(text: str) -> dict[str, Any] | None:
+    """Extract the largest complete JSON object from command output."""
+
+    source = str(text or "")
+    try:
+        payload = json.loads(source)
+        return payload if isinstance(payload, dict) else None
+    except json.JSONDecodeError:
+        pass
+    decoder = json.JSONDecoder()
+    objects: list[tuple[int, int, dict[str, Any]]] = []
+    for index, char in enumerate(source):
+        if char != "{":
+            continue
+        try:
+            value, consumed = decoder.raw_decode(source[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            objects.append((consumed, index, value))
+    if not objects:
+        return None
+    objects.sort(key=lambda item: (item[0], item[1]))
+    return objects[-1][2]
+
+
+def _run_mvp_lifecycle_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> dict[str, Any]:
+    """Run one bounded lifecycle subprocess and retain exact evidence.
+
+    Full command output is written to the evidence paths.  The returned value
+    deliberately contains only bounded tails plus a parsed JSON object for the
+    in-process controller.  This prevents the final ``pb ask`` result from
+    embedding an entire multi-megabyte release-control transcript.
+    """
+
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+        )
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+        returncode: int | None = completed.returncode
+        status = "passed" if completed.returncode == 0 else "failed"
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        returncode = None
+        status = "timeout"
+    if stdout_path is not None:
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout_path.write_text(stdout, encoding="utf-8")
+    if stderr_path is not None:
+        stderr_path.parent.mkdir(parents=True, exist_ok=True)
+        stderr_path.write_text(stderr, encoding="utf-8")
+    tail_limit = 4000
+    return {
+        "ok": returncode == 0,
+        "status": f"mvp_lifecycle_command_{status}",
+        "command": command,
+        "returncode": returncode,
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "timeout_seconds": float(timeout_seconds),
+        "stdout_bytes": len(stdout.encode("utf-8")),
+        "stderr_bytes": len(stderr.encode("utf-8")),
+        "stdout_tail": stdout[-tail_limit:],
+        "stderr_tail": stderr[-tail_limit:],
+        "output_tail_limit": tail_limit,
+        "parsed_json": _mvp_json_from_output(stdout),
+        "stdout_path": str(stdout_path) if stdout_path is not None else None,
+        "stderr_path": str(stderr_path) if stderr_path is not None else None,
+    }
+
+
+def _mvp_stage_record(name: str, step: dict[str, Any]) -> dict[str, Any]:
+    """Return bounded, operator-safe evidence for one lifecycle stage."""
+
+    record = {
+        "name": name,
+        "ok": step.get("ok") is True,
+        "status": step.get("status"),
+        "command": step.get("command"),
+        "returncode": step.get("returncode"),
+        "duration_seconds": step.get("duration_seconds"),
+        "timeout_seconds": step.get("timeout_seconds"),
+        "stdout_bytes": step.get("stdout_bytes"),
+        "stderr_bytes": step.get("stderr_bytes"),
+        "stdout_tail": str(step.get("stdout_tail") or step.get("stdout") or "")[-4000:],
+        "stderr_tail": str(step.get("stderr_tail") or step.get("stderr") or "")[-4000:],
+        "stdout_path": step.get("stdout_path"),
+        "stderr_path": step.get("stderr_path"),
+    }
+    parsed = step.get("parsed_json")
+    if isinstance(parsed, dict):
+        summary_keys = (
+            "ok",
+            "action",
+            "status",
+            "request_id",
+            "correlation_id",
+            "reply_status",
+            "result_type",
+            "download_performed",
+            "verification_performed",
+            "migration_performed",
+            "adoption_performed",
+            "release_exit_code",
+            "all_tests_final_verdict",
+            "error",
+        )
+        parsed_summary = {key: parsed.get(key) for key in summary_keys if key in parsed}
+        ask_validation = parsed.get("ask_release_validation")
+        if isinstance(ask_validation, dict):
+            parsed_summary["ask_release_validation"] = {
+                key: ask_validation.get(key)
+                for key in ("ok", "status", "error")
+                if key in ask_validation
+            }
+        selected = parsed.get("selected_protocol_reply")
+        if isinstance(selected, dict):
+            parsed_summary["selected_protocol_reply"] = {
+                key: selected.get(key)
+                for key in ("request_id", "correlation_id", "conversation_url", "message_id", "answer_id")
+                if key in selected
+            }
+        download = parsed.get("download")
+        if isinstance(download, dict):
+            parsed_summary["download"] = {
+                key: download.get(key)
+                for key in ("filename", "version", "sha256", "size_bytes", "path")
+                if key in download
+            }
+        record["parsed_result"] = parsed_summary
+    return record
+
+
+def _mvp_candidate_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mvp_current_baseline(
+    backend: Any,
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    registry = _artifact_registry_from_args(args)
+    payload = _artifact_current_payload(backend, registry)
+    identity = load_repo_identity(repo_root)
+    repo_id = identity.repo_id if identity is not None else None
+    selected = _artifact_current_selected_sections(payload, repo_id=repo_id)
+    state = selected.get("state") if isinstance(selected.get("state"), dict) else {}
+    current = selected.get("registry_current") if isinstance(selected.get("registry_current"), dict) else {}
+    baseline_version = _candidate_version_normalized(current.get("version") or state.get("artifact_version"))
+    baseline_artifact = Path(str(current.get("filename") or state.get("artifact_ref") or "")).name or None
+    baseline_sha256 = str(current.get("sha256") or "").strip().lower() or None
+    selected_repo_id = repo_id or state.get("repo_id") or current.get("repo_id")
+    return {
+        "ok": bool(payload.get("ok") is True and selected_repo_id and baseline_version and baseline_artifact and baseline_sha256),
+        "repo_id": selected_repo_id,
+        "version": baseline_version,
+        "artifact": baseline_artifact,
+        "sha256": baseline_sha256,
+        "artifact_current": payload,
+        "selected": selected,
+    }
+
+
+def _mvp_passed_proof_records(profile_root: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    release_root = profile_root / "release_logs"
+    if not release_root.is_dir():
+        return records
+    for path in release_root.glob("*/mvp-proof-cycle-*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("status") != "mvp_proof_cycle_passed" or payload.get("ok") is not True:
+            continue
+        cycle = payload.get("cycle")
+        version = _candidate_version_normalized(payload.get("version"))
+        if not isinstance(cycle, int) or cycle not in {1, 2} or not version:
+            continue
+        records.append({"cycle": cycle, "version": version, "path": str(path), "payload": payload})
+    records.sort(key=lambda item: (Path(item["path"]).stat().st_mtime, item["cycle"]))
+    return records
+
+
+def _mvp_next_cycle(profile_root: Path, *, baseline_version: str) -> dict[str, Any]:
+    """Resolve strict consecutive proof position from persisted passed proof."""
+
+    records = _mvp_passed_proof_records(profile_root)
+    latest = records[-1] if records else None
+    if latest and latest["version"] == baseline_version and latest["cycle"] == 2:
+        return {"ok": False, "status": "mvp_already_verified", "cycle": None, "records": records, "latest": latest}
+    if latest and latest["version"] == baseline_version and latest["cycle"] == 1:
+        return {"ok": True, "status": "mvp_cycle_2_required", "cycle": 2, "records": records, "latest": latest}
+    # Any repair/intervening baseline breaks consecutiveness and restarts at 1.
+    return {"ok": True, "status": "mvp_cycle_1_required", "cycle": 1, "records": records, "latest": latest}
+
+
+def _mvp_cli_prefix(args: argparse.Namespace, profile_root: Path) -> list[str]:
+    prefix = [sys.executable, str(Path(__file__).resolve()), "--profile-dir", str(profile_root)]
+    service_base_url = str(getattr(args, "service_base_url", "") or "").strip()
+    if service_base_url:
+        prefix.extend(["--service-base-url", service_base_url])
+    service_token = str(getattr(args, "service_token", "") or "").strip()
+    if service_token:
+        prefix.extend(["--service-token", service_token])
+    return prefix
+
+
+def _mvp_emit_result(args: argparse.Namespace, payload: dict[str, Any], code: int) -> int:
+    # ``pb ask`` uses structured JSON by default.  The integrated lifecycle does
+    # not print a success token before every stage has completed.
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return code
+
+
+async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) -> int:
+    """Own one complete normal MVP proof cycle behind a single ``pb ask``."""
+
+    repo_root = Path.cwd().resolve()
+    profile_root = resolve_profile_dir(getattr(args, "profile_dir", None))
+    target_version = _candidate_version_normalized(getattr(args, "target_version", None))
+    release_type = str(getattr(args, "release_type", "normal") or "normal")
+    baseline = _mvp_current_baseline(backend, args, repo_root=repo_root)
+    base: dict[str, Any] = {
+        "ok": False,
+        "action": "ask_mvp_proof_lifecycle",
+        "status": "mvp_proof_lifecycle_preflight",
+        "operator_command": "pb ask continue --target-version <version> --release-type normal",
+        "repo_path": str(repo_root),
+        "profile_dir": str(profile_root),
+        "target_version": target_version,
+        "release_type": release_type,
+        "baseline": baseline,
+        "stages": [],
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "release_control_performed": False,
+        "adoption_performed": False,
+        "continuation_ask_performed": False,
+        "proof_written": False,
+    }
+
+    def fail(status: str, error: str, *, code: int = 1, stage: dict[str, Any] | None = None) -> int:
+        payload = {**base, "ok": False, "status": status, "error": error}
+        if stage is not None:
+            payload["failed_stage"] = stage
+        payload["operator_instruction"] = "Inspect the failed_stage evidence. Accepted/current is never claimed advanced by this command unless adoption and final proof both pass."
+        return _mvp_emit_result(args, payload, code)
+
+    if release_type != "normal" or not target_version or not re.fullmatch(r"v\d+\.\d+\.\d+", target_version):
+        return fail("mvp_proof_invalid_target", "integrated MVP proof requires a normal three-component --target-version and --release-type normal", code=2)
+    if not baseline.get("ok"):
+        return fail("mvp_proof_baseline_unresolved", "accepted/current repository identity, artifact, version, and SHA-256 could not be resolved", code=2)
+    baseline_version = str(baseline["version"])
+    expected_target = _release_expected_next_normal_version(baseline_version)
+    if target_version != expected_target:
+        return fail("mvp_proof_target_not_next_normal", f"target must be the next normal version after accepted/current {baseline_version}: expected {expected_target}", code=2)
+
+    cycle_state = _mvp_next_cycle(profile_root, baseline_version=baseline_version)
+    if not cycle_state.get("ok"):
+        return fail("mvp_already_verified", "two consecutive normal MVP proof cycles are already complete for the accepted baseline", code=2)
+    cycle = int(cycle_state["cycle"])
+    next_version = _release_expected_next_normal_version(target_version)
+    repo_id = str(baseline["repo_id"])
+    artifact_name = f"{repo_id}_{target_version}.zip"
+    release_log_dir = profile_root / "release_logs" / target_version
+    release_log_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = release_log_dir / f"mvp-ask-lifecycle.{target_version}.json"
+    base.update({
+        "cycle": cycle,
+        "next_version": next_version,
+        "repo_id": repo_id,
+        "artifact": artifact_name,
+        "release_log_dir": str(release_log_dir),
+        "proof_sequence_before": f"{cycle - 1}/2",
+    })
+
+    cli_prefix = _mvp_cli_prefix(args, profile_root)
+    step_timeout = float(getattr(args, "mvp_proof_step_timeout_seconds", 900.0) or 900.0)
+    release_timeout = float(getattr(args, "mvp_proof_release_timeout_seconds", 14400.0) or 14400.0)
+
+    ask_command = cli_prefix + [
+        "ask-release",
+        f"Create normal release {target_version} from accepted/current {baseline_version}. Return exactly one real downloadable candidate ZIP and the strict Promptbranch reply envelope.",
+        "--target-version", target_version,
+        "--release-type", "normal",
+        "--expect-artifact", artifact_name,
+        "--expect-version", target_version,
+        "--expect-repo", repo_id,
+        "--protocol-timeout-seconds", str(step_timeout),
+        "--json",
+    ]
+    ask_step = _run_mvp_lifecycle_command(
+        ask_command,
+        cwd=repo_root,
+        timeout_seconds=step_timeout,
+        stdout_path=release_log_dir / f"mvp-ask-release.{target_version}.json",
+        stderr_path=release_log_dir / f"mvp-ask-release.{target_version}.stderr.log",
+    )
+    base["stages"].append(_mvp_stage_record("release_candidate_ask", ask_step))
+    ask_payload = ask_step.get("parsed_json") if isinstance(ask_step.get("parsed_json"), dict) else {}
+    ask_validation = ask_payload.get("ask_release_validation") if isinstance(ask_payload.get("ask_release_validation"), dict) else {}
+    selection = ask_payload.get("selected_protocol_reply") if isinstance(ask_payload.get("selected_protocol_reply"), dict) else {}
+    message_id = selection.get("message_id") or ask_payload.get("selected_message_id")
+    answer_id = selection.get("answer_id") or ask_payload.get("selected_answer_id")
+    conversation_url = selection.get("conversation_url") or ask_payload.get("conversation_url")
+    if not (
+        ask_step.get("ok")
+        and ask_payload.get("ok") is True
+        and ask_validation.get("ok") is True
+        and message_id
+        and answer_id
+        and conversation_url
+    ):
+        return fail("mvp_release_candidate_ask_failed", "release-candidate Ask did not yield one exactly correlated materialized ZIP", stage=base["stages"][-1])
+
+    intake_path = release_log_dir / f"artifact-intake.{target_version}.json"
+    intake_command = cli_prefix + [
+        "artifact", "intake",
+        "--from-last-answer",
+        "--task", str(conversation_url),
+        "--message-id", str(message_id),
+        "--answer-id", str(answer_id),
+        "--expect-artifact", artifact_name,
+        "--expect-version", target_version,
+        "--expect-repo", repo_id,
+        "--download", "--verify", "--migrate",
+        "--repo-path", str(repo_root),
+        "--json",
+    ]
+    intake_step = _run_mvp_lifecycle_command(
+        intake_command,
+        cwd=repo_root,
+        timeout_seconds=step_timeout,
+        stdout_path=intake_path,
+        stderr_path=release_log_dir / f"artifact-intake.{target_version}.stderr.log",
+    )
+    base["stages"].append(_mvp_stage_record("artifact_intake", intake_step))
+    intake = intake_step.get("parsed_json") if isinstance(intake_step.get("parsed_json"), dict) else {}
+    candidate_path = repo_root / artifact_name
+    if not (
+        intake_step.get("ok")
+        and intake.get("ok") is True
+        and intake.get("status") == "migrated_candidate"
+        and intake.get("download_performed") is True
+        and intake.get("verification_performed") is True
+        and intake.get("migration_performed") is True
+        and candidate_path.is_file()
+    ):
+        return fail("mvp_artifact_intake_failed", "exact correlated artifact download, verification, and migration did not complete", stage=base["stages"][-1])
+    candidate_sha256 = _mvp_candidate_sha256(candidate_path)
+    intake_download = intake.get("download") if isinstance(intake.get("download"), dict) else {}
+    intake_sha256 = str(intake_download.get("sha256") or intake.get("sha256") or "").strip().lower()
+    if intake_sha256 != candidate_sha256:
+        return fail("mvp_artifact_intake_sha_mismatch", "download/intake SHA-256 differs from the migrated canonical candidate", stage=base["stages"][-1])
+    base.update({
+        "download_performed": True,
+        "verification_performed": True,
+        "migration_performed": True,
+        "candidate_sha256": candidate_sha256,
+        "selected_protocol_reply": selection,
+        "artifact_intake": str(intake_path),
+    })
+
+    release_script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
+    if not release_script.is_file():
+        return fail("mvp_release_control_missing", f"release-control script not found: {release_script}", code=2)
+    release_control_log = release_log_dir / f"release_control.{target_version}.full.all-all.adopt.log"
+    release_command = [
+        str(release_script),
+        "--version", target_version,
+        "--install-from-zip", str(candidate_path),
+        "--run-all-tests",
+        "--run-external-live-tests",
+        "--require-chatgpt-live-validation",
+        "--adopt-after-validation",
+        "--skip-docker-logs",
+        "--prune-release-logs",
+        "--release-log-keep", "12",
+    ]
+    release_step = _run_mvp_lifecycle_command(
+        release_command,
+        cwd=repo_root,
+        timeout_seconds=release_timeout,
+        stdout_path=release_control_log,
+        stderr_path=release_log_dir / f"release_control.{target_version}.stderr.log",
+    )
+    base["stages"].append(_mvp_stage_record("strict_release_control", release_step))
+    base["release_control_performed"] = True
+    if not release_step.get("ok"):
+        return fail("mvp_release_control_failed", "strict release validation/adoption returned nonzero", stage=base["stages"][-1])
+
+    required_release_evidence = [
+        release_log_dir / f"pb_test.all.{target_version}.summary.json",
+        release_log_dir / f"pb_test.visual_artifact_roundtrip.{target_version}.log",
+        release_log_dir / f"pb_artifact_adopt.{target_version}.json",
+        release_log_dir / f"pb_artifact_current.{target_version}.json",
+    ]
+    missing = [str(path) for path in required_release_evidence if not path.is_file()]
+    if missing:
+        return fail("mvp_release_evidence_missing", f"strict release returned zero but required proof evidence is missing: {missing}", stage=base["stages"][-1])
+    base["adoption_performed"] = True
+
+    finalizer = repo_root / "scripts" / "finalize-mvp-proof-cycle.sh"
+    pipx_pb = Path.home() / ".local" / "share" / "pipx" / "venvs" / "promptbranch" / "bin" / "pb"
+    pb_cmd = str(pipx_pb) if pipx_pb.is_file() else (shutil.which("pb") or "pb")
+    finalizer_command = [
+        str(finalizer),
+        "--cycle", str(cycle),
+        "--version", target_version,
+        "--baseline-version", baseline_version,
+        "--next-version", str(next_version),
+        "--repo-id", repo_id,
+        "--artifact-intake", str(intake_path),
+        "--artifact-path", str(candidate_path),
+        "--release-log-dir", str(release_log_dir),
+        "--pb-cmd", pb_cmd,
+    ]
+    finalizer_step = _run_mvp_lifecycle_command(
+        finalizer_command,
+        cwd=repo_root,
+        timeout_seconds=step_timeout,
+        stdout_path=release_log_dir / f"mvp-proof-finalizer.{target_version}.log",
+        stderr_path=release_log_dir / f"mvp-proof-finalizer.{target_version}.stderr.log",
+    )
+    base["stages"].append(_mvp_stage_record("proof_finalizer", finalizer_step))
+    proof_path = release_log_dir / f"mvp-proof-cycle-{cycle}.{target_version}.json"
+    proof: dict[str, Any] = {}
+    if proof_path.is_file():
+        try:
+            loaded = json.loads(proof_path.read_text(encoding="utf-8"))
+            proof = loaded if isinstance(loaded, dict) else {}
+        except json.JSONDecodeError:
+            proof = {}
+    if not (finalizer_step.get("ok") and proof.get("ok") is True and proof.get("status") == "mvp_proof_cycle_passed"):
+        return fail("mvp_proof_finalization_failed", "post-adoption continuation or final fail-closed proof verification did not pass", stage=base["stages"][-1])
+
+    status = "mvp_verified" if cycle == 2 else "mvp_proof_cycle_passed"
+    payload = {
+        **base,
+        "ok": True,
+        "status": status,
+        "accepted_current_version": target_version,
+        "accepted_current_artifact": artifact_name,
+        "consecutive_proof_count": f"{cycle}/2",
+        "mvp_status": "complete" if cycle == 2 else "proof_cycle_1_complete",
+        "continuation_ask_performed": True,
+        "proof_written": True,
+        "proof_path": str(proof_path),
+        "proof": proof,
+        "operator_instruction": "No additional operator command is required for this cycle. Run the same one-command form for the next normal target only when consecutive_proof_count is 1/2.",
+    }
+    summary_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    payload["summary_path"] = str(summary_path)
+    return _mvp_emit_result(args, payload, 0)
+
 async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     if getattr(args, "new_task", False) and getattr(args, "conversation_url", None):
         print(json.dumps(_new_task_conversation_url_conflict_payload(), indent=2, ensure_ascii=False))
@@ -7678,6 +8178,18 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     if not prompt:
         print("error: prompt is required", file=sys.stderr)
         return 2
+
+    if _integrated_mvp_ask_requested(args, prompt):
+        if attachment_paths or getattr(args, "new_task", False) or getattr(args, "conversation_url", None):
+            payload = {
+                "ok": False,
+                "action": "ask_mvp_proof_lifecycle",
+                "status": "mvp_proof_invalid_arguments",
+                "error": "the integrated proof lifecycle forbids attachments, --new-task, and --conversation-url; it resolves the bound release-authority conversation itself",
+            }
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return 2
+        return await cmd_ask_mvp_proof_lifecycle(backend, args)
 
     protocol_payload: dict[str, Any] | None = None
     envelope: dict[str, Any] | None = None
@@ -26257,7 +26769,9 @@ def make_parser() -> argparse.ArgumentParser:
     ask.add_argument("--protocol", action="store_true", help="Wrap the prompt in a Promptbranch ask.request envelope.")
     ask.add_argument("--from-current-baseline", action="store_true", help="Build protocol artifact fields from pb artifact current. Currently implied by --protocol.")
     ask.add_argument("--target-version", help="Target output version to include in the protocol request envelope.")
-    ask.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope.")
+    ask.add_argument("--release-type", choices=["normal", "repair"], default="normal", help="Release type to include in the protocol request envelope. With the exact prompt 'continue' and a normal target, pb ask owns the complete MVP proof lifecycle.")
+    ask.add_argument("--mvp-proof-step-timeout-seconds", type=float, default=900.0, help=argparse.SUPPRESS)
+    ask.add_argument("--mvp-proof-release-timeout-seconds", type=float, default=14400.0, help=argparse.SUPPRESS)
     ask.add_argument("--request-id", help="Explicit protocol request_id. Defaults to a generated timestamp id.")
     ask.add_argument("--correlation-id", help="Explicit protocol correlation_id. Defaults to request_id.")
     ask.add_argument("--intent-kind", default="software_release_request", help="Protocol intent.kind. Defaults to software_release_request.")

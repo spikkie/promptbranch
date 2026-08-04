@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.1.zip",
-  "accepted_current_version": "v0.1.122.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
-  "active_candidate_version": "v0.1.123",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+  "accepted_current_version": "v0.1.123",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+  "active_candidate_version": "v0.1.123.1",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
+  "active_slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -494,13 +494,23 @@
       "created_at": "2026-08-04T13:21:00+02:00",
       "kind": "normal",
       "slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
-      "status": "candidate",
-      "summary": "Runs the first clean canonical MVP proof cycle from accepted repair baseline without adding platform capability.",
-      "validation": "Focused, mandatory-group, clean-extraction, deterministic ZIP, Artifact Guardian, and strict host proof evidence pending.",
+      "status": "accepted_current",
+      "summary": "Normal release validation and adoption passed, but formal MVP proof cycle 1 did not count because post-hoc intake selected an older no_artifact reply.",
+      "validation": "Strict host 10/10 GO, Project Source persistence, Artifact Guardian, adoption/current identity passed; canonical chronological Ask/intake proof failed and count remains 0/2.",
       "version": "v0.1.123"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+      "created_at": "2026-08-04T14:43:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
+      "status": "candidate",
+      "summary": "Makes the exact operator command pb ask continue own exact reply correlation, artifact intake, strict validation/adoption, continuation proof, and fail-closed final verdict.",
+      "validation": "Focused integrated-lifecycle regressions, mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.1"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -962,10 +972,20 @@
       "created_at": "2026-08-04T13:21:00+02:00",
       "kind": "normal",
       "slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
-      "status": "candidate",
-      "summary": "Runs the first clean canonical MVP proof cycle from accepted repair baseline without adding platform capability.",
-      "validation": "Focused, mandatory-group, clean-extraction, deterministic ZIP, Artifact Guardian, and strict host proof evidence pending.",
+      "status": "accepted_current",
+      "summary": "Normal release validation and adoption passed, but formal MVP proof cycle 1 did not count because post-hoc intake selected an older no_artifact reply.",
+      "validation": "Strict host 10/10 GO, Project Source persistence, Artifact Guardian, adoption/current identity passed; canonical chronological Ask/intake proof failed and count remains 0/2.",
       "version": "v0.1.123"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+      "created_at": "2026-08-04T14:43:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
+      "status": "candidate",
+      "summary": "Makes the exact operator command pb ask continue own exact reply correlation, artifact intake, strict validation/adoption, continuation proof, and fail-closed final verdict.",
+      "validation": "Focused integrated-lifecycle regressions, mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.1"
     }
   ],
   "last_completed_normal_slice": "v0.1.122 \u2014 Canonical MVP proof instrumentation; strict release accepted but formal proof not counted because a repair was required",
@@ -973,11 +993,11 @@
   "last_completed_repair": "v0.1.122.1 \u2014 MVP proof finalizer fail-closed evidence repair",
   "last_completed_repair_version": "v0.1.122.1",
   "last_updated": "2026-08-04T13:21:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
-  "next_normal_slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
-  "next_normal_version": "v0.1.123",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
+  "next_normal_slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
+  "next_normal_version": "v0.1.124",
   "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-  "next_planned_slice_after_acceptance": "v0.1.124 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
+  "next_planned_slice_after_acceptance": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
   "next_planned_version_after_acceptance": "v0.1.124",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
@@ -1699,13 +1719,23 @@
       "created_at": "2026-08-04T13:21:00+02:00",
       "kind": "normal",
       "slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
-      "status": "candidate",
-      "summary": "Runs the first clean canonical MVP proof cycle from accepted repair baseline without adding platform capability.",
-      "validation": "Focused, mandatory-group, clean-extraction, deterministic ZIP, Artifact Guardian, and strict host proof evidence pending.",
+      "status": "accepted_current",
+      "summary": "Normal release validation and adoption passed, but formal MVP proof cycle 1 did not count because post-hoc intake selected an older no_artifact reply.",
+      "validation": "Strict host 10/10 GO, Project Source persistence, Artifact Guardian, adoption/current identity passed; canonical chronological Ask/intake proof failed and count remains 0/2.",
       "version": "v0.1.123"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+      "created_at": "2026-08-04T14:43:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
+      "status": "candidate",
+      "summary": "Makes the exact operator command pb ask continue own exact reply correlation, artifact intake, strict validation/adoption, continuation proof, and fail-closed final verdict.",
+      "validation": "Focused integrated-lifecycle regressions, mandatory groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
+      "version": "v0.1.123.1"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -2055,24 +2085,6 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
-      "release_mode": "normal",
-      "scope": "normal recovery scope completed by repair successor; original bytes misclassify 429 as 403",
-      "slice": "v0.1.121 \u2014 Resumable release-set rollout recovery and operator reconciliation",
-      "status": "repair_required",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.zip",
-      "version": "v0.1.121"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-      "release_mode": "repair",
-      "scope": "scope-neutral classifier repair with strict 10/10 adoption",
-      "slice": "v0.1.121.1 \u2014 Backend 403/429 auth-bootstrap guardrail classification repair",
-      "status": "accepted_historical",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.121.1.zip",
-      "version": "v0.1.121.1"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
       "release_mode": "normal",
       "scope": "accepted normal proof instrumentation; formal proof count remains zero because a repair followed",
@@ -2086,32 +2098,50 @@
       "release_mode": "repair",
       "scope": "accepted scope-neutral proof parsing, SHA binding, preflight ordering, and truthful exit repair",
       "slice": "v0.1.122.1 \u2014 MVP proof finalizer fail-closed evidence repair",
-      "status": "accepted_current",
+      "status": "accepted_historical",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.1.zip",
       "version": "v0.1.122.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
       "release_mode": "normal",
-      "scope": "first clean canonical ask/intake/validate/adopt/current/continue proof from accepted repair baseline",
-      "slice": "v0.1.123 \u2014 Canonical MVP proof cycle 1",
-      "status": "active",
+      "scope": "strict host release passed; formal proof did not count because exact candidate intake chronology was absent",
+      "slice": "v0.1.123 \u2014 Adopted normal release, proof not counted",
+      "status": "accepted_current",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.zip",
       "version": "v0.1.123"
     },
     {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+      "release_mode": "repair",
+      "scope": "single-command pb ask proof lifecycle ownership with exact request/message/answer correlation and fail-closed sequencing",
+      "slice": "v0.1.123.1 \u2014 Integrate complete MVP proof lifecycle into pb ask",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.1.zip",
+      "version": "v0.1.123.1"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
       "release_mode": "normal",
-      "scope": "second consecutive clean canonical proof and earliest final MVP verdict",
-      "slice": "v0.1.124 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
+      "scope": "first canonical proof cycle driven only by pb ask continue",
+      "slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
       "status": "planned_after_acceptance",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
       "version": "v0.1.124"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
+      "release_mode": "normal",
+      "scope": "second consecutive canonical proof cycle and final MVP verdict driven only by pb ask continue",
+      "slice": "v0.1.125 \u2014 Canonical MVP proof cycle 2 and final verdict",
+      "status": "planned",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
+      "version": "v0.1.125"
     }
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -2122,5 +2152,5 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.123"
+  "updated_for": "v0.1.123.1"
 }

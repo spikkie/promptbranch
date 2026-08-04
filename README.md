@@ -1,3 +1,8 @@
+
+## v0.1.123.1 one-command MVP proof lifecycle
+
+`v0.1.123` is accepted/current but its formal proof attempt did not count because post-hoc intake selected an older `no_artifact` reply. `v0.1.123.1` makes `pb ask continue --target-version <next-normal> --release-type normal` own exact reply correlation, artifact intake, strict release control, adoption/current verification, continuation Ask, and fail-closed proof finalization. After repair acceptance, use only that command for `v0.1.124` and then `v0.1.125`.
+
 # promptbranch v0.0.249
 
 ## v0.0.249

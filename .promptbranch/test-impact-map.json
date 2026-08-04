@@ -195,7 +195,8 @@
           "-q",
           "tests/test_promptbranch_release_contract.py",
           "tests/test_promptbranch_release_pipeline.py",
-          "tests/test_promptbranch_mvp_proof.py"
+          "tests/test_promptbranch_mvp_proof.py",
+          "tests/test_promptbranch_mvp_ask_lifecycle.py"
         ]
       ],
       "modes": [

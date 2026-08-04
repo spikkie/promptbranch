@@ -1358,3 +1358,15 @@ No registry, Project Source, release-set manifest, or application-state migratio
 The normal candidate reuses the accepted proof evaluator and finalizer unchanged. Proof cycle 1 requires new evidence bound to the exact `chatgpt_claudecode_workflow-2_v0.1.123.zip` bytes; evidence from `v0.1.122` or `v0.1.122.1` cannot substitute for candidate intake, adoption, current identity, or continuation evidence.
 
 After adoption, run the fail-closed finalizer with cycle `1`, baseline `v0.1.122.1`, and next version `v0.1.124`. Only `mvp_proof_cycle_passed` advances the formal count to 1/2.
+
+## v0.1.123 to v0.1.123.1 migration note
+
+No artifact registry or Project Source migration is required. `v0.1.123` remains accepted/current until strict validation adopts the repair.
+
+The operator workflow changes from four or more manually coordinated commands to one exact command:
+
+```bash
+pb ask continue --target-version v0.1.124 --release-type normal
+```
+
+The command internally uses exact request/message/answer selectors for intake. Existing `pb task answer parse`, `pb artifact intake`, release-control, and proof-finalizer commands remain available as diagnostics, but they are no longer part of the canonical MVP operator procedure.

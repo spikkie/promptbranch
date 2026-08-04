@@ -1,46 +1,49 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.122.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
-accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
-active candidate version: v0.1.123
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
-active slice: v0.1.123 — Canonical MVP proof cycle 1
-next normal version: v0.1.123
-next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.124 — Canonical MVP proof cycle 2 and final MVP verdict
+accepted/current baseline: v0.1.123
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123(1).zip
+accepted/current SHA-256: 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc
+active candidate version: v0.1.123.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
+active slice: v0.1.123.1 — Integrate complete MVP proof lifecycle into pb ask
+next normal version: v0.1.124
+next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
+next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.122.1` passed strict host validation 10/10 and is accepted/current. Because it is a repair release, the formal consecutive normal MVP proof count remains 0/2. `v0.1.123` is the first clean normal proof cycle and adds no new platform capability.
+`v0.1.123` passed strict host validation 10/10 and is accepted/current, but formal proof cycle 1 did not count because the later artifact-intake command selected an older `no_artifact` continuation reply. The formal count therefore remains 0/2. `v0.1.123.1` repairs the operator boundary so one exact `pb ask continue` command owns the complete chronological lifecycle.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.122.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.122.1.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.122.1(1).zip
-accepted/current SHA-256: b88437d2ce0abd60361fee340b0cd77e670a88ae14040eb267869d97673cb357
-active candidate version: v0.1.123
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+accepted/current version: v0.1.123
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123(1).zip
+accepted/current SHA-256: 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc
+active candidate version: v0.1.123.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
 candidate adoption: not performed
-next normal version: v0.1.123
-next normal slice: v0.1.123 — Canonical MVP proof cycle 1
-next planned after acceptance: v0.1.124
+formal MVP proof count: 0/2
+next normal version: v0.1.124
+next normal slice: v0.1.124 — Canonical MVP proof cycle 1
+next planned after acceptance: v0.1.125
 ```
 
-## Proof-cycle behavior
+## One-command proof behavior
 
-- Artifact intake must prove real download, candidate verification, exact version, filename, and SHA-256.
-- Strict release control must pass all 10 outer steps with no failures or skips.
-- Visual ZIP transport must be independently verified.
-- Adoption and project-level accepted/current identity must match `chatgpt_claudecode_workflow-2_v0.1.123.zip` and its canonical SHA-256.
-- The fail-closed preflight must pass before any continuation Ask.
-- The continuation Ask must use `--from-current-baseline` at `v0.1.123` and target `v0.1.124`.
-- A repair, stale baseline, missing hash, failed gate, or continuation mismatch keeps the formal proof count at 0/2.
+- `pb ask continue --target-version v0.1.124 --release-type normal` must create and correlate the release-candidate Ask itself.
+- Exact request/message/answer identity must drive artifact intake; generic latest-answer selection is forbidden.
+- Download, verification, migration, strict release control, Project Source publication, adoption, accepted/current verification, continuation Ask, and final proof evaluation all run internally.
+- Any failure returns nonzero before a success status is printed.
+- `v0.1.123.1` is repair-only and cannot count toward the two consecutive normal cycles.
 
 ## Next safe action
 
-Download and strictly validate `chatgpt_claudecode_workflow-2_v0.1.123.zip`. Keep `v0.1.122.1` accepted/current until the candidate reaches 10/10 GO, exact Project Source verification, Artifact Guardian, adoption, accepted/current verification, real artifact intake, and `mvp_proof_cycle_passed`. Only then record cycle 1 as 1/2 and proceed to `v0.1.124`.
+Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.1.zip`. After acceptance, run only:
+
+```bash
+pb ask continue --target-version v0.1.124 --release-type normal
+```
 
 ## v0.1.102 candidate status
 
