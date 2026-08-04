@@ -1,3 +1,7 @@
+## v0.1.123.2.1 project authority URL alias reconciliation repair
+
+`v0.1.123.2` was not adopted: release control stopped before strict validation because the tracked repository binding used the slugged Project form while runtime discovery supplied the bare immutable Project form. `v0.1.123.2.1` compares authority through the immutable `g-p-<32-hex>` Project UUID, accepts only matching bare/slugged aliases, preserves the tracked authority bytes, and continues to reject true cross-project mismatches.
+
 ## v0.1.123.2 explicit conversation pinning
 
 `v0.1.123.1` is accepted/current. `v0.1.123.2` makes the integrated MVP proof command require an explicit ChatGPT Project conversation URL and uses that same URL for the release-candidate Ask, exact reply correlation, artifact intake, and post-adoption continuation Ask. It rejects missing, malformed, cross-project, or mismatched returned conversations before mutation.

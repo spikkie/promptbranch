@@ -1029,3 +1029,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-406 | Release-candidate Ask, exact response correlation, and artifact intake use the same pinned conversation ID | focused_candidate | ask command, returned conversation mismatch, and intake task assertions | v0.1.123.2 |
 | DOD-407 | Post-adoption continuation Ask uses the same pinned conversation and fails when the observed continuation conversation differs | focused_candidate | finalizer argument and observed conversation checks | v0.1.123.2 |
 | DOD-408 | Repair acceptance preserves formal proof count 0/2 and leaves `v0.1.124` and `v0.1.125` as normal proof cycles 1 and 2 | candidate | plan-state and project control-surface evidence | v0.1.123.2 |
+
+
+## v0.1.123.2.1 project authority URL alias reconciliation repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-409 | Project ids and URLs expose one immutable `g-p-<32-hex>` authority identity across bare and slugged forms | focused_candidate | immutable id extraction regressions | v0.1.123.2.1 |
+| DOD-410 | `pb project join` accepts matching bare/slugged aliases during release adoption preflight | focused_candidate | subprocess join regression using slugged tracked and bare requested values | v0.1.123.2.1 |
+| DOD-411 | A genuinely different immutable Project UUID remains fail-closed | focused_candidate | cross-project mismatch regressions | v0.1.123.2.1 |
+| DOD-412 | Alias reconciliation preserves the tracked authority bytes and formal proof count remains 0/2 | candidate | binding immutability and project control-surface evidence | v0.1.123.2.1 |

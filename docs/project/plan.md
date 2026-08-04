@@ -2,9 +2,9 @@
 
 accepted/current baseline: v0.1.123.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
-active candidate version: v0.1.123.2
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.zip
-active slice: v0.1.123.2 — Explicit conversation pinning for integrated MVP proof lifecycle
+active candidate version: v0.1.123.2.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip
+active slice: v0.1.123.2.1 — Project authority URL alias reconciliation repair
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 
@@ -15,29 +15,29 @@ accepted/current version: v0.1.123.1
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.1.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.1(1).zip
 accepted/current SHA-256: fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf
-active candidate version: v0.1.123.2
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.zip
+active candidate version: v0.1.123.2.1
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip
 next normal version: v0.1.124
 next planned after acceptance: v0.1.125
 ```
 
-## Active repair slice — v0.1.123.2
+## Active repair slice — v0.1.123.2.1
 
 1. Preserve accepted/current `v0.1.123.1`; the repair cannot count as an MVP proof cycle.
-2. Require `--conversation-url` for the integrated proof lifecycle.
-3. Validate that the URL is a Project conversation and belongs to the accepted release-authority project.
-4. Pin candidate Ask, exact response correlation, artifact intake, and continuation Ask to the same conversation ID.
-5. Reject missing, malformed, cross-project, or mismatched returned conversations before mutation.
+2. Extract the immutable `g-p-<32-hex>` Project UUID from ids, Project URLs, and Project conversation URLs.
+3. Accept bare and slugged representations only when their immutable UUIDs match.
+4. Preserve the tracked `.promptbranch-repo.json` bytes and continue using that tracked binding as authority.
+5. Reject true cross-project UUID mismatches before validation or adoption.
 6. Keep `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.122.1` — accepted historical proof-finalizer repair.
-2. `v0.1.123` — accepted/current normal release; formal proof not counted due wrong historical answer intake.
-3. `v0.1.123.1` — accepted/current integrated one-command lifecycle repair.
-4. `v0.1.123.2` — active explicit-conversation pinning repair.
+1. `v0.1.123` — accepted historical normal release; formal proof not counted due wrong historical answer intake.
+2. `v0.1.123.1` — accepted/current integrated one-command lifecycle repair.
+3. `v0.1.123.2` — failed before strict validation because bare and slugged Project aliases were compared literally.
+4. `v0.1.123.2.1` — active immutable Project authority alias repair.
 5. `v0.1.124` — planned canonical MVP proof cycle 1.
 6. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
 

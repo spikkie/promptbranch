@@ -8,7 +8,18 @@ import shutil
 import subprocess
 import sys
 
-from promptbranch_project import load_repo_identity, project_registry_dir, project_registry_file, project_repo_config_path, repo_identity_mismatches, validate_tracked_repo_identity, write_repo_identity, join_local_repo
+from promptbranch_project import (
+    immutable_project_id,
+    join_local_repo,
+    load_repo_identity,
+    project_registry_dir,
+    project_registry_file,
+    project_repo_config_path,
+    repo_identity_mismatches,
+    same_project_authority,
+    validate_tracked_repo_identity,
+    write_repo_identity,
+)
 
 
 def test_project_registry_path_is_derived_from_project_id(monkeypatch, tmp_path: Path) -> None:
@@ -129,3 +140,125 @@ def test_tracked_binding_comparison_reports_only_explicit_mismatches(tmp_path: P
     assert identity is not None and path.is_file()
     assert repo_identity_mismatches(identity) == []
     assert any("repo_id" in item for item in repo_identity_mismatches(identity, repo_id="wrong"))
+
+
+PROJECT_UUID = "6a43ea5129508191be8c8ebcf9fc7391"
+PROJECT_BARE_ID = f"g-p-{PROJECT_UUID}"
+PROJECT_SLUGGED_ID = f"{PROJECT_BARE_ID}-promptbranch3"
+PROJECT_BARE_HOME = f"https://chatgpt.com/g/{PROJECT_BARE_ID}/project"
+PROJECT_SLUGGED_HOME = f"https://chatgpt.com/g/{PROJECT_SLUGGED_ID}/project"
+PROJECT_SLUGGED_CONVERSATION = f"https://chatgpt.com/g/{PROJECT_SLUGGED_ID}/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16"
+
+
+def _uuid_tracked_binding(*, slugged: bool) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "project_id": PROJECT_SLUGGED_ID if slugged else PROJECT_BARE_ID,
+        "project_home_url": PROJECT_SLUGGED_HOME if slugged else PROJECT_BARE_HOME,
+        "repo_id": "demo-repo",
+        "artifact_pattern": "demo-repo_<version>.zip",
+        "role": "release_authority",
+    }
+
+
+def test_project_authority_extracts_immutable_uuid_from_bare_slugged_and_conversation_forms() -> None:
+    expected = PROJECT_BARE_ID
+    assert immutable_project_id(PROJECT_BARE_ID) == expected
+    assert immutable_project_id(PROJECT_SLUGGED_ID) == expected
+    assert immutable_project_id(PROJECT_BARE_HOME) == expected
+    assert immutable_project_id(PROJECT_SLUGGED_CONVERSATION) == expected
+    assert immutable_project_id("kubernetes") is None
+
+
+def test_slugged_tracked_authority_accepts_bare_runtime_alias_without_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "demo-repo"
+    repo.mkdir()
+    binding_path = repo / ".promptbranch-repo.json"
+    original = json.dumps(_uuid_tracked_binding(slugged=True), indent=2) + "\n"
+    binding_path.write_text(original, encoding="utf-8")
+    identity = load_repo_identity(repo)
+    assert identity is not None
+
+    assert repo_identity_mismatches(
+        identity, project_id=PROJECT_BARE_ID, project_home_url=PROJECT_BARE_HOME
+    ) == []
+    assert binding_path.read_text(encoding="utf-8") == original
+
+
+def test_bare_tracked_authority_accepts_slugged_conversation_alias_without_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "demo-repo"
+    repo.mkdir()
+    binding_path = repo / ".promptbranch-repo.json"
+    original = json.dumps(_uuid_tracked_binding(slugged=False), indent=2) + "\n"
+    binding_path.write_text(original, encoding="utf-8")
+    identity = load_repo_identity(repo)
+    assert identity is not None
+
+    assert repo_identity_mismatches(
+        identity, project_id=PROJECT_SLUGGED_ID, project_home_url=PROJECT_SLUGGED_CONVERSATION
+    ) == []
+    assert binding_path.read_text(encoding="utf-8") == original
+
+
+def test_project_authority_rejects_true_cross_project_uuid_mismatch(tmp_path: Path) -> None:
+    repo = tmp_path / "demo-repo"
+    repo.mkdir()
+    binding_path = repo / ".promptbranch-repo.json"
+    original = json.dumps(_uuid_tracked_binding(slugged=True), indent=2) + "\n"
+    binding_path.write_text(original, encoding="utf-8")
+    identity = load_repo_identity(repo)
+    assert identity is not None
+    other_id = "g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    other_home = f"https://chatgpt.com/g/{other_id}/project"
+
+    mismatches = repo_identity_mismatches(identity, project_id=other_id, project_home_url=other_home)
+    assert any(item.startswith("project_id ") for item in mismatches)
+    assert any(item.startswith("project_home_url ") for item in mismatches)
+    assert same_project_authority(PROJECT_SLUGGED_HOME, other_home) is False
+    assert binding_path.read_text(encoding="utf-8") == original
+
+
+def test_project_join_accepts_uuid_aliases_and_preserves_tracked_authority(tmp_path: Path) -> None:
+    repo = tmp_path / "demo-repo"
+    repo.mkdir()
+    binding_path = repo / ".promptbranch-repo.json"
+    original = json.dumps(_uuid_tracked_binding(slugged=True), indent=2) + "\n"
+    binding_path.write_text(original, encoding="utf-8")
+    env = os.environ.copy()
+    env["PROMPTBRANCH_PROJECT_CONFIG_HOME"] = str(tmp_path / "config")
+    env["PROMPTBRANCH_PROJECT_STATE_HOME"] = str(tmp_path / "state")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve().parents[1] / "promptbranch_cli.py"),
+            "project",
+            "join",
+            "--repo-root",
+            str(repo),
+            "--project-id",
+            PROJECT_BARE_ID,
+            "--project-home-url",
+            PROJECT_BARE_HOME,
+            "--repo-id",
+            "demo-repo",
+            "--artifact-pattern",
+            "demo-repo_<version>.zip",
+            "--role",
+            "release_authority",
+            "--json",
+        ],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["project_id"] == PROJECT_SLUGGED_ID
+    assert payload["project_home_url"] == PROJECT_SLUGGED_HOME
+    assert payload["binding_source"] == "tracked_repository_file"
+    assert binding_path.read_text(encoding="utf-8") == original

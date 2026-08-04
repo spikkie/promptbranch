@@ -4,10 +4,10 @@
 
 | Version | Slice | Status | Release mode | Scope |
 |---|---|---|---|---|
-| v0.1.122.1 | MVP proof finalizer fail-closed evidence repair | accepted_historical | repair | project-level current parsing, exact SHA binding, preflight ordering, and truthful exit status |
 | v0.1.123 | Canonical MVP proof cycle attempt | accepted_historical_proof_not_counted | normal | release/adoption passed, but chronological intake was absent |
 | v0.1.123.1 | Complete proof lifecycle ownership in `pb ask` | accepted_current | repair | one-command exact correlation and fail-closed sequencing |
-| v0.1.123.2 | Explicit conversation pinning | active | repair | authoritative CLI conversation URL across candidate Ask, intake, and continuation |
+| v0.1.123.2 | Explicit conversation pinning | failed_pre_validation | repair | pinning implemented; literal Project authority comparison blocked adoption before tests |
+| v0.1.123.2.1 | Project authority URL alias reconciliation | active | repair | immutable UUID comparison, tracked-authority preservation, true mismatch rejection |
 | v0.1.124 | Canonical MVP proof cycle 1 | planned_after_acceptance | normal | first complete pinned one-command proof |
 | v0.1.125 | Canonical MVP proof cycle 2 and final verdict | planned | normal | second consecutive pinned one-command proof |
 
@@ -17,11 +17,11 @@ Promptbranch and `promptbranch-method` develop independently. Method releases re
 
 ## Repair horizon rule
 
-Repair releases must not advance scope. `v0.1.123.2` can pin conversation identity but cannot count as a normal proof cycle. Accepted/current remains `v0.1.123.1` until strict adoption evidence advances it.
+Repair releases must not advance scope. `v0.1.123.2.1` can reconcile equivalent Project authority aliases but cannot count as a normal proof cycle. Accepted/current remains `v0.1.123.1` until strict adoption evidence advances it.
 
 ## MVP finalization rule
 
-After `v0.1.123.2` acceptance, the operator runs one explicitly pinned `pb ask continue` command for `v0.1.124` and one for `v0.1.125`. Both must pass consecutively without an intervening repair.
+After `v0.1.123.2.1` acceptance, the operator runs one explicitly pinned `pb ask continue` command for `v0.1.124` and one for `v0.1.125`. Both must pass consecutively without an intervening repair.
 
 ## Historical continuity
 

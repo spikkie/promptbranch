@@ -1390,3 +1390,10 @@ pb ask continue \
 ```
 
 No proof count is carried by this repair release.
+
+
+## v0.1.123.2 to v0.1.123.2.1 migration note
+
+No tracked repository binding, local registry, artifact registry, or Project Source migration is required. Do not manually rewrite `.promptbranch-repo.json`. The repair recognizes the bare and slugged URL forms as aliases only when their immutable `g-p-<32-hex>` Project UUID matches, then continues using the existing tracked binding as authority.
+
+`v0.1.123.2` remains a failed, non-adopted candidate. After `v0.1.123.2.1` passes strict adoption, run the explicitly pinned `v0.1.124` proof-cycle command.

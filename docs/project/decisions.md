@@ -1292,3 +1292,12 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Failure policy:** missing, malformed, cross-project, or mismatched conversation identity fails before release mutation.
 - **No fallback:** remembered task state, project home, latest chat, and visible browser tab are not valid implicit selectors for formal proof.
 - **Sequence:** `v0.1.123.2` is repair-only; `v0.1.124` and `v0.1.125` remain proof cycles 1 and 2.
+
+
+## DEC-2026-08-04-123.2.1 — Project authority compares immutable UUID aliases without rewriting tracked state
+
+- **Decision:** Project authority comparisons extract the immutable `g-p-<32-hex>` UUID from bare ids, slugged ids, Project URLs, and Project conversation URLs.
+- **Alias rule:** Bare and slugged forms are equivalent only when both contain the same immutable UUID. Values without an immutable UUID retain exact comparison.
+- **Authority preservation:** The tracked `.promptbranch-repo.json` remains authoritative and must not be rewritten during reconciliation.
+- **Failure policy:** A different immutable Project UUID remains a release-blocking mismatch.
+- **Sequence:** `v0.1.123.2.1` is repair-only; `v0.1.124` and `v0.1.125` remain normal proof cycles 1 and 2.

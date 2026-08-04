@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,50 @@ def _safe_project_id(value: str) -> str:
     text = str(value or "").strip()
     text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._-")
     return text or "default"
+
+
+_IMMUTABLE_PROJECT_ID_RE = re.compile(r"^(g-p-[0-9a-fA-F]{32})(?:-|$)")
+
+
+def immutable_project_id(value: str | None) -> str | None:
+    """Extract the immutable ChatGPT Project UUID identity from an id or URL.
+
+    ChatGPT may expose the same Project as either ``g-p-<uuid>`` or
+    ``g-p-<uuid>-<display-slug>``.  This helper canonicalizes only that
+    immutable UUID form.  Human aliases and non-UUID ids are intentionally
+    not broadened.
+    """
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    home_url = project_home_url_from_url(text)
+    if home_url:
+        parts = [part for part in urllib.parse.urlparse(home_url).path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "g":
+            text = parts[1]
+    match = _IMMUTABLE_PROJECT_ID_RE.match(text)
+    return match.group(1).lower() if match else None
+
+
+def same_project_authority(left: str | None, right: str | None) -> bool:
+    """Compare Project identities without rewriting tracked authority.
+
+    UUID-bearing bare and slugged forms are aliases only when their immutable
+    UUIDs match.  Values without an immutable UUID retain exact comparison.
+    """
+
+    left_text = str(left or "").strip()
+    right_text = str(right or "").strip()
+    if not left_text or not right_text:
+        return False
+    left_uuid = immutable_project_id(left_text)
+    right_uuid = immutable_project_id(right_text)
+    if left_uuid or right_uuid:
+        return bool(left_uuid and right_uuid and left_uuid == right_uuid)
+    left_home = project_home_url_from_url(left_text) or left_text
+    right_home = project_home_url_from_url(right_text) or right_text
+    return str(left_home).rstrip("/") == str(right_home).rstrip("/")
 
 
 def project_state_home() -> Path:
@@ -171,11 +216,13 @@ def repo_identity_mismatches(
     """
 
     mismatches: list[str] = []
-    if project_id is not None and _safe_project_id(project_id) != identity.project_id:
-        mismatches.append(f"project_id tracked={identity.project_id!r} requested={_safe_project_id(project_id)!r}")
+    if project_id is not None:
+        requested_project_id = _safe_project_id(project_id)
+        if not same_project_authority(identity.project_id, requested_project_id):
+            mismatches.append(f"project_id tracked={identity.project_id!r} requested={requested_project_id!r}")
     if project_home_url is not None:
         requested_home = project_home_url_from_url(project_home_url) or str(project_home_url).strip()
-        if requested_home != identity.project_home_url:
+        if not same_project_authority(identity.project_home_url, requested_home):
             mismatches.append(f"project_home_url tracked={identity.project_home_url!r} requested={requested_home!r}")
     if repo_id is not None:
         requested_repo = normalize_repo_id(repo_id)
