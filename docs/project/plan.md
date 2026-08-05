@@ -1,43 +1,45 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.123.2.2
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
-active candidate version: v0.1.123.2.3
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
-active slice: v0.1.123.2.3 — Operation-scoped response guardrails and nested timeout budget repair
+accepted/current baseline: v0.1.123.2.3
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+active candidate version: v0.1.123.2.4
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
+active slice: v0.1.123.2.4 — Force baseline-derived ZIP creation and real attachment materialization
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123.2.2
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.2(1).zip
-accepted/current SHA-256: e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683
-active candidate version: v0.1.123.2.3
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current version: v0.1.123.2.3
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
+accepted/current SHA-256: d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea
+active candidate version: v0.1.123.2.4
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
 next normal version: v0.1.124
 next planned after acceptance: v0.1.125
 ```
 
-## Active repair slice — v0.1.123.2.3
+## Active repair slice — v0.1.123.2.4
 
-1. Preserve accepted/current `v0.1.123.2.2`; the repair cannot count as an MVP proof cycle.
-2. Bind backend-403 evaluation to the causally confirmed submit boundary for the current response wait.
-3. Ignore pre-submit and unrelated background file-download 403 telemetry when the pinned conversation remains healthy.
-4. Retain fail-fast behavior for current-operation conversation 403s and visible challenge/root/closed-target states.
-5. Use a 1800-second response budget and an automatically derived outer budget of at least 2220 seconds.
-6. Keep `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
+1. Preserve accepted/current `v0.1.123.2.3`; the repair cannot count as an MVP proof cycle.
+2. Generate a hard ask-release execution contract naming the exact baseline, target ZIP, version, and request ID.
+3. Require a fresh baseline-derived physical ZIP before envelope construction.
+4. Require a real ChatGPT attachment in the exact answer; textual `sandbox:` declarations are insufficient.
+5. Require observed SHA-256, size, and entry count only after attachment creation.
+6. Fail with `artifacts=[]` when physical creation or attachment is unavailable.
+7. Keep `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.123.2.2` — accepted/current Project identity alias repair.
-2. `v0.1.123.2.3` — active response-wait and nested timeout repair.
-3. `v0.1.124` — planned canonical MVP proof cycle 1.
-4. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
+1. `v0.1.123.2.2` — historical accepted Project identity alias repair.
+2. `v0.1.123.2.3` — accepted/current response-wait and timeout-budget repair.
+3. `v0.1.123.2.4` — active baseline-derived ZIP creation and real attachment repair.
+4. `v0.1.124` — planned canonical MVP proof cycle 1.
+5. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
 
 ## Repair definition — v0.1.71.2
 

@@ -7414,6 +7414,7 @@ def _build_zip_artifact_user_prompt(
     artifact_version_required: bool = True,
     no_change_disallowed: bool = True,
     forbidden_claims: str | None = None,
+    execution_requirements: str | None = None,
 ) -> str:
     """Build the canonical user prompt for requests that must create a ZIP.
 
@@ -7443,6 +7444,7 @@ def _build_zip_artifact_user_prompt(
         else ""
     )
     forbidden_claims_rule = f"{forbidden_claims.strip()} " if forbidden_claims else ""
+    execution_requirements_block = str(execution_requirements or "").strip()
     prompt_body = str(prompt_text or "").strip()
     display_baseline = "none" if baseline is None else str(baseline)
     display_current_version = "none" if current_version is None else str(current_version)
@@ -7459,7 +7461,7 @@ def _build_zip_artifact_user_prompt(
         "return status failed with result_type "
         f"{result_type}, artifacts as an empty array, and a failure summary instead of a success claim. "
     )
-    return (
+    prompt_header = (
         f"{request_label}. Create exactly one ZIP artifact named {expected_artifact}.\n"
         f"Input baseline: {display_baseline}\n"
         f"Input version: {display_current_version}\n"
@@ -7469,8 +7471,52 @@ def _build_zip_artifact_user_prompt(
         f"{schema_contract}"
         f"{no_change_rule}"
         f"{forbidden_claims_rule}\n\n"
+    )
+    if execution_requirements_block:
+        prompt_header += f"{execution_requirements_block}\n\n"
+    return prompt_header + (
         "Requested implementation scope:\n"
         f"{prompt_body}"
+    )
+
+
+def _build_ask_release_execution_requirements(
+    *,
+    baseline: Any,
+    current_version: Any,
+    target_version: Any,
+    expected_artifact: Any,
+    request_id: Any,
+) -> str:
+    """Build the hard execution contract for a release-candidate artifact ask.
+
+    The protocol envelope describes the desired candidate, but description is
+    not artifact materialization.  These requirements force the assistant to
+    create a fresh baseline-derived ZIP and attach it before reporting success.
+    """
+
+    return (
+        "Hard artifact-execution requirements:\n\n"
+        f"1. Use the exact accepted/current release artifact {baseline} "
+        f"(version {current_version}) as the actual source baseline.\n\n"
+        f"2. Extract or otherwise inspect that exact baseline artifact and create a brand-new "
+        f"release ZIP named {expected_artifact} for target version {target_version}.\n\n"
+        "3. The new ZIP must contain the complete repository contents derived from the accepted/current "
+        "baseline, with the requested target-version changes applied.\n\n"
+        "4. Before writing the Promptbranch reply envelope, create the physical ZIP artifact using the "
+        "available file/artifact creation capability.\n\n"
+        "5. Attach the created ZIP to this exact assistant answer as a real ChatGPT downloadable attachment. "
+        "A filename in JSON, a sandbox path written as text, or a claim that the file exists is not sufficient.\n\n"
+        f"6. Do not reuse, rename, or reference a ZIP created by an earlier answer or failed request. "
+        f"Create a fresh artifact for this exact request_id: {request_id}.\n\n"
+        f"7. Do not set status=completed unless the attachment is visibly materialized in this answer and "
+        f"its filename is exactly {expected_artifact}.\n\n"
+        "8. Only after the attachment exists, calculate its actual SHA-256, byte size, and ZIP entry count "
+        "and place those observed values in the reply envelope.\n\n"
+        "9. When the artifact cannot be physically created and attached, return status=failed, "
+        "result_type=release_candidate, artifacts=[], and a non-empty failure summary.\n\n"
+        "Create a brand-new ZIP from the exact accepted/current release artifact, attach that physical ZIP "
+        "to this exact answer, and only then construct the reply envelope from the actual created file."
     )
 
 
@@ -7486,6 +7532,13 @@ def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], e
             f"Build {expected_artifact} from accepted baseline {baseline}. "
             f"Implement the target version {target_version} as requested by the current project plan."
         )
+    execution_requirements = _build_ask_release_execution_requirements(
+        baseline=baseline,
+        current_version=current_version,
+        target_version=target_version,
+        expected_artifact=expected_artifact,
+        request_id=envelope.get("request_id"),
+    )
     return _build_zip_artifact_user_prompt(
         request_label="Release-candidate request",
         expected_artifact=expected_artifact,
@@ -7498,6 +7551,7 @@ def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], e
         artifact_version_required=True,
         no_change_disallowed=True,
         forbidden_claims="Do not claim adoption, Project Source mutation, Git commit, or Git push.",
+        execution_requirements=execution_requirements,
     )
 
 

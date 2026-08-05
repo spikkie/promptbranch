@@ -57,6 +57,11 @@
 | DOD-345 | Project Source publication evidence is bound into adoption and final accepted/current verification | focused_candidate | fake transport pipeline test and strict release validation pending | v0.1.117 |
 | DOD-346 | Candidate artifact is rebuilt and reverified after the guarded release commit before publication | focused_candidate | pipeline phase-order tests; strict release validation pending | v0.1.117 |
 
+| DOD-422 | Generated ask-release prompt names the exact accepted/current artifact and version as the actual source baseline | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
+| DOD-423 | Generated ask-release prompt requires a fresh physical ZIP bound to the exact request ID before envelope construction | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
+| DOD-424 | Generated ask-release prompt requires a real attachment and rejects JSON-only sandbox declarations as sufficient evidence | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
+| DOD-425 | Generated ask-release prompt requires observed artifact metadata and a failed envelope with `artifacts=[]` when materialization fails | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
+
 ## Status values
 
 Use only:

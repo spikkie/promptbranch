@@ -1,3 +1,7 @@
+## v0.1.123.2.4 baseline-derived ZIP and real attachment enforcement
+
+`v0.1.123.2.3` is accepted/current. `v0.1.123.2.4` strengthens `pb ask-release` prompt generation so the assistant must inspect the exact accepted/current ZIP, create a fresh target ZIP for the exact request ID, attach it to the same answer, and only then emit a completed protocol envelope with observed SHA-256, size, and entry count. JSON-only filenames, textual `sandbox:` paths, and claims without a rendered attachment are explicitly insufficient.
+
 ## v0.1.123.2.3 operation-scoped response waiting repair
 
 `v0.1.123.2.2` is accepted/current. During the first pinned `v0.1.124` proof attempt, a pre-submit background attachment-download 403 remained in global browser telemetry and incorrectly terminated response waiting immediately after a causally confirmed prompt submission. `v0.1.123.2.3` establishes a confirmed-submit guardrail cursor, ignores pre-submit and unrelated file-download 403 telemetry while the target conversation remains healthy, retains fail-fast behavior for current-operation conversation 403s and real challenge/root/closed-page states, raises the assistant response budget to 30 minutes, and derives a 37-minute outer lifecycle budget that also covers fresh-turn correlation and artifact materialization.

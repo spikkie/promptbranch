@@ -1,45 +1,45 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.123.2.2
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.2(1).zip
-accepted/current SHA-256: e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683
-active candidate version: v0.1.123.2.3
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
-active slice: v0.1.123.2.3 — Operation-scoped response guardrails and nested timeout budget repair
+accepted/current baseline: v0.1.123.2.3
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
+accepted/current SHA-256: d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea
+active candidate version: v0.1.123.2.4
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
+active slice: v0.1.123.2.4 — Force baseline-derived ZIP creation and real attachment materialization
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
 
-`v0.1.123.2.2` passed strict release validation and is accepted/current. The first pinned `v0.1.124` request was causally submitted and ChatGPT completed later, but Promptbranch stopped response waiting because a pre-submit background file-download 403 was treated as a terminal current-operation challenge. No candidate intake, validation, or adoption occurred, so the formal proof count remains 0/2 and `v0.1.124` remains the next normal proof target after this repair.
+`v0.1.123.2.3` passed strict release validation and is accepted/current. The first full `v0.1.124` request proved that response waiting now remains active through ChatGPT generation, but the generated ask-release prompt allowed a JSON-only sandbox declaration without a rendered attachment. Promptbranch correctly refused intake. Formal proof remains 0/2 and `v0.1.124` remains the next normal proof target after this prompt-generation repair.
 
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123.2.2
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123.2.2(1).zip
-accepted/current SHA-256: e550e588d31a4fd2dfcf5b17399565f3f31fb2ba3cc2efd1b2a8517555aa5683
-active candidate version: v0.1.123.2.3
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current version: v0.1.123.2.3
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
+accepted/current SHA-256: d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea
+active candidate version: v0.1.123.2.4
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
 candidate adoption: not performed
 formal MVP proof count: 0/2
 next normal version: v0.1.124
 next planned after acceptance: v0.1.125
 ```
 
-## Response-wait repair contract
+## Artifact-execution prompt contract
 
-- Establish the backend-403 event cursor only after current prompt submission is causally confirmed.
-- Pre-submit 403 events remain diagnostic telemetry and cannot terminate the new response wait.
-- Unrelated post-submit attachment-download 403 events cannot terminate a healthy target conversation.
-- Current-operation conversation 403s, challenge pages, root redirects after submission, and target closure remain fail-fast.
-- The browser response budget is 1800 seconds; the integrated outer step is at least 2220 seconds and covers response, fresh-turn correlation, attachment materialization, and safety margin.
-- The operator command remains one explicitly pinned `pb ask continue` invocation.
+- The exact accepted/current ZIP is named as the actual source baseline.
+- The assistant must inspect that baseline and create a fresh target ZIP for the exact request ID.
+- Physical ZIP creation and real answer attachment must occur before a completed reply envelope is emitted.
+- JSON-only filenames, textual `sandbox:` paths, and unsupported claims are explicitly insufficient.
+- SHA-256, size, and entry count must be observed from the created file.
+- Failure to create or attach must return `status=failed` and `artifacts=[]`.
 
 ## Next safe action
 
-Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip`. After acceptance, run only:
+Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip`. After acceptance, run only:
 
 ```bash
 pb ask continue --conversation-url 'https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16' --target-version v0.1.124 --release-type normal

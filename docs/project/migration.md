@@ -1,4 +1,9 @@
-## v0.1.121.1 auth-bootstrap guardrail classification migration
+# Migration to Project Control Surface
+
+## v0.1.123.2.4 ask-release prompt migration
+
+`v0.1.123.2.3` is accepted/current. `v0.1.123.2.4` changes only generated release-candidate request text. Existing registries, Project Sources, browser profiles, adopted artifacts, request records, and proof records require no migration. `v0.1.124` remains proof cycle 1 and `v0.1.125` remains proof cycle 2.
+
 
 No operator data migration is required. Existing browser profiles, release checkpoints, Project Source identities, and release-set reconciliation evidence remain valid. Retry with `v0.1.121.1`; the wrapper now distinguishes explicit backend HTTP 403 challenge events from HTTP 429 rate-limit telemetry. Original `v0.1.121` bytes remain repair-required.
 

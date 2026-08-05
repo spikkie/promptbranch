@@ -1,3 +1,8 @@
+# Durable decisions
+
+## ADR-PROJ-12324 — Artifact execution precedes release-candidate envelope success
+
+For `v0.1.123.2.4`, `ask-release` must instruct ChatGPT to create a fresh ZIP from the exact accepted/current artifact, attach it to the exact answer, and only then emit `status=completed`. A JSON filename, textual `sandbox:` path, or unsupported existence claim is not materialization evidence. Failure to physically create and attach must produce `status=failed`, `result_type=release_candidate`, and `artifacts=[]`. This repair preserves `v0.1.124` and `v0.1.125` as the next normal proof cycles.
 
 ## ADR-PROJ-109.1 — Behavioral surface ownership
 
