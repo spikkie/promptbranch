@@ -202,6 +202,7 @@ from promptbranch_ask_protocol import (
     extract_reply_blocks,
     parse_promptbranch_reply,
     render_protocol_ask_prompt,
+    render_release_candidate_artifact_prompt,
 )
 from promptbranch_state import (
     DEFAULT_PROJECT_URL,
@@ -7365,6 +7366,9 @@ def _ask_release_expected_from_envelope(envelope: dict[str, Any], args: argparse
 
 def _augment_release_candidate_request(envelope: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
     enriched = copy.deepcopy(envelope)
+    task = enriched.setdefault("task", {})
+    if isinstance(task, dict):
+        task["turn_policy"] = "assistant_must_return_one_zip_attachment_and_one_protocol_reply"
     artifact = enriched.setdefault("artifact", {})
     if isinstance(artifact, dict):
         if expected.get("expected_repo") and not artifact.get("repo"):
@@ -7376,25 +7380,72 @@ def _augment_release_candidate_request(envelope: dict[str, Any], expected: dict[
         artifact["expected_artifact_role"] = expected.get("expected_role")
         artifact["artifact_count_policy"] = "exactly_one_expected_zip_candidate"
         artifact["no_artifact_reply_allowed"] = False
-        artifact["download_policy"] = "direct_url_or_chatgpt_attachment_link_required"
+        artifact["download_policy"] = "rendered_chatgpt_attachment_or_clickable_download_link_required"
     constraints = enriched.setdefault("constraints", {})
     if isinstance(constraints, dict):
         constraints["exactly_one_zip_artifact_required"] = True
         constraints["expected_output_artifact_required"] = True
+        constraints["fresh_artifact_for_request_required"] = True
+        constraints["attachment_outside_envelope_required"] = True
+        constraints["json_only_artifact_declaration_forbidden"] = True
         constraints["no_artifact_reply_allowed"] = False
         constraints["no_auto_adopt"] = True
+    enriched["expected_output"] = {
+        "success_component_count": 2,
+        "success_components_in_order": [
+            {
+                "component": 1,
+                "type": "rendered_chatgpt_downloadable_zip",
+                "count": 1,
+                "filename": expected.get("expected_artifact"),
+                "rendered_outside_envelope": True,
+                "required": True,
+            },
+            {
+                "component": 2,
+                "type": "promptbranch_reply_envelope",
+                "count": 1,
+                "begin_marker": BEGIN_REPLY_MARKER,
+                "end_marker": END_REPLY_MARKER,
+                "required": True,
+            },
+        ],
+        "failure_component_count": 1,
+        "failure_component": {
+            "type": "failed_promptbranch_reply_envelope",
+            "artifact_count": 0,
+        },
+        "other_output_allowed": False,
+    }
     expected_reply = enriched.setdefault("expected_reply", {})
     if isinstance(expected_reply, dict):
+        expected_reply["required_top_level_keys"] = [
+            "schema", "schema_version", "request_id", "correlation_id",
+            "status", "result_type", "summary", "baseline", "changes",
+            "artifacts", "validation", "next_step", "confidence",
+        ]
         expected_reply["result_type_required"] = "release_candidate"
         expected_reply["artifact_policy"] = {
             "exact_count": 1,
             "expected_filename": expected.get("expected_artifact"),
             "expected_version": expected.get("expected_version"),
             "expected_role": expected.get("expected_role"),
+            "physical_creation_required": True,
+            "rendered_attachment_required": True,
+            "rendered_outside_envelope_required": True,
             "download_available_required": True,
+            "json_only_declaration_forbidden": True,
         }
     decisions = enriched.setdefault("protocol_decisions", {})
     if isinstance(decisions, dict):
+        decisions["reply_envelope_count"] = 1
+        decisions["zip_attachment_required"] = True
+        decisions["zip_attachment_count"] = 1
+        decisions["zip_attachment_outside_envelope"] = True
+        decisions["successful_response_component_count"] = 2
+        decisions["failed_response_component_count"] = 1
+        decisions["artifact_url_policy"] = "rendered_attachment_and_envelope_metadata_must_identify_same_file"
+        decisions["download_policy"] = "rendered_chatgpt_attachment_or_clickable_download_link"
         decisions["no_artifact_reply_allowed"] = False
         decisions["release_candidate_artifact_required"] = True
         decisions["candidate_run_next_step_required"] = True
@@ -7480,78 +7531,70 @@ def _build_zip_artifact_user_prompt(
     )
 
 
-def _build_ask_release_execution_requirements(
-    *,
-    baseline: Any,
-    current_version: Any,
-    target_version: Any,
-    expected_artifact: Any,
-    request_id: Any,
-) -> str:
-    """Build the hard execution contract for a release-candidate artifact ask.
-
-    The protocol envelope describes the desired candidate, but description is
-    not artifact materialization.  These requirements force the assistant to
-    create a fresh baseline-derived ZIP and attach it before reporting success.
-    """
-
-    return (
-        "Hard artifact-execution requirements:\n\n"
-        f"1. Use the exact accepted/current release artifact {baseline} "
-        f"(version {current_version}) as the actual source baseline.\n\n"
-        f"2. Extract or otherwise inspect that exact baseline artifact and create a brand-new "
-        f"release ZIP named {expected_artifact} for target version {target_version}.\n\n"
-        "3. The new ZIP must contain the complete repository contents derived from the accepted/current "
-        "baseline, with the requested target-version changes applied.\n\n"
-        "4. Before writing the Promptbranch reply envelope, create the physical ZIP artifact using the "
-        "available file/artifact creation capability.\n\n"
-        "5. Attach the created ZIP to this exact assistant answer as a real ChatGPT downloadable attachment. "
-        "A filename in JSON, a sandbox path written as text, or a claim that the file exists is not sufficient.\n\n"
-        f"6. Do not reuse, rename, or reference a ZIP created by an earlier answer or failed request. "
-        f"Create a fresh artifact for this exact request_id: {request_id}.\n\n"
-        f"7. Do not set status=completed unless the attachment is visibly materialized in this answer and "
-        f"its filename is exactly {expected_artifact}.\n\n"
-        "8. Only after the attachment exists, calculate its actual SHA-256, byte size, and ZIP entry count "
-        "and place those observed values in the reply envelope.\n\n"
-        "9. When the artifact cannot be physically created and attached, return status=failed, "
-        "result_type=release_candidate, artifacts=[], and a non-empty failure summary.\n\n"
-        "Create a brand-new ZIP from the exact accepted/current release artifact, attach that physical ZIP "
-        "to this exact answer, and only then construct the reply envelope from the actual created file."
-    )
-
-
 def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], envelope: dict[str, Any]) -> str:
     artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
     baseline = artifact.get("current_baseline")
     current_version = artifact.get("current_version")
     target_version = expected.get("expected_version") or artifact.get("target_version")
     expected_artifact = expected.get("expected_artifact")
-    prompt_text = str(base_prompt or "").strip()
-    if not prompt_text:
-        prompt_text = (
-            f"Build {expected_artifact} from accepted baseline {baseline}. "
-            f"Implement the target version {target_version} as requested by the current project plan."
-        )
-    execution_requirements = _build_ask_release_execution_requirements(
-        baseline=baseline,
-        current_version=current_version,
-        target_version=target_version,
-        expected_artifact=expected_artifact,
-        request_id=envelope.get("request_id"),
+    request_id = envelope.get("request_id")
+    release_type = artifact.get("release_type") or "normal"
+    prompt_text = str(base_prompt or "").strip() or (
+        f"Create {expected_artifact} from accepted baseline {baseline} for target {target_version}."
     )
-    return _build_zip_artifact_user_prompt(
-        request_label="Release-candidate request",
-        expected_artifact=expected_artifact,
-        baseline=baseline,
-        current_version=current_version,
-        target_version=target_version,
-        result_type="release_candidate",
-        expected_role="candidate_release",
-        prompt_text=prompt_text,
-        artifact_version_required=True,
-        no_change_disallowed=True,
-        forbidden_claims="Do not claim adoption, Project Source mutation, Git commit, or Git push.",
-        execution_requirements=execution_requirements,
+    return (
+        f"Create exactly one new ZIP artifact named:\n\n{expected_artifact}\n\n"
+        f"Input baseline:\n\n{baseline}\n\n"
+        f"Input version:\n\n{current_version}\n\n"
+        f"Target version:\n\n{target_version}\n\n"
+        f"Release type:\n\n{release_type}\n\n"
+        "Requested implementation scope:\n\n"
+        f"1. Use the exact accepted/current release ZIP {baseline} as the actual source baseline.\n\n"
+        "2. Extract or otherwise inspect that exact baseline ZIP.\n\n"
+        "3. Create a fresh working copy derived from that baseline.\n\n"
+        "4. Apply the requested target-version changes consistently across all authoritative version, package, "
+        "release-contract, control-surface, documentation, and test locations required by the repository. The "
+        f"requested scope is: {prompt_text}\n\n"
+        "5. Preserve complete repository contents.\n\n"
+        "6. Package repository contents directly at ZIP root.\n\n"
+        "7. Do not include a wrapper directory.\n\n"
+        "8. Do not include nested ZIP files.\n\n"
+        "9. Do not include cache files, Python bytecode, temporary files, or unsafe paths.\n\n"
+        f"10. Do not reuse, rename, copy, or reference a {target_version} ZIP created for an earlier answer, "
+        "earlier request, Retry, or failed lifecycle attempt.\n\n"
+        f"11. Create a brand-new physical ZIP specifically for request:\n\n{request_id}\n\n"
+        "12. Create the physical ZIP before beginning the final response.\n\n"
+        "13. Validate the actual created ZIP before replying:\n"
+        "    - exact filename;\n"
+        f"    - embedded version {target_version};\n"
+        "    - ZIP CRC;\n"
+        "    - repository-root layout;\n"
+        "    - no wrapper directory;\n"
+        "    - no nested ZIP files;\n"
+        "    - no cache files;\n"
+        "    - no unsafe paths;\n"
+        "    - actual SHA-256;\n"
+        "    - actual byte size;\n"
+        "    - actual ZIP entry count.\n\n"
+        "14. Expose the created ZIP as Component 1 of the final response using a real rendered ChatGPT attachment "
+        "or clickable download link outside the JSON envelope.\n\n"
+        "15. Only after Component 1 is present, construct Component 2 using metadata observed from that exact "
+        "physical ZIP.\n\n"
+        "16. The artifact object in the reply envelope must contain:\n"
+        "    - filename;\n"
+        "    - version;\n"
+        "    - role;\n"
+        "    - media_type;\n"
+        "    - actual size_bytes;\n"
+        "    - actual sha256;\n"
+        "    - actual entry_count;\n"
+        "    - download_available=true;\n"
+        "    - download_url matching the rendered attachment or link.\n\n"
+        "17. Do not set status=\"completed\" unless the physical ZIP has been created and exposed as "
+        "Component 1 in the same assistant response.\n\n"
+        "18. Do not claim adoption, accepted/current advancement, Project Source mutation, Git commit, or Git push.\n\n"
+        "19. When the ZIP cannot be physically created or exposed, return the defined failed envelope with "
+        "artifacts=[]."
     )
 
 
@@ -7663,7 +7706,7 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
         return 0
 
     release_prompt = _build_ask_release_user_prompt(raw_prompt, expected, envelope)
-    prompt = render_protocol_ask_prompt(envelope, user_prompt=release_prompt)
+    prompt = render_release_candidate_artifact_prompt(envelope, user_prompt=release_prompt)
     for attachment_path in attachment_paths:
         if not Path(attachment_path).is_file():
             print(f"error: attachment file not found: {attachment_path}", file=sys.stderr)

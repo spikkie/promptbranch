@@ -1322,3 +1322,8 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 - **Timeout invariant:** browser response 1800s, fresh-turn 120s, artifact materialization 180s, safety 120s; outer lifecycle step is at least 2220s.
 - **Sequence:** `v0.1.123.2.3` is repair-only; `v0.1.124` and `v0.1.125` remain proof cycles 1 and 2.
 
+
+
+## v0.1.123.2.5 two-component release answer
+
+A successful ask-release answer is exactly one rendered ZIP output followed by one marked reply envelope. The generic JSON-only lead-in is not used for release candidates.

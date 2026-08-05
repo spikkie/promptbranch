@@ -1,15 +1,16 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip` (`v0.1.123.2.3`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip`.
-Accepted SHA-256: `d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip` (`v0.1.123.2.4`).
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip` (`v0.1.123.2.4`).
+Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.2.4(1).zip`.
+Accepted SHA-256: `91d214427971641b07a836a5029423e39240fc5be1fc29c94d1243db90abc69e`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip` (`v0.1.123.2.5`).
 Next normal slice: `v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command`.
 Planned after cycle 1: `v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict`.
 Formal consecutive MVP proof count: `0/2`.
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
+| v0.1.123.2.5 | repair | Two-component ZIP output plus reply-envelope contract | candidate | focused renderer/schema tests, mandatory groups, deterministic ZIP and Guardian | DOD-426 through DOD-430 candidate; repair cannot count | pending |
 | v0.1.123.2.4 | repair | Baseline-derived ZIP creation and real attachment enforcement | candidate | hard prompt-generation regressions, mandatory groups, deterministic ZIP and Guardian | DOD-422 through DOD-425 candidate; repair cannot count | pending |
 | v0.1.123.2.3 | repair | Operation-scoped response guardrails and nested timeout budget | accepted/current | strict release validation, exact Project Source, runtime/registry/current alignment, adoption verified | DOD-417 through DOD-421 accepted; repair cannot count | d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea |
 | v0.1.123.2.1 | repair | Project authority URL alias reconciliation | failed_pre_validation | `pb project join` succeeded but release-control literal post-join verification rejected equivalent bare/slugged identities before strict tests | DOD-409 through DOD-412 implemented; repair not adopted and cannot count | rejected/non-adopted |

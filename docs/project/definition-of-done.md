@@ -62,6 +62,12 @@
 | DOD-424 | Generated ask-release prompt requires a real attachment and rejects JSON-only sandbox declarations as sufficient evidence | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
 | DOD-425 | Generated ask-release prompt requires observed artifact metadata and a failed envelope with `artifacts=[]` when materialization fails | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.4 |
 
+| DOD-426 | Ask-release prompt declares exactly two ordered success components | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.5 |
+| DOD-427 | ZIP output is rendered outside the envelope and JSON-only sandbox declarations are invalid | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.5 |
+| DOD-428 | Failure format is one dynamic failed envelope with `artifacts=[]` | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.5 |
+| DOD-429 | Request schema declares the two-component output and matching attachment policy | done | `tests/test_ask_release_artifact_execution_prompt.py` | v0.1.123.2.5 |
+| DOD-430 | Generic exactly-one-envelope lead-in is excluded from release-candidate asks | done | `tests/test_ask_release_two_component_renderer.py` | v0.1.123.2.5 |
+
 ## Status values
 
 Use only:

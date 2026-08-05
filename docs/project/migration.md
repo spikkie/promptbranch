@@ -1411,3 +1411,8 @@ No operator state migration is required. The repair changes only the release-con
 
 No operator-state migration is required. The repair changes browser response-wait guardrail causality and derives nested timeout budgets internally. Existing project binding, accepted artifact registry, and pinned conversation selection remain unchanged. After strict adoption, retry the one-command `v0.1.124` proof lifecycle.
 
+
+
+## v0.1.123.2.5 prompt migration
+
+No state migration is required. Only generated release-candidate request wording and its machine-readable expected-output contract change.

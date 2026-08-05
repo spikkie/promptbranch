@@ -1,6 +1,6 @@
-## v0.1.123.2.4 baseline-derived ZIP and real attachment enforcement
+## v0.1.123.2.5 two-component ask-release output contract
 
-`v0.1.123.2.3` is accepted/current. `v0.1.123.2.4` strengthens `pb ask-release` prompt generation so the assistant must inspect the exact accepted/current ZIP, create a fresh target ZIP for the exact request ID, attach it to the same answer, and only then emit a completed protocol envelope with observed SHA-256, size, and entry count. JSON-only filenames, textual `sandbox:` paths, and claims without a rendered attachment are explicitly insufficient.
+`v0.1.123.2.4` is accepted/current. `v0.1.123.2.5` replaces the release-candidate prompt lead-in with the manually proven two-component contract: one real rendered downloadable ZIP outside the envelope, followed by exactly one marked Promptbranch JSON reply envelope. JSON-only `sandbox:` declarations remain invalid, and failure remains fail-closed with `artifacts=[]`.
 
 ## v0.1.123.2.3 operation-scoped response waiting repair
 

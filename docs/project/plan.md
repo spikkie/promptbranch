@@ -1,10 +1,10 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.123.2.3
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
-active candidate version: v0.1.123.2.4
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
-active slice: v0.1.123.2.4 — Force baseline-derived ZIP creation and real attachment materialization
+accepted/current baseline: v0.1.123.2.4
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
+active candidate version: v0.1.123.2.5
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
+active slice: v0.1.123.2.5 — Two-component ZIP output plus reply-envelope contract
 next normal version: v0.1.124
 next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
 
@@ -12,16 +12,16 @@ next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask c
 
 ```text
 accepted/current version: v0.1.123.2.3
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
 accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
 accepted/current SHA-256: d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea
-active candidate version: v0.1.123.2.4
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
+active candidate version: v0.1.123.2.5
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
 next normal version: v0.1.124
 next planned after acceptance: v0.1.125
 ```
 
-## Active repair slice — v0.1.123.2.4
+## Active repair slice — v0.1.123.2.5
 
 1. Preserve accepted/current `v0.1.123.2.3`; the repair cannot count as an MVP proof cycle.
 2. Generate a hard ask-release execution contract naming the exact baseline, target ZIP, version, and request ID.

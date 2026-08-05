@@ -1,11 +1,11 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
-  "accepted_current_version": "v0.1.123.2.3",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
-  "active_candidate_version": "v0.1.123.2.4",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
+  "accepted_current_version": "v0.1.123.2.4",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+  "active_candidate_version": "v0.1.123.2.5",
   "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.123.2.4 \u2014 Force baseline-derived ZIP creation and real attachment materialization",
+  "active_slice": "v0.1.123.2.5 \u2014 Two-component ZIP output plus reply-envelope contract",
   "architecture_goal": "controlled problem-solving loop",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -2274,15 +2274,6 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip",
-      "release_mode": "repair",
-      "scope": "project join alias reconciliation implemented; caller literal verification still blocked strict validation",
-      "slice": "v0.1.123.2.1 \u2014 Project authority URL alias reconciliation repair",
-      "status": "failed_pre_validation",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.1.zip",
-      "version": "v0.1.123.2.1"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
       "release_mode": "repair",
       "scope": "strictly adopted immutable Project UUID alias verification across join and release-control caller",
@@ -2305,9 +2296,18 @@
       "release_mode": "repair",
       "scope": "hard ask-release execution contract for fresh baseline-derived ZIP creation and real answer attachment",
       "slice": "v0.1.123.2.4 \u2014 Force baseline-derived ZIP creation and real attachment materialization",
-      "status": "active",
+      "status": "accepted_current",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
       "version": "v0.1.123.2.4"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+      "release_mode": "repair",
+      "scope": "manually proven two-component release answer: rendered ZIP output plus one protocol envelope",
+      "slice": "v0.1.123.2.5 \u2014 Two-component ZIP output plus reply-envelope contract",
+      "status": "active",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+      "version": "v0.1.123.2.5"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",

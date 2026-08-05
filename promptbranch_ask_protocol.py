@@ -153,6 +153,108 @@ def render_protocol_ask_prompt(envelope: dict[str, Any], *, user_prompt: str) ->
     )
 
 
+def render_release_candidate_artifact_prompt(envelope: dict[str, Any], *, user_prompt: str) -> str:
+    """Render the strict two-component release-candidate artifact prompt.
+
+    A successful answer must expose one rendered downloadable ZIP outside the
+    protocol envelope and then emit exactly one marked JSON envelope.  This
+    release-specific renderer intentionally avoids the generic "exactly one
+    reply envelope" lead-in because that wording can bias ChatGPT toward a
+    JSON-only response with no materialized attachment.
+    """
+
+    artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
+    request_id = str(envelope.get("request_id") or "")
+    correlation_id = str(envelope.get("correlation_id") or request_id)
+    expected_artifact = str(artifact.get("expected_output_artifact") or "")
+    baseline = str(artifact.get("current_baseline") or "")
+    current_version = str(artifact.get("current_version") or "")
+    target_version = str(artifact.get("expected_output_version") or artifact.get("target_version") or "")
+    release_type = str(artifact.get("release_type") or "normal")
+
+    failure_reply = {
+        "schema": REPLY_SCHEMA,
+        "schema_version": REPLY_SCHEMA_VERSION,
+        "request_id": request_id,
+        "correlation_id": correlation_id,
+        "status": "failed",
+        "result_type": "release_candidate",
+        "summary": "A non-empty factual explanation of why the ZIP could not be physically created or attached.",
+        "baseline": {
+            "input_baseline": baseline,
+            "input_version": current_version,
+            "target_version": target_version,
+            "release_type": release_type,
+        },
+        "changes": [],
+        "artifacts": [],
+        "validation": {
+            "ok": False,
+            "physical_artifact_created": False,
+            "attachment_rendered": False,
+        },
+        "next_step": {
+            "operator_action": "inspect_artifact_creation_failure",
+            "recommended_command": "Do not run the candidate lifecycle because no materialized candidate was returned.",
+        },
+        "confidence": 1.0,
+    }
+
+    return (
+        "Promptbranch release-candidate artifact request.\n\n"
+        "MANDATORY FINAL RESPONSE FORMAT\n\n"
+        "A successful final response MUST contain exactly two output components, in this exact order:\n\n"
+        "COMPONENT 1 — REAL DOWNLOADABLE ZIP OUTPUT\n\n"
+        "Create and expose exactly one real downloadable ChatGPT file attachment or rendered clickable "
+        "download link with this exact filename:\n\n"
+        f"{expected_artifact}\n\n"
+        "The ZIP file must be physically created for this exact request before the final response is written.\n\n"
+        "The ZIP output must appear as a separate rendered attachment or clickable download link in the "
+        "assistant response, outside the Promptbranch JSON envelope.\n\n"
+        "A filename written as plain text is not an attachment.\n\n"
+        "A filesystem path written as plain text is not an attachment.\n\n"
+        "A sandbox path written only inside JSON is not an attachment.\n\n"
+        "This by itself is invalid:\n\n"
+        f"\"download_url\": \"sandbox:/mnt/data/{expected_artifact}\"\n\n"
+        "A Markdown download link is acceptable only when it is rendered as a real clickable ChatGPT download "
+        "link to the physical file, for example:\n\n"
+        f"[Download {expected_artifact}](actual-created-file-reference)\n\n"
+        "The rendered ZIP attachment or download link is a required output component. It does not count as "
+        "human-readable explanation and does not violate the requirement to return exactly one Promptbranch "
+        "reply envelope.\n\n"
+        "COMPONENT 2 — EXACTLY ONE PROMPTBRANCH REPLY ENVELOPE\n\n"
+        "After the ZIP file has been physically created and exposed as Component 1, output exactly one "
+        "machine-readable reply envelope.\n\n"
+        f"The envelope must begin with:\n\n{BEGIN_REPLY_MARKER}\n\nand end with:\n\n{END_REPLY_MARKER}\n\n"
+        "Do not put the envelope in a Markdown code fence.\n\n"
+        "Do not output a second envelope.\n\n"
+        "Do not output prose, headings, explanations, status messages, or any other content before, between, "
+        "or after the two required components.\n\n"
+        "The successful final response shape MUST be exactly:\n\n"
+        "<one rendered downloadable ZIP attachment or clickable download link>\n\n"
+        f"{BEGIN_REPLY_MARKER}\n{{\n  \"schema\": \"{REPLY_SCHEMA}\",\n  \"...\": \"metadata describing the exact ZIP exposed above\"\n}}\n{END_REPLY_MARKER}\n\n"
+        "FAILURE RESPONSE FORMAT\n\n"
+        "When the ZIP cannot be physically created or cannot be exposed as a rendered downloadable attachment "
+        "or clickable link, do not invent a download URL and do not claim success.\n\n"
+        "In that failure case, output exactly one component:\n\n"
+        f"{BEGIN_REPLY_MARKER}\n"
+        + json.dumps(failure_reply, indent=2, ensure_ascii=False)
+        + f"\n{END_REPLY_MARKER}\n\n"
+        "PROMPTBRANCH REQUEST\n\n"
+        "BEGIN_PROMPTBRANCH_REQUEST_JSON\n"
+        + json.dumps(envelope, indent=2, ensure_ascii=False)
+        + "\nEND_PROMPTBRANCH_REQUEST_JSON\n\n"
+        "RELEASE-CANDIDATE IMPLEMENTATION REQUEST\n\n"
+        + str(user_prompt or "").strip()
+        + "\n\nFINAL REMINDER\n\n"
+        "The required successful output is not “one JSON envelope containing a ZIP path.”\n\n"
+        "The required successful output is:\n\n"
+        "ONE REAL DOWNLOADABLE ZIP FILE\n+\nONE BEGIN_PROMPTBRANCH_REPLY_JSON ... "
+        "END_PROMPTBRANCH_REPLY_JSON ENVELOPE\n\n"
+        "Create the ZIP first. Expose the ZIP second. Construct the envelope last."
+    )
+
+
 @dataclass(frozen=True)
 class ReplyBlock:
     index: int

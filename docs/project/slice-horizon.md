@@ -5,7 +5,8 @@
 | v0.1.123.2.1 | repair | failed_pre_validation | Project alias reconciliation; caller literal check still failed |
 | v0.1.123.2.2 | repair | accepted_historical | Release-control caller Project alias verification |
 | v0.1.123.2.3 | repair | accepted_current | Operation-scoped response guardrails and nested timeout budget |
-| v0.1.123.2.4 | repair | active | Hard ask-release contract for fresh baseline-derived ZIP creation and real attachment |
+| v0.1.123.2.4 | repair | accepted/current | Hard ask-release contract for fresh baseline-derived ZIP creation and real attachment |
+| v0.1.123.2.5 | repair | active | Two-component rendered ZIP output plus one reply envelope |
 | v0.1.124 | normal | planned_after_acceptance | Canonical MVP proof cycle 1 through one pinned `pb ask continue` |
 | v0.1.125 | normal | planned | Canonical MVP proof cycle 2 and final MVP verdict |
 
