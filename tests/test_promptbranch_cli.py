@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -4303,6 +4304,749 @@ def test_artifact_intake_dry_run_reads_latest_validated_protocol_run_without_bac
 
 
 
+
+
+def _replayable_unvalidated_artifact_run(
+    tmp_path: Path,
+    *,
+    request_id: str = "req-replay-rendered-attachment",
+) -> tuple[dict, bytes, str]:
+    artifact_name = "chatgpt_claudecode_workflow-2_v0.1.124.zip"
+    source_zip = tmp_path / "source-v0.1.124.zip"
+    with zipfile.ZipFile(source_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("VERSION", "v0.1.124\n")
+        archive.writestr("README.md", "# replayed rendered attachment\n")
+    content = source_zip.read_bytes()
+    with zipfile.ZipFile(source_zip) as archive:
+        entry_count = len(archive.infolist())
+    sha256 = hashlib.sha256(content).hexdigest()
+    size_bytes = len(content)
+    conversation_id = "replay-conversation"
+    conversation_url = f"https://chatgpt.com/g/g-p-demo/c/{conversation_id}"
+    message_id = "replay-message"
+    answer_id = "replay-answer"
+    reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "status": "completed",
+        "result_type": "release_candidate",
+        "summary": "Created one release candidate.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "input_version": "v0.1.123.2.6",
+            "source_ref": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "source_version": "v0.1.123.2.6",
+            "registry_current": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "registry_current_version": "v0.1.123.2.6",
+            "output_artifact": artifact_name,
+            "output_version": "v0.1.124",
+            "target_version": "v0.1.124",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [
+            {
+                "kind": "zip",
+                "filename": artifact_name,
+                "version": "v0.1.124",
+                "role": "candidate_release",
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "entry_count": entry_count,
+                "download": {
+                    "available": True,
+                    "link_text": artifact_name,
+                    "url": f"sandbox:/mnt/data/{artifact_name}",
+                },
+            }
+        ],
+        "validation": {"claimed": ["candidate created"], "not_claimed": ["adoption"]},
+        "next_step": {"operator_action": "download_verify_candidate"},
+        "confidence": "high",
+    }
+    run = {
+        "ok": False,
+        "action": "ask_release",
+        "status": "artifact_declared_but_not_attached",
+        "reply_validation_ok": False,
+        "reply_validation_errors": [
+            "ask_release:download_proof",
+            "ask_release:artifact_declared_but_not_attached",
+        ],
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "reply": reply,
+        "artifact_candidate_count": 1,
+        "ask_release_validation": {
+            "ok": False,
+            "failures": ["download_proof", "artifact_declared_but_not_attached"],
+            "checks": {
+                "reply_validated": False,
+                "exact_artifact_count": True,
+                "filename_matches": True,
+                "version_matches": True,
+                "role_matches": True,
+                "download_claimed": False,
+                "download_available": False,
+                "download_proof": False,
+                "status_release_candidate": True,
+                "artifact_count": 1,
+                "download_direct_supported": False,
+                "download_attachment_proven": False,
+                "download_json_only_declared": True,
+            },
+        },
+        "artifact_materialization_proven": False,
+        "download_performed": False,
+        "browser_download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+        "conversation_id": conversation_id,
+        "conversation_url": conversation_url,
+        "message": {"id": message_id, "index": 1, "turn_index": 10, "role": "user"},
+        "answer": {"id": answer_id, "index": 1, "turn_index": 11, "role": "assistant"},
+        "selected_answer": {
+            "message_id": message_id,
+            "message_index": 1,
+            "message_turn_index": 10,
+            "answer_id": answer_id,
+            "answer_index": 1,
+            "answer_turn_index": 11,
+        },
+        "selected_protocol_reply": {
+            "request_id": request_id,
+            "correlation_id": request_id,
+            "conversation_id": conversation_id,
+            "conversation_url": conversation_url,
+            "message_id": message_id,
+            "message_index": 1,
+            "message_turn_index": 10,
+            "answer_id": answer_id,
+            "answer_index": 1,
+            "answer_turn_index": 11,
+        },
+        "answer_text_length": 4096,
+        "request": {
+            "schema": "promptbranch.ask.request",
+            "schema_version": "1.0",
+            "request_id": request_id,
+            "correlation_id": request_id,
+            "workspace": {"project_home_url": "https://chatgpt.com/g/g-p-demo/project"},
+            "task": {"conversation_url": conversation_url, "conversation_id": conversation_id},
+            "artifact": {
+                "repo": "chatgpt_claudecode_workflow-2",
+                "current_baseline": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "current_version": "v0.1.123.2.6",
+                "source_ref": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "source_version": "v0.1.123.2.6",
+                "registry_current": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "registry_current_version": "v0.1.123.2.6",
+                "target_version": "v0.1.124",
+                "release_type": "normal",
+            },
+        },
+    }
+    return run, content, artifact_name
+
+
+def test_artifact_intake_protocol_run_request_id_selects_exact_older_artifact_run(monkeypatch, capsys, tmp_path) -> None:
+    artifact_name = "chatgpt_claudecode_workflow-2_v0.1.124.zip"
+    selected_request_id = "req_20260805T105438125979Z"
+    selected_reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": selected_request_id,
+        "correlation_id": selected_request_id,
+        "status": "completed",
+        "result_type": "release_candidate",
+        "summary": "Built candidate.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "input_version": "v0.1.123.2.6",
+            "source_ref": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "source_version": "v0.1.123.2.6",
+            "registry_current": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+            "registry_current_version": "v0.1.123.2.6",
+            "output_artifact": artifact_name,
+            "output_version": "v0.1.124",
+            "target_version": "v0.1.124",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [{
+            "kind": "zip",
+            "filename": artifact_name,
+            "version": "v0.1.124",
+            "role": "candidate_release",
+            "download": {
+                "available": True,
+                "link_text": artifact_name,
+                "url": f"https://example.invalid/{artifact_name}",
+            },
+            "sha256": "a" * 64,
+            "size_bytes": 12178855,
+            "zip_entry_count": 1058,
+        }],
+        "validation": {"claimed": ["focused tests"], "not_claimed": ["adoption"]},
+        "next_step": {"operator_action": "download_verify"},
+    }
+    selected_run = {
+        "ok": True,
+        "status": "reply_validated",
+        "reply_validation_ok": True,
+        "request_id": selected_request_id,
+        "correlation_id": selected_request_id,
+        "reply": selected_reply,
+        "artifact_candidate_count": 1,
+        "conversation_id": "artifact-conversation",
+        "conversation_url": "https://chatgpt.com/g/g-p-demo/c/artifact-conversation",
+        "message": {"id": "artifact-message", "index": 1, "role": "user"},
+        "answer": {"id": "artifact-answer", "index": 1, "role": "assistant"},
+        "request": {
+            "workspace": {"project_home_url": "https://chatgpt.com/g/g-p-demo/project"},
+            "task": {
+                "conversation_url": "https://chatgpt.com/g/g-p-demo/c/artifact-conversation",
+                "conversation_id": "artifact-conversation",
+            },
+            "artifact": {
+                "repo": "chatgpt_claudecode_workflow-2",
+                "current_baseline": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "current_version": "v0.1.123.2.6",
+                "source_ref": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "source_version": "v0.1.123.2.6",
+                "registry_current": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+                "registry_current_version": "v0.1.123.2.6",
+                "target_version": "v0.1.124",
+                "release_type": "normal",
+            },
+        },
+    }
+    latest_request_id = "req_20260804T074608454070Z"
+    latest_reply = {
+        "schema": "promptbranch.ask.reply",
+        "schema_version": "1.0",
+        "request_id": latest_request_id,
+        "correlation_id": latest_request_id,
+        "status": "no_artifact",
+        "result_type": "no_change",
+        "summary": "No artifact.",
+        "baseline": {
+            "input_artifact": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+            "input_version": "v0.1.122",
+            "target_version": "v0.1.123",
+            "release_type": "normal",
+        },
+        "changes": [],
+        "artifacts": [],
+        "validation": {"claimed": ["no artifact"], "not_claimed": ["artifact creation"]},
+        "next_step": {"operator_action": "none"},
+    }
+    latest_run = {
+        "ok": True,
+        "status": "reply_validated_from_task_answer",
+        "reply_validation_ok": True,
+        "request_id": latest_request_id,
+        "correlation_id": latest_request_id,
+        "reply": latest_reply,
+        "artifact_candidate_count": 0,
+        "request": {
+            "workspace": {"project_home_url": "https://chatgpt.com/g/g-p-demo/project"},
+            "task": {"conversation_url": "https://chatgpt.com/g/g-p-demo/c/no-artifact", "conversation_id": "no-artifact"},
+            "artifact": {
+                "repo": "chatgpt_claudecode_workflow-2",
+                "current_baseline": "chatgpt_claudecode_workflow-2_v0.1.122.zip",
+                "current_version": "v0.1.122",
+                "target_version": "v0.1.123",
+                "release_type": "normal",
+            },
+        },
+    }
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    selected_path = records / f"{selected_request_id}.json"
+    latest_path = records / f"{latest_request_id}.json"
+    selected_path.write_text(json.dumps(selected_run), encoding="utf-8")
+    latest_path.write_text(json.dumps(latest_run), encoding="utf-8")
+    os.utime(selected_path, (1000, 1000))
+    os.utime(latest_path, (2000, 2000))
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def get_chat(self, *args, **kwargs):
+            raise AssertionError("exact protocol-run replay must not fetch live chat")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", selected_request_id,
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--dry-run",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["source"] == "selected_validated_protocol_reply"
+    assert payload["lookup"]["status"] == "selected_validated_protocol_run"
+    assert payload["protocol_run_request_id"] == selected_request_id
+    assert payload["selected_request_id"] == selected_request_id
+    assert payload["selected_answer_id"] == "artifact-answer"
+    assert payload["protocol_run_selector"] == {"mode": "request_id", "request_id": selected_request_id}
+    assert payload["artifact_candidate_count"] == 1
+    assert payload["selected_candidate"]["filename"] == artifact_name
+
+
+def test_artifact_intake_protocol_run_request_id_missing_fails_closed(monkeypatch, capsys, tmp_path) -> None:
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", "req-missing",
+        "--dry-run",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "protocol_run_record_missing"
+    assert payload["lookup"]["selected_request_id"] == "req-missing"
+    assert payload["download_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+
+
+def test_artifact_intake_protocol_run_request_id_rejects_payload_identity_mismatch(monkeypatch, capsys, tmp_path) -> None:
+    selected_request_id = "req-selected"
+    run = {
+        "ok": True,
+        "status": "reply_validated",
+        "reply_validation_ok": True,
+        "request_id": "req-different",
+        "correlation_id": "req-different",
+        "reply": {
+            "schema": "promptbranch.ask.reply",
+            "schema_version": "1.0",
+            "request_id": "req-different",
+            "correlation_id": "req-different",
+            "status": "no_artifact",
+            "result_type": "no_change",
+            "summary": "No artifact.",
+            "baseline": {},
+            "changes": [],
+            "artifacts": [],
+            "validation": {"claimed": [], "not_claimed": []},
+            "next_step": {"operator_action": "none"},
+        },
+    }
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{selected_request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", selected_request_id,
+        "--dry-run",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "protocol_run_request_id_mismatch"
+    assert payload["lookup"]["payload_request_id"] == "req-different"
+
+
+def test_artifact_intake_protocol_run_request_id_requires_protocol_source(monkeypatch, capsys, tmp_path) -> None:
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-answer",
+        "--protocol-run-request-id", "req-selected",
+        "--dry-run",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "protocol_run_selector_requires_protocol_source"
+
+
+def test_artifact_intake_explicitly_replays_attachment_only_failure_and_verifies_browser_bytes(monkeypatch, capsys, tmp_path) -> None:
+    request_id = "req_20260805T105438125979Z"
+    run, content, artifact_name = _replayable_unvalidated_artifact_run(tmp_path, request_id=request_id)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+    calls: list[dict] = []
+
+    class ReplayServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            calls.append(dict(kwargs))
+            target_path = Path(str(kwargs["target_path"]))
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(content)
+            return {
+                "ok": True,
+                "status": "artifact_browser_downloaded",
+                "target_path": str(target_path),
+                "size_bytes": len(content),
+                "download_performed": True,
+                "attachment_detected": True,
+                "attachment_proven": True,
+                "rendered_attachment_detected": True,
+                "control_kind": "link",
+                "correlation_mode": "answer_id",
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", ReplayServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--replay-unvalidated-artifact-run",
+        "--download",
+        "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--download-timeout", "30",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "download_verified"
+    assert payload["source"] == "selected_replayable_protocol_reply"
+    assert payload["lookup"]["status"] == "selected_replayable_protocol_run"
+    assert payload["lookup"]["previous_status"] == "artifact_declared_but_not_attached"
+    assert payload["protocol_run_selector"] == {
+        "mode": "request_id",
+        "request_id": request_id,
+        "replay_unvalidated_artifact_run": True,
+        "replay_used": True,
+        "previous_status": "artifact_declared_but_not_attached",
+    }
+    assert payload["protocol_run_replay"]["eligibility"]["ok"] is True
+    assert payload["download_performed"] is True
+    assert payload["browser_download_performed"] is True
+    assert payload["verification_performed"] is True
+    assert payload["artifact_materialization_proven"] is True
+    assert payload["envelope_metadata_verified"] is True
+    assert payload["download_proof_status"] == "chatgpt_rendered_attachment_downloaded_verified"
+    assert payload["manual_import_required"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert calls[0]["request_id"] == request_id
+    assert calls[0]["answer_id"] == "replay-answer"
+    assert calls[0]["answer_turn_index"] == 11
+
+
+
+def _historical_attachment_only_protocol_run(
+    tmp_path: Path,
+    *,
+    request_id: str = "req_20260805T105438125979Z",
+) -> tuple[dict, bytes, str]:
+    run, content, artifact_name = _replayable_unvalidated_artifact_run(tmp_path, request_id=request_id)
+    baseline = run["reply"]["baseline"]
+    baseline["input_baseline"] = baseline.pop("input_artifact")
+    baseline.pop("source_ref", None)
+    baseline.pop("source_version", None)
+    artifact = run["reply"]["artifacts"][0]
+    download = artifact.pop("download")
+    artifact.pop("kind", None)
+    artifact["media_type"] = "application/zip"
+    artifact["download_available"] = False
+    artifact["download_url"] = download["url"]
+    run.pop("selected_protocol_reply", None)
+    run.pop("selected_request_id", None)
+    run.pop("selected_correlation_id", None)
+    run.pop("selected_message_id", None)
+    run.pop("selected_answer_id", None)
+    run["reply_validation_errors"] = [
+        "ask_release:reply_validated",
+        "ask_release:download_proof",
+        "ask_release:artifact_declared_but_not_attached",
+    ]
+    run["ask_release_validation"]["failures"] = [
+        "reply_validated",
+        "download_proof",
+        "artifact_declared_but_not_attached",
+    ]
+    return run, content, artifact_name
+
+
+def test_artifact_intake_replays_exact_historical_attachment_only_record_shape(monkeypatch, capsys, tmp_path) -> None:
+    request_id = "req_20260805T105438125979Z"
+    run, content, artifact_name = _historical_attachment_only_protocol_run(tmp_path, request_id=request_id)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+    calls: list[dict] = []
+
+    class ReplayServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            calls.append(dict(kwargs))
+            target_path = Path(str(kwargs["target_path"]))
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(content)
+            return {
+                "ok": True,
+                "status": "artifact_browser_downloaded",
+                "target_path": str(target_path),
+                "size_bytes": len(content),
+                "download_performed": True,
+                "attachment_detected": True,
+                "attachment_proven": True,
+                "rendered_attachment_detected": True,
+                "control_kind": "link",
+                "correlation_mode": "answer_id",
+            }
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", ReplayServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--replay-unvalidated-artifact-run",
+        "--download",
+        "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--download-timeout", "30",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["status"] == "download_verified"
+    eligibility = payload["lookup"]["replay_eligibility"]
+    assert eligibility["ok"] is True
+    assert eligibility["compatibility_profile"] == "legacy_attachment_only_protocol_run_v1"
+    assert eligibility["selection_identity_evidence"]["request_id"]["source"] == "exact_run_identity_fallback"
+    assert eligibility["candidate_zip_evidence"]["mode"] == "legacy_media_type"
+    assert eligibility["baseline_errors"] == []
+    assert eligibility["failure_evidence"]["canonical_failures"] == [
+        "artifact_declared_but_not_attached",
+        "download_proof",
+        "reply_validated",
+    ]
+    assert payload["download_performed"] is True
+    assert payload["verification_performed"] is True
+    assert payload["artifact_materialization_proven"] is True
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert calls[0]["request_id"] == request_id
+    assert calls[0]["answer_id"] == "replay-answer"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_failure"),
+    [
+        (lambda run: run["reply"]["artifacts"][0].update(media_type="text/plain"), "candidate_kind_zip"),
+        (lambda run: run["reply"]["baseline"].update(input_baseline="wrong.zip"), "baseline_matches_request"),
+        (lambda run: run["ask_release_validation"]["failures"].append("filename_matches"), "reply_errors_are_attachment_only"),
+        (lambda run: run.update(selected_answer_id="other-answer"), "selection_answer_identity_matches"),
+        (lambda run: run["ask_release_validation"]["checks"].update(filename_matches=False), "attachment_failure_identity_checks_passed"),
+    ],
+)
+def test_artifact_intake_historical_replay_normalization_remains_fail_closed(
+    monkeypatch,
+    capsys,
+    tmp_path,
+    mutation,
+    expected_failure,
+) -> None:
+    request_id = "req-historical-replay-rejected"
+    run, _content, artifact_name = _historical_attachment_only_protocol_run(tmp_path, request_id=request_id)
+    mutation(run)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("rejected historical replay must not reach browser download")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--replay-unvalidated-artifact-run",
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "selected_protocol_run_not_replayable"
+    assert expected_failure in payload["lookup"]["replay_eligibility"]["failures"]
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+
+
+def test_artifact_intake_unvalidated_replay_requires_explicit_flag(monkeypatch, capsys, tmp_path) -> None:
+    request_id = "req-replay-explicit-required"
+    run, _content, artifact_name = _replayable_unvalidated_artifact_run(tmp_path, request_id=request_id)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("browser download must remain unreachable without explicit replay")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "selected_protocol_run_not_validated"
+    assert payload["lookup"]["replay_eligibility"]["ok"] is True
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_failure"),
+    [
+        (lambda run: run.update(status="reply_validation_failed"), "run_status_allowlisted"),
+        (lambda run: run["reply_validation_errors"].append("ask_release:filename_matches"), "reply_errors_are_attachment_only"),
+        (lambda run: run.update(migration_performed=True), "no_prior_mutation_or_materialization"),
+        (lambda run: run["selected_protocol_reply"].update(answer_id="other-answer"), "selection_answer_identity_matches"),
+    ],
+)
+def test_artifact_intake_unvalidated_replay_rejects_non_allowlisted_or_mutated_records(
+    monkeypatch,
+    capsys,
+    tmp_path,
+    mutation,
+    expected_failure,
+) -> None:
+    request_id = "req-replay-rejected"
+    run, _content, artifact_name = _replayable_unvalidated_artifact_run(tmp_path, request_id=request_id)
+    mutation(run)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("rejected replay must not reach browser download")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--replay-unvalidated-artifact-run",
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "selected_protocol_run_not_replayable"
+    assert expected_failure in payload["lookup"]["replay_eligibility"]["failures"]
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+
+
+def test_artifact_intake_unvalidated_replay_requires_download_verify_and_forbids_migration(monkeypatch, capsys, tmp_path) -> None:
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", "req-replay-mode",
+        "--replay-unvalidated-artifact-run",
+        "--download",
+        "--migrate",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "unvalidated_artifact_replay_mode_invalid"
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
 
 
 def test_artifact_intake_accepts_recovered_protocol_run_after_service_timeout(monkeypatch, capsys, tmp_path) -> None:
@@ -11756,12 +12500,20 @@ def test_ask_release_print_request_json_requires_expected_candidate(monkeypatch,
         def __init__(self, base_url: str, *, token: str | None = None, timeout: float = 900.0) -> None:
             pass
 
-    profile = tmp_path / "profile"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    repo, profile = _initialize_test_project_scope(
+        tmp_path,
+        repo_id="chatgpt_claudecode_workflow",
+        repo_root=repo,
+    )
+    monkeypatch.chdir(repo)
     registry = ArtifactRegistry(profile)
     registry.initialize()
     registry.add(ArtifactRecord(
         path=str(tmp_path / "chatgpt_claudecode_workflow_v0.0.256.zip"),
         filename="chatgpt_claudecode_workflow_v0.0.256.zip",
+        repo_id="chatgpt_claudecode_workflow",
         kind="adopted_release",
         version="v0.0.256",
         repo_path=None,
@@ -15185,3 +15937,418 @@ def test_project_source_file_reliability_command_dispatches_focused_profile(
     assert captured["project_name"] == "itest-focused"
     assert captured["keep_project"] is True
     assert captured["strict_remove_ui"] is True
+
+
+def test_protocol_reply_validation_accepts_release_baseline_alias_and_target_version() -> None:
+    request_id = "req-materialized-finalize-alias"
+    artifact_name = "chatgpt_claudecode_workflow-2_v0.1.124.zip"
+    envelope = {
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "artifact": {
+            "current_baseline": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+            "current_version": "v0.1.123.2.5",
+            "target_version": "v0.1.124",
+            "release_type": "normal",
+        },
+    }
+    parsed = {
+        "ok": True,
+        "status": "valid",
+        "request_id": request_id,
+        "correlation_id": request_id,
+        "reply_status": "completed",
+        "result_type": "release_candidate",
+        "baseline": {
+            "input_baseline": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+            "input_version": "v0.1.123.2.5",
+            "target_version": "v0.1.124",
+            "release_type": "normal",
+        },
+        "artifacts": [{"filename": artifact_name, "version": "v0.1.124"}],
+        "reply": {
+            "status": "completed",
+            "result_type": "release_candidate",
+            "artifacts": [{"filename": artifact_name, "version": "v0.1.124"}],
+        },
+    }
+
+    ok, errors = _validate_protocol_reply_against_request(parsed, envelope)
+
+    assert ok is True
+    assert errors == []
+
+
+def _materialized_failed_protocol_run(
+    tmp_path: Path,
+    *,
+    request_id: str = "req-materialized-finalize",
+) -> tuple[dict, Path, str]:
+    run, content, artifact_name = _replayable_unvalidated_artifact_run(tmp_path, request_id=request_id)
+    baseline_name = "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip"
+    run["request"]["artifact"].update({
+        "current_baseline": baseline_name,
+        "current_version": "v0.1.123.2.5",
+        "source_ref": "chatgpt_claudecode_workflow-2_v0.1.123.2.5(1).zip",
+        "source_version": "v0.1.123.2.5",
+        "registry_current": baseline_name,
+        "registry_current_version": "v0.1.123.2.5",
+    })
+    reply_baseline = run["reply"]["baseline"]
+    reply_baseline.clear()
+    reply_baseline.update({
+        "input_baseline": baseline_name,
+        "input_version": "v0.1.123.2.5",
+        "target_version": "v0.1.124",
+        "release_type": "normal",
+    })
+    artifact = run["reply"]["artifacts"][0]
+    artifact.pop("kind", None)
+    artifact["media_type"] = "application/zip"
+    artifact["download_available"] = True
+    artifact["download_url"] = f"sandbox:/mnt/data/{artifact_name}"
+    artifact["download"].update({
+        "attachment_detected": True,
+        "attachment_proven": True,
+        "ui_attachment": True,
+        "rendered_control_kind": "button",
+        "correlation_mode": "answer_id",
+        "correlated_answer_id": run["answer"]["id"],
+        "correlated_request_id": request_id,
+    })
+
+    inbox_dir = (
+        tmp_path
+        / "artifact_inbox"
+        / run["conversation_id"]
+        / run["answer"]["id"]
+        / request_id
+    )
+    inbox_dir.mkdir(parents=True)
+    artifact_path = inbox_dir / artifact_name
+    artifact_path.write_bytes(content)
+    with zipfile.ZipFile(artifact_path) as archive:
+        entry_count = len(archive.infolist())
+    metadata = {
+        "path": str(artifact_path.resolve()),
+        "filename": artifact_name,
+        "size_bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    artifact.update({
+        "size_bytes": metadata["size_bytes"],
+        "sha256": metadata["sha256"],
+        "entry_count": entry_count,
+    })
+
+    run.update({
+        "status": "release_candidate_validation_failed",
+        "reply_validation_errors": [
+            "baseline_artifact_mismatch",
+            "target_version_mismatch",
+            "ask_release:reply_validated",
+        ],
+        "ask_release_validation": {
+            "ok": False,
+            "failures": ["reply_validated"],
+            "checks": {
+                "reply_validated": False,
+                "exact_artifact_count": True,
+                "filename_matches": True,
+                "version_matches": True,
+                "role_matches": True,
+                "download_claimed": True,
+                "download_available": True,
+                "download_proof": True,
+                "status_release_candidate": True,
+                "artifact_count": 1,
+                "download_direct_supported": False,
+                "download_attachment_proven": True,
+                "download_json_only_declared": False,
+                "artifact_materialization_attempted": True,
+                "artifact_materialization_proven": True,
+                "browser_download_performed": True,
+                "verification_performed": True,
+                "envelope_metadata_verified": True,
+                "materialization_status": "chatgpt_rendered_attachment_downloaded_verified",
+            },
+        },
+        "artifact_materialization_attempted": True,
+        "artifact_materialization_proven": True,
+        "download_performed": True,
+        "browser_download_performed": True,
+        "verification_performed": True,
+        "envelope_metadata_verified": True,
+        "materialization_status": "chatgpt_rendered_attachment_downloaded_verified",
+        "download": metadata,
+        "artifact_inbox_dir": str(inbox_dir.resolve()),
+        "migration_performed": False,
+        "adoption_performed": False,
+        "project_source_mutated": False,
+        "artifact_registry_updated": False,
+        "state_artifact_updated": False,
+        "state_source_updated": False,
+    })
+    return run, artifact_path, artifact_name
+
+
+def test_artifact_intake_finalizes_exact_already_materialized_protocol_run_without_redownload(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    request_id = "req-materialized-finalize"
+    run, artifact_path, artifact_name = _materialized_failed_protocol_run(tmp_path, request_id=request_id)
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    record_path = records / f"{request_id}.json"
+    record_path.write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("idempotent finalization must not redownload the rendered attachment")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "reply_validated"
+    assert payload["source"] == "selected_materialized_protocol_reply"
+    assert payload["protocol_run_finalization"]["performed"] is True
+    assert payload["protocol_run_finalization"]["no_redownload"] is True
+    assert payload["artifact_materialization_proven"] is True
+    assert payload["browser_download_performed"] is True
+    assert payload["verification_performed"] is True
+    assert payload["envelope_metadata_verified"] is True
+    assert payload["migration_performed"] is False
+    assert payload["adoption_performed"] is False
+    assert artifact_path.is_file()
+
+    persisted = json.loads(record_path.read_text(encoding="utf-8"))
+    assert persisted["ok"] is True
+    assert persisted["status"] == "reply_validated"
+    assert persisted["reply_validation_ok"] is True
+    assert persisted["reply_validation_errors"] == []
+    assert persisted["ask_release_validation"]["ok"] is True
+    assert persisted["post_materialization_finalization"]["performed"] is True
+    assert persisted["post_materialization_finalization"]["no_redownload"] is True
+
+
+def test_artifact_intake_materialized_finalization_rejects_changed_inbox_bytes(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    request_id = "req-materialized-corrupt"
+    run, artifact_path, artifact_name = _materialized_failed_protocol_run(tmp_path, request_id=request_id)
+    artifact_path.write_bytes(artifact_path.read_bytes() + b"tampered")
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("rejected finalization must not reach browser download")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "selected_protocol_run_not_finalizable"
+    failures = payload["lookup"]["materialized_finalization_eligibility"]["failures"]
+    assert "artifact_sha256_exact" in failures or "artifact_size_exact" in failures
+    assert payload["download_performed"] is False
+    assert payload["verification_performed"] is False
+
+
+def test_artifact_intake_materialized_finalization_rejects_prior_release_state_mutation(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    request_id = "req-materialized-mutated"
+    run, _artifact_path, artifact_name = _materialized_failed_protocol_run(tmp_path, request_id=request_id)
+    run["migration_performed"] = True
+    records = tmp_path / "ask_protocol_runs"
+    records.mkdir()
+    (records / f"{request_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+    exit_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(tmp_path),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "selected_protocol_run_not_finalizable"
+    assert "no_release_state_mutation" in payload["lookup"]["materialized_finalization_eligibility"]["failures"]
+
+
+def test_candidate_run_exact_finalized_materialized_protocol_run_migrates_one_candidate(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    """The guarded runner must preserve exact run identity through migration."""
+
+    request_id = "req_20260805T145619199617Z"
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _initialize_test_project_scope(
+        tmp_path,
+        repo_id="chatgpt_claudecode_workflow-2",
+        repo_root=repo,
+        project_id="candidate-run-exact",
+    )
+
+    run, artifact_path, artifact_name = _materialized_failed_protocol_run(profile, request_id=request_id)
+    records = profile / "ask_protocol_runs"
+    records.mkdir()
+    record_path = records / f"{request_id}.json"
+    record_path.write_text(json.dumps(run), encoding="utf-8")
+
+    class FailingServiceClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_chat_artifact(self, *args, **kwargs):
+            raise AssertionError("validated materialized migration must reuse the inbox ZIP")
+
+    monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FailingServiceClient)
+
+    finalize_code = main([
+        "--service-base-url", "http://localhost:8000",
+        "--profile-dir", str(profile),
+        "artifact", "intake",
+        "--from-last-protocol-run",
+        "--protocol-run-request-id", request_id,
+        "--download", "--verify",
+        "--expect-artifact", artifact_name,
+        "--expect-version", "v0.1.124",
+        "--expect-repo", "chatgpt_claudecode_workflow-2",
+        "--json",
+    ])
+    finalized = json.loads(capsys.readouterr().out)
+    assert finalize_code == 0
+    assert finalized["status"] == "reply_validated"
+
+    executed_commands: list[list[str]] = []
+
+    def execute_in_process(command, *, repo_root, timeout_seconds):
+        executed_commands.append(list(command))
+        assert command[2:7] == [
+            "artifact",
+            "intake",
+            "--from-last-protocol-run",
+            "--protocol-run-request-id",
+            request_id,
+        ]
+        assert command[command.index("--expect-artifact") + 1] == artifact_name
+        assert command[command.index("--expect-version") + 1] == "v0.1.124"
+        assert command[command.index("--expect-repo") + 1] == "chatgpt_claudecode_workflow-2"
+        assert "--from-last-answer" not in command
+        child_command = [command[0], command[1], "--profile-dir", str(profile), *command[2:]]
+        completed = subprocess.run(
+            child_command,
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        parsed = json.loads(completed.stdout)
+        return {
+            "ok": completed.returncode == 0,
+            "status": "candidate_lifecycle_step_passed" if completed.returncode == 0 else "candidate_lifecycle_step_failed",
+            "command": command,
+            "returncode": completed.returncode,
+            "duration_seconds": 0.0,
+            "timeout_seconds": timeout_seconds,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "parsed_json": parsed,
+            "parse_error": None,
+        }
+
+    monkeypatch.setattr("promptbranch_cli._run_candidate_lifecycle_command", execute_in_process)
+    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-candidate-run-exact/project", [])
+    args = argparse.Namespace(
+        artifact=None,
+        version=None,
+        repo_path=str(repo),
+        execute_next=True,
+        execute_until_blocked=False,
+        max_steps=4,
+        require_complete=False,
+        require_real_candidate=True,
+        step_timeout=120.0,
+        profile="smoke",
+        accept_if_green=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_candidate_run(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "candidate_run_step_completed"
+    assert payload["step_result"]["parsed_json"]["status"] == "migrated_candidate"
+    assert payload["step_result"]["parsed_json"]["materialized_protocol_run_reused"] is True
+    assert payload["step_result"]["parsed_json"]["download_reused"] is True
+    assert artifact_path.is_file()
+    assert executed_commands
+
+    registry = json.loads((profile / "artifact_candidates.json").read_text(encoding="utf-8"))
+    assert len(registry["candidates"]) == 1
+    candidate = registry["candidates"][0]
+    assert candidate["filename"] == artifact_name
+    assert candidate["version"] == "v0.1.124"
+    assert candidate["repo_id"] == "chatgpt_claudecode_workflow-2"
+    assert candidate["migration_performed"] is True

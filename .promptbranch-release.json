@@ -9,7 +9,7 @@
     "format": "plain"
   },
   "artifact": {
-    "path": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+    "path": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
     "kind": "zip",
     "required_root_entries": [
       "VERSION",
@@ -28,9 +28,8 @@
         "id": "compile",
         "argv": [
           "python3",
-          "-m",
-          "compileall",
-          "-q",
+          "scripts/compileall-isolated.py",
+          "--repo",
           "."
         ],
         "timeout_seconds": 300
@@ -70,7 +69,7 @@
           "--repo",
           ".",
           "--output",
-          "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip"
+          "chatgpt_claudecode_workflow-2_v0.1.125.1.zip"
         ],
         "timeout_seconds": 600
       }
@@ -84,9 +83,9 @@
           "--repo",
           ".",
           "--zip",
-          "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
           "--version",
-          "v0.1.123.2.5",
+          "v0.1.125.1",
           "--json"
         ],
         "timeout_seconds": 600
@@ -99,7 +98,7 @@
           "pb",
           "src",
           "add",
-          "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
           "--json"
         ],
         "timeout_seconds": 900
@@ -112,9 +111,9 @@
           "pb",
           "artifact",
           "adopt",
-          "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
           "--version",
-          "v0.1.123.2.5",
+          "v0.1.125.1",
           "--json"
         ],
         "timeout_seconds": 900
@@ -127,9 +126,9 @@
           "python3",
           "scripts/verify-release-adoption-current.py",
           "--version",
-          "v0.1.123.2.5",
+          "v0.1.125.1",
           "--artifact",
-          "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
+          "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
           "--json"
         ],
         "timeout_seconds": 600

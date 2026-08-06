@@ -1070,3 +1070,57 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-420 | The integrated outer step timeout exceeds response, fresh-turn, artifact-materialization, and safety budgets without an extra operator flag | focused_candidate | executable timeout-budget invariant and generated ask command assertions | v0.1.123.2.3 |
 | DOD-421 | Repair acceptance preserves formal proof count 0/2 and leaves `v0.1.124` and `v0.1.125` as normal proof cycles 1 and 2 | candidate | project control-surface and release-status authority | v0.1.123.2.3 |
 
+
+
+## v0.1.123.2.6 correlated rendered-attachment intake repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-431 | Artifact intake selects the exact correlated assistant turn by persisted answer/request/turn identity before looking for a rendered attachment | focused_candidate | exact-turn selection and ambiguity regressions | v0.1.123.2.6 |
+| DOD-432 | Exactly one matching rendered ZIP is downloaded through the active authenticated browser context into the artifact inbox | focused_candidate | browser download mock and saved-answer replay path | v0.1.123.2.6 |
+| DOD-433 | Downloaded filename, SHA-256, byte size, ZIP entry count, CRC, and embedded version are verified against the envelope before success | focused_candidate | metadata match and mismatch regressions | v0.1.123.2.6 |
+| DOD-434 | A JSON-only `sandbox:` artifact remains invalid when no matching rendered attachment exists, while a correlated rendered control permits browser-context resolution | focused_candidate | JSON-only rejection and rendered-link acceptance regressions | v0.1.123.2.6 |
+| DOD-435 | Integrated lifecycle reuses a verified inbox artifact and does not download or mutate release state twice | focused_candidate | lifecycle command construction and no-mutation assertions | v0.1.123.2.6 |
+
+## v0.1.123.2.6 candidate-collection compatibility correction
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-436 | The service module remains importable when an ambient environment combines FastAPI 0.128.x with a Starlette Router API that no longer accepts `on_startup` and `on_shutdown`, while the supported pinned dependency pair remains unchanged | focused_candidate | real module-import subprocess regression plus synthetic modern-Router lifecycle regression | v0.1.123.2.6 |
+| DOD-437 | Focused ask-release tests are hermetic with respect to local Project identity and preserve mandatory repository-bound artifact records | focused_candidate | isolated project-scope fixture and Gate 4 regression group | v0.1.123.2.6 |
+| DOD-438 | Persisted artifact replay selects one exact validated protocol run by request ID and cannot drift to a newer unrelated no-artifact reply | focused_candidate | exact older-run selection, missing-record, identity-mismatch, and selector-source regressions | v0.1.123.2.6 |
+| DOD-439 | An exact-ID `artifact_declared_but_not_attached` record is replayable only through an explicit opt-in that requires download plus verification and proves intact request, envelope, answer, failure, and no-mutation invariants before browser access | focused_candidate | allowlist eligibility, rejection matrix, and browser-byte verification regression | v0.1.123.2.6 |
+
+
+## v0.1.123.2.6 historical protocol-record compatibility correction
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-440 | Explicit replay normalizes the observed historical selection-summary, ZIP media-type, baseline-alias, and attachment-failure record shapes without weakening normal validated-run intake | focused_candidate | historical-shape end-to-end replay fixture and 16-test replay group | v0.1.123.2.6 |
+| DOD-441 | Legacy normalization remains fail-closed for contradictory identities, non-ZIP MIME types, baseline drift, extra validation failures, failed filename/version/role/count checks, and any prior materialization or state mutation | focused_candidate | parameterized rejection matrix; browser backend remains unreachable on rejection | v0.1.123.2.6 |
+
+## v0.1.123.2.6 post-materialization finalization correction
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-442 | Release-candidate request validation treats `input_baseline`/`input_artifact` and target-version projections as equivalent only when every present value agrees | focused_candidate | direct normalization and contradiction regressions | v0.1.123.2.6 |
+| DOD-443 | An exact already materialized protocol run can be finalized idempotently from its verified artifact inbox without redownload or release-state mutation | focused_candidate | persisted-run success, tampered-bytes rejection, and prior-mutation rejection regressions | v0.1.123.2.6 |
+
+
+## v0.1.123.2.6 validated materialization migration correction
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-444 | Persisted-run ZIP-kind and baseline normalization is shared by replay, finalization, ordinary validated intake, and migration; MIME-only ZIPs and `input_baseline` are accepted only with agreeing filename, media type, and request evidence | focused_candidate | shared-classifier regressions plus exact validated-run migration integration | v0.1.123.2.6 |
+| DOD-445 | `candidate-run` preserves the exact validated request ID and repository/filename/version expectations, reuses the verified artifact-inbox ZIP, and creates exactly one migrated candidate without browser redownload | focused_candidate | finalized-run-to-candidate-registry integration test | v0.1.123.2.6 |
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

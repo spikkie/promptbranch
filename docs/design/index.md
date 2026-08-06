@@ -1,6 +1,6 @@
 # Promptbranch design documentation
 
-Release: `v0.1.66`
+Release: `v0.1.125`
 
 This index groups the PB design surfaces that should be read together when continuing the architecture, documentation, or release-control line.
 
@@ -19,6 +19,10 @@ This index groups the PB design surfaces that should be read together when conti
 - [Promptbranch application design](promptbranch-application-design.md)
 - [Release baseline evidence](promptbranch-release-baseline-evidence.md)
 - [MVP living design](promptbranch-mvp-living-design.md)
+- [PB MVP status — 2026-08-06](promptbranch-pb-mvp-status-2026-08-06.md)
+
+- [PB environment versus external application development](../project/pb-environment-vs-application-development.md)
+- [PB MVP extended roadmap from v0.1.124](../project/pb-mvp-roadmap-v0.1.124.md)
 - [MVP gap analysis](promptbranch-mvp-gap-analysis.md)
 - [Orchestration current status](orchestration/docs/current_status.md)
 

@@ -224,8 +224,8 @@ def validate_project_control_surface(repo_path: str | Path = ".") -> dict[str, A
     if not isinstance(horizon, list):
         errors.append("plan-state rolling_slice_horizon must be a list")
         horizon = []
-    elif not (4 <= len(horizon) <= 6):
-        errors.append("plan-state rolling_slice_horizon must contain 4 to 6 slices")
+    elif not (4 <= len(horizon) <= 12):
+        errors.append("plan-state rolling_slice_horizon must contain 4 to 12 slices")
 
     active_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "active"]
     planned_after_items = [item for item in horizon if isinstance(item, dict) and item.get("status") == "planned_after_acceptance"]

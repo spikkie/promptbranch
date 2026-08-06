@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 from fastapi.testclient import TestClient
 
@@ -804,3 +807,96 @@ def test_container_service_honors_fail_fast_challenge_env(monkeypatch, tmp_path)
     svc = _build_service(project_url_override="https://chatgpt.com/g/g-p-demo/project")
 
     assert svc.settings.fail_fast_on_challenge is True
+
+
+def test_starlette_router_legacy_event_bridge_is_noop_for_supported_router() -> None:
+    from starlette.routing import Router
+    from promptbranch_container_api import _install_starlette_router_legacy_event_compatibility
+
+    has_legacy_constructor = "on_startup" in __import__("inspect").signature(Router.__init__).parameters
+    installed = _install_starlette_router_legacy_event_compatibility(router_class=Router)
+
+    assert installed is (not has_legacy_constructor)
+
+
+def test_starlette_router_legacy_event_bridge_restores_fastapi_contract() -> None:
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from promptbranch_container_api import _install_starlette_router_legacy_event_compatibility
+
+    class ModernRouter:
+        def __init__(self, routes=None, redirect_slashes=True, default=None, lifespan=None, *, middleware=None):
+            self.routes = list(routes or ())
+            self.redirect_slashes = redirect_slashes
+            self.default = default
+            self.lifespan_context = lifespan
+            self.middleware = middleware
+
+    installed = _install_starlette_router_legacy_event_compatibility(router_class=ModernRouter)
+    events: list[str] = []
+
+    async def startup() -> None:
+        events.append("startup")
+
+    def shutdown() -> None:
+        events.append("shutdown")
+
+    router = ModernRouter(on_startup=[startup], on_shutdown=[shutdown])
+
+    async def exercise() -> None:
+        async with router.lifespan_context(object()):
+            events.append("inside")
+
+    asyncio.run(exercise())
+
+    assert installed is True
+    assert events == ["startup", "inside", "shutdown"]
+    assert _install_starlette_router_legacy_event_compatibility(router_class=ModernRouter) is True
+
+
+def test_container_api_import_survives_fastapi_0128_with_modern_starlette_router_signature() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = textwrap.dedent(
+        """
+        import inspect
+        import starlette.routing
+
+        legacy_init = starlette.routing.Router.__init__
+
+        def modern_init(
+            self,
+            routes=None,
+            redirect_slashes=True,
+            default=None,
+            lifespan=None,
+            *,
+            middleware=None,
+        ):
+            return legacy_init(
+                self,
+                routes=routes,
+                redirect_slashes=redirect_slashes,
+                default=default,
+                lifespan=lifespan,
+                middleware=middleware,
+            )
+
+        starlette.routing.Router.__init__ = modern_init
+        assert "on_startup" not in inspect.signature(starlette.routing.Router.__init__).parameters
+
+        import promptbranch_container_api
+
+        assert promptbranch_container_api._STARLETTE_ROUTER_COMPATIBILITY_INSTALLED is True
+        assert promptbranch_container_api.app is not None
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout

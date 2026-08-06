@@ -101,3 +101,29 @@ MVP-1:
 `v0.1.95` adds a compact read-only evidence report for MVP-1 loop execution preflight. The loop still executes no commands, mutates no files, performs no Kubernetes/deployment action, mutates no Project Sources, adopts no artifacts, and deletes no ChatGPT Projects.
 
 `v0.1.96` keeps Project Source capacity manageable for multi-repo Projects by retaining only the latest five generated release ZIP sources per release family/repository. It does not delete documentation or non-generated Project Sources and does not change loop execution, artifact adoption, deployment, Kubernetes, or ChatGPT Project deletion behavior.
+
+
+## 2026-08-06 MVP layer clarification
+
+The accepted `v0.1.124` checkpoint completes the native local candidate/artifact lifecycle for Promptbranch itself. It does not complete the external application-development MVP.
+
+MVP layer targets:
+
+- PB control-plane proof: `v0.1.125`;
+- PB environment hardening/freeze: `v0.1.128`;
+- first external application-development MVP: `v0.1.132`;
+- non-production deployment MVP: `v0.1.133`;
+- reusable application platform: `v0.1.134`.
+
+The first external application mutation is forbidden before the `v0.1.130` execution-envelope and rollback gate.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

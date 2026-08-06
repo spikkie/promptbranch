@@ -1,51 +1,49 @@
 # Promptbranch status
 
-accepted/current baseline: v0.1.123.2.4
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.4(1).zip
-accepted/current SHA-256: 91d214427971641b07a836a5029423e39240fc5be1fc29c94d1243db90abc69e
-active candidate version: v0.1.123.2.5
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
-active slice: v0.1.123.2.5 — Two-component ZIP output plus reply-envelope contract
-next normal version: v0.1.124
-next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
-next planned after acceptance: v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict
-
-`v0.1.123.2.3` passed strict release validation and is accepted/current. The first full `v0.1.124` request proved that response waiting now remains active through ChatGPT generation, but the generated ask-release prompt allowed a JSON-only sandbox declaration without a rendered attachment. Promptbranch correctly refused intake. Formal proof remains 0/2 and `v0.1.124` remains the next normal proof target after this prompt-generation repair.
-
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123.2.3
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
-accepted/current source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
-accepted/current SHA-256: 91d214427971641b07a836a5029423e39240fc5be1fc29c94d1243db90abc69e
-active candidate version: v0.1.123.2.5
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
-candidate adoption: not performed
-formal MVP proof count: 0/2
-next normal version: v0.1.124
-next planned after acceptance: v0.1.125
+accepted_current_version: v0.1.124
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
+active_candidate_version: v0.1.125.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.1.zip
 ```
 
-## Artifact-execution prompt contract
 
-- The exact accepted/current ZIP is named as the actual source baseline.
-- The assistant must inspect that baseline and create a fresh target ZIP for the exact request ID.
-- Physical ZIP creation and real answer attachment must occur before a completed reply envelope is emitted.
-- JSON-only filenames, textual `sandbox:` paths, and unsupported claims are explicitly insufficient.
-- SHA-256, size, and entry count must be observed from the created file.
-- Failure to create or attach must return `status=failed` and `artifacts=[]`.
+Documentation checkpoint: `PB-DOC-2026-08-06.1`
+
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
+accepted/current version: v0.1.124
+accepted/current SHA-256: e4202f93b3e711a591d4c41be81fb85d97ce177e0fec41431fc9f1715e6cb3de
+installed runtime observed during proof: v0.1.123.2.6
+candidate lifecycle: candidate_mvp_complete
+Project Source publication of v0.1.124: not performed
+active normal version: v0.1.125
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.125.zip
+active candidate status: built locally; validation and acceptance pending
+active slice: Canonical PB environment proof cycle 2 and final control-plane verdict
+active slice authority: v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict
+next planned after acceptance: v0.1.126
+
+## Current interpretation
+
+Promptbranch has proven its own local candidate/artifact lifecycle. We are still validating and hardening the PB environment itself. We have not yet developed and released a separate application using PB.
+
+## Release boundary
+
+| Range | System under development | Outcome |
+|---|---|---|
+| v0.1.125–v0.1.128 | PB environment/control plane | final proof, ETA/tooling, hardening, frozen environment contract |
+| v0.1.129–v0.1.132 | First external application | bootstrap, controlled change, tests/correction, application acceptance |
+| v0.1.133 | External application deployment | non-production deploy and post-deploy proof |
+| v0.1.134 | Reusable PB application platform | templates, domain modules, multi-repo generalization |
 
 ## Next safe action
 
-Strictly validate and adopt `chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip`. After acceptance, run only:
-
-```bash
-pb ask continue --conversation-url 'https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/c/6a6e6a94-e808-83eb-8f2a-372b0070fd16' --target-version v0.1.124 --release-type normal
-```
+Validate the built `v0.1.125` candidate from accepted/current `v0.1.124`, then run the pinned candidate lifecycle and explicit acceptance gate. Do not begin external application mutation before the `v0.1.129` bootstrap and `v0.1.130` authority gate.
 
 ## v0.1.102 candidate status
+
 
 `v0.1.102` is the next normal slice after accepted/current `v0.1.101`. It generates bounded, proposal-only correction-plan evidence from `v0.1.101` diagnosis results while performing no file mutation, retry, deployment, Project Source mutation, artifact adoption, or ChatGPT Project deletion.
 
@@ -1222,3 +1220,75 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 ## v0.1.111.1 repair candidate
 
 `v0.1.111` failed before Project Source publication because the pipx-installed CLI could not import `promptbranch_release_engine`. `v0.1.111.1` packages that module and makes release control verify the installed CLI and read-only contract planner before browser bootstrap or Project Source mutation. Accepted/current remains `v0.1.109.1.1`.
+
+## v0.1.123.2.6 corrected candidate status
+
+The candidate now contains a narrow Starlette Router legacy-event compatibility bridge that activates only when the ambient Router constructor has removed `on_startup` and `on_shutdown`. The declared FastAPI/Starlette pins are unchanged. The selected legacy `ask-release` fixture now creates an explicit hermetic project/repository scope instead of inheriting the operator's working-tree identity.
+
+Offline evidence is green for Gate 1, the modern-Router import regression, Gate 4, and the broader focused module group. Browser replay, fresh generation, full strict release validation, Project Source publication, adoption, and formal MVP proof remain unperformed. Accepted/current remains `v0.1.123.2.5` pending external adoption evidence.
+
+
+## v0.1.123.2.6 deterministic replay correction
+
+The first Gate 2 command selected `req_20260804T074608454070Z`, the newest validated persisted run, which correctly declared `no_artifact`. This was not a rendered-attachment failure; it proved that chronology-only replay is insufficient for a named historical proof run.
+
+The corrected candidate adds exact persisted-run selection:
+
+```bash
+pb artifact intake \
+  --from-last-protocol-run \
+  --protocol-run-request-id req_20260805T105438125979Z \
+  --download \
+  --verify \
+  --expect-artifact chatgpt_claudecode_workflow-2_v0.1.124.zip \
+  --expect-version v0.1.124 \
+  --expect-repo chatgpt_claudecode_workflow-2 \
+  --download-timeout 300 \
+  --json
+```
+
+Offline selector regressions are green. The real authenticated replay, fresh direct ask-release, full strict validation, Project Source publication, adoption, and formal proof advancement remain unperformed. Accepted/current remains `v0.1.123.2.5`.
+
+## v0.1.123.2.6 explicit unvalidated artifact replay correction
+
+The exact request selector correctly found `req_20260805T105438125979Z`, but Gate 2 stopped before browser intake because the historical record carries the prior status `artifact_declared_but_not_attached` and `reply_validation_ok=false`. That is the precise attachment-proof failure the replay is intended to repair, so requiring an already validated record created a circular gate.
+
+The corrected candidate adds explicit `--replay-unvalidated-artifact-run` support. It is accepted only with exact `--protocol-run-request-id`, `--download`, and `--verify`; migration is forbidden. Eligibility is limited to the single allowlisted prior status and requires internally consistent request/correlation/envelope/message/answer identity, exactly one declared candidate ZIP matching request expectations, only allowlisted attachment-proof errors, and no evidence of prior download, verification, materialization, migration, Project Source mutation, registry/state mutation, or adoption.
+
+Offline replay/selector regressions are green. The real authenticated Gate 2 replay remains pending on the operator host. No fresh `v0.1.124` answer has been generated, and Gate 3, strict release validation, publication, adoption, Git commit/push, and formal proof advancement remain out of scope. Accepted/current remains `v0.1.123.2.5`.
+
+
+
+## v0.1.123.2.6 historical-record Gate 2 diagnosis and correction
+
+The installed candidate and service startup passed, but the real exact-ID replay stopped with `selected_protocol_run_not_replayable`. Core request/reply schema, exact IDs, selected answer identity, one expected candidate, sandbox transport, and no-prior-mutation checks passed. Eight failed checks were all compatibility fields from the older persisted record: four absent selection-summary copies, ZIP kind represented by MIME type, `input_baseline` aliasing, and historical attachment-only failure labels.
+
+The replacement candidate adds replay-local normalization with conflict detection. Offline historical-shape simulation now downloads and verifies the candidate bytes. The broader focused module set passes 178 tests; the replay-focused set passes 16 tests. A full `tests/test_promptbranch_cli.py` run was not used as release evidence because the unchanged input candidate already has unrelated legacy fixtures that fail mandatory `repo_id` validation.
+
+Accepted/current remains `v0.1.123.2.5`; formal MVP proof remains 0/2. No Project Source, registry/current, migration, adoption, Git commit, or Git push occurred. The next safe action is to install this replacement candidate and rerun the exact Gate 2 command.
+
+## v0.1.123.2.6 post-materialization finalization candidate
+
+The fresh `v0.1.124` rendered attachment was successfully downloaded and verified, but its protocol record retained stale pre-materialization baseline and target-version errors. This same-version replacement normalizes those aliases and adds exact-request, inbox-backed idempotent finalization. The finalizer reopens the already downloaded ZIP, verifies all envelope and archive metadata, refuses any prior release-state mutation, and persists `reply_validated` without redownload. Accepted/current remains `v0.1.123.2.5`; formal MVP proof remains `0/2`.
+
+
+## v0.1.123.2.6 validated materialization migration candidate
+
+Gate 2 and post-materialization finalization are green for request `req_20260805T145619199617Z`. The remaining lifecycle defect is isolated to migration orchestration: normal validated intake did not share MIME-only ZIP and baseline-alias normalization, and `candidate-run` discarded exact request identity by invoking `--from-last-answer`.
+
+This replacement centralizes those checks, reuses and reverifies the exact artifact-inbox ZIP, carries repository/filename/version expectations into the guarded command, and proves one migrated candidate registry entry through an integration test. Accepted/current remains `v0.1.123.2.5`; candidate tests, Project Source publication, adoption, and formal proof advancement remain pending.
+
+### v0.1.123.2.6 pasted-text processing identity correction
+
+The `v0.1.124` full candidate test failed only at `project_source_add_text`: ChatGPT completed processing with exact `file_...` and `libfile_...` identities but assigned the canonical text-upload filename `pasted.txt`. The repair candidate now treats the integration display name as logical identity, permits `pasted.txt` only for text sources, retains strict file-source filename matching, rejects reused processing identity pairs, and preserves post-save content/persistence proof. Focused live `project_source_add_text` validation is required before another full run.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

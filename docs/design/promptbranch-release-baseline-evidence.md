@@ -127,3 +127,7 @@ Documentation build readiness is source evidence only. `docs/site.md` documents 
 ## v0.1.66 release doctor candidate evidence
 
 `pb release doctor --artifact ZIP --version VERSION --json` now produces read-only candidate evidence before any lifecycle mutation. The `candidate_artifact` section records filename/config agreement, VERSION consistency, ZIP readability, root layout, hygiene, nested ZIP checks, and accepted-baseline continuity. This evidence can block unsafe candidates, but it is not adoption evidence by itself. Authoritative accepted-baseline evidence still comes from `pb artifact current --json` after adoption.
+
+## v0.1.125 baseline evidence scope
+
+For release `v0.1.125`, candidate construction evidence remains distinct from candidate verification, candidate testing, explicit acceptance, Project Source publication, and accepted/current evidence. The accepted baseline entering the proof cycle is `v0.1.124`; `v0.1.125` must not be described as accepted/current until the native candidate lifecycle proves it.

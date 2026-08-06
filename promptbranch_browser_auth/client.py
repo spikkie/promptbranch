@@ -34,6 +34,52 @@ from .exceptions import (
 )
 
 
+def _select_correlated_artifact_turn_snapshot(
+    snapshots: list[dict[str, Any]],
+    *,
+    correlation_required: bool,
+) -> dict[str, Any]:
+    """Select one assistant turn using strongest available correlation proof."""
+
+    priorities = (
+        ("answer_id", "answer_id_match"),
+        ("request_id", "request_id_match"),
+        ("answer_turn_index", "answer_turn_index_match"),
+    )
+    for mode, key in priorities:
+        indexes = [
+            index
+            for index, snapshot in enumerate(snapshots)
+            if snapshot.get("filename_match") and snapshot.get(key)
+        ]
+        if indexes:
+            return {
+                "ok": len(indexes) == 1,
+                "status": "correlated_turn_selected" if len(indexes) == 1 else "artifact_correlated_answer_ambiguous",
+                "mode": mode,
+                "indexes": indexes,
+                "index": indexes[0] if len(indexes) == 1 else None,
+            }
+    if correlation_required:
+        return {
+            "ok": False,
+            "status": "artifact_correlated_answer_not_found",
+            "mode": None,
+            "indexes": [],
+            "index": None,
+        }
+    indexes = [index for index, snapshot in enumerate(snapshots) if snapshot.get("filename_match")]
+    return {
+        "ok": len(indexes) == 1,
+        "status": "correlated_turn_selected" if len(indexes) == 1 else (
+            "artifact_correlated_answer_not_found" if not indexes else "artifact_correlated_answer_ambiguous"
+        ),
+        "mode": "global_filename_fallback",
+        "indexes": indexes,
+        "index": indexes[0] if len(indexes) == 1 else None,
+    }
+
+
 class _ProjectSourceAlreadyExists(RuntimeError):
     def __init__(self, notice: str, *, source_name: Optional[str] = None) -> None:
         super().__init__(notice)
@@ -647,6 +693,10 @@ class ChatGPTBrowserClient:
         self._conversation_history_request_shield_events: list[dict[str, object]] = []
         self._conversation_history_explicit_fetch_depth = 0
         self._google_device_prompt_logged_keys: set[str] = set()
+        # Processing-stream file/libfile identities are operation-scoped.  Keep a
+        # client-session ledger so a pasted-text add cannot be accepted by
+        # replaying a previously observed terminal identity pair.
+        self._project_source_processing_identity_pairs_seen: set[tuple[str, str]] = set()
         self._browser_action_events: list[dict[str, object]] = []
         if self.config.debug:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -3183,6 +3233,9 @@ class ChatGPTBrowserClient:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
         self._log(
             "artifact-download",
@@ -3203,6 +3256,9 @@ class ChatGPTBrowserClient:
             target_path=target_path,
             timeout_seconds=timeout_seconds,
             keep_open=keep_open,
+            request_id=request_id,
+            answer_id=answer_id,
+            answer_turn_index=answer_turn_index,
             respect_history_rate_limit_cooldown=False,
         )
     async def get_chat(
@@ -6612,6 +6668,9 @@ class ChatGPTBrowserClient:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
         await self.ensure_logged_in(page, context)
         conversation_id = self._conversation_id_from_url(conversation_url)
@@ -6626,67 +6685,204 @@ class ChatGPTBrowserClient:
         await page.wait_for_load_state('domcontentloaded')
         timeout_ms = max(1000, int(float(timeout_seconds or 120.0) * 1000))
 
-        # Prefer rendered download controls by visible filename.  ChatGPT may
-        # render a generated file as an entity-style <button> rather than as an
-        # <a href="sandbox:..."> anchor.  The visible filename is the durable
-        # operator-facing selector; the DOM element type is not stable.
+        # Resolve the rendered control inside the exact correlated assistant
+        # turn.  A filename may occur in earlier release attempts, so a global
+        # filename search is not sufficient release-candidate evidence.
         filename_re = re.compile(re.escape(safe_filename))
+        request_token = str(request_id or '').strip()
+        answer_token = str(answer_id or '').strip()
+        correlation_required = bool(request_token or answer_token or answer_turn_index is not None)
         try:
             await page.get_by_text(filename_re).first.wait_for(timeout=min(timeout_ms, 15000))
         except Exception:
-            # Continue to collect diagnostics below; the page may still expose a
-            # late-rendered control after scrolling.
             pass
         try:
-            await page.mouse.wheel(0, 2000)
-            await page.wait_for_timeout(250)
-            await page.mouse.wheel(0, -2000)
-            await page.wait_for_timeout(250)
+            await page.mouse.wheel(0, 2400)
+            await page.wait_for_timeout(300)
+            await page.mouse.wheel(0, -2400)
+            await page.wait_for_timeout(300)
         except Exception:
             pass
 
-        locator = page.get_by_role('link', name=filename_re)
-        count = await locator.count()
-        control_kind = 'link'
-        # Avoid CSS-escaping hrefs here; the visible filename is the stable
-        # selector and works for rendered markdown links.
-        if count < 1:
-            locator = page.locator('a').filter(has_text=safe_filename)
-            count = await locator.count()
-            control_kind = 'anchor_text'
-        if count < 1:
-            locator = page.get_by_role('button', name=filename_re)
-            count = await locator.count()
-            control_kind = 'button'
-        if count < 1:
-            locator = page.locator('button').filter(has_text=safe_filename)
-            count = await locator.count()
-            control_kind = 'button_text'
-        if count < 1:
-            locator = page.locator('[role="button"], [data-testid], span, p').filter(has_text=safe_filename)
-            count = await locator.count()
-            control_kind = 'filename_text_control'
-        if count < 1:
-            anchors = await page.locator('a').evaluate_all(
-                "els => els.slice(0, 40).map(a => ({text: (a.innerText || a.textContent || '').trim(), href: a.href || a.getAttribute('href')}))"
-            )
-            buttons = await page.locator('button, [role="button"]').evaluate_all(
-                "els => els.slice(0, 40).map(b => ({text: (b.innerText || b.textContent || b.getAttribute('aria-label') || '').trim(), aria_label: b.getAttribute('aria-label'), testid: b.getAttribute('data-testid')}))"
-            )
-            filename_text_count = await page.get_by_text(filename_re).count()
+        assistant_marker = page.locator('[data-message-author-role="assistant"]')
+        turn_locator = page.locator('[data-testid*="conversation-turn"]').filter(has=assistant_marker)
+        turn_count = await turn_locator.count()
+        turn_selector = '[data-testid*=conversation-turn]:has([data-message-author-role=assistant])'
+        if turn_count < 1:
+            turn_locator = assistant_marker
+            turn_count = await turn_locator.count()
+            turn_selector = '[data-message-author-role=assistant]'
+
+        turn_snapshots: list[dict[str, Any]] = []
+        correlated_indexes: list[int] = []
+        answer_id_indexes: list[int] = []
+        request_id_indexes: list[int] = []
+        turn_index_indexes: list[int] = []
+        for index in range(turn_count):
+            turn = turn_locator.nth(index)
+            try:
+                text_value = (await turn.inner_text()).strip()
+            except Exception:
+                text_value = ''
+            try:
+                attrs = await turn.evaluate(
+                    """el => {
+                        const root = el.closest('[data-testid*=conversation-turn], article, section') || el;
+                        const collect = node => ({
+                            id: node.getAttribute('id'),
+                            data_message_id: node.getAttribute('data-message-id'),
+                            data_turn_id: node.getAttribute('data-turn-id'),
+                            data_testid: node.getAttribute('data-testid'),
+                            data_turn: node.getAttribute('data-turn')
+                        });
+                        const descendants = Array.from(root.querySelectorAll('[data-message-id],[data-turn-id],[id]')).slice(0, 20).map(collect);
+                        return {root: collect(root), descendants};
+                    }"""
+                )
+            except Exception:
+                attrs = {'root': {}, 'descendants': []}
+            attr_values: list[str] = []
+            if isinstance(attrs, dict):
+                root_attrs = attrs.get('root') if isinstance(attrs.get('root'), dict) else {}
+                descendants = attrs.get('descendants') if isinstance(attrs.get('descendants'), list) else []
+                for value in list(root_attrs.values()) + [v for item in descendants if isinstance(item, dict) for v in item.values()]:
+                    if value is not None:
+                        attr_values.append(str(value))
+            filename_match = safe_filename in text_value
+            request_match = bool(request_token and request_token in text_value)
+            answer_match = bool(answer_token and any(answer_token == value or answer_token in value for value in attr_values))
+            turn_index_match = False
+            if answer_turn_index is not None:
+                turn_index_text = str(answer_turn_index)
+                turn_index_match = any(
+                    re.search(rf'(?:turn|conversation-turn)[-_:]?{re.escape(turn_index_text)}(?:\D|$)', value, re.IGNORECASE)
+                    for value in attr_values
+                )
+            snapshot = {
+                'assistant_index': index,
+                'text_length': len(text_value),
+                'filename_match': filename_match,
+                'request_id_match': request_match,
+                'answer_id_match': answer_match,
+                'answer_turn_index_match': turn_index_match,
+                'attributes': attrs,
+            }
+            turn_snapshots.append(snapshot)
+            if filename_match and answer_match:
+                answer_id_indexes.append(index)
+            if filename_match and request_match:
+                request_id_indexes.append(index)
+            if filename_match and turn_index_match:
+                turn_index_indexes.append(index)
+
+        selection = _select_correlated_artifact_turn_snapshot(
+            turn_snapshots,
+            correlation_required=correlation_required,
+        )
+        correlation_mode = str(selection.get('mode') or '') or None
+        correlated_indexes = list(selection.get('indexes') or [])
+        if selection.get('status') == 'artifact_correlated_answer_not_found':
             return {
                 'ok': False,
                 'action': 'artifact_download',
-                'status': 'artifact_link_not_found',
+                'status': 'artifact_correlated_answer_not_found',
                 'conversation_url': conversation_url,
                 'conversation_id': conversation_id,
                 'filename': safe_filename,
                 'artifact_url': artifact_url,
+                'request_id': request_id,
+                'answer_id': answer_id,
+                'answer_turn_index': answer_turn_index,
                 'target_path': str(target),
-                'link_count': 0,
-                'filename_text_count': filename_text_count,
-                'anchors_sample': anchors,
-                'buttons_sample': buttons,
+                'attachment_detected': False,
+                'attachment_proven': False,
+                'correlation_required': True,
+                'turn_selector': turn_selector,
+                'assistant_turn_count': turn_count,
+                'turn_snapshots': turn_snapshots[-12:],
+            }
+
+        if len(correlated_indexes) != 1:
+            return {
+                'ok': False,
+                'action': 'artifact_download',
+                'status': 'artifact_correlated_answer_ambiguous',
+                'conversation_url': conversation_url,
+                'conversation_id': conversation_id,
+                'filename': safe_filename,
+                'artifact_url': artifact_url,
+                'request_id': request_id,
+                'answer_id': answer_id,
+                'answer_turn_index': answer_turn_index,
+                'target_path': str(target),
+                'attachment_detected': False,
+                'attachment_proven': False,
+                'correlation_mode': correlation_mode,
+                'correlated_turn_indexes': correlated_indexes,
+                'turn_selector': turn_selector,
+                'assistant_turn_count': turn_count,
+                'turn_snapshots': turn_snapshots[-12:],
+            }
+
+        correlated_turn_index = correlated_indexes[0]
+        search_root = turn_locator.nth(correlated_turn_index)
+        locator = search_root.get_by_role('link', name=filename_re)
+        count = await locator.count()
+        control_kind = 'link'
+        if count < 1:
+            locator = search_root.locator('a').filter(has_text=safe_filename)
+            count = await locator.count()
+            control_kind = 'anchor_text'
+        if count < 1:
+            locator = search_root.get_by_role('button', name=filename_re)
+            count = await locator.count()
+            control_kind = 'button'
+        if count < 1:
+            locator = search_root.locator('button').filter(has_text=safe_filename)
+            count = await locator.count()
+            control_kind = 'button_text'
+        if count < 1:
+            locator = search_root.locator('[role="button"], [data-testid]').filter(has_text=safe_filename)
+            count = await locator.count()
+            control_kind = 'filename_text_control'
+        if count < 1:
+            return {
+                'ok': False,
+                'action': 'artifact_download',
+                'status': 'artifact_link_not_found_in_correlated_answer',
+                'conversation_url': conversation_url,
+                'conversation_id': conversation_id,
+                'filename': safe_filename,
+                'artifact_url': artifact_url,
+                'request_id': request_id,
+                'answer_id': answer_id,
+                'answer_turn_index': answer_turn_index,
+                'target_path': str(target),
+                'attachment_detected': False,
+                'attachment_proven': False,
+                'correlation_mode': correlation_mode,
+                'correlated_turn_index': correlated_turn_index,
+                'turn_snapshot': turn_snapshots[correlated_turn_index],
+            }
+        if count > 1:
+            return {
+                'ok': False,
+                'action': 'artifact_download',
+                'status': 'artifact_link_ambiguous_in_correlated_answer',
+                'conversation_url': conversation_url,
+                'conversation_id': conversation_id,
+                'filename': safe_filename,
+                'artifact_url': artifact_url,
+                'request_id': request_id,
+                'answer_id': answer_id,
+                'answer_turn_index': answer_turn_index,
+                'target_path': str(target),
+                'attachment_detected': True,
+                'attachment_proven': False,
+                'control_kind': control_kind,
+                'control_count': count,
+                'correlation_mode': correlation_mode,
+                'correlated_turn_index': correlated_turn_index,
             }
 
         link = locator.first
@@ -6715,6 +6911,13 @@ class ChatGPTBrowserClient:
                 'control_kind': control_kind,
                 'target_path': str(target),
                 'download_error': str(exc),
+                'request_id': request_id,
+                'answer_id': answer_id,
+                'answer_turn_index': answer_turn_index,
+                'attachment_detected': True,
+                'attachment_proven': False,
+                'correlation_mode': correlation_mode,
+                'correlated_turn_index': correlated_turn_index,
             }
         size = target.stat().st_size if target.exists() else 0
         content_b64 = None
@@ -6741,6 +6944,15 @@ class ChatGPTBrowserClient:
             'download_performed': bool(target.exists() and size > 0),
             'content_base64': content_b64,
             'content_transport': 'base64_json' if content_b64 else None,
+            'request_id': request_id,
+            'answer_id': answer_id,
+            'answer_turn_index': answer_turn_index,
+            'attachment_detected': True,
+            'attachment_proven': bool(target.exists() and size > 0),
+            'rendered_attachment_detected': True,
+            'correlation_mode': correlation_mode,
+            'correlated_turn_index': correlated_turn_index,
+            'assistant_turn_count': turn_count,
         }
         if keep_open and self.config.is_headed:
             await self._pause_for_keep_open('Artifact download completed. Press Enter to close the browser...')
@@ -13947,6 +14159,21 @@ class ChatGPTBrowserClient:
             "current_url": await self._safe_page_url(page),
         }
         if normalized_kind == "text":
+            text_stream_identity = processing_stream_result if isinstance(processing_stream_result, dict) else {}
+            result.update({
+                "requested_logical_source_name": display_name or requested_match,
+                "assigned_filename": text_stream_identity.get("assigned_filename") or text_stream_identity.get("library_file_name"),
+                "processed_file_id": self._library_file_record_id(text_stream_identity.get("processed_file_id")),
+                "library_metadata_object_id": self._library_file_record_id(text_stream_identity.get("library_metadata_object_id")),
+                "processing_stream_identity_verified": bool(
+                    text_stream_identity.get("status") == "project_source_processing_stream_completed"
+                    and text_stream_identity.get("processed_file_id")
+                    and text_stream_identity.get("library_metadata_object_id")
+                    and text_stream_identity.get("filename_correlation")
+                ),
+                "processing_stream_identity_new": text_stream_identity.get("processing_identity_new"),
+                "processing_stream_filename_correlation": text_stream_identity.get("filename_correlation"),
+            })
             result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
             result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
             result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
@@ -16119,6 +16346,21 @@ class ChatGPTBrowserClient:
                 ),
             })
         if normalized_kind == "text":
+            text_stream_identity = processing_stream_result if isinstance(processing_stream_result, dict) else {}
+            result.update({
+                "requested_logical_source_name": display_name or requested_match,
+                "assigned_filename": text_stream_identity.get("assigned_filename") or text_stream_identity.get("library_file_name"),
+                "processed_file_id": self._library_file_record_id(text_stream_identity.get("processed_file_id")),
+                "library_metadata_object_id": self._library_file_record_id(text_stream_identity.get("library_metadata_object_id")),
+                "processing_stream_identity_verified": bool(
+                    text_stream_identity.get("status") == "project_source_processing_stream_completed"
+                    and text_stream_identity.get("processed_file_id")
+                    and text_stream_identity.get("library_metadata_object_id")
+                    and text_stream_identity.get("filename_correlation")
+                ),
+                "processing_stream_identity_new": text_stream_identity.get("processing_identity_new"),
+                "processing_stream_filename_correlation": text_stream_identity.get("filename_correlation"),
+            })
             result["text_source_document_conversion_expected"] = self._text_source_document_conversion_expected(value)
             result["text_source_document_conversion_threshold_bytes"] = self._text_source_document_conversion_threshold_bytes()
             result["text_source_document_conversion_candidates"] = self._text_source_document_conversion_candidates(value, display_name)
@@ -27882,13 +28124,49 @@ class ChatGPTBrowserClient:
             return True
         return False
 
+    def _project_source_processing_stream_filename_correlation(
+        self,
+        *,
+        source_kind: str,
+        assigned_filename: Optional[str],
+        expected_filename: Optional[str],
+    ) -> Optional[str]:
+        assigned = self._file_source_family_filename(assigned_filename)
+        expected = self._file_source_family_filename(expected_filename)
+        normalized_kind = str(source_kind or "file").strip().lower()
+        if not assigned:
+            return None
+
+        if normalized_kind == "text":
+            # ChatGPT currently persists Text input through the file-processing
+            # stream with the canonical backend filename ``pasted.txt``.  The
+            # caller-provided display name is a logical correlation label and is
+            # not a backend filename contract.  Dedicated document names remain
+            # accepted when ChatGPT emits one.
+            if assigned.casefold() == "pasted.txt":
+                return "text_backend_canonical_pasted"
+            if expected and assigned.casefold() == expected.casefold():
+                return "text_exact_logical_name"
+            if expected and self._file_source_family_member(assigned, expected):
+                return "text_backend_assigned_indexed"
+            return None
+
+        if normalized_kind == "file" and expected:
+            if assigned.casefold() == expected.casefold():
+                return "exact_canonical"
+            if self._file_source_family_member(assigned, expected):
+                return "backend_assigned_indexed"
+        return None
+
     def _project_source_processing_stream_terminal_result(
         self,
         body: str,
         *,
         expected_filename: Optional[str],
+        source_kind: str = "file",
     ) -> Optional[dict[str, Any]]:
         expected = self._file_source_family_filename(expected_filename)
+        normalized_kind = str(source_kind or "file").strip().lower()
         processed_file_id: Optional[str] = None
         library_metadata_object_id: Optional[str] = None
         library_file_name: Optional[str] = None
@@ -27937,24 +28215,30 @@ class ChatGPTBrowserClient:
             if terminal_lower == 'file.processing.completed'
             else 'failed'
         )
-        filename_correlation = None
-        if library_file_name and expected:
-            if library_file_name.casefold() == expected.casefold():
-                filename_correlation = 'exact_canonical'
-            elif self._file_source_family_member(library_file_name, expected):
-                filename_correlation = 'backend_assigned_indexed'
+        filename_correlation = self._project_source_processing_stream_filename_correlation(
+            source_kind=normalized_kind,
+            assigned_filename=library_file_name,
+            expected_filename=expected,
+        )
         return {
             'status': status,
+            'source_kind': normalized_kind,
             'terminal_event': terminal_event,
             'terminal_message': terminal_message,
             'processed_file_id': processed_file_id,
             'library_metadata_object_id': library_metadata_object_id,
             'library_file_name': library_file_name,
             'requested_filename': expected,
+            'logical_source_name': expected if normalized_kind == 'text' else None,
             'assigned_filename': library_file_name,
             'expected_filename': expected,
             'events': events,
             'filename_correlation': filename_correlation,
+            'backend_filename_contract': (
+                'canonical_pasted_text_or_dedicated_document'
+                if normalized_kind == 'text'
+                else 'exact_or_indexed_file_family'
+            ),
             'identity_verified': bool(
                 status == 'completed'
                 and processed_file_id
@@ -28106,6 +28390,7 @@ class ChatGPTBrowserClient:
                 self._project_source_processing_stream_terminal_result(
                     body_text,
                     expected_filename=watch.get('expected_filename'),
+                    source_kind=source_kind,
                 )
                 if is_processing_stream
                 else None
@@ -28458,24 +28743,42 @@ class ChatGPTBrowserClient:
                         f"event={terminal.get('terminal_event')}, message={terminal.get('terminal_message')}"
                     )
                 if status == "completed":
-                    if not terminal.get("identity_verified"):
+                    processed_file_id = str(terminal.get("processed_file_id") or "").strip()
+                    library_metadata_object_id = str(
+                        terminal.get("library_metadata_object_id") or ""
+                    ).strip()
+                    identity_pair = (processed_file_id, library_metadata_object_id)
+                    identity_reused = bool(
+                        source_kind == "text"
+                        and processed_file_id
+                        and library_metadata_object_id
+                        and identity_pair in self._project_source_processing_identity_pairs_seen
+                    )
+                    if not terminal.get("identity_verified") or identity_reused:
+                        reason = "processing_identity_reused" if identity_reused else "identity_incomplete_or_uncorrelated"
                         raise ResponseTimeoutError(
                             "project_source_processing_stream_identity_not_verified: "
+                            f"reason={reason}, source_kind={source_kind}, "
                             f"expected_filename={expected}, assigned_filename={terminal.get('library_file_name')}, "
-                            f"processed_file_id={terminal.get('processed_file_id')}, "
-                            f"library_metadata_object_id={terminal.get('library_metadata_object_id')}"
+                            f"processed_file_id={processed_file_id or None}, "
+                            f"library_metadata_object_id={library_metadata_object_id or None}"
                         )
+                    if source_kind == "text":
+                        self._project_source_processing_identity_pairs_seen.add(identity_pair)
                     result = {
                         "ok": True,
                         "status": "project_source_processing_stream_completed",
                         "source_kind": source_kind,
                         "expected_filename": expected,
                         "requested_filename": expected,
+                        "logical_source_name": terminal.get("logical_source_name") or (expected if source_kind == "text" else None),
                         "assigned_filename": terminal.get("library_file_name"),
-                        "processed_file_id": terminal.get("processed_file_id"),
-                        "library_metadata_object_id": terminal.get("library_metadata_object_id"),
+                        "processed_file_id": processed_file_id,
+                        "library_metadata_object_id": library_metadata_object_id,
                         "library_file_name": terminal.get("library_file_name"),
                         "filename_correlation": terminal.get("filename_correlation"),
+                        "backend_filename_contract": terminal.get("backend_filename_contract"),
+                        "processing_identity_new": not identity_reused,
                         "terminal_event": terminal.get("terminal_event"),
                         "events": list(terminal.get("events") or []),
                         "observations": observations,

@@ -1,24 +1,30 @@
 # Release Status
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip` (`v0.1.123.2.4`).
-Accepted Project Source: `chatgpt_claudecode_workflow-2_v0.1.123.2.4(1).zip`.
-Accepted SHA-256: `91d214427971641b07a836a5029423e39240fc5be1fc29c94d1243db90abc69e`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip` (`v0.1.123.2.5`).
-Next normal slice: `v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command`.
-Planned after cycle 1: `v0.1.125 — Canonical MVP proof cycle 2 and final MVP verdict`.
-Formal consecutive MVP proof count: `0/2`.
+Documentation checkpoint: `PB-DOC-2026-08-06.1`
 
-| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
-|---|---|---|---|---|---|---|
-| v0.1.123.2.5 | repair | Two-component ZIP output plus reply-envelope contract | candidate | focused renderer/schema tests, mandatory groups, deterministic ZIP and Guardian | DOD-426 through DOD-430 candidate; repair cannot count | pending |
-| v0.1.123.2.4 | repair | Baseline-derived ZIP creation and real attachment enforcement | candidate | hard prompt-generation regressions, mandatory groups, deterministic ZIP and Guardian | DOD-422 through DOD-425 candidate; repair cannot count | pending |
-| v0.1.123.2.3 | repair | Operation-scoped response guardrails and nested timeout budget | accepted/current | strict release validation, exact Project Source, runtime/registry/current alignment, adoption verified | DOD-417 through DOD-421 accepted; repair cannot count | d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea |
-| v0.1.123.2.1 | repair | Project authority URL alias reconciliation | failed_pre_validation | `pb project join` succeeded but release-control literal post-join verification rejected equivalent bare/slugged identities before strict tests | DOD-409 through DOD-412 implemented; repair not adopted and cannot count | rejected/non-adopted |
-| v0.1.123.2 | repair | Explicit conversation pinning for integrated MVP proof lifecycle | failed_pre_validation | Git push and Project Source upload succeeded; adoption identity preflight rejected equivalent bare/slugged Project forms before strict tests | DOD-404 through DOD-408 implemented; repair not adopted and cannot count | rejected/non-adopted |
-| v0.1.123.1 | repair | Integrate complete proof lifecycle into `pb ask` | accepted/historical | strict 10/10 GO, exact Project Source, Guardian, Git push, adoption/current passed | DOD-398 through DOD-403 accepted; repair cannot count | fb98df7c8fb181d48bc8661c752ba17e28e92d7e311b24f0ed87b87bcc60cbdf |
-| v0.1.123 | normal | Canonical MVP proof cycle 1 attempt | accepted/historical, proof_not_counted | strict 10/10 GO and adoption passed; chronological artifact intake did not count | formal consecutive proof remains 0/2 | 7e4748829bba622aac3f6f315228f292e624745ac364deb5b782778b4a0da8dc |
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`).
+Accepted SHA-256: `e4202f93b3e711a591d4c41be81fb85d97ce177e0fec41431fc9f1715e6cb3de`.
+Installed runtime observed during proof: `v0.1.123.2.6`.
+Active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.125.zip
+Candidate lifecycle result: `candidate_mvp_complete`.
+Active normal slice: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`.
+
+| Version | Type | System | Slice | Status |
+|---|---|---|---|---|
+| v0.1.124 | normal/candidate-lifecycle checkpoint | PB environment | real ZIP → verify → test → accept → current | accepted/current |
+| v0.1.125 | normal | PB environment | second canonical proof and final control-plane verdict | candidate_built |
+| v0.1.126 | normal | PB environment | persistent whole-release ETA estimator | planned |
+| v0.1.127 | normal | PB environment | portable tool-authoring skill/export | planned |
+| v0.1.128 | normal | PB environment | hardening and environment contract freeze | planned |
+| v0.1.129 | normal | external application | read-only pilot bootstrap | planned |
+| v0.1.130 | normal | external application | controlled first change | planned |
+| v0.1.131 | normal | external application | test/diagnose/correct loop | planned |
+| v0.1.132 | normal | external application | candidate and acceptance lifecycle | planned |
+| v0.1.133 | normal | external application | non-production deployment proof | planned |
+| v0.1.134 | normal | PB application platform | reusable/multi-repository workflow | planned |
 
 ## Status rule
+
 
 A ZIP becomes `accepted_current` only after strict validation and adoption evidence confirm runtime, canonical artifact hash, exact assigned Project Source, registry current, state artifact/source and consistency alignment. A release-set recovery may mutate only after a read-only reconciliation proves every repository is exactly at its target or pre-rollout identity and the operator confirms the exact reconciliation SHA-256.
 
@@ -838,3 +844,25 @@ Packaging-only repair for the missing installed `promptbranch_release_engine` mo
 | v0.1.111.3 | repair | Normalised browser progress and genuine step-level fail-fast | candidate | normalise before terminal progress; stop before next main browser step on genuine failure; pending work units skipped; all gates preserved | DOD-308 focused candidate; strict host validation pending | pending |
 
 Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and multi-repository rollout`.
+
+| v0.1.123.2.6 | repair | Correlated rendered-attachment intake plus legacy persisted-run normalization | replacement_candidate | exact selector, historical-shape normalization, rejection matrix, simulated browser-byte verification, Router regression, and focused modules pass offline; real authenticated replay and strict adoption remain pending | DOD-431..DOD-441 focused candidate; formal proof 0/2 | pending |
+
+## v0.1.123.2.6 post-materialization finalization correction
+
+Accepted/current remains `v0.1.123.2.5`. The active replacement candidate remains `v0.1.123.2.6`. The repair addresses a stale finalization outcome after a rendered `v0.1.124` ZIP had already been downloaded and verified. Exact-request artifact intake may now reuse that verified inbox artifact, recompute normalized baseline and target-version validation, and persist `reply_validated` only after SHA-256, byte size, ZIP entry count, CRC, embedded version, selected answer identity, and no-mutation checks pass. No Project Source publication, registry/current mutation, adoption, Git commit, Git push, or formal MVP proof is claimed.
+
+
+## v0.1.123.2.6 validated materialization migration correction
+
+Accepted/current remains `v0.1.123.2.5`. The same-version replacement candidate makes exact validated protocol-run migration use the shared persisted-run normalizer and verified inbox artifact. `candidate-run` now preserves request `req_20260805T145619199617Z` plus the expected `chatgpt_claudecode_workflow-2_v0.1.124.zip`, `v0.1.124`, and repository identity. Focused migration integration is green; full candidate testing and adoption are not claimed.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

@@ -5,6 +5,18 @@ Status: source-of-truth design note plus editable draw.io source and PB applicat
 Related diagram: `docs/design/promptbranch-mvp-living-design.drawio`
 Related class diagram: `docs/design/promptbranch-class-diagram.drawio`
 
+## 2026-08-06 PB MVP checkpoint
+
+Accepted/current artifact evidence now establishes `v0.1.124` as the locally adopted artifact baseline while the installed Promptbranch runtime remains `v0.1.123.2.6`. The native candidate lifecycle reached `candidate_mvp_complete`. This proves the Promptbranch environment release workflow, not yet a separate application-development workflow.
+
+The editable draw.io source adds a page named `PB MVP Status — v0.1.124`, which separates:
+
+- proven Promptbranch control-plane and artifact-lifecycle capabilities;
+- remaining PB-environment hardening;
+- the not-yet-proven external application/tool lifecycle.
+
+Detailed status and roadmap: `docs/design/promptbranch-pb-mvp-status-2026-08-06.md`.
+
 ## Purpose
 
 This document explains the current Promptbranch MVP map, what has already been implemented, and what remains. It is intended to be updated after each MVP/release slice together with the editable draw.io source file.
@@ -464,3 +476,14 @@ This keeps `baseline-status` post-adoption only while making the correct develop
 ## v0.1.65 release lifecycle config guard
 
 `v0.1.65` introduces the checked release lifecycle config contract. `.promptbranch-release.yml` is validated by `pb release config --json` for safe artifact naming, repo-relative paths, lifecycle hook templates, and read-only behavior. This is a prerequisite for later native lifecycle phases; it does not execute hooks or mutate release state.
+
+## 2026-08-06 extended release roadmap
+
+The editable diagram now also contains a page named `Release Roadmap — v0.1.125 to v0.1.134`. It preserves the existing `v0.1.125`, `v0.1.126`, and `v0.1.127` scopes, then shows the boundary between PB environment hardening and the first external application-development track.
+
+The roadmap is authoritative only together with `docs/project/plan-state.json` and `docs/project/pb-mvp-roadmap-v0.1.124.md`.
+
+
+## v0.1.125.1 repair gate
+
+The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, active `v0.1.125.1` repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.

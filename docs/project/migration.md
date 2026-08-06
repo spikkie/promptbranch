@@ -1416,3 +1416,69 @@ No operator-state migration is required. The repair changes browser response-wai
 ## v0.1.123.2.5 prompt migration
 
 No state migration is required. Only generated release-candidate request wording and its machine-readable expected-output contract change.
+
+
+## v0.1.123.2.6 attachment-intake migration
+
+No user data migration is required. Persisted ask records gain compatible answer-correlation and normalized artifact metadata fields. Existing JSON-only sandbox records remain fail-closed unless replay can prove a matching rendered attachment. `v0.1.124`, `v0.1.125`, `v0.1.126`, and `v0.1.127` retain their roadmap roles.
+
+## v0.1.123.2.6 corrected-candidate migration note
+
+No user, registry, Project Source, or accepted-artifact migration is required. The corrected ZIP replaces the non-adopted candidate bytes for the same repair version. Supported dependency pins remain unchanged. Operators using an ambient virtualenv with FastAPI 0.128.x and a newer Starlette Router API can collect the focused suite; formal release validation must still install from the candidate ZIP and prove the pinned environment. Accepted/current remains `v0.1.123.2.5` until explicit adoption evidence says otherwise.
+
+
+## v0.1.123.2.6 exact persisted-run selector migration note
+
+No stored protocol-run migration is required. Existing `.pb_profile/ask_protocol_runs/<request-id>.json` files remain valid. Operators replaying a specific historical run must add:
+
+```text
+--protocol-run-request-id <exact-request-id>
+```
+
+The option requires `--from-last-protocol-run`. Omitting it preserves the existing newest-validated-run behavior. Accepted/current remains `v0.1.123.2.5` until strict validation and explicit adoption evidence establish otherwise.
+
+## v0.1.123.2.6 explicit attachment-failure replay migration note
+
+No stored record or user-state migration is required. To replay the exact historical run whose prior intake status is `artifact_declared_but_not_attached`, add the explicit opt-in:
+
+```bash
+pb artifact intake \
+  --from-last-protocol-run \
+  --protocol-run-request-id req_20260805T105438125979Z \
+  --replay-unvalidated-artifact-run \
+  --download \
+  --verify \
+  --expect-artifact chatgpt_claudecode_workflow-2_v0.1.124.zip \
+  --expect-version v0.1.124 \
+  --expect-repo chatgpt_claudecode_workflow-2 \
+  --download-timeout 300 \
+  --json
+```
+
+The flag is not a generic validation override. It requires exact request identity, the allowlisted attachment-only failure, complete correlated answer identity, and zero prior materialization or state mutation. Existing validated-run behavior is unchanged. Accepted/current remains `v0.1.123.2.5` until strict validation and adoption evidence establish otherwise.
+
+
+
+## v0.1.123.2.6 historical protocol-record compatibility note
+
+No stored JSON migration or rewrite is performed. Existing records remain byte-for-byte unchanged. During the explicit exact-ID attachment replay only, Promptbranch interprets the historical aliases `input_baseline`, `media_type=application/zip`, top-level/selected-answer identity, and the attachment-only failure trio. Any contradiction or non-attachment failure remains fail-closed. Accepted/current remains `v0.1.123.2.5` pending strict validation and adoption proof.
+
+## v0.1.123.2.6 post-materialization finalization
+
+No migration is required. Existing `release_candidate_validation_failed` records are not rewritten automatically. An operator must select the exact request ID and run artifact intake with `--download --verify`; Promptbranch reuses the already verified inbox ZIP only when all finalization invariants pass. Records without a matching inbox artifact or with any identity, metadata, or mutation contradiction remain unchanged and fail closed.
+
+
+## v0.1.123.2.6 validated materialization migration
+
+No stored artifact bytes need to be regenerated. Exact validated intake may reuse the existing verified ZIP under `.pb_profile/artifact_inbox/`, reverify it, copy it to the repository root, and register one candidate. `candidate-run` now selects the persisted run by exact request ID and preserves repository, filename, and version expectations. This migration does not test, publish, adopt, commit, or push the candidate.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

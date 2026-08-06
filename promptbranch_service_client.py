@@ -385,6 +385,9 @@ class ChatGPTServiceClient:
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
         project_url: Optional[str] = None,
+        request_id: Optional[str] = None,
+        answer_id: Optional[str] = None,
+        answer_turn_index: Optional[int] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "conversation_url": conversation_url,
@@ -393,6 +396,9 @@ class ChatGPTServiceClient:
             "target_path": target_path,
             "timeout_seconds": timeout_seconds,
             "keep_open": keep_open,
+            "request_id": request_id,
+            "answer_id": answer_id,
+            "answer_turn_index": answer_turn_index,
         }
         if project_url:
             payload["project_url"] = project_url

@@ -206,3 +206,7 @@ document and the draw.io pages across all three editable diagram files.
 ## v0.1.65 release lifecycle config contract
 
 `v0.1.65` adds a read-only release lifecycle configuration contract around `.promptbranch-release.yml`. The command `pb release config --json` validates artifact naming, version prefix, repo-relative policy/version paths, install-preserve paths, Git unsafe paths, and hook command templates. It rejects embedded absolute or home-relative local machine paths and reports that no hooks, installs, Project Source uploads, artifact adoption, state updates, commits, or pushes were performed.
+
+## v0.1.125 control-plane/application-plane boundary
+
+Release `v0.1.125` records the explicit boundary between the Promptbranch environment (System A) and an external application developed using Promptbranch (System B). This release validates and documents the PB control plane only; external application mutation remains outside the release scope.

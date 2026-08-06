@@ -1048,6 +1048,9 @@ class ChatGPTAutomationService:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
         logger.info("Downloading ChatGPT artifact through browser session")
         async with self._lock.operation("download_chat_artifact"):
@@ -1060,6 +1063,9 @@ class ChatGPTAutomationService:
                     target_path=target_path,
                     timeout_seconds=timeout_seconds,
                     keep_open=keep_open,
+                    request_id=request_id,
+                    answer_id=answer_id,
+                    answer_turn_index=answer_turn_index,
                 ),
             )
 

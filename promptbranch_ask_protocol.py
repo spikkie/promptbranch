@@ -325,13 +325,26 @@ def _normalize_artifact_candidate(raw: Any, *, index: int) -> dict[str, Any]:
         "filename": filename,
         "version": raw.get("version"),
         "role": raw.get("role"),
+        "media_type": raw.get("media_type"),
+        "sha256": raw.get("sha256"),
+        "size_bytes": raw.get("size_bytes"),
+        "entry_count": raw.get("entry_count"),
         "download": {
-            "available": bool(download.get("available")),
-            "url": download.get("url"),
-            "link_text": download.get("link_text"),
-            "url_seen_at": download.get("url_seen_at"),
-            "url_temporary": bool(download.get("url_temporary", True)),
-            "requires_browser_context": bool(download.get("requires_browser_context", False)),
+            "available": bool(download.get("available") or raw.get("download_available")),
+            "url": download.get("url") or raw.get("download_url"),
+            "link_text": download.get("link_text") or raw.get("link_text") or filename,
+            "url_seen_at": download.get("url_seen_at") or raw.get("url_seen_at"),
+            "url_temporary": bool(download.get("url_temporary", raw.get("url_temporary", True))),
+            "requires_browser_context": bool(
+                download.get("requires_browser_context")
+                or raw.get("requires_browser_context")
+                or str(download.get("url") or raw.get("download_url") or "").startswith("sandbox:")
+            ),
+            "attachment_id": download.get("attachment_id") or raw.get("attachment_id"),
+            "file_id": download.get("file_id") or raw.get("file_id"),
+            "attachment_detected": bool(download.get("attachment_detected") or raw.get("attachment_detected")),
+            "attachment_proven": bool(download.get("attachment_proven") or raw.get("attachment_proven")),
+            "ui_attachment": bool(download.get("ui_attachment") or raw.get("ui_attachment")),
         },
         "source": {
             "request_id": source.get("request_id"),

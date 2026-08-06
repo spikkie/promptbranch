@@ -1168,6 +1168,9 @@ class DirectBackend:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
         original_project_url = self._service.settings.project_url
         effective_project_url = project_home_url_from_url(conversation_url) or self._effective_project_home_url()
@@ -1180,6 +1183,9 @@ class DirectBackend:
                 target_path=target_path,
                 timeout_seconds=timeout_seconds,
                 keep_open=keep_open,
+                request_id=request_id,
+                answer_id=answer_id,
+                answer_turn_index=answer_turn_index,
             )
         finally:
             self._service.settings.project_url = original_project_url
@@ -1516,16 +1522,28 @@ class ServiceBackend:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
+        call_kwargs: dict[str, Any] = {
+            "artifact_url": artifact_url,
+            "filename": filename,
+            "target_path": target_path,
+            "timeout_seconds": timeout_seconds,
+            "keep_open": keep_open,
+            "project_url": project_home_url_from_url(conversation_url) or self._effective_project_home_url(),
+        }
+        if request_id is not None:
+            call_kwargs["request_id"] = request_id
+        if answer_id is not None:
+            call_kwargs["answer_id"] = answer_id
+        if answer_turn_index is not None:
+            call_kwargs["answer_turn_index"] = answer_turn_index
         return await self._call(
             self._client.download_chat_artifact,
             conversation_url,
-            artifact_url=artifact_url,
-            filename=filename,
-            target_path=target_path,
-            timeout_seconds=timeout_seconds,
-            keep_open=keep_open,
-            project_url=project_home_url_from_url(conversation_url) or self._effective_project_home_url(),
+            **call_kwargs,
         )
 
     async def create_project(
@@ -2941,6 +2959,115 @@ def _load_latest_validated_protocol_run(profile_dir: str | Path) -> tuple[Path |
     return None, None, diagnostic
 
 
+def _load_validated_protocol_run_by_request_id(
+    profile_dir: str | Path,
+    request_id: Any,
+    *,
+    allow_replay_unvalidated_artifact_run: bool = False,
+    allow_finalize_materialized_protocol_run: bool = False,
+) -> tuple[Path | None, dict[str, Any] | None, dict[str, Any]]:
+    """Load one exact persisted protocol run by request ID.
+
+    Normal selection accepts only validated records. An operator may explicitly
+    opt into replay of one narrowly allowlisted pre-materialization failure. The
+    replay path is exact-ID-only and remains fail-closed for all other invalid,
+    ambiguous, mutated, or non-artifact records.
+    """
+
+    selected_request_id = str(request_id or "").strip()
+    root = _protocol_run_records_dir(profile_dir)
+    safe_request_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", selected_request_id).strip("._")
+    if not selected_request_id or safe_request_id != selected_request_id:
+        return None, None, {
+            "status": "protocol_run_request_id_invalid",
+            "selected_request_id": selected_request_id or None,
+            "records_dir": str(root),
+        }
+
+    path, payload, loaded = _load_protocol_run_record_for_request_id(profile_dir, selected_request_id)
+    diagnostic = {
+        **loaded,
+        "selected_request_id": selected_request_id,
+        "records_dir": str(root),
+        "scanned_count": 1,
+    }
+    if payload is None:
+        diagnostic["status"] = loaded.get("status") or "protocol_run_record_missing"
+        return path, None, diagnostic
+
+    payload_request_id = str(payload.get("request_id") or "")
+    if payload_request_id != selected_request_id:
+        diagnostic.update({
+            "status": "protocol_run_request_id_mismatch",
+            "payload_request_id": payload_request_id or None,
+        })
+        return path, None, diagnostic
+
+    if not _protocol_run_is_validated(payload):
+        finalization_eligibility = _protocol_run_materialized_finalization_eligibility(
+            payload,
+            selected_request_id=selected_request_id,
+            profile_dir=profile_dir,
+        )
+        diagnostic["materialized_finalization_eligibility"] = finalization_eligibility
+        if allow_finalize_materialized_protocol_run and finalization_eligibility.get("ok") is True:
+            diagnostic.update({
+                "available": True,
+                "status": "selected_materialized_protocol_run",
+                "record_count": len(list(root.glob("*.json"))) if root.is_dir() else 0,
+                "run_status": payload.get("status"),
+                "ok": payload.get("ok"),
+                "reply_validation_ok": payload.get("reply_validation_ok"),
+                "finalization_requested": True,
+                "finalization_used": True,
+                "previous_status": payload.get("status"),
+            })
+            return path, payload, diagnostic
+
+        replay_eligibility = _protocol_run_unvalidated_artifact_replay_eligibility(
+            payload,
+            selected_request_id=selected_request_id,
+        )
+        diagnostic["replay_eligibility"] = replay_eligibility
+        if allow_replay_unvalidated_artifact_run and replay_eligibility.get("ok") is True:
+            diagnostic.update({
+                "available": True,
+                "status": "selected_replayable_protocol_run",
+                "record_count": len(list(root.glob("*.json"))) if root.is_dir() else 0,
+                "run_status": payload.get("status"),
+                "ok": payload.get("ok"),
+                "reply_validation_ok": payload.get("reply_validation_ok"),
+                "replay_requested": True,
+                "replay_used": True,
+                "previous_status": payload.get("status"),
+            })
+            return path, payload, diagnostic
+        diagnostic.update({
+            "status": (
+                "selected_protocol_run_not_finalizable"
+                if allow_finalize_materialized_protocol_run and payload.get("status") in _MATERIALIZED_FINALIZATION_PROTOCOL_RUN_STATUSES
+                else ("selected_protocol_run_not_replayable" if allow_replay_unvalidated_artifact_run else "selected_protocol_run_not_validated")
+            ),
+            "run_status": payload.get("status"),
+            "ok": payload.get("ok"),
+            "reply_validation_ok": payload.get("reply_validation_ok"),
+            "replay_requested": bool(allow_replay_unvalidated_artifact_run),
+            "replay_used": False,
+            "finalization_requested": bool(allow_finalize_materialized_protocol_run),
+            "finalization_used": False,
+        })
+        return path, None, diagnostic
+
+    diagnostic.update({
+        "available": True,
+        "status": "selected_validated_protocol_run",
+        "record_count": len(list(root.glob("*.json"))) if root.is_dir() else 0,
+        "replay_requested": bool(allow_replay_unvalidated_artifact_run),
+        "replay_used": False,
+    })
+    return path, payload, diagnostic
+
+
 def _candidate_expected_filename(repo: str | None, version: str | None) -> str | None:
     if not repo or not version:
         return None
@@ -2976,37 +3103,566 @@ def _protocol_run_is_no_artifact_no_change(run: dict[str, Any]) -> bool:
     )
 
 
-def _protocol_run_baseline_errors(run: dict[str, Any]) -> list[str]:
+_REPLAYABLE_UNVALIDATED_PROTOCOL_RUN_STATUSES = {"artifact_declared_but_not_attached"}
+_REPLAYABLE_UNVALIDATED_CANONICAL_FAILURES = {
+    "reply_validated",
+    "download_proof",
+    "artifact_declared_but_not_attached",
+}
+_REPLAYABLE_UNVALIDATED_REPLY_ERRORS = {
+    "ask_release:reply_validated",
+    "ask_release:download_proof",
+    "ask_release:artifact_declared_but_not_attached",
+    "reply_validated",
+    "download_proof",
+    "artifact_declared_but_not_attached",
+}
+_REPLAYABLE_UNVALIDATED_ASK_RELEASE_FAILURES = set(_REPLAYABLE_UNVALIDATED_CANONICAL_FAILURES)
+_REPLAYABLE_ZIP_MEDIA_TYPES = {
+    "application/zip",
+    "application/x-zip-compressed",
+}
+
+
+def _normalized_replay_identity(*values: Any, fallback: Any = None) -> dict[str, Any]:
+    """Resolve one replay identity while rejecting contradictory legacy copies."""
+
+    normalized = [str(value).strip() for value in values if str(value or "").strip()]
+    distinct = list(dict.fromkeys(normalized))
+    if len(distinct) > 1:
+        return {
+            "ok": False,
+            "value": None,
+            "source": "conflicting_explicit_values",
+            "explicit_values": distinct,
+        }
+    if distinct:
+        return {
+            "ok": True,
+            "value": distinct[0],
+            "source": "explicit_or_legacy_selection",
+            "explicit_values": distinct,
+        }
+    fallback_text = str(fallback or "").strip()
+    return {
+        "ok": bool(fallback_text),
+        "value": fallback_text or None,
+        "source": "exact_run_identity_fallback" if fallback_text else "missing",
+        "explicit_values": [],
+    }
+
+
+def _protocol_run_candidate_zip_evidence(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Classify one persisted protocol artifact as ZIP without trusting one field.
+
+    New records may declare ``kind=zip``. Historical release replies frequently
+    omitted ``kind`` while declaring both a ``.zip`` basename and a ZIP media
+    type. Those two independent legacy signals are accepted together; a MIME or
+    filename contradiction remains fail-closed. This classifier is shared by
+    replay, finalization, ordinary validated intake, and migration.
+    """
+
+    raw = candidate.get("raw") if isinstance(candidate.get("raw"), dict) else {}
+    raw_kind = str(raw.get("kind") or "").strip().lower()
+    normalized_kind = str(candidate.get("kind") or "").strip().lower()
+    filename = Path(str(candidate.get("filename") or "")).name
+    media_type = str(candidate.get("media_type") or raw.get("media_type") or "").strip().lower()
+
+    if raw_kind:
+        ok = raw_kind == "zip"
+        mode = "explicit_kind"
+    elif normalized_kind and normalized_kind not in {"unknown", "none"}:
+        ok = normalized_kind == "zip"
+        mode = "normalized_kind"
+    else:
+        ok = filename.endswith(".zip") and media_type in _REPLAYABLE_ZIP_MEDIA_TYPES
+        mode = "legacy_media_type"
+
+    return {
+        "ok": ok,
+        "mode": mode,
+        "filename": filename,
+        "raw_kind": raw_kind or None,
+        "normalized_kind": normalized_kind or None,
+        "media_type": media_type or None,
+        "allowed_media_types": sorted(_REPLAYABLE_ZIP_MEDIA_TYPES),
+    }
+
+
+def _protocol_run_replay_candidate_zip_evidence(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Backward-compatible name for the shared persisted-run ZIP classifier."""
+
+    return _protocol_run_candidate_zip_evidence(candidate)
+
+
+def _protocol_run_intake_baseline_errors(run: dict[str, Any]) -> list[str]:
+    """Normalize persisted reply baseline aliases for every intake path.
+
+    ``input_artifact`` and ``input_baseline`` are equivalent only when all
+    present values agree with the request. Source and registry fields are
+    optional reply metadata: absence is not a mismatch, but a present
+    contradiction is rejected. Target version may be carried by the candidate,
+    so baseline target fields are checked when present rather than required.
+    """
+
     reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
     baseline = reply.get("baseline") if isinstance(reply.get("baseline"), dict) else {}
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    request_artifact = request.get("artifact") if isinstance(request.get("artifact"), dict) else {}
     expectations = _protocol_run_expectations(run)
-    no_artifact_no_change = _protocol_run_is_no_artifact_no_change(run)
-    comparisons = [
-        ("input_artifact", baseline.get("input_artifact"), expectations.get("expected_input_artifact"), "baseline_artifact_mismatch"),
-        ("input_version", baseline.get("input_version"), expectations.get("expected_input_version"), "baseline_version_mismatch"),
-        ("release_type", baseline.get("release_type"), expectations.get("expected_release_type"), "baseline_release_type_mismatch"),
-    ]
-    if not no_artifact_no_change:
-        comparisons.extend([
-            ("source_ref", baseline.get("source_ref"), expectations.get("expected_source_ref"), "baseline_source_ref_mismatch"),
-            ("source_version", baseline.get("source_version"), expectations.get("expected_source_version"), "baseline_source_version_mismatch"),
-        ])
     errors: list[str] = []
-    for _field, actual, expected, error in comparisons:
-        if expected is not None and actual != expected:
-            errors.append(error)
-    output_version = baseline.get("output_version") or baseline.get("target_version")
-    if expectations.get("expected_version") is not None and output_version not in {None, expectations.get("expected_version")}:
+
+    expected_input = expectations.get("expected_input_artifact")
+    input_values = [
+        str(value)
+        for value in (baseline.get("input_artifact"), baseline.get("input_baseline"))
+        if value not in {None, ""}
+    ]
+    if expected_input is not None and (not input_values or any(value != str(expected_input) for value in input_values)):
+        errors.append("baseline_artifact_mismatch")
+    if expectations.get("expected_input_version") is not None and baseline.get("input_version") != expectations.get("expected_input_version"):
+        errors.append("baseline_version_mismatch")
+    if expectations.get("expected_release_type") is not None and baseline.get("release_type") != expectations.get("expected_release_type"):
+        errors.append("baseline_release_type_mismatch")
+
+    expected_version = _normalize_version_token(expectations.get("expected_version"))
+    observed_targets = [
+        _normalize_version_token(value)
+        for value in (baseline.get("output_version"), baseline.get("target_version"))
+        if value not in {None, ""}
+    ]
+    if expected_version and any(value != expected_version for value in observed_targets):
         errors.append("baseline_target_version_mismatch")
-    return errors
+
+    output_artifact = baseline.get("output_artifact")
+    if output_artifact is not None and output_artifact != expectations.get("expected_filename"):
+        errors.append("baseline_output_artifact_mismatch")
+
+    optional_pairs = [
+        ("source_ref", expectations.get("expected_source_ref"), "baseline_source_ref_mismatch"),
+        ("source_version", expectations.get("expected_source_version"), "baseline_source_version_mismatch"),
+        ("registry_current", request_artifact.get("registry_current"), "baseline_registry_current_mismatch"),
+        ("registry_current_version", request_artifact.get("registry_current_version"), "baseline_registry_current_version_mismatch"),
+    ]
+    for field, expected, error in optional_pairs:
+        actual = baseline.get(field)
+        if actual is not None and expected is not None and actual != expected:
+            errors.append(error)
+    return list(dict.fromkeys(errors))
 
 
-def _normalize_protocol_run_reply_for_intake(run: dict[str, Any]) -> dict[str, Any]:
+def _protocol_run_replay_baseline_errors(run: dict[str, Any]) -> list[str]:
+    """Backward-compatible replay name for shared baseline normalization."""
+
+    return _protocol_run_intake_baseline_errors(run)
+
+
+def _canonical_replay_failure(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("ask_release:"):
+        text = text.split(":", 1)[1]
+    return text
+
+
+def _protocol_run_replay_failure_evidence(run: dict[str, Any]) -> dict[str, Any]:
+    """Normalize old/new attachment-proof failure labels and positive checks."""
+
+    reply_errors_raw = [str(item) for item in (run.get("reply_validation_errors") or [])]
+    ask_validation = run.get("ask_release_validation") if isinstance(run.get("ask_release_validation"), dict) else {}
+    ask_failures_raw = [str(item) for item in (ask_validation.get("failures") or [])]
+    reply_failures = {_canonical_replay_failure(item) for item in reply_errors_raw if _canonical_replay_failure(item)}
+    ask_failures = {_canonical_replay_failure(item) for item in ask_failures_raw if _canonical_replay_failure(item)}
+    combined = reply_failures | ask_failures
+
+    checks = ask_validation.get("checks") if isinstance(ask_validation.get("checks"), dict) else {}
+    required_true_checks = [
+        "exact_artifact_count",
+        "filename_matches",
+        "version_matches",
+        "role_matches",
+        "status_release_candidate",
+    ]
+    positive_identity_checks = all(checks.get(name) is True for name in required_true_checks)
+    artifact_count_exact = int(checks.get("artifact_count") or 0) == 1
+    no_successful_download_claim = not any(
+        checks.get(name) is True
+        for name in (
+            "download_claimed",
+            "download_available",
+            "download_proof",
+            "download_direct_supported",
+            "download_attachment_proven",
+        )
+    )
+    canonical_failure_set_ok = (
+        bool(combined)
+        and "artifact_declared_but_not_attached" in combined
+        and combined.issubset(_REPLAYABLE_UNVALIDATED_CANONICAL_FAILURES)
+    )
+
+    return {
+        "ok": canonical_failure_set_ok and positive_identity_checks and artifact_count_exact and no_successful_download_claim,
+        "reply_errors_raw": reply_errors_raw,
+        "ask_failures_raw": ask_failures_raw,
+        "reply_failures": sorted(reply_failures),
+        "ask_failures": sorted(ask_failures),
+        "canonical_failures": sorted(combined),
+        "canonical_failure_set_ok": canonical_failure_set_ok,
+        "positive_identity_checks": positive_identity_checks,
+        "artifact_count_exact": artifact_count_exact,
+        "no_successful_download_claim": no_successful_download_claim,
+        "required_true_checks": required_true_checks,
+        "checks": checks,
+    }
+
+
+_MATERIALIZED_FINALIZATION_PROTOCOL_RUN_STATUSES = {"release_candidate_validation_failed"}
+_MATERIALIZED_FINALIZATION_STALE_REPLY_ERRORS = {
+    "baseline_artifact_mismatch",
+    "target_version_mismatch",
+    "ask_release:reply_validated",
+}
+_MATERIALIZED_FINALIZATION_ASK_FAILURES = {"reply_validated"}
+_MATERIALIZED_FINALIZATION_STATUS = "chatgpt_rendered_attachment_downloaded_verified"
+
+
+def _protocol_run_materialized_finalization_eligibility(
+    run: dict[str, Any],
+    *,
+    selected_request_id: str,
+    profile_dir: str | Path,
+) -> dict[str, Any]:
+    """Validate an already downloaded ask-release run for idempotent finalization.
+
+    This path is exact-request-only. It never redownloads, migrates, publishes,
+    adopts, or trusts stale validation errors. The persisted inbox ZIP is opened
+    again and compared with the request, reply envelope, selected answer, and
+    recorded materialization metadata before the run may be finalized.
+    """
+
+    checks: dict[str, bool] = {}
+    failures: list[str] = []
+
+    def require(name: str, condition: Any) -> None:
+        ok = bool(condition)
+        checks[name] = ok
+        if not ok:
+            failures.append(name)
+
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    message = run.get("message") if isinstance(run.get("message"), dict) else {}
+    answer = run.get("answer") if isinstance(run.get("answer"), dict) else {}
+    selected = run.get("selected_answer") if isinstance(run.get("selected_answer"), dict) else {}
+    selection = run.get("selected_protocol_reply") if isinstance(run.get("selected_protocol_reply"), dict) else {}
+    request_id = str(run.get("request_id") or "")
+    correlation_id = str(run.get("correlation_id") or "")
+    message_id = str(message.get("id") or "")
+    answer_id = str(answer.get("id") or "")
+    conversation_id = str(run.get("conversation_id") or (request.get("task") or {}).get("conversation_id") or "")
+
+    selection_request = _normalized_replay_identity(selection.get("request_id"), run.get("selected_request_id"), fallback=request_id)
+    selection_correlation = _normalized_replay_identity(selection.get("correlation_id"), run.get("selected_correlation_id"), fallback=correlation_id)
+    selection_message = _normalized_replay_identity(selection.get("message_id"), run.get("selected_message_id"), selected.get("message_id"), fallback=message_id)
+    selection_answer = _normalized_replay_identity(selection.get("answer_id"), run.get("selected_answer_id"), selected.get("answer_id"), fallback=answer_id)
+
+    require("action_is_ask_release", run.get("action") == "ask_release")
+    require("run_status_allowlisted", run.get("status") in _MATERIALIZED_FINALIZATION_PROTOCOL_RUN_STATUSES)
+    require("run_not_ok", run.get("ok") is False)
+    require("reply_validation_failed", run.get("reply_validation_ok") is False)
+    require("request_id_exact", request_id == selected_request_id)
+    require("correlation_id_exact", correlation_id == selected_request_id)
+    require("request_envelope_request_id_exact", str(request.get("request_id") or "") == selected_request_id)
+    require("request_envelope_correlation_id_exact", str(request.get("correlation_id") or "") == selected_request_id)
+    require("reply_request_id_exact", str(reply.get("request_id") or "") == selected_request_id)
+    require("reply_correlation_id_exact", str(reply.get("correlation_id") or "") == selected_request_id)
+    require("reply_declares_release_candidate", reply.get("status") == "completed" and reply.get("result_type") == "release_candidate")
+    require("message_id_present", bool(message_id))
+    require("answer_id_present", bool(answer_id))
+    require("selection_request_identity_matches", selection_request.get("ok") and selection_request.get("value") == selected_request_id)
+    require("selection_correlation_identity_matches", selection_correlation.get("ok") and selection_correlation.get("value") == selected_request_id)
+    require("selection_message_identity_matches", selection_message.get("ok") and selection_message.get("value") == message_id)
+    require("selection_answer_identity_matches", selection_answer.get("ok") and selection_answer.get("value") == answer_id)
+
+    reply_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply, ensure_ascii=False) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+    reparsed = parse_promptbranch_reply(reply_text)
+    require("reply_reparse_valid", reparsed.get("ok") is True and reparsed.get("status") == "valid")
+    normalized_validation_ok, normalized_validation_errors = _validate_protocol_reply_against_request(reparsed, request)
+    require("normalized_reply_matches_request", normalized_validation_ok and not normalized_validation_errors)
+
+    candidates = reparsed.get("artifact_candidates") if isinstance(reparsed.get("artifact_candidates"), list) else []
+    require("exactly_one_artifact_candidate", len(candidates) == 1)
+    candidate = candidates[0] if len(candidates) == 1 and isinstance(candidates[0], dict) else {}
+    expectations = _protocol_run_expectations(run)
+    filename = Path(str(candidate.get("filename") or "")).name
+    require("candidate_kind_zip", _protocol_run_replay_candidate_zip_evidence(candidate).get("ok"))
+    require("candidate_role_release", candidate.get("role") == "candidate_release")
+    require("candidate_filename_exact", bool(filename) and filename == expectations.get("expected_filename"))
+    require("candidate_version_exact", _normalize_version_token(candidate.get("version")) == _normalize_version_token(expectations.get("expected_version")))
+
+    ask_validation = run.get("ask_release_validation") if isinstance(run.get("ask_release_validation"), dict) else {}
+    ask_checks = ask_validation.get("checks") if isinstance(ask_validation.get("checks"), dict) else {}
+    required_positive_checks = [
+        "exact_artifact_count", "filename_matches", "version_matches", "role_matches",
+        "download_proof", "status_release_candidate", "artifact_materialization_proven",
+        "browser_download_performed", "verification_performed", "envelope_metadata_verified",
+    ]
+    require("materialization_checks_positive", all(ask_checks.get(name) is True for name in required_positive_checks))
+    require("run_materialization_proven", run.get("download_performed") is True and run.get("browser_download_performed") is True and run.get("verification_performed") is True and run.get("artifact_materialization_proven") is True and run.get("envelope_metadata_verified") is True)
+    require("materialization_status_exact", run.get("materialization_status") == _MATERIALIZED_FINALIZATION_STATUS)
+
+    reply_errors = {str(item) for item in (run.get("reply_validation_errors") or [])}
+    ask_failures = {str(item) for item in (ask_validation.get("failures") or [])}
+    require("stale_reply_errors_only", bool(reply_errors) and reply_errors.issubset(_MATERIALIZED_FINALIZATION_STALE_REPLY_ERRORS))
+    require("stale_ask_failures_only", ask_failures.issubset(_MATERIALIZED_FINALIZATION_ASK_FAILURES))
+
+    forbidden_true_flags = [
+        "migration_performed", "adoption_performed", "project_source_mutated",
+        "artifact_registry_updated", "state_artifact_updated", "state_source_updated",
+    ]
+    require("no_release_state_mutation", not any(run.get(name) is True for name in forbidden_true_flags))
+
+    download = run.get("download") if isinstance(run.get("download"), dict) else {}
+    expected_inbox = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=selected_request_id,
+    )
+    expected_path = (expected_inbox / filename).resolve() if filename else expected_inbox.resolve()
+    actual_path = Path(str(download.get("path") or "")).expanduser().resolve() if download.get("path") else None
+    require("artifact_path_exact", actual_path is not None and actual_path == expected_path)
+    require("artifact_file_present", actual_path is not None and actual_path.is_file())
+
+    file_metadata: dict[str, Any] = {}
+    zip_verification: dict[str, Any] = {}
+    zip_version: str | None = None
+    if actual_path is not None and actual_path.is_file():
+        file_metadata = _artifact_file_metadata(actual_path)
+        zip_verification = verify_zip_artifact(actual_path)
+        zip_version = _read_zip_version_file(actual_path)
+    raw = candidate.get("raw") if isinstance(candidate.get("raw"), dict) else {}
+    expected_sha = str(raw.get("sha256") or candidate.get("sha256") or "").lower()
+    expected_size = raw.get("size_bytes") or candidate.get("size_bytes")
+    expected_entries = raw.get("entry_count") or candidate.get("entry_count")
+    require("artifact_sha256_exact", bool(expected_sha) and str(file_metadata.get("sha256") or "").lower() == expected_sha)
+    try:
+        size_exact = int(file_metadata.get("size_bytes")) == int(expected_size)
+    except (TypeError, ValueError):
+        size_exact = False
+    require("artifact_size_exact", size_exact)
+    try:
+        entries_exact = int(zip_verification.get("entry_count")) == int(expected_entries)
+    except (TypeError, ValueError):
+        entries_exact = False
+    require("artifact_entry_count_exact", entries_exact)
+    require("artifact_zip_valid", zip_verification.get("ok") is True)
+    require("artifact_version_exact", _normalize_version_token(zip_version) == _normalize_version_token(expectations.get("expected_version")))
+
+    return {
+        "ok": not failures,
+        "status": "materialized_protocol_run_finalizable" if not failures else "materialized_protocol_run_not_finalizable",
+        "checks": checks,
+        "failures": failures,
+        "normalized_validation_errors": normalized_validation_errors,
+        "artifact_path": str(actual_path) if actual_path else None,
+        "artifact_inbox_dir": str(expected_inbox),
+        "artifact_metadata": file_metadata,
+        "zip_verification": zip_verification,
+        "allowed_run_statuses": sorted(_MATERIALIZED_FINALIZATION_PROTOCOL_RUN_STATUSES),
+        "allowed_stale_reply_errors": sorted(_MATERIALIZED_FINALIZATION_STALE_REPLY_ERRORS),
+        "allowed_stale_ask_failures": sorted(_MATERIALIZED_FINALIZATION_ASK_FAILURES),
+    }
+
+
+def _protocol_run_unvalidated_artifact_replay_eligibility(
+    run: dict[str, Any],
+    *,
+    selected_request_id: str,
+) -> dict[str, Any]:
+    """Classify one failed ask-release record for explicit browser replay.
+
+    This is deliberately not a generic validation bypass. It admits only the
+    historical state where a structurally valid, exactly correlated release
+    envelope declared one sandbox ZIP but no rendered attachment had yet been
+    proven. Legacy field aliases are normalized only inside this explicit replay
+    path, and contradictory copies still fail before browser access.
+    """
+
+    checks: dict[str, bool] = {}
+    failures: list[str] = []
+
+    def require(name: str, condition: Any) -> None:
+        ok = bool(condition)
+        checks[name] = ok
+        if not ok:
+            failures.append(name)
+
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    message = run.get("message") if isinstance(run.get("message"), dict) else {}
+    answer = run.get("answer") if isinstance(run.get("answer"), dict) else {}
+    selected = run.get("selected_answer") if isinstance(run.get("selected_answer"), dict) else {}
+    selection = run.get("selected_protocol_reply") if isinstance(run.get("selected_protocol_reply"), dict) else {}
+
+    request_id = str(run.get("request_id") or "")
+    correlation_id = str(run.get("correlation_id") or "")
+    request_request_id = str(request.get("request_id") or "")
+    request_correlation_id = str(request.get("correlation_id") or "")
+    reply_request_id = str(reply.get("request_id") or "")
+    reply_correlation_id = str(reply.get("correlation_id") or "")
+    message_id = str(message.get("id") or "")
+    answer_id = str(answer.get("id") or "")
+
+    selection_request = _normalized_replay_identity(
+        selection.get("request_id"),
+        run.get("selected_request_id"),
+        fallback=request_id,
+    )
+    selection_correlation = _normalized_replay_identity(
+        selection.get("correlation_id"),
+        run.get("selected_correlation_id"),
+        fallback=correlation_id,
+    )
+    selection_message = _normalized_replay_identity(
+        selection.get("message_id"),
+        run.get("selected_message_id"),
+        selected.get("message_id"),
+        fallback=message_id,
+    )
+    selection_answer = _normalized_replay_identity(
+        selection.get("answer_id"),
+        run.get("selected_answer_id"),
+        selected.get("answer_id"),
+        fallback=answer_id,
+    )
+    selection_evidence = {
+        "request_id": selection_request,
+        "correlation_id": selection_correlation,
+        "message_id": selection_message,
+        "answer_id": selection_answer,
+    }
+
+    require("action_is_ask_release", run.get("action") == "ask_release")
+    require("run_status_allowlisted", run.get("status") in _REPLAYABLE_UNVALIDATED_PROTOCOL_RUN_STATUSES)
+    require("run_not_ok", run.get("ok") is False)
+    require("reply_validation_failed", run.get("reply_validation_ok") is False)
+    require("request_id_exact", request_id == selected_request_id)
+    require("correlation_id_exact", correlation_id == selected_request_id)
+    require("request_envelope_request_id_exact", request_request_id == selected_request_id)
+    require("request_envelope_correlation_id_exact", request_correlation_id == selected_request_id)
+    require("reply_request_id_exact", reply_request_id == selected_request_id)
+    require("reply_correlation_id_exact", reply_correlation_id == selected_request_id)
+    require("reply_schema_exact", reply.get("schema") == "promptbranch.ask.reply")
+    require("reply_schema_version_exact", str(reply.get("schema_version") or "") == "1.0")
+    require("reply_declares_release_candidate", reply.get("status") == "completed" and reply.get("result_type") == "release_candidate")
+    require("message_id_present", bool(message_id))
+    require("answer_id_present", bool(answer_id))
+    require("selected_message_identity_matches", str(selected.get("message_id") or "") == message_id)
+    require("selected_answer_identity_matches", str(selected.get("answer_id") or "") == answer_id)
+    require("selection_request_identity_matches", selection_request.get("ok") and selection_request.get("value") == selected_request_id)
+    require("selection_correlation_identity_matches", selection_correlation.get("ok") and selection_correlation.get("value") == selected_request_id)
+    require("selection_message_identity_matches", selection_message.get("ok") and selection_message.get("value") == message_id)
+    require("selection_answer_identity_matches", selection_answer.get("ok") and selection_answer.get("value") == answer_id)
+    require("conversation_url_present", bool(str(run.get("conversation_url") or (request.get("task") or {}).get("conversation_url") or "").strip()))
+    require("conversation_id_present", bool(str(run.get("conversation_id") or (request.get("task") or {}).get("conversation_id") or "").strip()))
+    require("answer_text_recorded", int(run.get("answer_text_length") or 0) > 0)
+
+    reply_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply, ensure_ascii=False) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+    reparsed = parse_promptbranch_reply(reply_text)
+    require("reply_reparse_valid", reparsed.get("ok") is True and reparsed.get("status") == "valid")
+    candidates = reparsed.get("artifact_candidates") if isinstance(reparsed.get("artifact_candidates"), list) else []
+    require("exactly_one_artifact_candidate", len(candidates) == 1)
+    candidate = candidates[0] if len(candidates) == 1 and isinstance(candidates[0], dict) else {}
+    expectations = _protocol_run_expectations(run)
+    candidate_filename = Path(str(candidate.get("filename") or "")).name
+    candidate_version = _normalize_version_token(candidate.get("version"))
+    expected_version = _normalize_version_token(expectations.get("expected_version"))
+    zip_evidence = _protocol_run_replay_candidate_zip_evidence(candidate)
+    require("candidate_kind_zip", zip_evidence.get("ok"))
+    require("candidate_role_release", candidate.get("role") == "candidate_release")
+    require("candidate_filename_exact", bool(candidate_filename) and candidate_filename == expectations.get("expected_filename"))
+    require("candidate_version_exact", bool(candidate_version) and candidate_version == expected_version)
+    transport = _artifact_download_transport(_selected_candidate_download_url(candidate))
+    require("candidate_is_unproven_sandbox", transport.get("scheme") == "sandbox" and not transport.get("direct_download_supported"))
+    baseline_errors = _protocol_run_replay_baseline_errors(run)
+    require("baseline_matches_request", not baseline_errors)
+
+    failure_evidence = _protocol_run_replay_failure_evidence(run)
+    require("attachment_failure_identity_checks_passed", failure_evidence.get("positive_identity_checks") and failure_evidence.get("artifact_count_exact"))
+    require("reply_errors_are_attachment_only", failure_evidence.get("canonical_failure_set_ok") and failure_evidence.get("no_successful_download_claim"))
+    require("ask_release_failures_are_attachment_only", failure_evidence.get("canonical_failure_set_ok") and failure_evidence.get("no_successful_download_claim"))
+
+    forbidden_true_flags = [
+        "download_performed",
+        "browser_download_performed",
+        "verification_performed",
+        "migration_performed",
+        "adoption_performed",
+        "artifact_materialization_proven",
+        "project_source_mutated",
+        "artifact_registry_updated",
+        "state_artifact_updated",
+        "state_source_updated",
+    ]
+    require("no_prior_mutation_or_materialization", not any(run.get(name) is True for name in forbidden_true_flags))
+
+    return {
+        "ok": not failures,
+        "status": "replayable_artifact_intake_failure" if not failures else "unvalidated_artifact_run_not_replayable",
+        "allowlisted_previous_status": run.get("status"),
+        "compatibility_profile": "legacy_attachment_only_protocol_run_v1",
+        "checks": checks,
+        "failures": failures,
+        "selection_identity_evidence": selection_evidence,
+        "candidate_zip_evidence": zip_evidence,
+        "baseline_errors": baseline_errors,
+        "failure_evidence": failure_evidence,
+        "allowed_run_statuses": sorted(_REPLAYABLE_UNVALIDATED_PROTOCOL_RUN_STATUSES),
+        "allowed_reply_validation_errors": sorted(_REPLAYABLE_UNVALIDATED_REPLY_ERRORS),
+        "allowed_ask_release_failures": sorted(_REPLAYABLE_UNVALIDATED_ASK_RELEASE_FAILURES),
+    }
+
+
+def _protocol_run_baseline_errors(run: dict[str, Any]) -> list[str]:
+    """Backward-compatible name for shared persisted-run baseline checks."""
+
+    return _protocol_run_intake_baseline_errors(run)
+
+
+def _normalize_protocol_run_reply_for_intake(
+    run: dict[str, Any],
+    *,
+    allow_legacy_unvalidated_replay: bool = False,
+) -> dict[str, Any]:
     reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
     artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
     text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply, ensure_ascii=False) + "\nEND_PROMPTBRANCH_REPLY_JSON"
     parsed = parse_promptbranch_reply(text)
-    baseline_errors = _protocol_run_baseline_errors(run)
+    baseline_errors = _protocol_run_intake_baseline_errors(run)
+    normalized_candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
+    normalized_legacy_zip_count = 0
+    for candidate in normalized_candidates:
+        if not isinstance(candidate, dict):
+            continue
+        zip_evidence = _protocol_run_candidate_zip_evidence(candidate)
+        raw = candidate.get("raw") if isinstance(candidate.get("raw"), dict) else {}
+        if zip_evidence.get("ok") and not str(raw.get("kind") or "").strip():
+            candidate["kind"] = "zip"
+            candidate["legacy_kind_normalized"] = True
+            candidate["legacy_kind_evidence"] = zip_evidence
+            normalized_legacy_zip_count += 1
+    parsed["protocol_run_intake_compatibility"] = {
+        "profile": "persisted_protocol_run_v1",
+        "baseline_errors": baseline_errors,
+        "normalized_legacy_zip_count": normalized_legacy_zip_count,
+    }
+    if allow_legacy_unvalidated_replay:
+        parsed["protocol_run_replay_compatibility"] = {
+            "profile": "legacy_attachment_only_protocol_run_v1",
+            "baseline_errors": baseline_errors,
+            "normalized_legacy_zip_count": normalized_legacy_zip_count,
+        }
     if baseline_errors:
         parsed = {
             **parsed,
@@ -3034,6 +3690,83 @@ def _normalize_protocol_run_reply_for_intake(run: dict[str, Any]) -> dict[str, A
     return parsed
 
 
+def _protocol_run_reusable_materialization_evidence(
+    run: dict[str, Any],
+    *,
+    selected_request_id: str,
+    profile_dir: str | Path,
+) -> dict[str, Any]:
+    """Prove that a validated exact run can reuse its verified inbox ZIP.
+
+    This does not migrate or trust the previous verification blindly. It only
+    authorizes reuse of the exact inbox path; the ordinary verification step
+    reopens the ZIP and compares all envelope metadata before migration.
+    """
+
+    checks: dict[str, bool] = {}
+    failures: list[str] = []
+
+    def require(name: str, condition: Any) -> None:
+        ok = bool(condition)
+        checks[name] = ok
+        if not ok:
+            failures.append(name)
+
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    task = request.get("task") if isinstance(request.get("task"), dict) else {}
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    message = run.get("message") if isinstance(run.get("message"), dict) else {}
+    answer = run.get("answer") if isinstance(run.get("answer"), dict) else {}
+    request_id = str(run.get("request_id") or "")
+    conversation_id = str(run.get("conversation_id") or task.get("conversation_id") or "")
+    answer_id = str(answer.get("id") or "")
+
+    parsed = _normalize_protocol_run_reply_for_intake(run)
+    candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
+    candidate = candidates[0] if len(candidates) == 1 and isinstance(candidates[0], dict) else {}
+    filename = _safe_artifact_filename(candidate.get("filename"))
+    expected_inbox = _artifact_inbox_dir(
+        profile_dir=profile_dir,
+        conversation_id=conversation_id,
+        answer_id=answer_id,
+        request_id=request_id,
+    )
+    download = run.get("download") if isinstance(run.get("download"), dict) else {}
+    recorded_path = Path(str(download.get("path") or expected_inbox / str(filename or ""))).expanduser().resolve()
+    expected_path = (expected_inbox / str(filename or "")).resolve()
+
+    require("run_validated", _protocol_run_is_validated(run))
+    require("request_id_exact", request_id == selected_request_id)
+    require("conversation_id_present", bool(conversation_id))
+    require("message_id_present", bool(message.get("id")))
+    require("answer_id_present", bool(answer_id))
+    require("reply_normalized", parsed.get("ok") is True and not parsed.get("validation_errors"))
+    require("exactly_one_candidate", len(candidates) == 1)
+    require("candidate_kind_zip", _protocol_run_candidate_zip_evidence(candidate).get("ok"))
+    require("candidate_filename_safe", bool(filename))
+    require("materialization_proven", run.get("artifact_materialization_proven") is True)
+    require("browser_download_recorded", run.get("browser_download_performed") is True)
+    require("verification_recorded", run.get("verification_performed") is True)
+    require("envelope_metadata_verified", run.get("envelope_metadata_verified") is True)
+    require("materialization_status_exact", run.get("materialization_status") == _MATERIALIZED_FINALIZATION_STATUS)
+    require("no_prior_migration", run.get("migration_performed") is not True)
+    require("no_adoption", run.get("adoption_performed") is not True)
+    require("no_project_source_mutation", run.get("project_source_mutated") is not True)
+    require("no_registry_or_state_mutation", not any(run.get(name) is True for name in ("artifact_registry_updated", "state_artifact_updated", "state_source_updated")))
+    require("artifact_path_exact", bool(filename) and recorded_path == expected_path)
+    require("artifact_file_present", recorded_path.is_file())
+
+    return {
+        "ok": not failures,
+        "status": "validated_materialized_protocol_run_reusable" if not failures else "validated_materialized_protocol_run_not_reusable",
+        "checks": checks,
+        "failures": failures,
+        "artifact_path": str(recorded_path),
+        "artifact_inbox_dir": str(expected_inbox),
+        "candidate": candidate,
+    }
+
+
 def _artifact_intake_from_protocol_run_record(
     run: dict[str, Any],
     *,
@@ -3041,9 +3774,15 @@ def _artifact_intake_from_protocol_run_record(
     expected_filename: str | None = None,
     expected_version: str | None = None,
     expected_repo: str | None = None,
+    source: str = "last_validated_protocol_reply",
+    allow_legacy_unvalidated_replay: bool = False,
+    reuse_materialized_protocol_run: bool = False,
 ) -> dict[str, Any]:
     expectations = _protocol_run_expectations(run)
-    parsed = _normalize_protocol_run_reply_for_intake(run)
+    parsed = _normalize_protocol_run_reply_for_intake(
+        run,
+        allow_legacy_unvalidated_replay=allow_legacy_unvalidated_replay,
+    )
     result = _artifact_intake_from_parsed_answer(
         parsed,
         expected_filename=expected_filename or expectations.get("expected_filename"),
@@ -3051,7 +3790,7 @@ def _artifact_intake_from_protocol_run_record(
         expected_repo=expected_repo or expectations.get("expected_repo"),
     )
     result.update({
-        "source": "last_validated_protocol_reply",
+        "source": source,
         "protocol_run_record_path": str(run_path) if run_path else None,
         "protocol_run_request_id": run.get("request_id"),
         "protocol_run_correlation_id": run.get("correlation_id"),
@@ -3060,6 +3799,19 @@ def _artifact_intake_from_protocol_run_record(
         "reply_validation_ok": run.get("reply_validation_ok"),
         "artifact_candidates_source": "protocol_run.reply.artifacts",
     })
+    if reuse_materialized_protocol_run:
+        result.update({
+            "download": copy.deepcopy(run.get("download")) if isinstance(run.get("download"), dict) else {},
+            "download_performed": run.get("download_performed") is True,
+            "browser_download_performed": run.get("browser_download_performed") is True,
+            "verification_performed": run.get("verification_performed") is True,
+            "artifact_materialization_proven": run.get("artifact_materialization_proven") is True,
+            "envelope_metadata_verified": run.get("envelope_metadata_verified") is True,
+            "materialization_status": run.get("materialization_status"),
+            "artifact_inbox_dir": run.get("artifact_inbox_dir"),
+            "manual_import_required": False,
+            "materialized_protocol_run_reused": True,
+        })
     return result
 
 def _artifact_intake_from_parsed_answer(
@@ -3939,6 +4691,7 @@ def _migrate_verified_intake_artifact_candidate(result: dict[str, Any], *, profi
         "verified": True,
         "filename": filename,
         "version": zip_version or filename_version or candidate.get("version"),
+        "repo_id": result.get("expected_repo") or candidate.get("expected_repo") or candidate.get("repo_prefix"),
         "path": str(target_path),
         "sha256": target_metadata.get("sha256"),
         "size_bytes": target_metadata.get("size_bytes"),
@@ -4282,15 +5035,39 @@ async def _download_selected_artifact_candidate_via_browser(
     # them into the CLI-owned artifact inbox below.
     service_staging_path = f"/tmp/promptbranch-artifact-downloads/{conversation_id or 'unknown'}/{answer_id or 'unknown'}/{result.get('reply_request_id') or 'unknown'}/{filename}"
     browser_target_path = service_staging_path if backend.__class__.__name__ == "ServiceBackend" else str(target_path)
+    selection = result.get("selected_protocol_reply") if isinstance(result.get("selected_protocol_reply"), dict) else {}
+    request_id = result.get("reply_request_id") or selection.get("request_id")
+    correlated_answer_id = answer_id or selection.get("answer_id")
+    correlated_turn_index = selection.get("answer_turn_index")
     try:
-        browser_result = await backend.download_chat_artifact(
-            conversation_url=conversation_url,
-            artifact_url=url,
-            filename=filename,
-            target_path=browser_target_path,
-            timeout_seconds=timeout_seconds,
-            keep_open=keep_open,
-        )
+        try:
+            browser_result = await backend.download_chat_artifact(
+                conversation_url=conversation_url,
+                artifact_url=url,
+                filename=filename,
+                target_path=browser_target_path,
+                timeout_seconds=timeout_seconds,
+                keep_open=keep_open,
+                request_id=str(request_id) if request_id else None,
+                answer_id=str(correlated_answer_id) if correlated_answer_id else None,
+                answer_turn_index=int(correlated_turn_index) if correlated_turn_index is not None else None,
+            )
+        except TypeError as type_exc:
+            # Compatibility fallback for older test doubles and third-party
+            # backends. Production DirectBackend/ServiceBackend support the
+            # correlated answer identity fields.
+            if not any(token in str(type_exc) for token in ("request_id", "answer_id", "answer_turn_index")):
+                raise
+            browser_result = await backend.download_chat_artifact(
+                conversation_url=conversation_url,
+                artifact_url=url,
+                filename=filename,
+                target_path=browser_target_path,
+                timeout_seconds=timeout_seconds,
+                keep_open=keep_open,
+            )
+            if isinstance(browser_result, dict):
+                browser_result = {**browser_result, "correlation_arguments_supported": False}
     except Exception as exc:  # noqa: BLE001
         return {
             **result,
@@ -4692,6 +5469,29 @@ def _verify_intake_artifact_candidate(
     if not zip_version and verification.get("has_version_file"):
         verification_errors.append("artifact_version_invalid")
 
+    observed_metadata = _artifact_file_metadata(candidate_path)
+    envelope_metadata = {
+        "sha256": candidate.get("sha256") or candidate.get("expected_sha256"),
+        "size_bytes": candidate.get("size_bytes") or candidate.get("expected_size_bytes"),
+        "entry_count": candidate.get("entry_count") or candidate.get("expected_entry_count"),
+    }
+    envelope_metadata_checks: dict[str, bool | None] = {}
+    for metadata_key, expected_value in envelope_metadata.items():
+        if expected_value in {None, ""}:
+            envelope_metadata_checks[metadata_key] = None
+            continue
+        actual_value = verification.get("entry_count") if metadata_key == "entry_count" else observed_metadata.get(metadata_key)
+        try:
+            if metadata_key in {"size_bytes", "entry_count"}:
+                metadata_match = int(expected_value) == int(actual_value)
+            else:
+                metadata_match = str(expected_value).strip().lower() == str(actual_value or "").strip().lower()
+        except (TypeError, ValueError):
+            metadata_match = False
+        envelope_metadata_checks[metadata_key] = metadata_match
+        if not metadata_match:
+            verification_errors.append(f"artifact_envelope_{metadata_key}_mismatch")
+
     # Prefer specific semantic errors over the generic artifact_zip_invalid when possible.
     if not verification_errors:
         if result.get("manual_import_performed"):
@@ -4712,8 +5512,11 @@ def _verify_intake_artifact_candidate(
         "status": status,
         "ok": ok,
         "candidate": candidate,
-        "download": _artifact_file_metadata(candidate_path),
+        "download": observed_metadata,
         "verification": verification,
+        "envelope_metadata": envelope_metadata,
+        "envelope_metadata_checks": envelope_metadata_checks,
+        "envelope_metadata_verified": all(value is not False for value in envelope_metadata_checks.values()),
         "zip_version": zip_version,
         "filename_version": filename_version,
         "expected_version": expected_version,
@@ -4751,6 +5554,13 @@ def _verify_intake_artifact_candidate(
             "adoption_performed": False,
         }
 
+    envelope_metadata_verified = all(value is not False for value in envelope_metadata_checks.values())
+    browser_materialization_proven = bool(
+        ok
+        and result.get("download_performed") is True
+        and result.get("browser_download_performed") is True
+        and envelope_metadata_verified
+    )
     return {
         **result,
         "ok": ok,
@@ -4758,8 +5568,18 @@ def _verify_intake_artifact_candidate(
         "intake_stage": intake_stage,
         "artifact_inbox_dir": str(inbox_dir),
         "intake_record_path": str(intake_record_path),
-        "download": _artifact_file_metadata(candidate_path),
+        "download": observed_metadata,
         "verification": verification,
+        "envelope_metadata": envelope_metadata,
+        "envelope_metadata_checks": envelope_metadata_checks,
+        "envelope_metadata_verified": envelope_metadata_verified,
+        "artifact_materialization_proven": browser_materialization_proven,
+        "download_proof_status": (
+            "chatgpt_rendered_attachment_downloaded_verified"
+            if browser_materialization_proven
+            else result.get("download_proof_status")
+        ),
+        "manual_import_required": False if browser_materialization_proven else result.get("manual_import_required"),
         "zip_version": zip_version,
         "filename_version": filename_version,
         "expected_version": expected_version,
@@ -5057,6 +5877,133 @@ def _render_artifact_intake_result(result: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _finalize_materialized_protocol_run_record(
+    run: dict[str, Any],
+    intake_result: dict[str, Any],
+    *,
+    run_path: Path,
+    expected_filename: str | None,
+    expected_version: str | None,
+    expected_repo: str | None,
+) -> dict[str, Any]:
+    """Recompute and persist one already materialized ask-release result."""
+
+    if not (
+        intake_result.get("ok") is True
+        and intake_result.get("verification_performed") is True
+        and intake_result.get("artifact_materialization_proven") is True
+        and intake_result.get("envelope_metadata_verified") is True
+    ):
+        return {
+            **intake_result,
+            "ok": False,
+            "status": "materialized_protocol_run_finalization_failed",
+            "protocol_run_finalization": {
+                "performed": False,
+                "reason": "persisted inbox artifact did not pass idempotent verification",
+                "path": str(run_path),
+            },
+        }
+
+    request = run.get("request") if isinstance(run.get("request"), dict) else {}
+    reply = run.get("reply") if isinstance(run.get("reply"), dict) else {}
+    reply_text = "BEGIN_PROMPTBRANCH_REPLY_JSON\n" + json.dumps(reply, ensure_ascii=False) + "\nEND_PROMPTBRANCH_REPLY_JSON"
+    reparsed = parse_promptbranch_reply(reply_text)
+    validation_ok, validation_errors = _validate_protocol_reply_against_request(reparsed, request)
+    finalized = copy.deepcopy(run)
+    finalized.update({
+        "ok": bool(validation_ok),
+        "status": "reply_validated" if validation_ok else "release_candidate_validation_failed",
+        "reply_validation_ok": bool(validation_ok),
+        "reply_validation_errors": list(validation_errors),
+        "download": copy.deepcopy(intake_result.get("download")) if isinstance(intake_result.get("download"), dict) else {},
+        "download_performed": True,
+        "browser_download_performed": True,
+        "verification_performed": True,
+        "artifact_materialization_proven": True,
+        "envelope_metadata_verified": True,
+        "materialization_status": _MATERIALIZED_FINALIZATION_STATUS,
+        "artifact_inbox_dir": intake_result.get("artifact_inbox_dir"),
+        "migration_performed": False,
+        "adoption_performed": False,
+    })
+    expectations = _protocol_run_expectations(finalized)
+    expected = {
+        "expected_repo": expected_repo or expectations.get("expected_repo"),
+        "expected_version": _normalize_version_token(expected_version or expectations.get("expected_version")),
+        "expected_artifact": expected_filename or expectations.get("expected_filename"),
+        "expected_role": "candidate_release",
+        "exact_artifact_count": 1,
+    }
+    finalized = _validate_ask_release_candidate_result(finalized, expected)
+    if finalized.get("ok") is not True or finalized.get("reply_validation_ok") is not True:
+        return {
+            **intake_result,
+            "ok": False,
+            "status": "materialized_protocol_run_finalization_failed",
+            "reply_validation_errors": finalized.get("reply_validation_errors"),
+            "ask_release_validation": finalized.get("ask_release_validation"),
+            "protocol_run_finalization": {
+                "performed": False,
+                "reason": "post-materialization release-candidate validation remained non-green",
+                "path": str(run_path),
+            },
+        }
+
+    finalized["post_materialization_finalization"] = {
+        "performed": True,
+        "finalized_at": utc_now(),
+        "previous_status": run.get("status"),
+        "source": "persisted_verified_artifact_inbox",
+        "artifact_path": (intake_result.get("download") or {}).get("path") if isinstance(intake_result.get("download"), dict) else None,
+        "no_redownload": True,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    try:
+        run_path.write_text(json.dumps(finalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {
+            **intake_result,
+            "ok": False,
+            "status": "materialized_protocol_run_finalization_persist_failed",
+            "error": str(exc),
+            "protocol_run_finalization": {
+                "performed": False,
+                "reason": "protocol run record write failed",
+                "path": str(run_path),
+            },
+        }
+
+    return {
+        **intake_result,
+        "ok": True,
+        "action": "artifact_intake",
+        "mode": "idempotent_finalize",
+        "status": "reply_validated",
+        "source": "selected_materialized_protocol_reply",
+        "reply_validation_ok": True,
+        "reply_validation_errors": [],
+        "ask_release_validation": finalized.get("ask_release_validation"),
+        "artifact_materialization_proven": True,
+        "download_performed": True,
+        "browser_download_performed": True,
+        "verification_performed": True,
+        "envelope_metadata_verified": True,
+        "download_proof_status": _MATERIALIZED_FINALIZATION_STATUS,
+        "migration_performed": False,
+        "adoption_performed": False,
+        "protocol_run_finalization": {
+            "performed": True,
+            "path": str(run_path),
+            "previous_status": run.get("status"),
+            "persisted_status": "reply_validated",
+            "no_redownload": True,
+        },
+        "operator_instruction": "The exact already materialized protocol run was reverified and finalized idempotently. No download, migration, publication, adoption, commit, or push was performed during finalization.",
+    }
+
+
 async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
     use_protocol_record = bool(getattr(args, "from_last_protocol_run", False) or getattr(args, "from_last_answer", False))
     if not use_protocol_record:
@@ -5086,7 +6033,136 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
         or getattr(args, "answer_id", None)
         or getattr(args, "answer_index", None)
     )
-    run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_dir)
+    protocol_run_request_id = getattr(args, "protocol_run_request_id", None)
+    replay_unvalidated_artifact_run = bool(getattr(args, "replay_unvalidated_artifact_run", False))
+    if replay_unvalidated_artifact_run and not protocol_run_request_id:
+        result = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "unvalidated_artifact_replay_requires_exact_request_id",
+            "error": "--replay-unvalidated-artifact-run requires --from-last-protocol-run and --protocol-run-request-id",
+            "automation_performed": False,
+            "download_performed": False,
+            "verification_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    if replay_unvalidated_artifact_run and (
+        not getattr(args, "download", False)
+        or not getattr(args, "verify", False)
+        or bool(getattr(args, "local_file", None))
+        or bool(getattr(args, "verify_smoke_zip", False))
+        or bool(getattr(args, "migrate", False))
+    ):
+        result = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "unvalidated_artifact_replay_mode_invalid",
+            "error": "explicit unvalidated artifact replay requires --download --verify and forbids --local-file, --verify-smoke-zip, and --migrate",
+            "automation_performed": False,
+            "download_performed": False,
+            "verification_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    if protocol_run_request_id and not getattr(args, "from_last_protocol_run", False):
+        result = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "protocol_run_selector_requires_protocol_source",
+            "error": "--protocol-run-request-id requires --from-last-protocol-run",
+            "automation_performed": False,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    if protocol_run_request_id and explicit_answer_selection:
+        result = {
+            "ok": False,
+            "action": "artifact_intake",
+            "status": "artifact_intake_selector_conflict",
+            "error": "--protocol-run-request-id cannot be combined with message/answer selectors",
+            "automation_performed": False,
+            "download_performed": False,
+            "migration_performed": False,
+            "adoption_performed": False,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    reusable_materialized_protocol_run = False
+    materialized_reuse_evidence: dict[str, Any] | None = None
+    if protocol_run_request_id:
+        run_path, run_record, lookup = _load_validated_protocol_run_by_request_id(
+            profile_dir,
+            protocol_run_request_id,
+            allow_replay_unvalidated_artifact_run=replay_unvalidated_artifact_run,
+            allow_finalize_materialized_protocol_run=bool(
+                not replay_unvalidated_artifact_run
+                and getattr(args, "download", False)
+                and getattr(args, "verify", False)
+                and not getattr(args, "local_file", None)
+                and not getattr(args, "verify_smoke_zip", False)
+                and not getattr(args, "migrate", False)
+            ),
+        )
+    else:
+        run_path, run_record, lookup = _load_latest_validated_protocol_run(profile_dir)
+
+    if (
+        protocol_run_request_id
+        and run_record is not None
+        and _protocol_run_is_validated(run_record)
+        and run_record.get("artifact_materialization_proven") is True
+        and (getattr(args, "download", False) or getattr(args, "verify", False) or getattr(args, "migrate", False))
+    ):
+        materialized_reuse_evidence = _protocol_run_reusable_materialization_evidence(
+            run_record,
+            selected_request_id=str(protocol_run_request_id),
+            profile_dir=profile_dir,
+        )
+        if materialized_reuse_evidence.get("ok") is not True:
+            result = {
+                "ok": False,
+                "action": "artifact_intake",
+                "status": "selected_materialized_protocol_run_not_reusable",
+                "source": "selected_validated_protocol_reply",
+                "lookup": {**lookup, "materialized_reuse_evidence": materialized_reuse_evidence},
+                "artifact_candidate_count": 0,
+                "candidates": [],
+                "artifact_candidates": [],
+                "automation_performed": False,
+                "download_performed": False,
+                "verification_performed": False,
+                "migration_performed": False,
+                "adoption_performed": False,
+                "error": f"validated materialized protocol run was not reusable for request_id={protocol_run_request_id}",
+            }
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                print(_render_artifact_intake_result(result), end="")
+            return 1
+        reusable_materialized_protocol_run = True
+        lookup = {**lookup, "materialized_reuse_evidence": materialized_reuse_evidence, "materialized_reuse_used": True}
+
     if explicit_answer_selection and getattr(args, "from_last_answer", False):
         try:
             task_target = getattr(args, "target", None)
@@ -5158,6 +6234,21 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             expected_filename=getattr(args, "expect_artifact", None),
             expected_version=getattr(args, "expect_version", None),
             expected_repo=getattr(args, "expect_repo", None),
+            source=(
+                "selected_replayable_protocol_reply"
+                if lookup.get("status") == "selected_replayable_protocol_run"
+                else (
+                    "selected_materialized_protocol_reply"
+                    if lookup.get("status") == "selected_materialized_protocol_run"
+                    else (
+                        "selected_materialized_validated_protocol_reply"
+                        if reusable_materialized_protocol_run
+                        else ("selected_validated_protocol_reply" if protocol_run_request_id else "last_validated_protocol_reply")
+                    )
+                )
+            ),
+            allow_legacy_unvalidated_replay=lookup.get("status") in {"selected_replayable_protocol_run", "selected_materialized_protocol_run"},
+            reuse_materialized_protocol_run=(lookup.get("status") == "selected_materialized_protocol_run" or reusable_materialized_protocol_run),
         )
         result["lookup"] = lookup
         request = run_record.get("request") if isinstance(run_record.get("request"), dict) else {}
@@ -5188,14 +6279,51 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "selected_answer_id": selection.get("answer_id"),
             "selected_protocol_reply": selection,
             "answer_text_length": int(run_record.get("answer_text_length") or 0),
+            "protocol_run_selector": {
+                "mode": "request_id" if protocol_run_request_id else "latest_validated",
+                "request_id": protocol_run_request_id,
+            },
         })
+        if replay_unvalidated_artifact_run:
+            result["protocol_run_selector"].update({
+                "replay_unvalidated_artifact_run": True,
+                "replay_used": lookup.get("status") == "selected_replayable_protocol_run",
+                "previous_status": lookup.get("previous_status"),
+            })
+            result["protocol_run_replay"] = {
+                "requested": True,
+                "used": lookup.get("status") == "selected_replayable_protocol_run",
+                "previous_status": lookup.get("previous_status"),
+                "eligibility": lookup.get("replay_eligibility"),
+            }
+        if reusable_materialized_protocol_run:
+            result["protocol_run_selector"].update({
+                "materialized_reuse": True,
+                "materialized_reuse_used": True,
+            })
+            result["protocol_run_materialized_reuse"] = {
+                "used": True,
+                "evidence": materialized_reuse_evidence,
+            }
+        if lookup.get("status") == "selected_materialized_protocol_run":
+            result["protocol_run_selector"].update({
+                "materialized_finalization": True,
+                "finalization_used": True,
+                "previous_status": lookup.get("previous_status"),
+            })
+            result["protocol_run_finalization"] = {
+                "requested": True,
+                "used": True,
+                "previous_status": lookup.get("previous_status"),
+                "eligibility": lookup.get("materialized_finalization_eligibility"),
+            }
     elif getattr(args, "from_last_protocol_run", False):
         result = {
             "ok": False,
             "action": "artifact_intake",
             "mode": "dry_run",
             "status": lookup.get("status") or "protocol_run_not_found",
-            "source": "last_validated_protocol_reply",
+            "source": "selected_protocol_reply" if protocol_run_request_id else "last_validated_protocol_reply",
             "lookup": lookup,
             "artifact_candidate_count": 0,
             "candidates": [],
@@ -5203,9 +6331,14 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             "next_action": "none",
             "automation_performed": False,
             "download_performed": False,
+            "verification_performed": False,
             "migration_performed": False,
             "adoption_performed": False,
-            "error": "no validated protocol run was found; run pb ask --protocol --parse-reply first",
+            "error": (
+                f"selected protocol run was not eligible for intake for request_id={protocol_run_request_id}"
+                if protocol_run_request_id
+                else "no validated protocol run was found; run pb ask --protocol --parse-reply first"
+            ),
         }
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -5294,15 +6427,28 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             local_file=local_file,
         )
     elif getattr(args, "download", False):
-        result = await _download_selected_artifact_candidate_via_browser(
-            backend,
-            result,
-            profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
-            conversation_id=conversation_id_for_artifact,
-            answer_id=answer_id_for_artifact,
-            timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
-            keep_open=bool(getattr(args, "keep_open", False)),
-        )
+        if lookup.get("status") == "selected_materialized_protocol_run" or reusable_materialized_protocol_run:
+            result = {
+                **result,
+                "ok": True,
+                "status": "downloaded",
+                "intake_stage": "download_reused",
+                "download_reused": True,
+                "download_performed": True,
+                "browser_download_performed": True,
+                "artifact_materialization_proven": True,
+                "manual_import_required": False,
+            }
+        else:
+            result = await _download_selected_artifact_candidate_via_browser(
+                backend,
+                result,
+                profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+                conversation_id=conversation_id_for_artifact,
+                answer_id=answer_id_for_artifact,
+                timeout_seconds=float(getattr(args, "download_timeout", 120.0) or 120.0),
+                keep_open=bool(getattr(args, "keep_open", False)),
+            )
     if getattr(args, "verify", False) and getattr(args, "verify_smoke_zip", False):
         result = {
             **result,
@@ -5338,6 +6484,15 @@ async def cmd_artifact_intake(backend: Any, args: argparse.Namespace) -> int:
             conversation_id=conversation_id_for_artifact,
             answer_id=answer_id_for_artifact,
             message_id=message_id_for_artifact,
+        )
+    if lookup.get("status") == "selected_materialized_protocol_run" and run_record is not None and run_path is not None:
+        result = _finalize_materialized_protocol_run_record(
+            run_record,
+            result,
+            run_path=run_path,
+            expected_filename=getattr(args, "expect_artifact", None),
+            expected_version=getattr(args, "expect_version", None),
+            expected_repo=getattr(args, "expect_repo", None),
         )
     result = _artifact_intake_no_state_mutation_flags(result)
     if args.json:
@@ -5894,6 +7049,16 @@ def _baseline_from_protocol_request(envelope: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_protocol_reply_against_request(parsed: dict[str, Any], envelope: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Validate one parsed reply against its exact request envelope.
+
+    Release replies historically used ``baseline.input_baseline`` while older
+    protocol code expected ``baseline.input_artifact``.  A normal release may
+    likewise express the target version through ``baseline.target_version`` or
+    the single candidate artifact instead of ``baseline.output_version``.  The
+    aliases are equivalent only when every present value agrees; contradictory
+    values remain fail-closed.
+    """
+
     errors: list[str] = []
     if not parsed.get("ok"):
         errors.append(str(parsed.get("status") or "reply_parse_failed"))
@@ -5908,38 +7073,49 @@ def _validate_protocol_reply_against_request(parsed: dict[str, Any], envelope: d
 
     artifact = envelope.get("artifact") if isinstance(envelope.get("artifact"), dict) else {}
     baseline = parsed.get("baseline") if isinstance(parsed.get("baseline"), dict) else {}
-    if artifact.get("current_baseline") and baseline.get("input_artifact") != artifact.get("current_baseline"):
-        errors.append("baseline_artifact_mismatch")
-    if artifact.get("current_version") and baseline.get("input_version") != artifact.get("current_version"):
-        errors.append("baseline_version_mismatch")
-    expected_target_version = artifact.get("target_version")
-    baseline_output_version = baseline.get("output_version")
-    baseline_target_version = baseline.get("target_version")
     reply = parsed.get("reply") if isinstance(parsed.get("reply"), dict) else {}
     artifacts = parsed.get("artifacts") if isinstance(parsed.get("artifacts"), list) else []
     if "artifacts" not in parsed and isinstance(reply.get("artifacts"), list):
         artifacts = reply.get("artifacts") or []
+
+    expected_baseline = artifact.get("current_baseline")
+    baseline_values = [
+        str(value)
+        for value in (baseline.get("input_artifact"), baseline.get("input_baseline"))
+        if value not in {None, ""}
+    ]
+    if expected_baseline:
+        if not baseline_values or any(value != str(expected_baseline) for value in baseline_values):
+            errors.append("baseline_artifact_mismatch")
+    if artifact.get("current_version") and baseline.get("input_version") != artifact.get("current_version"):
+        errors.append("baseline_version_mismatch")
+
+    expected_target_version = _normalize_version_token(artifact.get("target_version"))
     reply_status = parsed.get("reply_status") or reply.get("status") or parsed.get("status")
     result_type = parsed.get("result_type") or reply.get("result_type")
-    no_artifact_no_change = (
-        reply_status == "no_artifact"
-        and result_type == "no_change"
-        and not artifacts
-    )
+    no_artifact_no_change = reply_status == "no_artifact" and result_type == "no_change" and not artifacts
     if expected_target_version:
+        observed_target_versions: list[str] = []
+        for value in (baseline.get("output_version"), baseline.get("target_version")):
+            normalized = _normalize_version_token(value)
+            if normalized:
+                observed_target_versions.append(normalized)
+        if not no_artifact_no_change:
+            for candidate in artifacts:
+                if isinstance(candidate, dict):
+                    normalized = _normalize_version_token(candidate.get("version"))
+                    if normalized:
+                        observed_target_versions.append(normalized)
+        observed_target_versions = list(dict.fromkeys(observed_target_versions))
         if no_artifact_no_change:
-            # A protocol smoke/no-change reply is valid without an output artifact
-            # or output version. It may echo baseline.target_version for operator
-            # clarity, but it must not be required to claim a release output.
-            if baseline_output_version not in {None, expected_target_version}:
+            if any(value != expected_target_version for value in observed_target_versions):
                 errors.append("target_version_mismatch")
-            if baseline_target_version not in {None, expected_target_version}:
-                errors.append("target_version_mismatch")
-        elif baseline_output_version != expected_target_version:
+        elif not observed_target_versions or any(value != expected_target_version for value in observed_target_versions):
             errors.append("target_version_mismatch")
+
     if artifact.get("release_type") and baseline.get("release_type") != artifact.get("release_type"):
         errors.append("release_type_mismatch")
-    return not errors, errors
+    return not errors, list(dict.fromkeys(errors))
 
 
 
@@ -7230,6 +8406,17 @@ async def _parse_protocol_reply_after_ask(
         "message": {key: value for key, value in message.items() if key != "answers"},
         "answer": {key: value for key, value in answer.items() if key != "text"},
         "selected_answer": selected,
+        "selected_request_id": parsed.get("request_id"),
+        "selected_message_id": selected.get("message_id"),
+        "selected_answer_id": selected.get("answer_id"),
+        "selected_protocol_reply": _protocol_selection_summary(
+            request_id=parsed.get("request_id"),
+            correlation_id=parsed.get("correlation_id"),
+            message=message,
+            answer=answer,
+            conversation_id=payload.get("conversation_id"),
+            conversation_url=payload.get("conversation_url") or conversation_url,
+        ),
         "answer_selection": {**selection, "selected": selected},
         "pre_ask_marker": pre_ask_marker,
         "post_ask_marker": post_ask_marker,
@@ -7598,6 +8785,258 @@ def _build_ask_release_user_prompt(base_prompt: str, expected: dict[str, Any], e
     )
 
 
+
+def _ask_release_candidate_for_browser_intake(
+    result: dict[str, Any],
+    expected: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build one deterministic intake candidate from the validated reply.
+
+    This preserves the raw envelope metadata while attaching the exact
+    request/message/answer identity selected by the protocol parser.  It does
+    not treat the JSON sandbox URL as proof; the browser download step must
+    provide that proof.
+    """
+
+    reply = result.get("reply") if isinstance(result.get("reply"), dict) else {}
+    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
+    if len(artifacts) != 1 or not isinstance(artifacts[0], dict):
+        return None
+    raw = copy.deepcopy(artifacts[0])
+    filename = Path(str(raw.get("filename") or raw.get("name") or "")).name
+    if not filename or filename != str(raw.get("filename") or raw.get("name") or ""):
+        return None
+    download = raw.get("download") if isinstance(raw.get("download"), dict) else {}
+    url = _selected_candidate_download_url(raw)
+    selected = result.get("selected_answer") if isinstance(result.get("selected_answer"), dict) else {}
+    selection = _protocol_selection_summary(
+        request_id=result.get("request_id"),
+        correlation_id=result.get("correlation_id"),
+        message=result.get("message") if isinstance(result.get("message"), dict) else None,
+        answer=result.get("answer") if isinstance(result.get("answer"), dict) else None,
+        conversation_id=result.get("conversation_id"),
+        conversation_url=result.get("conversation_url"),
+    )
+    if selected:
+        selection.update({key: value for key, value in selected.items() if value is not None})
+    return {
+        "kind": raw.get("kind") or "zip",
+        "filename": filename,
+        "version": raw.get("version"),
+        "role": raw.get("role"),
+        "download": {
+            "available": bool(download.get("available") or raw.get("download_available") or url),
+            "url": url,
+            "link_text": download.get("link_text") or raw.get("link_text") or filename,
+            "requires_browser_context": bool(
+                download.get("requires_browser_context")
+                or (_artifact_download_transport(url).get("requires_browser_context"))
+            ),
+        },
+        "source": {
+            "request_id": result.get("request_id"),
+            "correlation_id": result.get("correlation_id"),
+            "message_id": selection.get("message_id"),
+            "answer_id": selection.get("answer_id"),
+            "answer_turn_index": selection.get("answer_turn_index"),
+        },
+        "expected_sha256": raw.get("sha256"),
+        "expected_size_bytes": raw.get("size_bytes"),
+        "expected_entry_count": raw.get("entry_count"),
+        "expected_version": expected.get("expected_version"),
+        "raw": raw,
+        "selected_protocol_reply": selection,
+    }
+
+
+def _ask_release_envelope_metadata_check(
+    candidate: dict[str, Any],
+    verified: dict[str, Any],
+) -> dict[str, Any]:
+    actual_file = verified.get("download") if isinstance(verified.get("download"), dict) else {}
+    verification = verified.get("verification") if isinstance(verified.get("verification"), dict) else {}
+    expected_values = {
+        "sha256": candidate.get("expected_sha256"),
+        "size_bytes": candidate.get("expected_size_bytes"),
+        "entry_count": candidate.get("expected_entry_count"),
+    }
+    actual_values = {
+        "sha256": actual_file.get("sha256"),
+        "size_bytes": actual_file.get("size_bytes"),
+        "entry_count": verification.get("entry_count"),
+    }
+    missing = [key for key, value in expected_values.items() if value in {None, ""}]
+    mismatches: list[str] = []
+    for key in ("sha256", "size_bytes", "entry_count"):
+        if key in missing:
+            continue
+        expected_value = expected_values[key]
+        actual_value = actual_values[key]
+        if key in {"size_bytes", "entry_count"}:
+            try:
+                expected_value = int(expected_value)
+                actual_value = int(actual_value)
+            except (TypeError, ValueError):
+                mismatches.append(key)
+                continue
+        else:
+            expected_value = str(expected_value).strip().lower()
+            actual_value = str(actual_value or "").strip().lower()
+        if expected_value != actual_value:
+            mismatches.append(key)
+    return {
+        "ok": not missing and not mismatches,
+        "status": "envelope_artifact_metadata_verified" if not missing and not mismatches else (
+            "envelope_artifact_metadata_missing" if missing else "envelope_artifact_metadata_mismatch"
+        ),
+        "expected": expected_values,
+        "actual": actual_values,
+        "missing": missing,
+        "mismatches": mismatches,
+    }
+
+
+async def _materialize_ask_release_rendered_candidate(
+    backend: Any,
+    args: argparse.Namespace,
+    result: dict[str, Any],
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    """Detect, download and verify the rendered candidate in the exact answer.
+
+    The operation is intentionally inbox-only. It never migrates the candidate,
+    adopts a release, mutates Project Sources, commits, or pushes.
+    """
+
+    candidate = _ask_release_candidate_for_browser_intake(result, expected)
+    if candidate is None:
+        return {
+            **result,
+            "artifact_materialization_attempted": False,
+            "artifact_materialization_proven": False,
+        }
+    url = _selected_candidate_download_url(candidate)
+    transport = _artifact_download_transport(url)
+    if transport.get("scheme") != "sandbox":
+        return {
+            **result,
+            "artifact_materialization_attempted": False,
+            "artifact_materialization_proven": bool(transport.get("direct_download_supported")),
+        }
+
+    selection = candidate.get("selected_protocol_reply") if isinstance(candidate.get("selected_protocol_reply"), dict) else {}
+    intake = {
+        "ok": True,
+        "status": "candidate_selected",
+        "action": "artifact_intake",
+        "selected_candidate": candidate,
+        "artifact_candidate_count": 1,
+        "reply_request_id": result.get("request_id"),
+        "reply_correlation_id": result.get("correlation_id"),
+        "conversation_url": result.get("conversation_url"),
+        "conversation_id": result.get("conversation_id"),
+        "selected_message_id": selection.get("message_id"),
+        "selected_answer_id": selection.get("answer_id"),
+        "selected_protocol_reply": selection,
+        "expected_version": expected.get("expected_version"),
+        "download_performed": False,
+        "verification_performed": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+    downloaded = await _download_selected_artifact_candidate_via_browser(
+        backend,
+        intake,
+        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        conversation_id=result.get("conversation_id"),
+        answer_id=selection.get("answer_id"),
+        timeout_seconds=float(getattr(args, "artifact_materialization_timeout_seconds", 180.0) or 180.0),
+        keep_open=bool(getattr(args, "keep_open", False)),
+    )
+    if not downloaded.get("ok") or downloaded.get("download_performed") is not True:
+        return {
+            **result,
+            "artifact_materialization_attempted": True,
+            "artifact_materialization_proven": False,
+            "download_performed": False,
+            "browser_download_performed": False,
+            "verification_performed": False,
+            "materialization": downloaded,
+            "materialization_status": downloaded.get("status"),
+            "manual_import_required": True,
+        }
+
+    verified = _verify_intake_artifact_candidate(
+        downloaded,
+        profile_dir=getattr(args, "profile_dir", None) or PROFILE_DIR_NAME,
+        conversation_id=result.get("conversation_id"),
+        answer_id=selection.get("answer_id"),
+    )
+    metadata_check = _ask_release_envelope_metadata_check(candidate, verified)
+    if not verified.get("ok") or verified.get("verification_performed") is not True or not metadata_check.get("ok"):
+        return {
+            **result,
+            "artifact_materialization_attempted": True,
+            "artifact_materialization_proven": False,
+            "download_performed": bool(downloaded.get("download_performed")),
+            "browser_download_performed": bool(downloaded.get("browser_download_performed")),
+            "verification_performed": bool(verified.get("verification_performed")),
+            "materialization": verified,
+            "materialization_status": verified.get("status"),
+            "envelope_metadata_verification": metadata_check,
+            "envelope_metadata_verified": False,
+            "manual_import_required": False,
+        }
+
+    enriched = copy.deepcopy(result)
+    reply = enriched.get("reply") if isinstance(enriched.get("reply"), dict) else {}
+    artifacts = reply.get("artifacts") if isinstance(reply.get("artifacts"), list) else []
+    if len(artifacts) == 1 and isinstance(artifacts[0], dict):
+        raw = copy.deepcopy(artifacts[0])
+        download = raw.get("download") if isinstance(raw.get("download"), dict) else {}
+        browser_result = (
+            downloaded.get("download_transport", {}).get("browser_result")
+            if isinstance(downloaded.get("download_transport"), dict)
+            else {}
+        )
+        download = {
+            **download,
+            "available": True,
+            "url": _selected_candidate_download_url(raw) or url,
+            "link_text": download.get("link_text") or raw.get("link_text") or candidate.get("filename"),
+            "attachment_detected": True,
+            "attachment_proven": True,
+            "ui_attachment": True,
+            "file_id": browser_result.get("file_id") if isinstance(browser_result, dict) else None,
+            "rendered_control_kind": browser_result.get("control_kind") if isinstance(browser_result, dict) else None,
+            "correlation_mode": browser_result.get("correlation_mode") if isinstance(browser_result, dict) else None,
+            "correlated_answer_id": selection.get("answer_id"),
+            "correlated_request_id": result.get("request_id"),
+        }
+        raw["download"] = download
+        artifacts[0] = raw
+        reply["artifacts"] = artifacts
+        enriched["reply"] = reply
+
+    return {
+        **enriched,
+        "artifact_materialization_attempted": True,
+        "artifact_materialization_proven": True,
+        "download_performed": True,
+        "browser_download_performed": True,
+        "verification_performed": True,
+        "envelope_metadata_verification": metadata_check,
+        "envelope_metadata_verified": True,
+        "materialization": verified,
+        "materialization_status": "chatgpt_rendered_attachment_downloaded_verified",
+        "download": verified.get("download"),
+        "download_transport": downloaded.get("download_transport"),
+        "artifact_inbox_dir": verified.get("artifact_inbox_dir"),
+        "manual_import_required": False,
+        "migration_performed": False,
+        "adoption_performed": False,
+    }
+
 def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
     validated = copy.deepcopy(result)
     checks: dict[str, Any] = {
@@ -7634,6 +9073,12 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
         checks["download_attachment_proven"] = bool(download_proof.get("attachment_proven"))
         checks["download_json_only_declared"] = bool(download_proof.get("json_only_declared"))
         checks["download_url"] = download_proof.get("url")
+    checks["artifact_materialization_attempted"] = bool(validated.get("artifact_materialization_attempted"))
+    checks["artifact_materialization_proven"] = bool(validated.get("artifact_materialization_proven"))
+    checks["browser_download_performed"] = bool(validated.get("browser_download_performed"))
+    checks["verification_performed"] = bool(validated.get("verification_performed"))
+    checks["envelope_metadata_verified"] = bool(validated.get("envelope_metadata_verified"))
+    checks["materialization_status"] = validated.get("materialization_status")
     required = {"reply_validated", "exact_artifact_count", "filename_matches", "version_matches", "role_matches", "download_proof", "status_release_candidate"}
     failures = [name for name, ok in checks.items() if name in required and not ok]
     if "download_proof" in failures and download_proof.get("failure"):
@@ -7651,7 +9096,19 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
     validated["candidate_producing_protocol_flow"] = True
     if failures:
         validated["ok"] = False
-        if download_proof.get("status") == "artifact_declared_but_not_attached":
+        metadata_check = validated.get("envelope_metadata_verification") if isinstance(validated.get("envelope_metadata_verification"), dict) else {}
+        materialization_status = str(validated.get("materialization_status") or "")
+        if metadata_check and metadata_check.get("ok") is False:
+            validated["status"] = str(metadata_check.get("status") or "envelope_artifact_metadata_mismatch")
+            validated["artifact_materialization_proven"] = False
+            validated["manual_import_required"] = False
+            validated["operator_instruction"] = "The rendered ZIP was downloaded, but its observed SHA-256, byte size, or ZIP entry count did not match the exact reply envelope. The candidate was rejected fail-closed."
+        elif materialization_status and materialization_status not in {"chatgpt_rendered_attachment_downloaded_verified"}:
+            validated["status"] = materialization_status
+            validated["artifact_materialization_proven"] = False
+            validated["manual_import_required"] = bool(validated.get("manual_import_required", True))
+            validated["operator_instruction"] = "The exact correlated assistant turn did not yield one downloaded and verified rendered ZIP attachment. The candidate was rejected fail-closed."
+        elif download_proof.get("status") == "artifact_declared_but_not_attached":
             validated["status"] = "artifact_declared_but_not_attached"
             validated["artifact_materialization_proven"] = False
             validated["manual_import_required"] = True
@@ -7667,6 +9124,8 @@ def _validate_ask_release_candidate_result(result: dict[str, Any], expected: dic
         validated["status"] = "reply_validated"
         validated["reply_validation_ok"] = True
         validated["artifact_materialization_proven"] = True
+        if validated.get("browser_download_performed") and validated.get("verification_performed"):
+            validated["download_proof_status"] = "chatgpt_rendered_attachment_downloaded_verified"
         validated["operator_instruction"] = "Validated exactly one expected release-candidate ZIP with host-verifiable download proof. Next run strict candidate-run with --require-real-candidate."
     return validated
 
@@ -7741,6 +9200,7 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
                     pre_ask_marker=pre_ask_marker,
                 )
                 if recovered is not None:
+                    recovered = await _materialize_ask_release_rendered_candidate(backend, args, recovered, expected)
                     recovered = _validate_ask_release_candidate_result(recovered, expected)
                     return _emit_protocol_result(args, recovered)
             result = _protocol_failure_result(
@@ -7797,6 +9257,7 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
         )
     result["action"] = "ask_release"
     result["expected"] = expected
+    result = await _materialize_ask_release_rendered_candidate(backend, args, result, expected)
     result = _validate_ask_release_candidate_result(result, expected)
     return _emit_protocol_result(args, result)
 
@@ -8210,10 +9671,14 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "--expect-artifact", artifact_name,
         "--expect-version", target_version,
         "--expect-repo", repo_id,
-        "--download", "--verify", "--migrate",
+    ]
+    if ask_payload.get("download_performed") is not True:
+        intake_command.append("--download")
+    intake_command.extend([
+        "--verify", "--migrate",
         "--repo-path", str(repo_root),
         "--json",
-    ]
+    ])
     intake_step = _run_mvp_lifecycle_command(
         intake_command,
         cwd=repo_root,
@@ -8533,7 +9998,7 @@ def _subcommand_option_names() -> dict[str, list[str]]:
         "ws": ["list", "use", "current", "leave", "--json", "--current", "--pick", "--conversation-url", "--project-name", "--keep-open"],
         "task": ["list", "use", "current", "leave", "show", "messages", "message", "answer", "parse", "--latest", "--json", "--keep-open", "--deep-history", "--task"],
         "src": ["list", "add", "rm", "remove", "sync", "--type", "--value", "--file", "--name", "--no-overwrite", "--wait-for-profile", "--no-queue", "--profile-wait-timeout-seconds", "--exact", "--keep-open", "--json", "--no-upload", "--output-dir", "--filename"],
-        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "mvp-dod", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
+        "artifact": ["current", "list", "release", "verify", "intake", "mvp-status", "mvp-dod", "candidate-status", "candidate-next", "candidate-run", "--require-real-candidate", "--from-last-answer", "--from-last-protocol-run", "--protocol-run-request-id", "--replay-unvalidated-artifact-run", "--message-id", "--message-index", "--answer-id", "--answer-index", "--dry-run", "--json", "--output-dir", "--filename"],
         "release": ["doctor", "--version", "--target-version", "--artifact", "--repo-path", "--health-url", "--source-timeout", "--skip-service-health", "--skip-project-sources", "--json"],
         "agent": ["inspect", "doctor", "plan", "ask", "run", "release-readiness", "host-smoke", "mcp-call", "tool-call", "models", "ollama-propose", "mcp-llm-smoke", "--json", "--path", "--max-files", "--model", "--skill", "--require-ready"],
         "skill": ["list", "show", "validate", "--json", "--path"],
@@ -20901,6 +22366,7 @@ def _latest_protocol_artifact_candidate_precondition(profile_root: Path) -> dict
         }
 
     parsed = _normalize_protocol_run_reply_for_intake(run_record)
+    expectations = _protocol_run_expectations(run_record)
     candidates = parsed.get("artifact_candidates") if isinstance(parsed.get("artifact_candidates"), list) else []
     reply_status = parsed.get("reply_status")
     result_type = parsed.get("result_type")
@@ -20921,6 +22387,7 @@ def _latest_protocol_artifact_candidate_precondition(profile_root: Path) -> dict
         "correlation_id": parsed.get("correlation_id"),
         "message_id": message.get("id"),
         "answer_id": answer.get("id"),
+        "expectations": expectations,
         "selected_protocol_reply": _protocol_selection_summary(
             request_id=parsed.get("request_id"),
             correlation_id=parsed.get("correlation_id"),
@@ -21295,6 +22762,7 @@ def _candidate_run_safe_command(
     repo_root: Path,
     test_profile: str = "smoke",
     accept_if_green: bool = False,
+    intake_precondition: dict[str, Any] | None = None,
 ) -> list[str] | None:
     """Build the allowlisted command that may advance the MVP lifecycle.
 
@@ -21309,6 +22777,20 @@ def _candidate_run_safe_command(
     script = Path(__file__).resolve()
     base = [sys.executable, str(script), "artifact"]
     if kind in {"intake_candidate", "repair_or_remigrate_candidate"}:
+        precondition = intake_precondition if isinstance(intake_precondition, dict) else {}
+        request_id = str(precondition.get("request_id") or "").strip()
+        expectations = precondition.get("expectations") if isinstance(precondition.get("expectations"), dict) else {}
+        if request_id:
+            command = base + ["intake", "--from-last-protocol-run", "--protocol-run-request-id", request_id]
+            for flag, key in (
+                ("--expect-artifact", "expected_filename"),
+                ("--expect-version", "expected_version"),
+                ("--expect-repo", "expected_repo"),
+            ):
+                value = str(expectations.get(key) or "").strip()
+                if value:
+                    command.extend([flag, value])
+            return command + ["--download", "--verify", "--migrate", "--json"]
         return base + ["intake", "--from-last-answer", "--download", "--verify", "--migrate", "--json"]
     if kind == "test_candidate" and candidate_version:
         return base + ["candidate-test", "--version", candidate_version, "--repo-path", str(repo_root), "--profile", profile, "--json"]
@@ -21443,9 +22925,21 @@ def _candidate_run_mvp_completion_report(
             recommended = _no_artifact_candidate_recommendation(precondition)
         else:
             status = "candidate_mvp_intake_pending"
+            request_id = precondition.get("request_id") if isinstance(precondition, dict) else None
+            expectations = precondition.get("expectations") if isinstance(precondition, dict) and isinstance(precondition.get("expectations"), dict) else {}
+            exact_parts = ["pb artifact intake", "--from-last-protocol-run"]
+            if request_id:
+                exact_parts.extend(["--protocol-run-request-id", str(request_id)])
+            if expectations.get("expected_filename"):
+                exact_parts.extend(["--expect-artifact", str(expectations["expected_filename"])])
+            if expectations.get("expected_version"):
+                exact_parts.extend(["--expect-version", str(expectations["expected_version"])])
+            if expectations.get("expected_repo"):
+                exact_parts.extend(["--expect-repo", str(expectations["expected_repo"])])
+            exact_parts.extend(["--download", "--verify", "--migrate", "--json"])
             recommended = {
                 "kind": "intake_candidate",
-                "command": "pb artifact intake --from-last-answer --download --verify --migrate --json",
+                "command": " ".join(exact_parts),
                 "reason": "no accepted candidate completion proof is available",
             }
 
@@ -21588,7 +23082,15 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
     candidate_version = None
     if isinstance(selected_candidate, dict):
         candidate_version = _candidate_version_normalized(selected_candidate.get("artifact_version") or selected_candidate.get("version"))
-    command = _candidate_run_safe_command(kind, candidate_version=candidate_version, repo_root=repo_root, test_profile=test_profile, accept_if_green=accept_if_green)
+    intake_precondition = next_payload.get("candidate_intake_precondition") if isinstance(next_payload.get("candidate_intake_precondition"), dict) else None
+    command = _candidate_run_safe_command(
+        kind,
+        candidate_version=candidate_version,
+        repo_root=repo_root,
+        test_profile=test_profile,
+        accept_if_green=accept_if_green,
+        intake_precondition=intake_precondition,
+    )
 
     selected_protocol_reply = selected_candidate.get("selected_protocol_reply") if isinstance(selected_candidate, dict) and isinstance(selected_candidate.get("selected_protocol_reply"), dict) else None
     payload: dict[str, Any] = {
@@ -21666,7 +23168,15 @@ async def cmd_artifact_candidate_run(backend: Any, args: argparse.Namespace) -> 
             loop_candidate_version = None
             if isinstance(loop_selected_candidate, dict):
                 loop_candidate_version = _candidate_version_normalized(loop_selected_candidate.get("artifact_version") or loop_selected_candidate.get("version"))
-            loop_command = _candidate_run_safe_command(loop_kind, candidate_version=loop_candidate_version, repo_root=repo_root, test_profile=test_profile, accept_if_green=accept_if_green)
+            loop_intake_precondition = loop_next_payload.get("candidate_intake_precondition") if isinstance(loop_next_payload.get("candidate_intake_precondition"), dict) else None
+            loop_command = _candidate_run_safe_command(
+                loop_kind,
+                candidate_version=loop_candidate_version,
+                repo_root=repo_root,
+                test_profile=test_profile,
+                accept_if_green=accept_if_green,
+                intake_precondition=loop_intake_precondition,
+            )
             loop_selected_protocol_reply = loop_selected_candidate.get("selected_protocol_reply") if isinstance(loop_selected_candidate, dict) and isinstance(loop_selected_candidate.get("selected_protocol_reply"), dict) else None
             step_plan = {
                 "step_index": step_index,
@@ -26330,6 +27840,8 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_intake = artifact_subparsers.add_parser("intake", help="Inspect/classify artifact candidates from the latest validated Promptbranch ask/reply protocol run; optional explicit download, verification, and candidate migration.")
     artifact_intake.add_argument("--from-last-answer", action="store_true", help="Read the latest validated protocol reply record and extract artifact candidates. Kept as the MVP operator-facing spelling.")
     artifact_intake.add_argument("--from-last-protocol-run", action="store_true", help="Read the latest validated .pb_profile/ask_protocol_runs record and extract artifact candidates.")
+    artifact_intake.add_argument("--protocol-run-request-id", help="Select one exact .pb_profile/ask_protocol_runs/<request-id>.json record. Validated records are accepted normally; chronology is never used for this selector.")
+    artifact_intake.add_argument("--replay-unvalidated-artifact-run", action="store_true", help="Explicitly replay one exact request-ID record whose sole allowlisted prior failure is artifact_declared_but_not_attached. Requires --download --verify; forbids migration and generic validation bypass.")
     artifact_intake.add_argument("--dry-run", action="store_true", help="Inspect/classify only. This is the default unless --download/--verify is supplied.")
     artifact_intake.add_argument("--expect-artifact", help="Expected artifact filename, used to reject wrong or ambiguous candidates.")
     artifact_intake.add_argument("--expect-version", help="Expected artifact version such as v0.0.221 or 0.0.221.")

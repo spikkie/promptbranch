@@ -1,47 +1,71 @@
 # Promptbranch plan
 
-accepted/current baseline: v0.1.123.2.4
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
-active candidate version: v0.1.123.2.5
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
-active slice: v0.1.123.2.5 — Two-component ZIP output plus reply-envelope contract
-next normal version: v0.1.124
-next normal slice: v0.1.124 — Canonical MVP proof cycle 1 through one pb ask command
-
 ## Current baseline
 
 ```text
-accepted/current version: v0.1.123.2.3
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip
-accepted/current Project Source: chatgpt_claudecode_workflow-2_v0.1.123.2.3(1).zip
-accepted/current SHA-256: d74b838962ae31dfee9140f6492b3e3404013e024c755bb9dfa7abf7919f75ea
-active candidate version: v0.1.123.2.5
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip
-next normal version: v0.1.124
-next planned after acceptance: v0.1.125
+accepted_current_version: v0.1.124
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
+active_candidate_version: v0.1.125.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.1.zip
 ```
 
-## Active repair slice — v0.1.123.2.5
 
-1. Preserve accepted/current `v0.1.123.2.3`; the repair cannot count as an MVP proof cycle.
-2. Generate a hard ask-release execution contract naming the exact baseline, target ZIP, version, and request ID.
-3. Require a fresh baseline-derived physical ZIP before envelope construction.
-4. Require a real ChatGPT attachment in the exact answer; textual `sandbox:` declarations are insufficient.
-5. Require observed SHA-256, size, and entry count only after attachment creation.
-6. Fail with `artifacts=[]` when physical creation or attachment is unavailable.
-7. Keep `v0.1.124` and `v0.1.125` as the two consecutive normal proof cycles.
+Documentation checkpoint: `PB-DOC-2026-08-06.1`
+
+accepted/current baseline: v0.1.124
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
+accepted/current SHA-256: e4202f93b3e711a591d4c41be81fb85d97ce177e0fec41431fc9f1715e6cb3de
+installed runtime observed during proof: v0.1.123.2.6
+active normal version: v0.1.125
+active normal slice: v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict
+active candidate status: built locally; validation and acceptance pending
+active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.125.zip
+next planned after acceptance: v0.1.126 — Persistent whole-release ETA estimator
+
+## Current position
+
+`v0.1.124` is accepted/current as the local artifact baseline and its native candidate lifecycle reached `candidate_mvp_complete`. This proves the Promptbranch environment's candidate and local-adoption workflow. It does not prove external application development.
+
+```text
+PB environment/control-plane lifecycle: proven once and accepted at v0.1.124
+External application development using PB: not yet proven
+```
+
+## Active normal slice — v0.1.125
+
+1. Preserve `v0.1.125` as the already-planned second PB environment proof cycle and final control-plane verdict.
+2. Start from the exact accepted/current `v0.1.124` artifact.
+3. Require one pinned, correlated, real-artifact lifecycle with no manual candidate-file or state recovery.
+4. Require candidate verification, mandatory full testing, explicit acceptance, current-state verification, and `candidate_mvp_complete`.
+5. Include the PB-environment-versus-application boundary documentation and updated draw.io architecture pages.
+6. Do not start external application mutation in this release.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.123.2.2` — historical accepted Project identity alias repair.
-2. `v0.1.123.2.3` — accepted/current response-wait and timeout-budget repair.
-3. `v0.1.123.2.4` — active baseline-derived ZIP creation and real attachment repair.
-4. `v0.1.124` — planned canonical MVP proof cycle 1.
-5. `v0.1.125` — planned canonical MVP proof cycle 2 and final verdict.
+1. `v0.1.124` — accepted/current PB candidate lifecycle checkpoint.
+2. `v0.1.125` — active canonical PB environment proof cycle 2 and final control-plane verdict.
+3. `v0.1.126` — persistent whole-release ETA estimator.
+4. `v0.1.127` — portable Promptbranch tool-authoring skill and export bundle.
+5. `v0.1.128` — PB environment MVP hardening and freeze.
+6. `v0.1.129` — external application pilot bootstrap.
+7. `v0.1.130` — controlled external application change execution.
+8. `v0.1.131` — application test, diagnosis, and bounded correction loop.
+9. `v0.1.132` — external application candidate and acceptance lifecycle.
+10. `v0.1.133` — non-production deployment and post-deployment proof.
+11. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
+
+## Architecture boundary
+
+Read `docs/project/pb-environment-vs-application-development.md` and `docs/project/pb-mvp-roadmap-v0.1.124.md` before advancing beyond `v0.1.128`.
+
+## Repair rule
+
+A repair may fix the active release but must not move work across the PB-environment/application-development boundary. External application mutation begins only in `v0.1.130`, after the read-only pilot bootstrap in `v0.1.129`.
 
 ## Repair definition — v0.1.71.2
+
 
 ```text
 Release: v0.1.71.2
@@ -2223,3 +2247,69 @@ Current active repair: `v0.1.104.5 — hermetic release-validation profile isola
 
 | v0.1.108 | Controlled correction execution envelope validation gate | Validate the accepted design without execution | exact design/fingerprint/authority verification | correction execution and repository mutation | focused validation plus strict release validation | candidate |
 | v0.1.109 | PROJECT_SETTINGS.md, AGENTS.md and project authority-graph definition | Define closed project fact ownership and drift model | schemas, authority graph, read-only validation and documentation | remote settings mutation | future focused contract validation | planned_after_acceptance |
+
+## Active candidate correction — v0.1.123.2.6
+
+The active rendered-attachment intake slice is unchanged. Before browser replay, add a narrow collection-time compatibility bridge for the observed ambient FastAPI 0.128.x / modern Starlette Router mismatch and make the selected legacy `ask-release` request-rendering test establish its own repository/project authority. Do not widen dependency constraints, weaken repository identity validation, generate a fresh release candidate, mutate Project Sources, or adopt an artifact during this correction.
+
+Validation order remains: Gate 1 offline focused intake tests; exact container API collection/import regression; Gate 4 focused ask/intake regression; clean-ZIP revalidation; then operator-run persisted-answer replay, fresh direct `ask-release`, full strict release control/adoption, and integrated `v0.1.124` proof.
+
+
+## Active candidate correction — deterministic persisted-run replay
+
+Gate 2 must not use chronology alone. `--from-last-protocol-run` without a selector remains an operator convenience for the newest validated run, but the staged repair replay is evidence-bound to request `req_20260805T105438125979Z`. Add `--protocol-run-request-id` as an exact, fail-closed selector. Missing records, sanitized aliases, unvalidated records, and record/request identity mismatches must fail before candidate extraction or browser download. This correction does not skip valid no-artifact runs, weaken candidate validation, generate a new candidate, mutate Project Sources, or adopt an artifact.
+
+
+## v0.1.123.2.6 replacement slice — historical protocol-record normalization
+
+**Invariant:** compatibility handling is reachable only through exact `--protocol-run-request-id` plus explicit `--replay-unvalidated-artifact-run --download --verify`. Normal validated-run selection and generic parsing remain unchanged.
+
+Implementation steps:
+
+1. Normalize absent historical selection-summary fields from exact run and selected-answer identities; reject contradictory copies.
+2. Normalize MIME-type-only ZIP declarations and `input_baseline` only inside replay.
+3. Canonicalize historical attachment-only failure labels and require positive artifact identity checks.
+4. Exercise the observed historical shape through browser-download and byte-verification mocks plus a negative rejection matrix.
+5. Package a deterministic same-version replacement and rerun the authenticated exact Gate 2 command.
+
+Out of scope: fresh `v0.1.124` generation, migration, Project Source mutation, registry/current mutation, adoption, full proof finalization, Git commit, or Git push.
+
+## v0.1.123.2.6 replacement slice — post-materialization finalization
+
+The rendered `v0.1.124` attachment for request `req_20260805T145619199617Z` was downloaded and verified, but the persisted ask-release result remained `release_candidate_validation_failed` because pre-materialization baseline/target errors were not recomputed.
+
+Implementation steps:
+
+1. Normalize `baseline.input_baseline` with `input_artifact` only when all present values agree.
+2. Resolve a normal release target from agreeing `output_version`, `target_version`, and single-candidate version evidence.
+3. Allow exact-request `--download --verify` intake to select an already materialized failed run only when its identity, positive attachment proof, inbox path, SHA-256, byte size, ZIP entry count, CRC, embedded version, and no-mutation invariants all pass.
+4. Reuse and reopen the persisted inbox ZIP without browser redownload.
+5. Recompute the complete ask-release validation, persist `status=reply_validated`, and keep migration, Project Source, registry/current, adoption, commit, and push untouched.
+
+Out of scope: fresh `v0.1.124` generation, artifact replacement, migration, publication, adoption, formal proof advancement, Git commit, or Git push.
+
+
+## v0.1.123.2.6 replacement slice — validated materialization migration
+
+The exact `v0.1.124` protocol run is finalized and its inbox ZIP is verified, but ordinary migration and `candidate-run` still use a separate legacy classifier and a chronology-based `--from-last-answer` command.
+
+Implementation steps:
+
+1. Centralize persisted-run baseline alias and ZIP-kind normalization for replay, finalization, validated intake, verification, and migration.
+2. Permit exact validated-run intake to reuse the previously verified artifact-inbox ZIP while reopening and rechecking it before migration.
+3. Make `candidate-run` preserve `--from-last-protocol-run`, the exact request ID, expected repository, filename, and version.
+4. Register exactly one migrated candidate and preserve candidate-only state: no testing, publication, adoption, commit, or push.
+5. Add an end-to-end integration fixture that starts from a finalized materialized run and ends with one candidate-registry entry.
+
+Out of scope: fresh `v0.1.124` generation, candidate testing, Project Source mutation, adoption, formal proof advancement, Git commit, or Git push.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

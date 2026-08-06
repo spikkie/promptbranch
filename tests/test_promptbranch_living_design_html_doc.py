@@ -40,7 +40,7 @@ def test_living_design_html_overview_documents_pb_authority_model() -> None:
 
 def test_release_docs_status_includes_living_design_overview_guard(capsys) -> None:
     args = argparse.Namespace(
-        version="v0.1.66",
+        version="v0.1.125",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",

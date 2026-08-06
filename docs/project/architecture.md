@@ -88,3 +88,38 @@ Promptbranch is the generic `runtime_application`. PB domain modules delegate th
 ## PBAI registry proof
 
 The declaration owns architecture shape; `.promptbranch/ai-registry.json` owns stable AI object identities and references. Registry validation is static and read-only: it parses Python AST, Skill frontmatter, JSON schemas, capability ownership, and controller boundaries without importing project modules or executing declared commands.
+
+
+## 2026-08-06 system boundary and roadmap
+
+Promptbranch architecture now explicitly distinguishes:
+
+```text
+System A — Promptbranch environment/control plane
+System B — external application/tool developed using PB
+```
+
+System A owns orchestration, state, policy, evidence, browser integration, candidate handling, and PB release authority. System B owns its own product architecture, source, tests, artifact, accepted/current baseline, and deployment authority.
+
+The release boundary is:
+
+- `v0.1.125`–`v0.1.128`: complete and harden System A;
+- `v0.1.129`: read-only System B bootstrap;
+- `v0.1.130`–`v0.1.132`: controlled System B change/test/release MVP;
+- `v0.1.133`: non-production deployment proof;
+- `v0.1.134`: reusable application workflow.
+
+No PB environment test may be treated as evidence that an application works. No external application candidate may mutate the PB artifact registry or accepted/current state.
+
+See `docs/project/pb-environment-vs-application-development.md` and `docs/project/pb-mvp-roadmap-v0.1.124.md`.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

@@ -6985,3 +6985,219 @@ def test_capacity_final_contract_blocks_residual_pruned_source_and_missing_assig
     assert "pruned_source_still_present" in result["errors"]
     assert result["assigned_source_final_count"] == 0
     assert result["pruned_source_final_count"] == 1
+
+
+def _text_processing_stream_body(
+    *,
+    processed_file_id: str = "file_00000000aaaabbbbccccddddeeeeffff",
+    library_metadata_object_id: str = "libfile_aaaabbbbccccddddeeeeffff00001111",
+    assigned_filename: str = "pasted.txt",
+) -> str:
+    return "\n".join([
+        f'{{"file_id":"{processed_file_id}","event":"file.processing.started","message":"start","extra":null}}',
+        f'{{"file_id":"{processed_file_id}","event":"file.indexing.completed","message":"","extra":{{"metadata_object_id":"{library_metadata_object_id}","library_file_name":"{assigned_filename}"}}}}',
+        f'{{"file_id":"{processed_file_id}","event":"file.processing.completed","message":"done","extra":null}}',
+    ])
+
+
+def test_text_processing_stream_accepts_canonical_pasted_backend_filename(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    result = browser_client._project_source_processing_stream_terminal_result(
+        _text_processing_stream_body(),
+        source_kind="text",
+        expected_filename="itest-text-20260805-focused-proof",
+    )
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["source_kind"] == "text"
+    assert result["requested_filename"] == "itest-text-20260805-focused-proof"
+    assert result["logical_source_name"] == "itest-text-20260805-focused-proof"
+    assert result["assigned_filename"] == "pasted.txt"
+    assert result["filename_correlation"] == "text_backend_canonical_pasted"
+    assert result["identity_verified"] is True
+
+
+def test_text_processing_stream_rejects_reused_operation_identity_pair(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    terminal = browser_client._project_source_processing_stream_terminal_result(
+        _text_processing_stream_body(),
+        source_kind="text",
+        expected_filename="itest-text-20260805-focused-proof",
+    )
+    assert terminal is not None
+    watch = {
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_response_tasks": [],
+        "processing_stream_terminal": terminal,
+    }
+
+    class Page:
+        async def wait_for_timeout(self, _milliseconds: int) -> None:
+            return None
+
+    first = asyncio.run(
+        browser_client._wait_for_project_source_processing_stream(
+            Page(),
+            watch,
+            source_kind="text",
+            expected_filename="itest-text-20260805-focused-proof",
+            timeout_ms=100,
+        )
+    )
+    assert first["processing_identity_new"] is True
+
+    with pytest.raises(ResponseTimeoutError, match="reason=processing_identity_reused"):
+        asyncio.run(
+            browser_client._wait_for_project_source_processing_stream(
+                Page(),
+                watch,
+                source_kind="text",
+                expected_filename="itest-text-20260805-focused-proof",
+                timeout_ms=100,
+            )
+        )
+
+
+def test_text_processing_stream_rejects_missing_backing_identity(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    body = "\n".join([
+        '{"file_id":"file_00000000aaaabbbbccccddddeeeeffff","event":"file.processing.started","message":"start","extra":null}',
+        '{"file_id":"file_00000000aaaabbbbccccddddeeeeffff","event":"file.indexing.completed","message":"","extra":{"library_file_name":"pasted.txt"}}',
+        '{"file_id":"file_00000000aaaabbbbccccddddeeeeffff","event":"file.processing.completed","message":"done","extra":null}',
+    ])
+    result = browser_client._project_source_processing_stream_terminal_result(
+        body,
+        source_kind="text",
+        expected_filename="itest-text-20260805-focused-proof",
+    )
+
+    assert result is not None
+    assert result["identity_verified"] is False
+    assert result["library_metadata_object_id"] is None
+
+
+def test_file_processing_stream_still_rejects_filename_mismatch(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    result = browser_client._project_source_processing_stream_terminal_result(
+        _text_processing_stream_body(assigned_filename="different.zip"),
+        source_kind="file",
+        expected_filename="release.zip",
+    )
+
+    assert result is not None
+    assert result["filename_correlation"] is None
+    assert result["identity_verified"] is False
+
+
+def test_add_text_source_correlates_logical_name_with_pasted_backend_and_exact_ids(
+    browser_client: ChatGPTBrowserClient,
+) -> None:
+    page = object()
+    display_name = "itest-text-20260805-focused-proof"
+    value = "Integration note for run 20260805-focused-proof\nPromptbranch exact text-source marker."
+    persisted = {
+        "identity": f"{display_name} Document",
+        "title": display_name,
+        "text": f"{display_name} Document",
+        "_promptbranch_verification_mode": "post_refresh",
+        "_promptbranch_ui_card_seen_before_refresh": True,
+        "_promptbranch_post_refresh_attempt": 1,
+    }
+    terminal = browser_client._project_source_processing_stream_terminal_result(
+        _text_processing_stream_body(),
+        source_kind="text",
+        expected_filename=display_name,
+    )
+    assert terminal is not None
+    watch = {
+        "installed": True,
+        "source_kind": "text",
+        "expected_filename": display_name,
+        "started": 2,
+        "finished": 2,
+        "failed": 0,
+        "saw_relevant": True,
+        "saw_commit": True,
+        "inflight": set(),
+        "processing_stream_inflight": set(),
+        "processing_stream_started": 1,
+        "processing_stream_finished": 1,
+        "processing_stream_failed": 0,
+        "processing_stream_response_tasks": [],
+        "processing_stream_terminal": terminal,
+        "responses": [],
+        "backend_assigned_names": ["pasted.txt"],
+        "backing_file_ids": [terminal["processed_file_id"]],
+    }
+
+    async def fake_noop(*_args, **_kwargs):
+        return None
+
+    async def fake_snapshot(*_args, **_kwargs):
+        return []
+
+    async def fake_add_text(*_args, **_kwargs):
+        return {"submitted": True}
+
+    async def fake_presence(*_args, **_kwargs):
+        return dict(persisted)
+
+    async def fake_quiet(*_args, **_kwargs):
+        return {
+            "quiet_now": True,
+            "saw_commit": True,
+            "started": 2,
+            "finished": 2,
+            "failed": 0,
+            "ordinary_inflight": 0,
+            "processing_stream_inflight": 0,
+        }
+
+    async def fake_persistence(*_args, **_kwargs):
+        return dict(persisted)
+
+    async def fake_safe_url(*_args, **_kwargs):
+        return "https://chatgpt.com/g/g-p-123/project?tab=sources"
+
+    browser_client.ensure_logged_in = fake_noop  # type: ignore[method-assign]
+    browser_client._goto = fake_noop  # type: ignore[method-assign]
+    browser_client._open_project_sources_tab = fake_noop  # type: ignore[method-assign]
+    browser_client._snapshot_project_source_cards = fake_snapshot  # type: ignore[method-assign]
+    browser_client._add_project_textual_source = fake_add_text  # type: ignore[method-assign]
+    browser_client._wait_for_source_presence = fake_presence  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_post_save_settle = fake_noop  # type: ignore[method-assign]
+    browser_client._wait_for_project_source_save_request_quiet = fake_quiet  # type: ignore[method-assign]
+    browser_client._verify_project_source_persistence = fake_persistence  # type: ignore[method-assign]
+    browser_client._safe_page_url = fake_safe_url  # type: ignore[method-assign]
+    browser_client._install_project_source_save_request_watch = lambda *_args, **_kwargs: watch  # type: ignore[method-assign]
+    browser_client._dispose_project_source_save_request_watch = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        browser_client._add_project_source_operation(
+            context=None,
+            page=page,
+            source_kind="text",
+            value=value,
+            file_path=None,
+            display_name=display_name,
+            keep_open=False,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["source_kind"] == "text"
+    assert result["requested_logical_source_name"] == display_name
+    assert result["assigned_filename"] == "pasted.txt"
+    assert result["processed_file_id"] == "file_00000000aaaabbbbccccddddeeeeffff"
+    assert result["library_metadata_object_id"] == "libfile_aaaabbbbccccddddeeeeffff00001111"
+    assert result["processing_stream_identity_verified"] is True
+    assert result["processing_stream_identity_new"] is True
+    assert result["processing_stream_filename_correlation"] == "text_backend_canonical_pasted"
+    assert result["source_content_match_verified"] is True

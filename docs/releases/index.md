@@ -1,10 +1,13 @@
 # Promptbranch release documentation
 
-Release: `v0.1.66`
+Release: `v0.1.125`
 
 This index provides a compact path into the current documentation-governance release line.
 
 ## Current documentation-governance releases
+
+- [v0.1.125 — canonical PB environment proof cycle 2](../release-v0.1.125.md)
+- [v0.1.124 — accepted PB candidate lifecycle checkpoint](../release-v0.1.124.md)
 
 - [v0.1.66 — release doctor config-aware candidate ZIP precheck](../release-v0.1.66.md)
 - [v0.1.65 — release lifecycle config contract guard](../release-v0.1.65.md)
@@ -38,3 +41,5 @@ Release documentation includes the repo-local lifecycle config contract. `pb rel
 ## Release doctor candidate precheck policy
 
 `pb release doctor --artifact ZIP --version VERSION --json` now consumes `.promptbranch-release.yml` when inspecting candidate ZIPs. It reports `candidate_artifact` and `release_config` sections, checks filename/config agreement, VERSION consistency, ZIP layout and hygiene, and accepted-baseline continuity without mutating release state.
+
+- [`v0.1.125.1`](../release-v0.1.125.1.md) — isolated compileall and repeatable template-snapshot validation repair.

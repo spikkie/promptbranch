@@ -66,12 +66,22 @@ def test_tracked_template_snapshots_match_renderer() -> None:
             runtime_provider=runtime_provider,
         )
         snapshot = ROOT / "templates/pbai" / kind
-        actual = {
-            path.relative_to(snapshot).as_posix(): path.read_text(encoding="utf-8")
+        expected = plan["files"]
+        visible_files = {
+            path.relative_to(snapshot).as_posix()
             for path in snapshot.rglob("*")
-            if path.is_file()
+            if (
+                path.is_file()
+                and "__pycache__" not in path.parts
+                and path.suffix not in {".pyc", ".pyo"}
+            )
         }
-        assert actual == plan["files"]
+        actual = {
+            relative_path: (snapshot / relative_path).read_text(encoding="utf-8")
+            for relative_path in expected
+        }
+        assert visible_files == set(expected)
+        assert actual == expected
 
 
 def test_template_write_requires_explicit_nonconflicting_target(tmp_path: Path) -> None:

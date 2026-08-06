@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 import secrets
 import tempfile
+import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -33,6 +36,118 @@ from promptbranch_browser_auth.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _run_starlette_event_handlers(handlers) -> None:
+    for handler in handlers:
+        result = handler()
+        if inspect.isawaitable(result):
+            await result
+
+
+def _install_starlette_router_legacy_event_compatibility(*, router_class=None) -> bool:
+    """Bridge FastAPI 0.128.x onto Starlette routers that removed legacy events.
+
+    Promptbranch's declared runtime remains the supported FastAPI/Starlette pair
+    pinned in ``requirements.txt`` and ``pyproject.toml``.  This narrow bridge
+    prevents repo-local focused tests from failing during module collection when
+    an operator's ambient virtualenv has already upgraded Starlette to 1.x while
+    retaining FastAPI 0.128.x.  It only restores the Router constructor and event
+    methods that FastAPI itself still calls; it does not widen release dependency
+    constraints or suppress other incompatibilities.
+    """
+
+    if router_class is None:
+        from starlette.routing import Router as router_class
+
+    current_init = router_class.__init__
+    if getattr(current_init, "__promptbranch_legacy_event_compatibility__", False):
+        return True
+
+    try:
+        parameters = inspect.signature(current_init).parameters
+    except (TypeError, ValueError):
+        return False
+    if "on_startup" in parameters and "on_shutdown" in parameters:
+        return False
+
+    original_init = current_init
+
+    async def startup(self) -> None:
+        await _run_starlette_event_handlers(self.on_startup)
+
+    async def shutdown(self) -> None:
+        await _run_starlette_event_handlers(self.on_shutdown)
+
+    def add_event_handler(self, event_type: str, func) -> None:
+        if event_type == "startup":
+            self.on_startup.append(func)
+        elif event_type == "shutdown":
+            self.on_shutdown.append(func)
+        else:
+            raise AssertionError("Event type must be 'startup' or 'shutdown'.")
+
+    def on_event(self, event_type: str):
+        def decorator(func):
+            self.add_event_handler(event_type, func)
+            return func
+
+        return decorator
+
+    if not hasattr(router_class, "startup"):
+        router_class.startup = startup
+    if not hasattr(router_class, "shutdown"):
+        router_class.shutdown = shutdown
+    if not hasattr(router_class, "add_event_handler"):
+        router_class.add_event_handler = add_event_handler
+    if not hasattr(router_class, "on_event"):
+        router_class.on_event = on_event
+
+    def compatible_init(
+        self,
+        routes=None,
+        redirect_slashes: bool = True,
+        default=None,
+        on_startup=None,
+        on_shutdown=None,
+        lifespan=None,
+        *,
+        middleware=None,
+    ) -> None:
+        self.on_startup = list(on_startup or ())
+        self.on_shutdown = list(on_shutdown or ())
+        if lifespan is not None and (self.on_startup or self.on_shutdown):
+            warnings.warn(
+                "The on_startup and on_shutdown parameters are ignored when lifespan is provided.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        elif lifespan is None:
+            @asynccontextmanager
+            async def legacy_lifespan(_app):
+                await self.startup()
+                try:
+                    yield
+                finally:
+                    await self.shutdown()
+
+            lifespan = legacy_lifespan
+
+        original_init(
+            self,
+            routes=routes,
+            redirect_slashes=redirect_slashes,
+            default=default,
+            lifespan=lifespan,
+            middleware=middleware,
+        )
+
+    compatible_init.__promptbranch_legacy_event_compatibility__ = True
+    router_class.__init__ = compatible_init
+    return True
+
+
+_STARLETTE_ROUTER_COMPATIBILITY_INSTALLED = _install_starlette_router_legacy_event_compatibility()
 
 
 def _normalized_upload_filename(filename: Optional[str], *, default: str = "attachment.bin") -> str:
@@ -238,6 +353,9 @@ class ChatArtifactDownloadRequest(BaseModel):
     timeout_seconds: float = 120.0
     keep_open: bool = False
     project_url: Optional[str] = None
+    request_id: Optional[str] = None
+    answer_id: Optional[str] = None
+    answer_turn_index: Optional[int] = None
 
 
 class TestSuiteRunRequest(BaseModel):
@@ -1384,6 +1502,9 @@ async def download_chat_artifact(payload: ChatArtifactDownloadRequest) -> dict:
             target_path=payload.target_path,
             timeout_seconds=payload.timeout_seconds,
             keep_open=payload.keep_open,
+            request_id=payload.request_id,
+            answer_id=payload.answer_id,
+            answer_turn_index=payload.answer_turn_index,
         )
     except Exception as exc:  # pragma: no cover - exercised by live runs
         _raise_http_error(exc)

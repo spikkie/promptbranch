@@ -1327,3 +1327,82 @@ Planned after `v0.1.116` acceptance: `v0.1.117 — PBAI compliance inventory and
 ## v0.1.123.2.5 two-component release answer
 
 A successful ask-release answer is exactly one rendered ZIP output followed by one marked reply envelope. The generic JSON-only lead-in is not used for release candidates.
+
+
+## ADR-PROJ-124 — Correlated rendered attachment is authoritative transport evidence
+
+The exact assistant answer selected by persisted request/answer identity is the only valid source for release attachment discovery. The browser must resolve and download the rendered control through its authenticated context; textual sandbox metadata alone is insufficient. This repair preserves `v0.1.124` and `v0.1.125` as proof cycles and schedules `v0.1.126` and `v0.1.127` after them.
+
+## ADR-PROJ-125 — Contain ambient FastAPI/Starlette drift without changing release pins
+
+- **Decision:** Keep the supported `fastapi==0.128.2` and `starlette==0.50.0` constraints unchanged. At service-module import, install a narrow Router compatibility bridge only when the ambient Starlette constructor no longer accepts the legacy event arguments that FastAPI 0.128.x still passes.
+- **Boundary:** The bridge restores only constructor/event lifecycle compatibility. It does not suppress unrelated dependency failures or declare Starlette 1.x supported for release validation.
+- **Testing:** A subprocess regression must simulate the modern Router signature and import the real service module. Focused CLI fixtures must establish their own Project/repository identity rather than relying on the current working tree.
+- **Consequence:** Local focused tests can diagnose the rendered-attachment repair instead of failing during unrelated module collection, while strict release installation remains governed by the pinned candidate environment.
+
+
+## DEC-2026-08-05-123.2.6 — Historical artifact replay requires exact persisted request identity
+
+- **Status:** accepted for candidate `v0.1.123.2.6`.
+- **Decision:** A staged replay of a named historical protocol result must select `.pb_profile/ask_protocol_runs/<request-id>.json` by exact request ID. Chronological `latest validated` selection remains available for generic inspection but is not authoritative for evidence-bound replay.
+- **Fail-closed rule:** Invalid or sanitized request-ID aliases, missing files, unvalidated records, and payload/request-ID mismatches stop before candidate extraction, browser download, verification, migration, or adoption.
+- **Reason:** A newer valid `no_artifact` continuation reply correctly displaced the older `v0.1.124` artifact-producing run, causing Gate 2 to replay the wrong evidence while behaving according to the old CLI contract.
+- **Consequence:** Gate 2 uses `--protocol-run-request-id req_20260805T105438125979Z`. No valid no-artifact record is skipped or reclassified, and no attachment/candidate validation rule is weakened.
+
+## DEC-2026-08-05-123.2.6-R2 — Unvalidated artifact replay is explicit, exact-ID, and attachment-failure-only
+
+- **Status:** accepted for corrected candidate `v0.1.123.2.6`.
+- **Decision:** A persisted run with `reply_validation_ok=false` may enter artifact intake only when the operator supplies the exact request ID and the explicit `--replay-unvalidated-artifact-run` flag together with `--download --verify`.
+- **Allowlist:** The initial and only replayable prior run status is `artifact_declared_but_not_attached`, with only the corresponding download-proof validation/failure codes.
+- **Identity boundary:** Request, correlation, request envelope, reply envelope, conversation, message, selected answer, and selected-protocol-reply identities must be complete and internally equal before browser access.
+- **Mutation boundary:** Any evidence of prior download, verification, materialization, migration, Project Source mutation, registry/state mutation, or adoption makes the record non-replayable. Migration is forbidden during this replay command.
+- **No bypass:** Normal `--from-last-protocol-run` and exact validated-run selection remain unchanged. The flag cannot ignore arbitrary validation failures, replay `no_artifact`, or reinterpret failed generation.
+- **Reason:** The historical run failed at missing rendered-attachment proof; requiring that same proof to be already validated made the repair Gate 2 unreachable.
+- **Sequence:** This correction only opens Gate 2 for the existing answer. It does not authorize a fresh `v0.1.124` generation, publication, adoption, or proof-count movement.
+
+
+
+## DEC-2026-08-05-123.2.6-R3 — Legacy persisted-run normalization is replay-local and contradiction-sensitive
+
+- **Status:** accepted for replacement candidate `v0.1.123.2.6`.
+- **Decision:** The explicit attachment-failure replay path may normalize the historical record aliases proven by request `req_20260805T105438125979Z`: missing selection-summary copies, MIME-type-only ZIP typing, `input_baseline`, and the historical three-code attachment failure set.
+- **Identity rule:** Missing duplicate fields may fall back to exact run/request/correlation and selected-answer identity. Any present contradictory value is terminal.
+- **Artifact rule:** Missing `kind` is accepted only with an exact `.zip` filename and allowlisted ZIP MIME type. An explicit non-ZIP kind or MIME type remains terminal.
+- **Failure rule:** `reply_validated` is treated as attachment-derived only when filename, version, role, exact count, release-candidate status, and no-successful-download checks prove the rest of the envelope matched.
+- **Boundary:** The normal validated-run loader, generic parser, and migration/adoption paths are not relaxed.
+- **Reason:** The real Gate 2 record is structurally safe but predates fields introduced by the replay repair itself; requiring those newer duplicate fields made the replay circular.
+
+## Decision — finalize already materialized ask-release runs idempotently
+
+For an exact request-ID record whose rendered attachment was already downloaded and verified but whose final result remained `release_candidate_validation_failed`, Promptbranch may perform an inbox-only finalization pass. Eligibility requires exact request/correlation/message/answer identity, one expected candidate ZIP, normalized request/reply baseline agreement, positive rendered-attachment proof, exact persisted inbox path, matching SHA-256/size/entry-count/CRC/version, and no migration, Project Source, registry/current, or adoption mutation. The finalizer must not redownload. Any contradiction remains fail-closed.
+
+
+## DEC-2026-08-05-123.2.6-R4 — Exact validated-run identity is preserved through candidate migration
+
+- **Status:** accepted for replacement candidate `v0.1.123.2.6`.
+- **Decision:** Replay, finalization, normal validated intake, and migration use one contradiction-sensitive persisted-run ZIP/baseline normalizer.
+- **Transport rule:** A validated materialized run may reuse only its exact artifact-inbox path; ordinary verification must reopen the ZIP and recheck envelope metadata before migration.
+- **Orchestration rule:** `candidate-run` uses `--from-last-protocol-run --protocol-run-request-id <exact-id>` and carries expected repository, filename, and version. It must not fall back to `--from-last-answer` when an exact validated run is available.
+- **State rule:** This step may create one candidate-registry entry only. Candidate tests, Project Source publication, adoption, current-state advancement, commit, and push remain separate gates.
+- **Reason:** The verified `v0.1.124` bytes were safe, but duplicated normalization and chronology-based command construction prevented migration.
+
+
+## ADR-PROJ-126 — Separate PB environment completion from external application development
+
+- **Status:** accepted for documentation and `v0.1.125` planning.
+- **Decision:** Treat Promptbranch as System A, the deterministic control plane. Treat every application/tool developed with PB as System B with independent repository, architecture, tests, candidate registry, accepted/current baseline, and deployment authority.
+- **Preserved roadmap:** `v0.1.125`, `v0.1.126`, and `v0.1.127` retain their previously defined scopes.
+- **Extended roadmap:** append `v0.1.128` PB environment hardening; `v0.1.129` external app bootstrap; `v0.1.130` controlled change; `v0.1.131` test/diagnose/correct; `v0.1.132` app candidate/acceptance; `v0.1.133` non-production deployment; `v0.1.134` reusable/multi-repo workflow.
+- **Authority boundary:** PB environment validation is not application validation. Application source mutation begins only after an app-specific execution envelope, exact allowlists, pre-change snapshot, rollback evidence, and operator authorization.
+- **Release inclusion:** the boundary document, roadmap, plan-state update, and draw.io pages are mandatory contents of `v0.1.125`.
+
+
+## Active repair candidate — v0.1.125.1
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
+- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
+- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation

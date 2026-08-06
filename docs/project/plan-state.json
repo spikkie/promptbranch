@@ -1,12 +1,12 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
-  "accepted_current_version": "v0.1.123.2.4",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
-  "active_candidate_version": "v0.1.123.2.5",
-  "active_mvp": "MVP-1 loop-based problem-solving engine",
-  "active_slice": "v0.1.123.2.5 \u2014 Two-component ZIP output plus reply-envelope contract",
-  "architecture_goal": "controlled problem-solving loop",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
+  "accepted_current_version": "v0.1.124",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+  "active_candidate_version": "v0.1.125.1",
+  "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
+  "active_slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+  "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
     "control surface is authoritative over conversation memory",
@@ -561,9 +561,19 @@
       "summary": "Strengthens ask-release prompt generation so ChatGPT must create a fresh ZIP from the exact accepted/current baseline, attach it to the exact answer, and only then emit a completed protocol envelope.",
       "validation": "Focused prompt-generation regressions, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
       "version": "v0.1.123.2.4"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+      "created_at": "2026-08-05T17:30:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.6 \u2014 Correlated rendered attachment intake and browser-context download",
+      "status": "replacement_candidate",
+      "summary": "Recomputes release-candidate validation after successful rendered-attachment materialization, normalizes input_baseline/target_version aliases, and idempotently finalizes the exact persisted run from its verified artifact inbox without redownload.",
+      "validation": "Post-materialization finalization tests prove exact request/answer identity, inbox path, SHA-256, size, ZIP entry count, CRC, version, envelope metadata, and no release-state mutation before persisted status is promoted to reply_validated. Authenticated host finalization, strict release validation, publication, adoption, and MVP proof remain pending.",
+      "version": "v0.1.123.2.6"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1081,19 +1091,29 @@
       "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
       "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
       "version": "v0.1.123.2.3"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+      "created_at": "2026-08-05T16:55:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.6 \u2014 Correlated rendered attachment intake and browser-context download",
+      "status": "replacement_candidate",
+      "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
+      "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
+      "version": "v0.1.123.2.6"
     }
   ],
-  "last_completed_normal_slice": "v0.1.122 \u2014 Canonical MVP proof instrumentation; strict release accepted but formal proof not counted because a repair was required",
-  "last_completed_normal_slice_version": "v0.1.122",
-  "last_completed_repair": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
-  "last_completed_repair_version": "v0.1.123.2.3",
-  "last_updated": "2026-08-04T20:14:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-  "next_normal_slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
-  "next_normal_version": "v0.1.124",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-  "next_planned_slice_after_acceptance": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
-  "next_planned_version_after_acceptance": "v0.1.124",
+  "last_completed_normal_slice": "v0.1.124 \u2014 Accepted local candidate/artifact lifecycle checkpoint",
+  "last_completed_normal_slice_version": "v0.1.124",
+  "last_completed_repair": "v0.1.123.2.6 \u2014 Correlated attachment intake and text-source backend identity repair",
+  "last_completed_repair_version": "v0.1.123.2.6",
+  "last_updated": "2026-08-06T10:00:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
+  "next_normal_slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
+  "next_normal_version": "v0.1.125",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+  "next_planned_slice_after_acceptance": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+  "next_planned_version_after_acceptance": "v0.1.126",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1870,6 +1890,16 @@
       "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
       "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
       "version": "v0.1.123.2.3"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+      "created_at": "2026-08-05T16:55:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.6 \u2014 Correlated rendered attachment intake and browser-context download",
+      "status": "replacement_candidate",
+      "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
+      "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
+      "version": "v0.1.123.2.6"
     }
   ],
   "release_mode": "repair",
@@ -2240,6 +2270,16 @@
       "summary": "Scopes backend-403 evidence to the confirmed submit boundary and derives an outer lifecycle timeout that outlives response, correlation, artifact materialization, and safety budgets.",
       "validation": "Operation-scoped pre/post-submit guardrail regressions, nested timeout-budget regression, mandatory validation groups, deterministic ZIP, clean extraction, and Artifact Guardian before strict host adoption.",
       "version": "v0.1.123.2.3"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.6.zip",
+      "created_at": "2026-08-05T16:55:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.123.2.6 \u2014 Correlated rendered attachment intake and browser-context download",
+      "status": "replacement_candidate",
+      "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
+      "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
+      "version": "v0.1.123.2.6"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2274,58 +2314,124 @@
   ],
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "release_mode": "repair",
-      "scope": "strictly adopted immutable Project UUID alias verification across join and release-control caller",
-      "slice": "v0.1.123.2.2 \u2014 Release-control post-join Project alias verification repair",
-      "status": "accepted_current",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.2.zip",
-      "version": "v0.1.123.2.2"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
-      "release_mode": "repair",
-      "scope": "accepted operation-scoped 403 causality and nested response/correlation/artifact timeout budget",
-      "slice": "v0.1.123.2.3 \u2014 Operation-scoped response guardrails and nested timeout budget repair",
-      "status": "accepted_current",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.3.zip",
-      "version": "v0.1.123.2.3"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
-      "release_mode": "repair",
-      "scope": "hard ask-release execution contract for fresh baseline-derived ZIP creation and real answer attachment",
-      "slice": "v0.1.123.2.4 \u2014 Force baseline-derived ZIP creation and real attachment materialization",
-      "status": "accepted_current",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.4.zip",
-      "version": "v0.1.123.2.4"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
-      "release_mode": "repair",
-      "scope": "manually proven two-component release answer: rendered ZIP output plus one protocol envelope",
-      "slice": "v0.1.123.2.5 \u2014 Two-component ZIP output plus reply-envelope contract",
-      "status": "active",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.123.2.5.zip",
-      "version": "v0.1.123.2.5"
-    },
-    {
+      "version": "v0.1.124",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "release_mode": "normal",
-      "scope": "first canonical proof cycle driven only by explicitly pinned pb ask continue",
-      "slice": "v0.1.124 \u2014 Canonical MVP proof cycle 1 through one pb ask command",
-      "status": "planned_after_acceptance",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "version": "v0.1.124"
+      "release_mode": "normal",
+      "status": "accepted_current",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.124 \u2014 Accepted local candidate/artifact lifecycle checkpoint",
+      "scope": "real ZIP, exact correlation, verification, candidate testing, explicit local acceptance and current-state proof"
     },
     {
+      "version": "v0.1.125",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "release_mode": "normal",
-      "scope": "second consecutive canonical proof cycle and final MVP verdict driven only by explicitly pinned pb ask continue",
-      "slice": "v0.1.125 \u2014 Canonical MVP proof cycle 2 and final MVP verdict",
-      "status": "planned",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "version": "v0.1.125"
+      "release_mode": "normal",
+      "status": "repair_required",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
+      "scope": "canonical proof cycle implementation complete; candidate test exposed repository-polluting compileall bytecode"
+    },
+    {
+      "version": "v0.1.125.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "release_mode": "repair",
+      "status": "active",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+      "scope": "isolate compileall bytecode, make snapshot comparison cache-safe, and prove repeatable cache-free validation without advancing scope"
+    },
+    {
+      "version": "v0.1.126",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "release_mode": "normal",
+      "status": "planned_after_acceptance",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+      "scope": "historical duration model, expected finish, confidence and timeout-risk diagnostics"
+    },
+    {
+      "version": "v0.1.127",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
+      "scope": "portable deterministic tool-authoring guidance and export without broad execution authority"
+    },
+    {
+      "version": "v0.1.128",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.128 \u2014 PB environment MVP hardening and freeze",
+      "scope": "profile-aware timeouts, candidate recovery, summary consistency, mandatory test policy and clean-install proof"
+    },
+    {
+      "version": "v0.1.129",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "external_application",
+      "slice": "v0.1.129 \u2014 External application pilot bootstrap",
+      "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan"
+    },
+    {
+      "version": "v0.1.130",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "external_application",
+      "slice": "v0.1.130 \u2014 Controlled external application change execution",
+      "scope": "human-authorized bounded edits, snapshot and rollback evidence"
+    },
+    {
+      "version": "v0.1.131",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "external_application",
+      "slice": "v0.1.131 \u2014 Application test, diagnosis, and bounded correction loop",
+      "scope": "app tests, result classification, smallest correction, bounded retest"
+    },
+    {
+      "version": "v0.1.132",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "external_application",
+      "slice": "v0.1.132 \u2014 External application candidate and acceptance lifecycle",
+      "scope": "app artifact verification, candidate registry, release tests and explicit app acceptance"
+    },
+    {
+      "version": "v0.1.133",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "external_application",
+      "slice": "v0.1.133 \u2014 Non-production deployment and post-deployment proof",
+      "scope": "explicit deploy authority, rollback and health/functional verification"
+    },
+    {
+      "version": "v0.1.134",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
+      "release_mode": "normal",
+      "status": "planned",
+      "system": "application_platform",
+      "slice": "v0.1.134 \u2014 Reusable PB application workflow and multi-repository generalization",
+      "scope": "templates, domain modules, test profiles, release sets, deployment and recovery adapters"
     }
   ],
   "schema": "promptbranch.project.plan_state",
@@ -2341,5 +2447,37 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.123.2.4"
+  "updated_for": "v0.1.125 candidate construction",
+  "roadmap_milestones": {
+    "control_plane_proof": {
+      "target_version": "v0.1.125",
+      "status": "active"
+    },
+    "control_plane_hardened": {
+      "target_version": "v0.1.128",
+      "status": "planned"
+    },
+    "external_application_mvp": {
+      "target_version": "v0.1.132",
+      "status": "planned"
+    },
+    "non_production_deployment_mvp": {
+      "target_version": "v0.1.133",
+      "status": "planned"
+    },
+    "reusable_application_platform": {
+      "target_version": "v0.1.134",
+      "status": "planned"
+    }
+  },
+  "system_boundary": {
+    "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle",
+    "external_application": "System B: separate repository, architecture, tests, artifact, acceptance and deployment",
+    "first_external_application_read_only_version": "v0.1.129",
+    "first_external_application_mutation_version": "v0.1.130"
+  },
+  "active_candidate_status": "candidate_built_validation_pending",
+  "active_candidate_base_version": "v0.1.124",
+  "active_candidate_consolidates_runtime_version": "v0.1.123.2.6",
+  "active_candidate_documentation_checkpoint": "PB-DOC-2026-08-06.1"
 }

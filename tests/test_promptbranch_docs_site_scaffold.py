@@ -74,7 +74,7 @@ def test_documentation_site_links_resolve_to_repo_files() -> None:
 
 def test_release_docs_status_includes_docs_site_guard(capsys) -> None:
     args = argparse.Namespace(
-        version="v0.1.66",
+        version="v0.1.125",
         design_doc="docs/design/promptbranch-mvp-living-design.md",
         drawio="docs/design/promptbranch-mvp-living-design.drawio",
         repo_path=".",

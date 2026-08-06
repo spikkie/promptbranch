@@ -400,6 +400,9 @@ class ChatGPTAutomation:
         target_path: str,
         timeout_seconds: float = 120.0,
         keep_open: bool = False,
+        request_id: str | None = None,
+        answer_id: str | None = None,
+        answer_turn_index: int | None = None,
     ) -> dict[str, Any]:
         return await self.client.download_chat_artifact(
             conversation_url=conversation_url,
@@ -408,6 +411,9 @@ class ChatGPTAutomation:
             target_path=target_path,
             timeout_seconds=timeout_seconds,
             keep_open=keep_open,
+            request_id=request_id,
+            answer_id=answer_id,
+            answer_turn_index=answer_turn_index,
         )
 
     async def debug_project_list(

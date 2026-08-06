@@ -1,3 +1,11 @@
+## v0.1.125.1 repeatable release-validation repair
+
+`v0.1.125.1` is a repair-only candidate derived from `v0.1.125`. It does not advance Promptbranch scope. It isolates `compileall` bytecode under the release-validation isolation root, makes tracked application-template snapshot comparison ignore interpreter-generated cache artifacts, and adds regression coverage proving structural validation remains repeatable and leaves `templates/pbai` cache-free. The accepted/current baseline remains `v0.1.124` until explicit candidate acceptance.
+
+## v0.1.123.2.6 correlated rendered-attachment intake
+
+`v0.1.123.2.5` is accepted/current and has proven the two-component generation contract. `v0.1.123.2.6` repairs only answer intake: it selects the exact correlated assistant turn, discovers one rendered ZIP control in that turn, downloads it through the authenticated browser context, and verifies filename, SHA-256, byte size, ZIP entry count, CRC, and embedded version against the Promptbranch envelope. A JSON-only `sandbox:` declaration remains invalid when no matching rendered attachment exists.
+
 ## v0.1.123.2.5 two-component ask-release output contract
 
 `v0.1.123.2.4` is accepted/current. `v0.1.123.2.5` replaces the release-candidate prompt lead-in with the manually proven two-component contract: one real rendered downloadable ZIP outside the envelope, followed by exactly one marked Promptbranch JSON reply envelope. JSON-only `sandbox:` declarations remain invalid, and failure remains fail-closed with `artifacts=[]`.

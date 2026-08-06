@@ -616,6 +616,40 @@ def test_browser_profile_summary_counts_cleanup_failures(monkeypatch) -> None:
 
 
 
+
+def test_release_validation_env_isolates_python_bytecode(tmp_path: Path) -> None:
+    isolation_root = tmp_path / "isolation"
+    env = suite._release_validation_group_env(isolation_root=isolation_root)
+
+    prefix = Path(env["PYTHONPYCACHEPREFIX"]).resolve()
+    assert prefix == (isolation_root / "pycache").resolve()
+    assert prefix.is_dir()
+
+
+def test_isolated_compileall_leaves_repository_cache_free(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "templates" / "pbai" / "domain_module" / ".promptbranch" / "ai" / "example.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    isolation_root = tmp_path / "isolation"
+    env = suite._release_validation_group_env(isolation_root=isolation_root)
+    completed = suite.subprocess.run(
+        [suite.sys.executable, "-m", "compileall", "-q", "."],
+        cwd=repo,
+        env=env,
+        text=True,
+        stdout=suite.subprocess.PIPE,
+        stderr=suite.subprocess.PIPE,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert list(repo.rglob("__pycache__")) == []
+    assert list(repo.rglob("*.pyc")) == []
+    assert list(repo.rglob("*.pyo")) == []
+    assert list(Path(env["PYTHONPYCACHEPREFIX"]).rglob("*.pyc"))
+
 def test_release_validation_group_manifest_contains_required_release_gate_groups() -> None:
     manifest = suite.release_validation_group_manifest()
     required = {
