@@ -13120,6 +13120,7 @@ def test_promptbranch_smoke_step_specs_are_local_and_bounded(tmp_path) -> None:
     assert '"full_test_countdown_active"' in plain_spec["required_stdout_contains"]
     assert plain_spec["accepted_readonly_json_statuses"] == [
         "project_scope_unresolved",
+        "project_repo_not_configured",
         "artifact_registry_missing",
     ]
 
@@ -13176,6 +13177,35 @@ def test_promptbranch_smoke_accepts_structured_readonly_uninitialized_status(tmp
     assert result["ok"] is True
     assert result["status"] == "passed_structured_readonly_uninitialized"
     assert result["structured_payload_status"] == "project_scope_unresolved"
+
+
+def test_promptbranch_smoke_accepts_project_repo_not_configured_without_mutation(tmp_path) -> None:
+    script = tmp_path / "repo-not-configured.py"
+    script.write_text(
+        "import json, sys\n"
+        "print(json.dumps({'ok': False, 'status': 'project_repo_not_configured', 'artifact_registry_updated': False, 'project_source_mutated': False}))\n"
+        "sys.exit(2)\n",
+        encoding="utf-8",
+    )
+    result = _run_bounded_smoke_subprocess(
+        {
+            "name": "artifact_current_readonly",
+            "kind": "promptbranch_cli",
+            "command": [sys.executable, str(script)],
+            "accepted_readonly_json_statuses": [
+                "project_scope_unresolved",
+                "project_repo_not_configured",
+                "artifact_registry_missing",
+            ],
+        },
+        repo_path=tmp_path,
+        timeout_seconds=2.0,
+        log_dir=tmp_path / "logs",
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "passed_structured_readonly_uninitialized"
+    assert result["structured_payload_status"] == "project_repo_not_configured"
 
 
 def test_promptbranch_smoke_rejects_uninitialized_status_with_mutation_flag(tmp_path) -> None:

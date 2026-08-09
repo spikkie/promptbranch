@@ -3,7 +3,7 @@ import json
 import tomllib
 from pathlib import Path
 import pytest
-from promptbranch_release_engine import ReleaseContractError, load_contract, plan
+from promptbranch_release_engine import ReleaseContractError, execute, load_contract, plan
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -57,3 +57,41 @@ def test_tracked_contract_uses_sole_version_authority_for_release_identity():
                     assert arg==artifact
                 if isinstance(arg,str) and arg.startswith('v0.'):
                     assert arg==version
+
+
+def test_tracked_contract_forwards_release_validation_python_authority():
+    data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
+    assert 'PROMPTBRANCH_RELEASE_VALIDATION_PYTHON' in data['environment']
+
+
+def test_release_engine_preserves_explicit_validation_python_with_poisoned_path(tmp_path: Path, monkeypatch):
+    data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
+    data['operations']['validate']=[{
+        'id':'env-probe',
+        'argv':['python3','-c','pass'],
+        'timeout_seconds':30,
+    }]
+    (tmp_path/'.promptbranch-release.json').write_text(json.dumps(data), encoding='utf-8')
+    (tmp_path/'.promptbranch-repo.json').write_text('{}\n', encoding='utf-8')
+    (tmp_path/'.pb_profile').mkdir()
+    contract=load_contract(tmp_path)
+    candidate_python='/candidate/pipx/bin/python'
+    poisoned_path='/foreign/pytest-8/bin:/usr/bin'
+    monkeypatch.setenv('PATH', poisoned_path)
+    monkeypatch.setenv('PROMPTBRANCH_RELEASE_VALIDATION_PYTHON', candidate_python)
+    observed={}
+
+    class Result:
+        returncode=0
+        stdout=''
+        stderr=''
+
+    def fake_runner(argv, *, cwd, env, text, capture_output, timeout, check):
+        observed['argv']=argv
+        observed['env']=dict(env)
+        return Result()
+
+    result=execute(tmp_path, contract, 'validate', runner=fake_runner)
+    assert result['ok'] is True
+    assert observed['env']['PATH'] == poisoned_path
+    assert observed['env']['PROMPTBRANCH_RELEASE_VALIDATION_PYTHON'] == candidate_python

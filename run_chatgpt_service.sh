@@ -24,9 +24,9 @@ if [[ "${PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE:-0}" != "1" ]]; then
 fi
 
 export CHATGPT_PASSWORD_SECRET_FILE="${CHATGPT_PASSWORD_SECRET_FILE:-${HOME}/.config/chatgpt/password.txt}"
-export COMPOSE_PROJECT_NAME="chatgpt_claudecode_workflow"
-export PROMPTBRANCH_SERVICE_PORT="8000"
-export CHATGPT_SERVICE_BASE_URL="http://localhost:8000"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-chatgpt_claudecode_workflow}"
+export PROMPTBRANCH_SERVICE_PORT="${PROMPTBRANCH_SERVICE_PORT:-8000}"
+export CHATGPT_SERVICE_BASE_URL="${CHATGPT_SERVICE_BASE_URL:-http://localhost:${PROMPTBRANCH_SERVICE_PORT}}"
 unset CHATGPT_PASSWORD_FILE
 
 if [[ ! -f "${CHATGPT_PASSWORD_SECRET_FILE}" ]]; then
@@ -35,4 +35,4 @@ if [[ ! -f "${CHATGPT_PASSWORD_SECRET_FILE}" ]]; then
   exit 1
 fi
 
-exec docker compose -p chatgpt_claudecode_workflow -f docker-compose.chatgpt-service.yml up --build --force-recreate "$@"
+exec docker compose -p "${COMPOSE_PROJECT_NAME}" -f docker-compose.chatgpt-service.yml up --build --force-recreate "$@"

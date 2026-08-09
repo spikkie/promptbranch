@@ -662,6 +662,7 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
         "repo_project_registry",
         "browser_scheduler_source_lifecycle",
         "release_lifecycle_plan",
+        "release_state_machine",
         "release_pipeline",
         "release_set_planner",
         "release_set_rollout",
@@ -1173,6 +1174,8 @@ def test_full_profile_with_missing_registry_emits_complete_suite(monkeypatch, tm
 
     result = asyncio.run(suite.run_test_suite_async(profile="full", path=tmp_path, profile_dir=tmp_path / ".pb_profile"))
 
+    assert result["schema"] == suite.TEST_SUITE_REPORT_SCHEMA
+    assert result["schema_version"] == suite.TEST_SUITE_REPORT_SCHEMA_VERSION
     assert result["action"] == "test_suite"
     assert result["profile"] == "full"
     assert result["browser"] is browser
@@ -1206,6 +1209,8 @@ def test_release_validation_manifest_requires_execution_envelope_validation_gate
         "execution-envelope-validation",
         "--target",
         "examples/loop-targets/sandboxed-file-mutation-target.json",
+        "--repo-root",
+        ".",
         "--json",
     ]
 

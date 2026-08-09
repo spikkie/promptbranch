@@ -66,6 +66,8 @@ from promptbranch_browser_auth.exceptions import (
 )
 from promptbranch_service_client import ChatGPTServiceClient
 from promptbranch_test_suite import (
+    TEST_SUITE_REPORT_SCHEMA,
+    TEST_SUITE_REPORT_SCHEMA_VERSION,
     artifact_roundtrip_smoke,
     package_import_smoke,
     run_project_source_file_reliability_async,
@@ -193,6 +195,7 @@ from promptbranch_profiles import profile_pools, profile_registry, profile_show
 from promptbranch_scheduler import SERVICE_BROWSER_QUEUE_DEFAULT_WAIT_SECONDS, conflict_matrix, plan_operation_resources, queue_list, queue_status, service_browser_queue_policy
 from promptbranch_source_queue import build_source_mutation_queue_plan
 from promptbranch_release_scheduler import build_release_lifecycle_scheduler_plan
+from promptbranch_release_state_machine import ReleaseStateMachineError, build_machine_from_args, canonical_state
 from promptbranch_ask_protocol import (
     BEGIN_REPLY_MARKER,
     END_REPLY_MARKER,
@@ -10244,6 +10247,7 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
             "description": "Verify artifact current-state inspection remains read-only and JSON-producing.",
             "accepted_readonly_json_statuses": [
                 "project_scope_unresolved",
+                "project_repo_not_configured",
                 "artifact_registry_missing",
             ],
         },
@@ -10262,6 +10266,7 @@ def _promptbranch_smoke_step_specs(repo_path: Path) -> list[dict[str, Any]]:
             ],
             "accepted_readonly_json_statuses": [
                 "project_scope_unresolved",
+                "project_repo_not_configured",
                 "artifact_registry_missing",
             ],
         },
@@ -10445,6 +10450,8 @@ async def cmd_test_smoke(args: argparse.Namespace) -> int:
     failed_step = next((step for step in steps if not bool(step.get("ok"))), None)
     payload = {
         "ok": ok,
+        "schema": TEST_SUITE_REPORT_SCHEMA,
+        "schema_version": TEST_SUITE_REPORT_SCHEMA_VERSION,
         "action": "test_smoke",
         "profile": "smoke",
         "status": "passed" if ok else (failed_step.get("status") if failed_step else "smoke_no_steps_run"),
@@ -20913,7 +20920,206 @@ async def cmd_release_set(backend: Any, args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+
+def _release_state_machine_profile_dir(args: argparse.Namespace, repo_root: Path) -> Path:
+    explicit = getattr(args, "profile_dir", None)
+    return resolve_profile_dir(explicit, cwd=str(repo_root))
+
+
+def _release_state_machine_emit(payload: dict[str, Any], *, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"status={payload.get('status')}")
+        print(f"ok={str(bool(payload.get('ok'))).lower()}")
+        print(f"current_state={payload.get('current_state') or 'none'}")
+        print(f"next_transition={payload.get('next_transition') or 'none'}")
+        if payload.get("attempt_path"):
+            print(f"attempt_path={payload.get('attempt_path')}")
+        eta = payload.get("eta") if isinstance(payload.get("eta"), dict) else {}
+        if eta:
+            print(f"eta_seconds_approx={eta.get('eta_seconds_approx')}")
+            print(f"expected_finish_at_approx={eta.get('expected_finish_at_approx') or 'unknown'}")
+            print(f"eta_confidence={eta.get('eta_confidence') or 'unknown'}")
+            timeout_risk = eta.get("timeout_risk") if isinstance(eta.get("timeout_risk"), dict) else {}
+            candidate = timeout_risk.get("candidate_test") if isinstance(timeout_risk.get("candidate_test"), dict) else {}
+            if candidate:
+                print(f"candidate_test_timeout_risk={candidate.get('risk') or 'unknown'}")
+                print(f"recommended_test_timeout_seconds={candidate.get('recommended_timeout_seconds')}")
+        if payload.get("failure"):
+            failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
+            print(f"failure_code={failure.get('code') or 'unknown'}", file=sys.stderr)
+            print(f"error={failure.get('message') or payload.get('error') or 'release state machine failed'}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
+def _release_state_machine_verify_inputs(args: argparse.Namespace, repo_root: Path, profile_root: Path) -> tuple[Path, str]:
+    version = _candidate_version_normalized(getattr(args, "version", None))
+    if not version:
+        raise ReleaseStateMachineError("release verify requires a valid --version")
+    explicit_artifact = str(getattr(args, "artifact", "") or "").strip()
+    if explicit_artifact:
+        artifact = Path(explicit_artifact).expanduser().resolve()
+    else:
+        filename = canonical_artifact_filename(repo_root.name, version)
+        artifact = (repo_root / filename).resolve() if filename else Path()
+        if not artifact.is_file():
+            attempts = sorted(
+                profile_root.glob(f"release_attempts_v2/*/{version}/*/attempt.json"),
+                key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+                reverse=True,
+            )
+            if len(attempts) != 1:
+                raise ReleaseStateMachineError(
+                    f"could not resolve one authoritative release attempt for {version}; pass --artifact explicitly"
+                )
+            attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
+            artifact_payload = attempt.get("artifact") if isinstance(attempt.get("artifact"), dict) else {}
+            artifact = Path(str(artifact_payload.get("object_path") or "")).expanduser().resolve()
+            if not artifact.is_file():
+                raise ReleaseStateMachineError("authoritative attempt artifact object is missing")
+            if not getattr(args, "baseline_version", None):
+                args.baseline_version = attempt.get("baseline_version")
+    baseline = _candidate_version_normalized(getattr(args, "baseline_version", None))
+    if not baseline:
+        parsed = parse_canonical_artifact_filename(artifact.name)
+        repo_id = parsed.get("repo_id") if isinstance(parsed, dict) else repo_root.name
+        attempts = sorted(
+            profile_root.glob(f"release_attempts_v2/{repo_id}/{version}/*/attempt.json"),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+            reverse=True,
+        )
+        if len(attempts) == 1:
+            attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
+            baseline = _candidate_version_normalized(attempt.get("baseline_version"))
+    if not baseline:
+        raise ReleaseStateMachineError("release verify could not resolve baseline version; pass --baseline-version")
+    return artifact, baseline
+
+
+async def cmd_release_state_machine_run(backend: Any, args: argparse.Namespace) -> int:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    profile_root = _release_state_machine_profile_dir(args, repo_root)
+    try:
+        machine = build_machine_from_args(
+            repo_root=repo_root,
+            profile_dir=profile_root,
+            artifact=getattr(args, "artifact"),
+            version=getattr(args, "version"),
+            baseline_version=getattr(args, "baseline_version"),
+            release_type=getattr(args, "release_type", "repair"),
+            profile=getattr(args, "profile", "full"),
+            test_timeout=float(getattr(args, "test_timeout", 3600.0) or 3600.0),
+            until=getattr(args, "until", "tested-green"),
+            adopt=bool(getattr(args, "adopt", False)),
+            commit=bool(getattr(args, "commit", False)),
+            push=bool(getattr(args, "push", False)),
+            upload_project_source=bool(getattr(args, "upload_project_source", False)),
+            candidate_python=getattr(args, "candidate_python", None),
+        )
+        payload, code = machine.run()
+    except ReleaseStateMachineError as exc:
+        payload, code = {
+            "ok": False,
+            "action": "release_state_machine_run",
+            "status": "configuration_error",
+            "error": str(exc),
+            "current_state": None,
+            "next_transition": None,
+            "mutation_performed": False,
+        }, 2
+    _release_state_machine_emit(payload, as_json=bool(getattr(args, "json", False)))
+    return code
+
+
+async def cmd_release_state_machine_verify(backend: Any, args: argparse.Namespace) -> int:
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    profile_root = _release_state_machine_profile_dir(args, repo_root)
+    try:
+        artifact, baseline = _release_state_machine_verify_inputs(args, repo_root, profile_root)
+        machine = build_machine_from_args(
+            repo_root=repo_root,
+            profile_dir=profile_root,
+            artifact=artifact,
+            version=getattr(args, "version"),
+            baseline_version=baseline,
+            release_type="repair",
+            profile=getattr(args, "profile", "full"),
+            test_timeout=float(getattr(args, "test_timeout", 3600.0) or 3600.0),
+            until="final-verified",
+            candidate_python=getattr(args, "candidate_python", None),
+        )
+        payload, code = machine.verify(repair_projections=not bool(getattr(args, "no_repair_projections", False)))
+    except ReleaseStateMachineError as exc:
+        payload, code = {
+            "ok": False,
+            "action": "release_state_machine_verify",
+            "status": "configuration_error",
+            "error": str(exc),
+            "current_state": None,
+            "next_transition": None,
+            "mutation_performed": False,
+        }, 2
+    _release_state_machine_emit(payload, as_json=bool(getattr(args, "json", False)))
+    return code
+
+
+async def cmd_release_state_machine_eta(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    repo_root = Path(getattr(args, "repo_path", ".") or ".").expanduser().resolve()
+    profile_root = _release_state_machine_profile_dir(args, repo_root)
+    try:
+        artifact, baseline = _release_state_machine_verify_inputs(args, repo_root, profile_root)
+        version = _candidate_version_normalized(getattr(args, "version", None))
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        parsed = parse_canonical_artifact_filename(artifact.name) or {}
+        repo_id = str(parsed.get("repo_id") or repo_root.name)
+        attempt_path = profile_root / "release_attempts_v2" / repo_id / str(version) / digest[:16] / "attempt.json"
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8")) if attempt_path.is_file() else {}
+        request = attempt.get("request") if isinstance(attempt.get("request"), dict) else {}
+        release_type = str(attempt.get("release_type") or getattr(args, "release_type", None) or "normal")
+        profile = str(request.get("profile") or getattr(args, "profile", "full") or "full")
+        test_timeout = float(request.get("test_timeout") or getattr(args, "test_timeout", 3600.0) or 3600.0)
+        mutation_policy = request.get("mutation_policy") if isinstance(request.get("mutation_policy"), dict) else {}
+        machine = build_machine_from_args(
+            repo_root=repo_root,
+            profile_dir=profile_root,
+            artifact=artifact,
+            version=str(version),
+            baseline_version=baseline,
+            release_type=release_type,
+            profile=profile,
+            test_timeout=test_timeout,
+            until="final-verified",
+            adopt=bool(mutation_policy.get("adopt")),
+            commit=bool(mutation_policy.get("commit")),
+            push=bool(mutation_policy.get("push")),
+            upload_project_source=bool(mutation_policy.get("upload_project_source")),
+            candidate_python=getattr(args, "candidate_python", None),
+        )
+        payload, code = machine.eta_status(
+            configured_outer_timeout_seconds=getattr(args, "outer_timeout", None),
+        )
+    except (ReleaseStateMachineError, OSError, json.JSONDecodeError) as exc:
+        payload, code = {
+            "ok": False,
+            "action": "release_eta_status",
+            "status": "configuration_error",
+            "error": str(exc),
+            "current_state": None,
+            "mutation_performed": False,
+        }, 2
+    _release_state_machine_emit(payload, as_json=bool(getattr(args, "json", False)))
+    return code
+
+
 async def cmd_release(backend: Any, args: argparse.Namespace) -> int:
+    if args.release_command == "run":
+        return await cmd_release_state_machine_run(backend, args)
+    if args.release_command == "verify":
+        return await cmd_release_state_machine_verify(backend, args)
+    if args.release_command == "eta":
+        return await cmd_release_state_machine_eta(backend, args)
     if args.release_command == "set":
         return await cmd_release_set(backend, args)
     if args.release_command == "pipeline":
@@ -27354,8 +27560,47 @@ def make_parser() -> argparse.ArgumentParser:
     orchestration_accept_event.add_argument("--dry-run", action="store_true", help="Preview acceptance only; required because ledger writes are out of scope.")
     orchestration_accept_event.add_argument("--json", action="store_true", help="Emit structured dry-run result as JSON.")
 
-    release = subparsers.add_parser("release", help="Read-only release lifecycle diagnostics and future lifecycle orchestration.")
+    release = subparsers.add_parser("release", help="Read-only release diagnostics plus the canonical guarded release state machine.")
     release_subparsers = release.add_subparsers(dest="release_command", required=True)
+
+    release_run = release_subparsers.add_parser("run", help="Run or resume the canonical immutable release state machine from the next legal transition.")
+    release_run.add_argument("--artifact", required=True, help="Canonical candidate ZIP. The exact SHA-256 is bound immutably to the release attempt.")
+    release_run.add_argument("--version", required=True, help="Canonical target version, for example v0.1.125.3.")
+    release_run.add_argument("--baseline-version", required=True, help="Accepted baseline version from which this release advances.")
+    release_run.add_argument("--release-type", choices=["normal", "repair"], default="repair")
+    release_run.add_argument("--repo-path", default=".", help="Repository root. Candidate verification uses a clean extraction of the ZIP.")
+    release_run.add_argument("--profile", choices=["smoke", "full"], default="full", help="Exact candidate validation profile.")
+    release_run.add_argument("--test-timeout", type=float, default=3600.0, help="Bounded candidate-test timeout in seconds.")
+    release_run.add_argument("--until", default="tested-green", help="Target state: declared, artifact-bound, artifact-verified, candidate-registered, runtime-prepared, tested-green, accepted, adopted-current, or final-verified.")
+    release_run.add_argument("--candidate-python", help="Explicit candidate interpreter. Defaults to the Promptbranch pipx interpreter, then current Python.")
+    release_run.add_argument("--adopt", action="store_true", help="Explicitly authorize ACCEPTED and subsequent adopted/current transitions.")
+    release_run.add_argument("--commit", action="store_true", help="Explicitly authorize guarded release-pipeline commit after candidate testing.")
+    release_run.add_argument("--push", action="store_true", help="Explicitly authorize guarded push; requires --commit.")
+    release_run.add_argument("--upload-project-source", action="store_true", help="Explicitly authorize exact candidate Project Source publication after candidate testing.")
+    release_run.add_argument("--json", action="store_true", help="Emit the state-machine result as JSON.")
+
+    release_verify = release_subparsers.add_parser("verify", help="Independently re-evaluate evidence and invariants for every reached release state.")
+    release_verify.add_argument("--version", required=True, help="Target version whose durable release attempt must be verified.")
+    release_verify.add_argument("--artifact", help="Exact candidate ZIP. When omitted, resolve it from the repo root or authoritative attempt object store.")
+    release_verify.add_argument("--baseline-version", help="Baseline version. When omitted, read it from the durable attempt record.")
+    release_verify.add_argument("--repo-path", default=".", help="Repository root.")
+    release_verify.add_argument("--profile", choices=["smoke", "full"], default="full")
+    release_verify.add_argument("--test-timeout", type=float, default=3600.0)
+    release_verify.add_argument("--candidate-python")
+    release_verify.add_argument("--all-states", action="store_true", help="Compatibility spelling; verification always reports every canonical state.")
+    release_verify.add_argument("--no-repair-projections", action="store_true", help="Do not reconstruct missing derived candidate projections from authoritative attempt evidence.")
+    release_verify.add_argument("--json", action="store_true", help="Emit all state checks as JSON.")
+    release_eta = release_subparsers.add_parser("eta", help="Read the persistent whole-release ETA, expected finish, confidence, and timeout-risk diagnostics for one canonical release attempt.")
+    release_eta.add_argument("--version", required=True, help="Target version whose canonical release ETA must be inspected.")
+    release_eta.add_argument("--artifact", help="Exact candidate ZIP. When omitted, resolve it from the repo root or authoritative attempt object store.")
+    release_eta.add_argument("--baseline-version", help="Baseline version. When omitted, resolve it from the durable release attempt.")
+    release_eta.add_argument("--repo-path", default=".", help="Repository root.")
+    release_eta.add_argument("--profile", choices=["smoke", "full"], default="full", help="Fallback profile only when the durable attempt does not yet contain one.")
+    release_eta.add_argument("--release-type", choices=["normal", "repair"], help="Fallback release type only when the durable attempt does not yet contain one.")
+    release_eta.add_argument("--test-timeout", type=float, default=3600.0, help="Fallback candidate-test timeout only when the durable attempt does not yet contain one.")
+    release_eta.add_argument("--outer-timeout", type=float, help="Optional outer-wrapper timeout to assess against the current whole-release estimate; advisory only.")
+    release_eta.add_argument("--candidate-python")
+    release_eta.add_argument("--json", action="store_true", help="Emit the read-only ETA status as JSON.")
     release_set = release_subparsers.add_parser("set", help="Read-only multi-repository release-set dependency planning and compatibility analysis.")
     release_set_subparsers = release_set.add_subparsers(dest="release_set_command", required=True)
     release_set_plan = release_set_subparsers.add_parser("plan", help="Validate a release-set manifest and emit deterministic dependency order, waves, and compatibility matrix without mutation.")

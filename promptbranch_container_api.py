@@ -720,7 +720,8 @@ def _raise_http_error(exc: Exception) -> None:
     if isinstance(exc, UnsupportedOperationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, ResponseTimeoutError):
-        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+        detail = exc.to_payload() if hasattr(exc, "to_payload") else str(exc)
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=detail) from exc
     if isinstance(exc, BrowserProfileBusyError):
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=exc.to_payload()) from exc
     if isinstance(exc, BrowserContextUnavailableError):

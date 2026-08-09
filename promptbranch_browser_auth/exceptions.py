@@ -45,7 +45,23 @@ class AuthChallengeRequiredError(AuthenticationError):
 
 
 class ResponseTimeoutError(TimeoutError):
-    """Raised when ChatGPT did not produce the expected output in time."""
+    """Raised when ChatGPT did not produce the expected output in time.
+
+    ``payload`` is optional structured failure evidence.  Browser-backed HTTP
+    callers must preserve it rather than collapsing diagnostics to a string.
+    """
+
+    def __init__(self, message: str, *, payload: dict | None = None) -> None:
+        super().__init__(message)
+        self.payload = dict(payload or {})
+
+    def to_payload(self) -> dict:
+        payload = dict(self.payload)
+        payload.setdefault("ok", False)
+        payload.setdefault("status", "response_timeout")
+        payload.setdefault("error", str(self))
+        payload.setdefault("error_type", type(self).__name__)
+        return payload
 
 
 class RateLimitDetectedError(RuntimeError):

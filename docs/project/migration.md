@@ -1472,14 +1472,77 @@ No migration is required. Existing `release_candidate_validation_failed` records
 
 No stored artifact bytes need to be regenerated. Exact validated intake may reuse the existing verified ZIP under `.pb_profile/artifact_inbox/`, reverify it, copy it to the repository root, and register one candidate. `candidate-run` now selects the persisted run by exact request ID and preserves repository, filename, and version expectations. This migration does not test, publish, adopt, commit, or push the candidate.
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+
+## v0.1.125.3.4.2 clean replacement
+
+`v0.1.125.3.4.2` replaces the superseded post-adoption verifier semantics directly. There is no dual-mode migration or compatibility shim: before adoption candidate health is live-verified; after adoption candidate proof is historical and the authoritative port-8000 runtime is live-verified. Accepted/current baseline is `v0.1.125.3.4.1`; next planned normal release is `v0.1.126`.
+
+
+## Active repair candidate — v0.1.125.3.4.2
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip` (`v0.1.125.3.4.1`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip`
+- active repair slice: v0.1.125.3.4.2 — Post-adoption historical verification and final convergence
+- no backward-compatibility path for superseded post-adoption candidate-liveness semantics
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
+
+## v0.1.126 — whole-release ETA state
+
+`v0.1.126` starts from accepted/current `v0.1.125.3.4.2` and introduces one canonical persistent ETA history schema: `promptbranch.release_eta.history` version `1.0`. Existing canonical `release_attempts_v2` transition evidence may seed the new history deterministically. There is no migration or compatibility adapter for superseded PB ETA/state formats; new history is regenerated from canonical release-attempt evidence when needed.
+
+ETA snapshots are advisory and must not mutate release verdict authority. A corrupt or unavailable ETA store degrades diagnostics only. After `v0.1.126` acceptance, the next planned normal release is `v0.1.127`.
+
+## v0.1.126.1 — publication convergence repair
+
+This repair replaces the superseded publication path directly. The exact immutable candidate source is materialized into the Git working tree only after candidate validation, then fingerprinted again after guarded commit. Publication command results use action-aware complete top-level JSON selection. Project Source filename-family reconciliation handles platform-assigned `(N)` suffixes. No dual old/new publication mode is retained. ETA history advances to schema 1.1 and is regenerated from canonical attempt evidence where available.
+
+## v0.1.126.1.1 — canonical fingerprint and blocked-ETA repair
+
+`v0.1.126.1.1` replaces the divergent Docker/state-machine source-fingerprint implementations with one canonical module. No compatibility branch preserves the obsolete three-file Docker fingerprint. ETA snapshot schema advances to `1.2`: a stopped `BLOCKED_RETRYABLE` attempt has no completion timestamp, but retains an advisory estimate of work remaining after resume.
+
+## v0.1.126.1.1.1 — Project Source text-add readiness repair
+
+This repair replaces the generic text-input body fallback with body-editor-only selection and makes structured disabled-save recovery canonical. No compatibility path preserves immediate exception re-raise for the release-blocking text-source step.
+
+## v0.1.126.1.1.1.1 — Ask deadline/evidence repair
+
+No compatibility branch is introduced. Docker integration asks now use the structured result API and explicit service deadline. The predecessor `v0.1.126.1.1.1` remains immutable failure evidence; accepted/current remains `v0.1.125.3.4.2` until final verification.
+
+## v0.1.126.1.1.1.1.1 — Publication fingerprint authority repair
+
+No compatibility branch is introduced. Publication now consumes one checkpoint-authoritative runtime fingerprint accessor and requires exact projection agreement. The predecessor `v0.1.126.1.1.1.1` remains immutable evidence of the projection defect; accepted/current remains `v0.1.125.3.4.2` until final verification.
+
+
+## v0.1.126.1.1.1.1.2 — Accepted-runtime precondition clean replacement
+
+No stored release-attempt migration is performed. `v0.1.126.1.1.1.1.1` remains immutable failure evidence. New `v0.1.126.1.1.1.1.2` attempts use the stronger production-runtime contract directly: a missing/unhealthy/baseline-mismatched runtime blocks before candidate mutation, and immutable production identity must remain unchanged after candidate preparation.
+
+A retry refreshes the precondition snapshot. Operators therefore restore the accepted/current service explicitly and rerun; no checkpoint deletion or compatibility adapter is required. Existing historical `RUNTIME_PREPARED` evidence that lacks the stronger accepted-runtime fields is not upgraded in place and cannot satisfy the new verifier.
+
+
+## v0.1.126.1.1.1.1.3 — Release-validation Python authority propagation
+
+No stored attempt migration is performed. `v0.1.126.1.1.1.1.2` remains immutable live failure evidence: 53/53 candidate tests passed, then publication preflight selected foreign pytest 8.4.2 because the release-contract sanitizer dropped `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`. New `v0.1.126.1.1.1.1.3` attempts preserve the explicit candidate-Python authority directly; no legacy ambient-Python fallback is retained.

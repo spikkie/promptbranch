@@ -113,14 +113,61 @@ No PB environment test may be treated as evidence that an application works. No 
 
 See `docs/project/pb-environment-vs-application-development.md` and `docs/project/pb-mvp-roadmap-v0.1.124.md`.
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+
+## Canonical runtime-verification lifecycle
+
+The isolated candidate runtime is ephemeral. `RUNTIME_PREPARED` requires live candidate health only before adoption. Once `ADOPTED_CURRENT` promotes the exact tested image and removes candidate containers, historical candidate validity is verified from immutable checkpoint evidence while current runtime validity is verified against the live authoritative service on port 8000. Superseded post-adoption candidate-liveness semantics are removed rather than preserved for backward compatibility.
+
+
+## Active repair candidate — v0.1.125.3.4.2
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip` (`v0.1.125.3.4.1`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip`
+- active repair slice: v0.1.125.3.4.2 — Post-adoption historical verification and final convergence
+- no backward-compatibility path for superseded post-adoption candidate-liveness semantics
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
+
+## v0.1.126 whole-release ETA architecture
+
+The canonical release state machine remains the sole lifecycle authority. `promptbranch_release_eta.py` consumes canonical transition evidence and writes a separate advisory history/snapshot surface keyed by profile, phase, transport, and step. The estimator may report remaining duration, expected finish, confidence/provenance, and timeout risk, but it cannot alter transition guards or verdicts.
+
+The architecture deliberately does not retain compatibility paths for superseded PB timing models. Canonical `release_attempts_v2` evidence is the only historical seed authority for the new whole-release estimator. This preserves the controlled problem-solving loop, Fixed architecture invariants, Repair releases must not advance scope, and the PBAI-001 application architecture invariant.
+
+## v0.1.126.1.1 canonical release-source identity
+
+All release-source identity checks consume the shared `promptbranch_source_fingerprint` implementation. The canonical digest binds deterministic relative path, executable bit, and content digest while excluding VCS/profile/generated/transient state. Docker no longer maintains a separate release identity algorithm. A blocked retryable lifecycle has no active wall-clock ETA; the estimator reports only advisory work remaining after resume.
+
+## v0.1.126.1.1.1 Project Source text readiness
+
+Text-source mutation uses the body editor as the value authority. Save readiness is a bounded state machine: exact body/title value proof, controlled event stabilization, save-button re-resolution, then structured failure. Zero-request recovery is permitted only after authoritative source-surface reconciliation and at most one retry.
+
+## v0.1.126.1.1.1.1 ask deadline authority
+
+Docker-backed integration asks have one explicit outer service budget. The HTTP client uses that budget, `/v1/ask` owns an earlier internal deadline, and the canonical test consumes the structured ask result. A transport `ReadTimeout` is evidence of a service-client boundary failure, never permission to resubmit.
+
+## v0.1.126.1.1.1.1.1 runtime fingerprint publication authority
+
+Runtime source identity has one persisted authority: the attempt-local runtime checkpoint. `RUNTIME_PREPARED` carries an exact projection for observability. Publication may proceed only when checkpoint and projection are both present and identical; worktree and committed-tree guards resolve the fingerprint through the same accessor.

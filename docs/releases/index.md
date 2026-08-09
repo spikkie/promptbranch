@@ -1,6 +1,17 @@
+- [`v0.1.126.1.1.1.1.3`](../release-v0.1.126.1.1.1.1.3.md) — preserve candidate validation-Python authority through sanitized publication validation.
+- [`v0.1.126.1.1.1.1.2`](../release-v0.1.126.1.1.1.1.2.md) — accepted-runtime precondition and immutable production preservation before TESTED_GREEN.
+- [`v0.1.126.1.1.1.1.1`](../release-v0.1.126.1.1.1.1.1.md) — runtime-checkpoint fingerprint authority, exact RUNTIME_PREPARED projection, and publication identity convergence.
+- [`v0.1.126.1.1.1.1`](../release-v0.1.126.1.1.1.1.md) — Docker-service ask deadline propagation, structured timeout evidence, and non-duplicating fail-closed ask handling.
+- [`v0.1.126.1.1.1`](../release-v0.1.126.1.1.1.md) — Project Source text-add body authority, disabled-save readiness stabilization, and bounded zero-request recovery.
+- [`v0.1.126`](../release-v0.1.126.md) — persistent whole-release ETA, expected-finish, confidence/provenance, and advisory timeout-risk diagnostics.
+- [`v0.1.125.3.4.2`](../release-v0.1.125.3.4.2.md) — lifecycle-aware historical candidate verification after adoption and exact tested-image final convergence.
+- [`v0.1.125.3.4.1`](../release-v0.1.125.3.4.1.md) — authoritative runtime promotion, rollback, isolated candidate cleanup, and live final convergence.
 # Promptbranch release documentation
+- [`v0.1.125.3.3`](../release-v0.1.125.3.3.md) — acceptance/adoption transactional reconciliation and idempotent post-side-effect recovery.
 
-Release: `v0.1.125`
+- [`v0.1.125.3.2`](../release-v0.1.125.3.2.md) — deterministic schema-bound candidate-test evidence and genuine full-gate repair.
+- [`v0.1.125.3.1`](../release-v0.1.125.3.1.md) — isolated, observable and resumable candidate runtime preparation.
+Release: `v0.1.126`
 
 This index provides a compact path into the current documentation-governance release line.
 
@@ -44,3 +55,5 @@ Release documentation includes the repo-local lifecycle config contract. `pb rel
 
 - [`v0.1.125.1`](../release-v0.1.125.1.md) — isolated compileall and repeatable template-snapshot validation repair.
 - [`v0.1.125.2`](../release-v0.1.125.2.md) — version-independent authority projection-drift fixture repair.
+
+- `v0.1.126.1` — whole-release publication convergence repair (superseded by `v0.1.126.1.1`; never accepted).

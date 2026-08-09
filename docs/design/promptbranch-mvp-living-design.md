@@ -487,3 +487,7 @@ The roadmap is authoritative only together with `docs/project/plan-state.json` a
 ## v0.1.125.2 repair gate
 
 The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, failed `v0.1.125.1` full validation, active `v0.1.125.2` authority-fixture repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.
+
+## v0.1.125.3.2 canonical release-state-machine gate
+
+The release lifecycle is now represented by one SHA-bound durable attempt with sequential states from `DECLARED` through `FINAL_VERIFIED`. Every reached state is independently re-evaluated; candidate registration is automatic; candidate tests run from exact bytes in a hermetic environment; acceptance/adoption require explicit authority; and interrupted runs resume at the next legal transition.

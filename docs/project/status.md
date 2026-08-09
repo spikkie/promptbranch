@@ -1,29 +1,27 @@
+> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+
+
+> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+
 # Promptbranch status
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.124
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
-active_candidate_version: v0.1.125.2
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.2.zip
+accepted_current_version: v0.1.125.3.4.2
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
+active_candidate_version: v0.1.126.1.1.1.1.3
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
 ```
 
-
-Documentation checkpoint: `PB-DOC-2026-08-06.1`
-
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
-accepted/current version: v0.1.124
-accepted/current SHA-256: e4202f93b3e711a591d4c41be81fb85d97ce177e0fec41431fc9f1715e6cb3de
-installed runtime observed during proof: v0.1.123.2.6
-candidate lifecycle: candidate_mvp_complete
-Project Source publication of v0.1.124: not performed
-active normal version: v0.1.125
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.125.zip
-active candidate status: built locally; validation and acceptance pending
-active slice: Canonical PB environment proof cycle 2 and final control-plane verdict
-active slice authority: v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict
-next planned after acceptance: v0.1.126
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
+accepted/current version: v0.1.125.3.4.2
+accepted/current SHA-256: ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+active candidate status: accepted-runtime precondition/preservation repair constructed; live canonical validation pending
+active slice authority: v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair
+next normal slice: v0.1.126 — Persistent whole-release ETA estimator
+next planned after acceptance: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
 
 ## Current interpretation
 
@@ -40,7 +38,7 @@ Promptbranch has proven its own local candidate/artifact lifecycle. We are still
 
 ## Next safe action
 
-Validate the built `v0.1.125` candidate from accepted/current `v0.1.124`, then run the pinned candidate lifecycle and explicit acceptance gate. Do not begin external application mutation before the `v0.1.129` bootstrap and `v0.1.130` authority gate.
+Validate `v0.1.126.1.1.1.1.3` from accepted/current `v0.1.125.3.4.2`. The release-contract must preserve the state-machine-selected candidate Python into deterministic publication validation even when ambient `PATH` resolves a foreign pytest environment. Only after focused proof should the full canonical lifecycle continue toward `FINAL_VERIFIED`.
 
 ## v0.1.102 candidate status
 
@@ -1282,14 +1280,35 @@ This replacement centralizes those checks, reuses and reverifies the exact artif
 
 The `v0.1.124` full candidate test failed only at `project_source_add_text`: ChatGPT completed processing with exact `file_...` and `libfile_...` identities but assigned the canonical text-upload filename `pasted.txt`. The repair candidate now treats the integration display name as logical identity, permits `pasted.txt` only for text sources, retains strict file-source filename matching, rejects reused processing identity pairs, and preserves post-save content/persistence proof. Focused live `project_source_add_text` validation is required before another full run.
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+
+## v0.1.126.1.1.1.1.2 repair status
+
+`v0.1.126.1.1.1.1.1` is retained as immutable failure evidence. Its live runtime evidence proved that a missing accepted/current service could be classified as `accepted_runtime_unchanged=true` and allowed to reach `RUNTIME_PREPARED`. `v0.1.126.1.1.1.1.2` replaces that weak preservation rule with a fail-closed accepted-runtime precondition and immutable before/after preservation proof. Accepted/current remains `v0.1.125.3.4.2`; no adoption claim is made for this candidate.
+
+
+## v0.1.126.1.1.1.1.3 repair status
+
+`v0.1.126.1.1.1.1.2` is retained as immutable failure evidence. Its live full candidate suite passed 53/53, including ask and task/message flows, but explicit publication failed before Git commit because `.promptbranch-release.json` omitted `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` from the sanitized environment allowlist. A direct proof with that variable supplied selected candidate pytest 9.0.2 and executed the deterministic release groups successfully. `v0.1.126.1.1.1.1.3` repairs only this authority propagation. Accepted/current remains `v0.1.125.3.4.2`; no adoption claim is made.

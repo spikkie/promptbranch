@@ -36,3 +36,7 @@ The draw.io source adds `PB Environment Exit and Application Pilot Roadmap`. The
 ## v0.1.125.2 repair gate
 
 The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, failed `v0.1.125.1` full validation, active `v0.1.125.2` authority-fixture repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.
+
+## v0.1.125.3.2 canonical state-machine source
+
+The authoritative textual state and transition contract is `docs/project/canonical-release-state-machine.md`. The lifecycle diagram remains descriptive; automated verification is implemented by `promptbranch_release_state_machine.py` and `tests/test_release_state_machine.py`.

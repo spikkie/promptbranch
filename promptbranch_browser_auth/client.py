@@ -13812,6 +13812,29 @@ class ChatGPTBrowserClient:
             )
             if duplicate_notice:
                 duplicate_detected = True
+            elif normalized_kind == "text" and isinstance(getattr(exc, "payload", None), dict) and exc.payload:
+                failure = dict(exc.payload)
+                failure.setdefault("ok", False)
+                failure.setdefault("action", "add")
+                failure.setdefault("status", "project_source_text_add_not_ready")
+                failure.setdefault("project_url", project_home_url)
+                failure.setdefault("source_kind", normalized_kind)
+                failure.setdefault("source_match_requested", display_name)
+                failure.setdefault(
+                    "source_match_candidates",
+                    self._build_source_match_candidates(
+                        normalized_kind,
+                        value=value,
+                        display_name=display_name,
+                        file_path=None,
+                    ),
+                )
+                failure.setdefault("persistence_verified", False)
+                failure.setdefault("project_source_mutated", False)
+                failure.setdefault("release_blocking", True)
+                failure.setdefault("save_request_summary", self._project_source_save_watch_summary(save_request_watch))
+                failure.setdefault("current_url", await self._safe_page_url(page))
+                return failure
             elif overwritten_existing and bool(overwrite_remove_result and overwrite_remove_result.get("removed_via_ui")):
                 current_sources = await self._snapshot_project_source_cards(page)
                 result = {
@@ -27452,7 +27475,11 @@ class ChatGPTBrowserClient:
         if source_kind == "link":
             return PROJECT_SOURCE_LINK_INPUT_SELECTORS
         if source_kind == "text":
-            return PROJECT_SOURCE_TEXT_INPUT_SELECTORS
+            # Text-source body selection must never fall back to a generic
+            # input[type=text].  The current ChatGPT dialog can expose both a
+            # title input and a separate body editor; filling the title as the
+            # body leaves the Add/Save button disabled.
+            return PROJECT_SOURCE_TEXT_BODY_SELECTORS
         return PROJECT_SOURCE_FILE_INPUT_SELECTORS
 
     def _project_source_option_kinds(self, source_kind: str) -> list[str]:
@@ -27714,6 +27741,227 @@ class ChatGPTBrowserClient:
             await asyncio.sleep(0.2)
         return await self._locator_is_enabled(locator)
 
+    async def _project_source_locator_value(self, locator: Any) -> str:
+        if locator is None:
+            return ""
+        try:
+            value = await locator.evaluate(
+                """
+                (el) => {
+                    const tag = (el.tagName || '').toLowerCase();
+                    if (tag === 'input' || tag === 'textarea') return String(el.value || '');
+                    return String(el.innerText || el.textContent || '');
+                }
+                """
+            )
+            return str(value or "")
+        except Exception:
+            return ""
+
+    async def _project_source_save_readiness_state(
+        self,
+        page: Any,
+        *,
+        source_kind: str,
+        selected_option_kind: str,
+        input_locator: Any,
+        expected_value: str,
+        title_locator: Any,
+        expected_title: Optional[str],
+        save_button: Any,
+        save_request_watch: Optional[dict[str, Any]],
+        recovery_attempt: int,
+    ) -> dict[str, Any]:
+        input_value = await self._project_source_locator_value(input_locator)
+        title_value = await self._project_source_locator_value(title_locator) if title_locator is not None else ""
+        try:
+            button_state = await save_button.evaluate(
+                """
+                (el) => ({
+                    disabled: Boolean(el.disabled),
+                    aria_disabled: el.getAttribute('aria-disabled'),
+                    visually_disabled: el.getAttribute('data-visually-disabled'),
+                    text: String(el.innerText || el.textContent || '').trim(),
+                })
+                """
+            )
+        except Exception as exc:
+            button_state = {"error": f"{type(exc).__name__}: {exc}"}
+        try:
+            visible_preview = await self._visible_text_preview(page, limit=700)
+        except Exception as exc:
+            visible_preview = f"<unavailable: {type(exc).__name__}: {exc}>"
+        expected_value_text = str(expected_value or "")
+        expected_title_text = str(expected_title or "")
+        return {
+            "source_kind": source_kind,
+            "selected_option_kind": selected_option_kind,
+            "recovery_attempt": recovery_attempt,
+            "input_value_length": len(input_value),
+            "expected_value_length": len(expected_value_text),
+            "input_value_exact": input_value == expected_value_text,
+            "input_value_trimmed_exact": input_value.strip() == expected_value_text.strip(),
+            "title_present": title_locator is not None,
+            "title_value": title_value[:240],
+            "expected_title": expected_title_text[:240] if expected_title_text else None,
+            "title_value_exact": (title_value == expected_title_text) if title_locator is not None and expected_title_text else None,
+            "button_state": button_state,
+            "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+            "visible_preview": visible_preview,
+        }
+
+    async def _recover_project_source_save_enabled(
+        self,
+        page: Any,
+        *,
+        source_kind: str,
+        selected_option_kind: str,
+        input_locator: Any,
+        value: str,
+        title_locator: Any,
+        title_value: Optional[str],
+        save_button: Any,
+        save_request_watch: Optional[dict[str, Any]],
+        display_name: Optional[str],
+    ) -> Any:
+        if await self._wait_for_enabled_locator(save_button, timeout_ms=2_000):
+            return save_button
+
+        readiness_attempts: list[dict[str, Any]] = []
+        for attempt in range(1, 3):
+            state = await self._project_source_save_readiness_state(
+                page,
+                source_kind=source_kind,
+                selected_option_kind=selected_option_kind,
+                input_locator=input_locator,
+                expected_value=value,
+                title_locator=title_locator,
+                expected_title=title_value,
+                save_button=save_button,
+                save_request_watch=save_request_watch,
+                recovery_attempt=attempt,
+            )
+            readiness_attempts.append(state)
+            self._log(
+                "project-source",
+                "project source save remained disabled; attempting bounded form stabilization",
+                **state,
+            )
+
+            await self._fill_locator_text(input_locator, value)
+            try:
+                await input_locator.evaluate(
+                    """
+                    (el) => {
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'End' }));
+                        if (typeof el.blur === 'function') el.blur();
+                    }
+                    """
+                )
+            except Exception:
+                pass
+            # React/contenteditable forms sometimes do not update validity until
+            # they observe a real keyboard edit.  Add and remove one character so
+            # the persisted content remains byte-for-byte unchanged.
+            if source_kind == "text":
+                try:
+                    await input_locator.click(timeout=1_000)
+                    await input_locator.press("End", timeout=1_000)
+                    await input_locator.type(" ", delay=10)
+                    await input_locator.press("Backspace", timeout=1_000)
+                except Exception:
+                    pass
+
+            if title_locator is not None and title_value:
+                await self._fill_locator_text(title_locator, title_value)
+                try:
+                    await title_locator.evaluate(
+                        """
+                        (el) => {
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                            if (typeof el.blur === 'function') el.blur();
+                        }
+                        """
+                    )
+                except Exception:
+                    pass
+                try:
+                    await title_locator.press("Tab", timeout=1_000)
+                except Exception:
+                    pass
+            else:
+                try:
+                    await input_locator.press("Tab", timeout=1_000)
+                except Exception:
+                    pass
+
+            await page.wait_for_timeout(500)
+            refreshed = await self._wait_for_visible_locator(
+                page,
+                PROJECT_SOURCE_SAVE_BUTTON_SELECTORS,
+                label=f"project-source-save-button-recovery-{attempt}",
+                total_timeout_ms=3_000,
+            )
+            if refreshed is not None:
+                save_button = refreshed
+            if await self._wait_for_enabled_locator(save_button, timeout_ms=3_000):
+                self._log(
+                    "project-source",
+                    "project source save enabled after bounded form stabilization",
+                    source_kind=source_kind,
+                    selected_option_kind=selected_option_kind,
+                    recovery_attempt=attempt,
+                )
+                return save_button
+
+        final_state = await self._project_source_save_readiness_state(
+            page,
+            source_kind=source_kind,
+            selected_option_kind=selected_option_kind,
+            input_locator=input_locator,
+            expected_value=value,
+            title_locator=title_locator,
+            expected_title=title_value,
+            save_button=save_button,
+            save_request_watch=save_request_watch,
+            recovery_attempt=3,
+        )
+        readiness_attempts.append(final_state)
+        message = (
+            f"Project source save/add button stayed disabled "
+            f"(source_kind={source_kind}, selected_option_kind={selected_option_kind})"
+        )
+        raise ResponseTimeoutError(
+            message,
+            payload={
+                "ok": False,
+                "action": "add",
+                "status": "project_source_save_button_disabled",
+                "error": message,
+                "error_type": "ResponseTimeoutError",
+                "source_kind": source_kind,
+                "selected_option_kind": selected_option_kind,
+                "source_match_requested": display_name,
+                "source_match_candidates": self._build_source_match_candidates(
+                    source_kind,
+                    value=value,
+                    display_name=display_name,
+                    file_path=None,
+                ),
+                "persistence_verified": False,
+                "project_source_mutated": False,
+                "release_blocking": True,
+                "save_request_summary": self._project_source_save_watch_summary(save_request_watch),
+                "readiness_attempts": readiness_attempts,
+                "controlled_retry_eligible": source_kind == "text",
+                "operator_review_required": False,
+                "current_url": await self._safe_page_url(page),
+            },
+        )
+
     def _project_source_value_selectors(self, source_kind: str, *, option_kind: Optional[str] = None) -> list[str]:
         effective_kind = option_kind or source_kind
         return self._project_source_input_selectors(effective_kind)
@@ -27913,10 +28161,18 @@ class ChatGPTBrowserClient:
         )
         if save_button is None:
             raise ResponseTimeoutError("Project source save/add button did not become visible")
-        if not await self._wait_for_enabled_locator(save_button, timeout_ms=5_000):
-            raise ResponseTimeoutError(
-                f"Project source save/add button stayed disabled (source_kind={source_kind}, selected_option_kind={selected_option_kind})"
-            )
+        save_button = await self._recover_project_source_save_enabled(
+            page,
+            source_kind=source_kind,
+            selected_option_kind=selected_option_kind,
+            input_locator=input_locator,
+            value=value,
+            title_locator=title_locator,
+            title_value=title_value,
+            save_button=save_button,
+            save_request_watch=save_request_watch,
+            display_name=display_name,
+        )
         await self._click_locator_with_fallback(
             save_button,
             label=f"project-source-{source_kind}-save-button",

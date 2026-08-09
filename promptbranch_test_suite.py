@@ -40,6 +40,8 @@ from promptbranch_eta import append_eta_observation, estimate_named_step_eta, lo
 DEFAULT_ONLY: tuple[str, ...] = ()
 DEFAULT_SKIP: tuple[str, ...] = ()
 TEST_SUITE_PROFILES = ("browser", "agent", "full")
+TEST_SUITE_REPORT_SCHEMA = "promptbranch.test_suite.report"
+TEST_SUITE_REPORT_SCHEMA_VERSION = "1.0"
 
 
 EXPECTED_NON_FAILURE_STATUSES = {
@@ -514,6 +516,18 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "release_lifecycle_plan",
         ),
     },
+    "release_state_machine": {
+        "required": True,
+        "description": "Canonical release-attempt state machine, independent state verification, transition guards, resume, idempotency, projection recovery, and final convergence.",
+        "command": _release_validation_command(
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_release_state_machine.py",
+            "tests/test_release_state_machine_docker_integration.py",
+            "tests/test_promptbranch_release_eta.py",
+        ),
+    },
     "release_pipeline": {
         "required": True,
         "description": "Evidence-bound generic release-pipeline planning, incremental checkpoints, import/resume recovery, mutation reuse, Project Source publication, adoption, and accepted/current verification.",
@@ -578,6 +592,8 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "execution-envelope-validation",
             "--target",
             "examples/loop-targets/sandboxed-file-mutation-target.json",
+            "--repo-root",
+            ".",
             "--json",
         ),
     },
@@ -2427,6 +2443,8 @@ def _run_agent_profile_sync(*, repo_path: str | Path = ".", profile_dir: str | P
     ok = all(bool(step.get("ok")) for step in steps)
     return {
         "ok": ok,
+        "schema": TEST_SUITE_REPORT_SCHEMA,
+        "schema_version": TEST_SUITE_REPORT_SCHEMA_VERSION,
         "action": "test_suite",
         "profile": "agent",
         "repo_path": str(root),
@@ -2559,7 +2577,9 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
         progress.skip_pending(reason="browser_failure")
         agent_summary = {
             "ok": False,
-            "action": "test_suite",
+            "schema": TEST_SUITE_REPORT_SCHEMA,
+        "schema_version": TEST_SUITE_REPORT_SCHEMA_VERSION,
+        "action": "test_suite",
             "profile": "agent",
             "status": "skipped_fail_fast",
             "failure_count": 0,
@@ -2592,6 +2612,8 @@ async def run_test_suite_async(**kwargs: Any) -> dict[str, Any]:
     progress.finish_summary()
     return {
         "ok": full_ok,
+        "schema": TEST_SUITE_REPORT_SCHEMA,
+        "schema_version": TEST_SUITE_REPORT_SCHEMA_VERSION,
         "action": "test_suite",
         "profile": "full",
         "version": _read_version(Path(repo_path).expanduser().resolve()),
@@ -2692,6 +2714,8 @@ async def run_project_source_file_reliability_async(**kwargs: Any) -> dict[str, 
     ok = all(bool(item.get("ok")) for item in scenarios.values())
     return {
         "ok": ok,
+        "schema": TEST_SUITE_REPORT_SCHEMA,
+        "schema_version": TEST_SUITE_REPORT_SCHEMA_VERSION,
         "action": "test_suite",
         "profile": "project-source-file-reliability",
         "status": "passed" if ok else "failed",

@@ -30,3 +30,5 @@ task_show_*
 .pb_profile*
 .pb_profile_*
 debug_artifacts/
+
+*.egg-info

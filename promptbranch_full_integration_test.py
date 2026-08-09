@@ -407,6 +407,13 @@ class DockerServiceAdapter:
     def _source_mutation_timeout_seconds(self) -> float:
         return max(float(self.timeout_seconds), float(SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS))
 
+    def _ask_service_timeout_seconds(self) -> float:
+        # The container /v1/ask endpoint derives an internal browser deadline
+        # eight seconds below this outer service contract.  Passing the same
+        # budget as the HTTP client therefore guarantees that structured ask
+        # evidence is returned before the caller's read timeout boundary.
+        return max(1.0, float(self.timeout_seconds))
+
     @staticmethod
     def _browser_busy_payload(exc: Exception) -> dict[str, Any] | None:
         response = getattr(exc, "response", None)
@@ -768,16 +775,38 @@ class DockerServiceAdapter:
         keep_open: bool,
         retries: Optional[int],
     ) -> dict[str, Any]:
+        service_timeout = self._ask_service_timeout_seconds()
         with self._client() as client:
-            return client.ask_result(
-                prompt,
-                file_path=file_path,
-                conversation_url=conversation_url,
-                expect_json=expect_json,
-                keep_open=keep_open,
-                retries=retries,
-                project_url=self.project_url,
-            )
+            try:
+                return client.ask_result(
+                    prompt,
+                    file_path=file_path,
+                    conversation_url=conversation_url,
+                    expect_json=expect_json,
+                    keep_open=keep_open,
+                    retries=retries,
+                    project_url=self.project_url,
+                    service_timeout_seconds=service_timeout,
+                )
+            except Exception as exc:
+                if type(exc).__name__ != "ReadTimeout":
+                    raise
+                return {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "service_client_read_timeout",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "timeout_layer": "service_client",
+                    "partial_result": True,
+                    "service_timeout_seconds": service_timeout,
+                    "service_client_timeout_seconds": float(self.timeout_seconds),
+                    "conversation_url": conversation_url,
+                    "project_url": self.project_url,
+                    "submit_outcome_known": False,
+                    "retry_permitted": False,
+                    "operator_action": "inspect preserved ask/service evidence and the correlated conversation before any retry",
+                }
 
     async def ask_question(
         self,
@@ -805,15 +834,17 @@ class DockerServiceAdapter:
         keep_open: bool,
         retries: Optional[int],
     ) -> Any:
-        with self._client() as client:
-            return client.ask(
-                prompt,
-                file_path=file_path,
-                expect_json=expect_json,
-                keep_open=keep_open,
-                retries=retries,
-                project_url=self.project_url,
-            )
+        result = self._ask_question_result_sync(
+            prompt,
+            file_path,
+            None,
+            expect_json,
+            keep_open,
+            retries,
+        )
+        if isinstance(result, dict) and result.get("ok") is False:
+            return result
+        return result.get("answer") if isinstance(result, dict) else result
 
 
 def build_service(args: argparse.Namespace, *, project_url: str):
@@ -825,6 +856,40 @@ def build_service(args: argparse.Namespace, *, project_url: str):
             project_url=project_url,
         )
     return ChatGPTAutomationService(build_settings(args, project_url=project_url))
+
+
+def _structured_step_exception_details(exc: Exception) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "ok": False,
+        "error_type": type(exc).__name__,
+        "error": str(exc),
+    }
+    response = getattr(exc, "response", None)
+    if response is not None:
+        details["http_status_code"] = getattr(response, "status_code", None)
+        try:
+            raw = response.json()
+        except Exception:
+            raw = None
+        if isinstance(raw, dict):
+            detail = raw.get("detail")
+            if isinstance(detail, dict):
+                merged = dict(detail)
+                merged.setdefault("ok", False)
+                merged.setdefault("error_type", type(exc).__name__)
+                merged.setdefault("error", str(exc))
+                merged.setdefault("http_status_code", getattr(response, "status_code", None))
+                return merged
+            if detail is not None:
+                details["service_detail"] = detail
+    payload = getattr(exc, "payload", None)
+    if isinstance(payload, dict) and payload:
+        merged = dict(payload)
+        merged.setdefault("ok", False)
+        merged.setdefault("error_type", type(exc).__name__)
+        merged.setdefault("error", str(exc))
+        return merged
+    return details
 
 
 async def _run_step(
@@ -844,10 +909,7 @@ async def _run_step(
         raw_result = await coro
     except Exception as exc:
         duration = round(time.perf_counter() - started, 3)
-        details = {
-            "error_type": type(exc).__name__,
-            "error": str(exc),
-        }
+        details = _structured_step_exception_details(exc)
         steps.append(
             StepResult(
                 name=name,
@@ -857,6 +919,8 @@ async def _run_step(
             )
         )
         _emit_progress("finished", name, ok=False, duration_seconds=duration)
+        if defer_fail_fast:
+            return details
         raise
 
     result = result_normalizer(raw_result) if result_normalizer is not None else raw_result
@@ -931,6 +995,151 @@ async def _attach_project_source_failure_diagnostic(
         ok=bool(diagnostic.get("ok")),
         details=diagnostic,
     )
+
+
+def _source_surface_identities(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    sources = payload.get("sources") if isinstance(payload.get("sources"), list) else []
+    identities: list[str] = []
+    for source in sources:
+        if isinstance(source, str):
+            value = source.strip()
+            if value:
+                identities.append(value)
+            continue
+        if not isinstance(source, dict):
+            continue
+        for key in ("identity", "name", "title", "text", "key"):
+            value = str(source.get(key) or "").strip()
+            if value and value not in identities:
+                identities.append(value)
+    return identities
+
+
+def _source_surface_matches_candidates(identities: list[str], candidates: list[str]) -> str | None:
+    normalized = [(identity, identity.casefold()) for identity in identities]
+    for candidate in candidates:
+        needle = str(candidate or "").strip().casefold()
+        if not needle:
+            continue
+        for identity, folded in normalized:
+            if folded == needle or needle in folded or folded in needle:
+                return identity
+    return None
+
+
+async def _recover_zero_request_source_add_once(
+    steps: list[StepResult],
+    project_service: Any,
+    failure_payload: Any,
+    *,
+    source_kind: str,
+    value: str,
+    display_name: str | None,
+    keep_open: bool,
+) -> Any:
+    """Reconcile a successful UI click that emitted no observable save request.
+
+    The live browser occasionally accepts the Save click without emitting any
+    relevant backend request.  Before retrying, inspect the authoritative
+    source surface.  A visible matching source is treated as late success; an
+    empty surface permits exactly one retry; any unrelated/ambiguous source
+    surface remains fail-closed so the retry cannot create a duplicate.
+    """
+
+    if not isinstance(failure_payload, dict) or failure_payload.get("ok") is not False:
+        return failure_payload
+    save = failure_payload.get("save_request_summary") if isinstance(failure_payload.get("save_request_summary"), dict) else {}
+    zero_request = (
+        int(save.get("started") or 0) == 0
+        and int(save.get("finished") or 0) == 0
+        and save.get("saw_relevant") is not True
+        and save.get("saw_commit") is not True
+    )
+    if not zero_request:
+        return failure_payload
+
+    try:
+        source_list = await project_service.list_project_sources(keep_open=keep_open)
+    except Exception as exc:  # pragma: no cover - live browser failure path
+        source_list = {
+            "ok": False,
+            "status": "source_reconciliation_failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+    identities = _source_surface_identities(source_list)
+    candidates = [str(item) for item in (failure_payload.get("source_match_candidates") or []) if str(item).strip()]
+    matched_identity = _source_surface_matches_candidates(identities, candidates)
+    reconcile = {
+        "ok": not (isinstance(source_list, dict) and source_list.get("ok") is False),
+        "action": "project_source_zero_request_reconcile",
+        "source_kind": source_kind,
+        "source_list": source_list,
+        "source_identities": identities,
+        "matched_identity": matched_identity,
+        "retry_allowed": not identities and not matched_identity,
+    }
+    _record_step(
+        steps,
+        f"project_source_add_{source_kind}.reconcile_before_retry",
+        ok=bool(reconcile["ok"]),
+        details=reconcile,
+    )
+    failure_payload["zero_request_reconciliation"] = reconcile
+
+    if matched_identity:
+        recovered = dict(failure_payload)
+        recovered.update({
+            "ok": True,
+            "status": "source_add_recovered_after_reconcile",
+            "persistence_verified": True,
+            "source_match": matched_identity,
+            "recovery_mode": "authoritative_surface_late_visibility",
+            "controlled_retry_performed": False,
+        })
+        return recovered
+
+    if identities or reconcile["ok"] is not True:
+        failure_payload["recovery_mode"] = "fail_closed_ambiguous_or_unreadable_surface"
+        failure_payload["controlled_retry_performed"] = False
+        return failure_payload
+
+    retry_started = time.perf_counter()
+    try:
+        retry_result = await project_service.add_project_source(
+            source_kind=source_kind,
+            value=value,
+            display_name=display_name,
+            keep_open=keep_open,
+        )
+    except Exception as exc:  # pragma: no cover - live browser failure path
+        retry_result = {
+            "ok": False,
+            "status": "controlled_retry_exception",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+    retry_duration = round(time.perf_counter() - retry_started, 3)
+    retry_ok = not (isinstance(retry_result, dict) and retry_result.get("ok") is False)
+    _record_step(
+        steps,
+        f"project_source_add_{source_kind}.retry_once",
+        ok=retry_ok,
+        details={
+            "ok": retry_ok,
+            "action": "project_source_zero_request_retry_once",
+            "duration_seconds": retry_duration,
+            "result": retry_result,
+        },
+    )
+    if isinstance(retry_result, dict):
+        retry_result = dict(retry_result)
+        retry_result["zero_request_reconciliation"] = reconcile
+        retry_result["recovery_mode"] = "single_controlled_retry_after_empty_surface"
+        retry_result["controlled_retry_performed"] = True
+    return retry_result
 
 
 async def _post_ask_cooldown(steps: list[StepResult], *, seconds: float, reason: str) -> None:
@@ -2383,6 +2592,16 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 defer_fail_fast=True,
             )
             if isinstance(text_add, dict) and text_add.get("ok") is False:
+                text_add = await _recover_zero_request_source_add_once(
+                    steps,
+                    project_service,
+                    text_add,
+                    source_kind="text",
+                    value=text_source_value,
+                    display_name=text_source_name,
+                    keep_open=args.keep_open,
+                )
+            if isinstance(text_add, dict) and text_add.get("ok") is False:
                 await _attach_project_source_failure_diagnostic(
                     steps,
                     project_service,
@@ -2466,7 +2685,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             ask_result = await _run_step(
                 steps,
                 "ask_question",
-                project_service.ask_question(
+                project_service.ask_question_result(
                     prompt=args.ask_prompt,
                     expect_json=False,
                     keep_open=args.keep_open,
@@ -2474,13 +2693,12 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 step_delay_seconds=args.step_delay_seconds,
             )
-            if isinstance(ask_result, (dict, list)):
-                ask_text = json.dumps(ask_result, ensure_ascii=False)
-            else:
-                ask_text = str(ask_result)
+            _require(isinstance(ask_result, dict), f"ask_question did not return structured evidence: {ask_result!r}")
+            _require(ask_result.get("ok") is True, f"ask_question returned a structured failure: {ask_result}")
+            ask_text = str(ask_result.get("answer") or "")
             _require(
                 "INTEGRATION_OK" in ask_text.upper(),
-                f"ask_question did not contain the expected token. response={ask_text!r}",
+                f"ask_question did not contain the expected token. response={ask_text!r}; evidence={ask_result!r}",
             )
             await _post_ask_cooldown(steps, seconds=args.post_ask_delay_seconds, reason="after ask_question")
 

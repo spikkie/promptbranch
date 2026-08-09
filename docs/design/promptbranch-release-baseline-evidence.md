@@ -135,3 +135,7 @@ For release `v0.1.125`, candidate construction evidence remains distinct from ca
 ## v0.1.125.2 baseline evidence scope
 
 The accepted/current baseline remains `v0.1.124`. `v0.1.125.2` is a repair candidate for the failed `v0.1.125.1` full-validation attempt. Construction evidence, operator candidate intake, registry-bound testing, explicit acceptance, Project Source state, and accepted/current evidence remain separate.
+
+## v0.1.125.3.2 baseline evidence scope
+
+Accepted/current remains `v0.1.124`. The `v0.1.125.3.2` repair binds its exact ZIP identity to one durable attempt and cannot claim `FINAL_VERIFIED` until runtime, service, candidate test, accepted candidate, project state, and current registry all converge on the same version and SHA-256.

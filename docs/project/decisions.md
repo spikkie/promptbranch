@@ -1396,14 +1396,95 @@ For an exact request-ID record whose rendered attachment was already downloaded 
 - **Authority boundary:** PB environment validation is not application validation. Application source mutation begins only after an app-specific execution envelope, exact allowlists, pre-change snapshot, rollback evidence, and operator authorization.
 - **Release inclusion:** the boundary document, roadmap, plan-state update, and draw.io pages are mandatory contents of `v0.1.125`.
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+
+## ADR-PROJ-125-342 — Ephemeral candidate liveness ends at adoption
+
+For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After `ADOPTED_CURRENT`, the candidate runtime is intentionally disposable; historical verification uses immutable health/identity checkpoint evidence plus exact tested-image promotion evidence and successful cleanup. No legacy post-adoption live-candidate compatibility path is retained. The next normal target remains `v0.1.126`.
+
+
+## Active repair candidate — v0.1.125.3.4.2
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip` (`v0.1.125.3.4.1`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip`
+- active repair slice: v0.1.125.3.4.2 — Post-adoption historical verification and final convergence
+- no backward-compatibility path for superseded post-adoption candidate-liveness semantics
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
+
+## ADR-PROJ-127 — Persistent whole-release ETA is advisory canonical evidence, not release authority
+
+- **Status:** accepted for candidate `v0.1.126`.
+- **Baseline:** `v0.1.125.3.4.2` is accepted/current and `FINAL_VERIFIED`; `v0.1.126` is the active normal slice.
+- **Decision:** Persist successful canonical release-transition durations by profile, lifecycle phase, transport, and step, and expose a read-only whole-release ETA snapshot with expected finish, confidence, evidence source, and timeout-risk diagnostics.
+- **Evidence authority:** ETA history is seeded only from the current `promptbranch.release_attempt` state-machine contract and new `promptbranch.release_eta.history` schema. Superseded estimator/state formats are not compatibility inputs.
+- **Safety:** ETA is advisory only. Missing, stale, corrupt, or low-confidence ETA evidence cannot change pass/fail, fail-fast, candidate acceptance, production promotion, adoption, rollback, or `FINAL_VERIFIED` semantics.
+- **Timeout rule:** profile-aware timeout recommendations diagnose risk; they never weaken or bypass fail-closed candidate tests.
+- **Next:** after acceptance, `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+
+## ADR-PROJ-128 — Release source identity has one canonical fingerprint authority
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1`.
+- **Decision:** `promptbranch_source_fingerprint.py` is the single algorithm for immutable release-source identity across runtime extraction, Docker build-context verification, tested-source publication, working-tree materialization, and committed-tree verification.
+- **Rejected:** independent Docker-local fingerprint logic, including the superseded three-version-file digest.
+- **ETA:** stopped `BLOCKED_RETRYABLE` attempts do not claim a wall-clock finish; they expose estimated work after resume only.
+- **Baseline:** accepted/current remains `v0.1.125.3.4.2` until live `FINAL_VERIFIED` convergence.
+
+### ADR-PROJ-1261 — Text-source body authority and bounded disabled-save recovery
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1.1`.
+- **Decision:** generic text inputs are not valid text-body authority when the dialog exposes a separate title input. Preserve structured disabled-save evidence, reconcile source state before retry, and permit exactly one retry only when the authoritative source surface is empty and no save request was observed.
+
+## Decision — v0.1.126.1.1.1.1 uses one explicit ask deadline chain
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1.1.1`.
+- The Docker HTTP client budget is propagated to `/v1/ask`; the endpoint's internal deadline must expire first.
+- Canonical validation consumes structured ask evidence rather than answer-only output.
+- A confirmed or ambiguous timeout is fail-closed and is not automatically resubmitted.
+
+## Decision — v0.1.126.1.1.1.1.1 makes the runtime checkpoint authoritative for publication source identity
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1.1.1.1`.
+- Runtime source fingerprint authority is the persisted runtime checkpoint, with an exact `RUNTIME_PREPARED` projection.
+- Publication consumers may not independently read or infer a projected fingerprint.
+- Missing identity and checkpoint/projection disagreement are distinct fail-closed states.
+
+
+## Decision — v0.1.126.1.1.1.1.2 makes accepted production availability a runtime-preparation invariant
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1.1.1.2`.
+- `RUNTIME_PREPARED` may not interpret production absence as successful preservation.
+- Before candidate runtime mutation, accepted/current must be exactly one healthy port-8000 service whose health and image-version label match the configured baseline and whose artifact-SHA label is present.
+- After candidate preparation, the same container ID, immutable Docker image ID, and artifact-SHA label must remain.
+- The accepted-runtime snapshot is refreshed on retry so explicit operator recovery is resumable.
+- Candidate preparation must not automatically start, recreate, promote, or otherwise repair production. Production recovery remains operator-authorized.
+- No compatibility branch preserves the superseded `accepted_runtime_unchanged=true` behavior when production is absent.
+
+
+## Decision — v0.1.126.1.1.1.1.3 makes candidate Python explicit publication-validation authority
+
+- **Status:** accepted for repair candidate `v0.1.126.1.1.1.1.3`.
+- The canonical state machine may select the candidate pipx interpreter and export it as `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`.
+- Repository release-contract sanitization must preserve that explicit authority. Ambient `PATH` remains ordinary executable-search context and is not a fallback validation authority.
+- A missing or mismatched candidate validation runtime continues to fail closed at runner preflight; no compatibility fallback to foreign pytest is added.

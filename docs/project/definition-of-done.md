@@ -1114,14 +1114,120 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-444 | Persisted-run ZIP-kind and baseline normalization is shared by replay, finalization, ordinary validated intake, and migration; MIME-only ZIPs and `input_baseline` are accepted only with agreeing filename, media type, and request evidence | focused_candidate | shared-classifier regressions plus exact validated-run migration integration | v0.1.123.2.6 |
 | DOD-445 | `candidate-run` preserves the exact validated request ID and repository/filename/version expectations, reuses the verified artifact-inbox ZIP, and creates exactly one migrated candidate without browser redownload | focused_candidate | finalized-run-to-candidate-registry integration test | v0.1.123.2.6 |
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+## v0.1.125.3.4.2 post-adoption historical verification repair
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-446 | `RUNTIME_PREPARED` requires live candidate health before adoption, but after `ADOPTED_CURRENT` uses immutable recorded candidate health/identity evidence and does not require the intentionally retired endpoint to remain reachable | focused_candidate | release-state-machine regression with candidate cleanup followed by all-state verification | v0.1.125.3.4.2 |
+| DOD-447 | Post-adoption historical verification requires successful candidate cleanup and exact equality between tested candidate Docker image id and promoted production image id | focused_candidate | positive and corrupted-evidence release-state-machine regressions | v0.1.125.3.4.2 |
+| DOD-448 | Acceptance has one canonical projection path; successful command output without the accepted-candidate projection fails closed and no compatibility fallback reconstructs it | focused_candidate | projectionless acceptance regression | v0.1.125.3.4.2 |
+| DOD-449 | v0.1.125 closes only when `FINAL_VERIFIED` succeeds with no failed invariants and the authoritative port-8000 runtime is exact after candidate cleanup | live_pending | canonical host lifecycle, `release verify --all-states`, artifact current, Docker container and `/healthz` evidence | v0.1.125.3.4.2 |
+
+
+## Active repair candidate — v0.1.125.3.4.2
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip` (`v0.1.125.3.4.1`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip`
+- active repair slice: v0.1.125.3.4.2 — Post-adoption historical verification and final convergence
+- no backward-compatibility path for superseded post-adoption candidate-liveness semantics
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
+
+## v0.1.126 persistent whole-release ETA DoD
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-450 | Successful canonical release-transition durations persist by profile, phase, transport, and step without duplicate observations | focused_candidate | release ETA history and state-machine regression tests | v0.1.126 |
+| DOD-451 | Whole-release ETA exposes remaining duration, expected finish range, confidence, and per-step evidence source through a read-only `pb release eta` command | focused_candidate | ETA unit/integration and CLI parser checks | v0.1.126 |
+| DOD-452 | Candidate-test and optional outer-wrapper timeout risk are advisory and profile-aware; ETA degradation cannot alter validation authority | focused_candidate | timeout-risk and degraded-ETA state-machine regressions | v0.1.126 |
+| DOD-453 | `v0.1.126` closes only after the full canonical live lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` with independent all-state verification green | live_pending | project next-slice read-only validation command plus canonical operator-host release proof | v0.1.126 |
+
+## v0.1.126.1 repair DoD
+
+| ID | Requirement | Validation | Evidence | Version |
+|---|---|---|---|---|
+| DOD-454 | Exact tested source is materialized before Git publication and tested/materialized/committed fingerprints are identical | focused + live | state-machine publication evidence | v0.1.126.1 |
+| DOD-455 | Publication subprocess output selects exactly one complete top-level action result and retains hashed stdout/stderr evidence | focused | parser/publication regressions | v0.1.126.1 |
+| DOD-456 | Project Source upload is idempotently reconciled across ChatGPT-assigned indexed filename family members | focused + live | source-list reconciliation evidence | v0.1.126.1 |
+| DOD-457 | Retry may reuse cryptographically verified green candidate-test evidence; ETA exposes publication subphases separately | focused + live | retry/ETA regressions | v0.1.126.1 |
+| DOD-458 | Repair closes only after the full canonical live lifecycle reaches FINAL_VERIFIED from accepted/current v0.1.125.3.4.2 with Git push and Project Source publication verified | live_pending | canonical operator-host release proof | v0.1.126.1 |
+
+## v0.1.126.1.1 repair DoD
+
+| ID | Requirement | Validation | Evidence | Version |
+|---|---|---|---|---|
+| DOD-459 | One canonical full-source fingerprint implementation is used by runtime preparation, Docker build verification, tested-source materialization, and committed-tree identity | focused + live | shared fingerprint unit/state-machine tests and live Docker build | v0.1.126.1.1 |
+| DOD-460 | `BLOCKED_RETRYABLE` ETA suppresses a wall-clock finish timestamp while retaining advisory estimated work after resume | focused | ETA snapshot/status regressions | v0.1.126.1.1 |
+| DOD-461 | Repair closes only after the full canonical live lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` with Git push, Project Source reconciliation, and exact production-image convergence verified | live_pending | canonical operator-host release proof | v0.1.126.1.1 |
+
+## v0.1.126.1.1.1 repair DoD
+
+| ID | Requirement | Proof | Evidence | Version |
+|---|---|---|---|---|
+| DOD-462 | Text-source value selection cannot resolve a generic title input; exact body/title values and save disabled state are diagnosable | focused | selector/readiness regressions | v0.1.126.1.1.1 |
+| DOD-463 | HTTP/timeout failures preserve structured save-request evidence and the deferred integration step reaches fail-closed reconciliation | focused | harness/container regressions | v0.1.126.1.1.1 |
+| DOD-464 | Zero-request text add reconciles first and retries at most once; unrelated or ambiguous source state blocks | focused + live | reconciliation evidence | v0.1.126.1.1.1 |
+| DOD-465 | Focused live `project_source_add_text` passes before another full release attempt | live_pending | targeted operator-host proof | v0.1.126.1.1.1 |
+| DOD-466 | Repair closes only after canonical full lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | full release proof | v0.1.126.1.1.1 |
+
+## v0.1.126.1.1.1.1 repair DoD
+
+| ID | Requirement | Proof | Version |
+|---|---|---|---|
+| DOD-467 | Docker integration ask propagates the explicit service timeout and the internal service deadline is lower than the HTTP client boundary | focused | adapter/container regressions | v0.1.126.1.1.1.1 |
+| DOD-468 | Canonical `browser.ask_question` retains structured answer, conversation, submit, timeout, and phase evidence | focused + live | full-integration report | v0.1.126.1.1.1.1 |
+| DOD-469 | Residual service-client `ReadTimeout` is structured and cannot trigger duplicate submission; confirmed/ambiguous submit timeout remains fail-closed | focused | timeout regressions | v0.1.126.1.1.1.1 |
+| DOD-470 | Ask-only live proof passes before another full canonical release attempt | live_pending | targeted operator-host proof | v0.1.126.1.1.1.1 |
+| DOD-471 | Repair closes only after full lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | canonical release proof | v0.1.126.1.1.1.1 |
+
+## v0.1.126.1.1.1.1.1 repair DoD
+
+| ID | Requirement | Proof | Version |
+|---|---|---|---|
+| DOD-472 | Runtime checkpoint is the authoritative source fingerprint and `RUNTIME_PREPARED` projects exactly the same value | focused | accessor/projection/verifier regressions | v0.1.126.1.1.1.1.1 |
+| DOD-473 | Worktree materialization and Git committed-tree guards consume one canonical runtime fingerprint accessor | focused + live | publication-path regression and live publication evidence | v0.1.126.1.1.1.1.1 |
+| DOD-474 | Missing runtime fingerprint and checkpoint/projection disagreement fail closed with distinct codes before unsafe publication continuation | focused | negative accessor/publication regressions | v0.1.126.1.1.1.1.1 |
+| DOD-475 | Repair closes only after full lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | canonical release proof | v0.1.126.1.1.1.1.1 |
+
+
+## v0.1.126.1.1.1.1.2 repair DoD
+
+| ID | Requirement | Proof | Version |
+|---|---|---|---|
+| DOD-476 | `RUNTIME_PREPARED` blocks before candidate install/build/start unless accepted/current production is exactly one healthy port-8000 runtime matching the configured baseline version and exposing image identity/artifact-SHA labels | focused | missing/unhealthy/baseline-mismatch regressions | v0.1.126.1.1.1.1.2 |
+| DOD-477 | Accepted-runtime precondition is re-snapshotted on retry so explicit operator recovery can resume without deleting the attempt checkpoint | focused | recovery/resume regression | v0.1.126.1.1.1.1.2 |
+| DOD-478 | After candidate preparation, the accepted runtime must still satisfy the exact baseline precondition and preserve container ID, immutable Docker image ID, and artifact-SHA label | focused | disappearance/image-drift regressions | v0.1.126.1.1.1.1.2 |
+| DOD-479 | Release-state verification independently requires the stronger accepted-runtime before/after evidence; the old `absent == unchanged` semantic is not retained | focused | verifier regression + state-machine suite | v0.1.126.1.1.1.1.2 |
+| DOD-480 | Repair closes only after the canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | canonical release proof | v0.1.126.1.1.1.1.2 |
+
+
+## v0.1.126.1.1.1.1.3 repair DoD
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-481 | Release-contract sanitized execution forwards `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` selected by the canonical state machine | focused | tracked-contract + execute-env regression | v0.1.126.1.1.1.1.3 |
+| DOD-482 | A poisoned ambient `PATH` pointing at a foreign pytest environment cannot replace explicit candidate validation-Python authority | focused | poisoned-PATH regression + deterministic runner preflight | v0.1.126.1.1.1.1.3 |
+| DOD-483 | All required deterministic release groups execute under the candidate interpreter rather than being preflight-skipped | construction | mandatory release-validation groups | v0.1.126.1.1.1.1.3 |
+| DOD-484 | Repair closes only after the canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | canonical release proof | v0.1.126.1.1.1.1.3 |

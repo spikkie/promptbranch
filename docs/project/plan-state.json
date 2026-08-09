@@ -1,11 +1,15 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-  "accepted_current_version": "v0.1.124",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
-  "active_candidate_version": "v0.1.125.2",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+  "accepted_current_version": "v0.1.125.3.4.2",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
+  "active_candidate_base_version": "v0.1.126.1.1.1.1.2",
+  "active_candidate_consolidates_runtime_version": "v0.1.125.3.4.2",
+  "active_candidate_documentation_checkpoint": "PB-ETA-2026-08-07.1",
+  "active_candidate_status": "candidate",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
+  "active_candidate_version": "v0.1.126.1.1.1.1.3",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+  "active_slice": "v0.1.126.1.1.1.1.3 \u2014 Release validation Python authority propagation repair",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -587,13 +591,120 @@
       "created_at": "2026-08-06T14:47:00+02:00",
       "kind": "repair",
       "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
-      "status": "candidate",
-      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
-      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "status": "superseded_after_direct_full_green",
+      "summary": "Preserved compileall and authority-drift repairs and passed direct full validation, but exposed that release identity, candidate registration, testing, acceptance, and current adoption were still separate operator-managed workflows.",
+      "validation": "Direct full release validation passed 52/52 with zero failures. Canonical candidate-test could not start because candidate registration was a separate omitted lifecycle step; v0.1.125.3.2 replaces that operator-dependent orchestration with one authoritative state machine.",
       "version": "v0.1.125.2"
+    },
+    {
+      "accepted_sha256": "c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip",
+      "created_at": "2026-08-06T21:53:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
+      "status": "accepted_current",
+      "summary": "Repairs exact-candidate test evidence ingestion by selecting one complete schema-bound report using action, profile and version; rejects nested or ambiguous JSON objects; persists report, stdout and stderr hashes plus completed/passed/failed/skipped and failed-group evidence; removes failure codes from successful transitions; and repairs the genuine full-suite failures caused by unconfigured read-only smoke state and ambiguous nested repository-root discovery.",
+      "validation": "Live canonical candidate testing passed with the exact SHA-bound full report and authoritative artifact/current projections converged to v0.1.125.3.2. The release-attempt record remained stale at TESTED_GREEN after a nested acceptance-result parsing defect; v0.1.125.3.3 repairs transactional reconciliation without invalidating the accepted v0.1.125.3.2 bytes.",
+      "version": "v0.1.125.3.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip",
+      "created_at": "2026-08-07T09:34:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.3 \u2014 Acceptance/adoption transactional reconciliation",
+      "status": "candidate",
+      "summary": "Repairs the canonical release state machine acceptance/adoption boundary by selecting only complete top-level artifact_accept_candidate and artifact_current command results, re-reading authoritative candidate/current projections after ambiguous, timed-out, or failed acceptance subprocess results, and reconciling a stale TESTED_GREEN attempt to ACCEPTED/ADOPTED_CURRENT/FINAL_VERIFIED without repeating adoption.",
+      "validation": "Requires action-aware parser regressions, side-effect-then-ambiguous acceptance reconciliation, stale TESTED_GREEN resume to FINAL_VERIFIED without a second accept-candidate call, all release-state-machine tests, mandatory release-validation groups, deterministic ZIP proof, and live canonical lifecycle validation.",
+      "version": "v0.1.125.3.3"
+    },
+    {
+      "accepted_sha256": "0aab96e53359ef3d7339ba7999affac0f31f8fdc94a190004cba45aa9c7f8f08",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip",
+      "created_at": "2026-08-07T18:36:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.1 \u2014 Candidate-test retry isolation and authoritative runtime final convergence",
+      "status": "accepted_current",
+      "summary": "Passed the exact full candidate suite 53/53, accepted and adopted the candidate, promoted the exact tested Docker image to the authoritative port-8000 service, verified live version/SHA/attempt identity, and removed stale candidate runtimes.",
+      "validation": "Operational adoption is proven. FINAL_VERIFIED remained blocked only because the verifier incorrectly required the intentionally retired candidate endpoint to remain live after cleanup.",
+      "version": "v0.1.125.3.4.1"
+    },
+    {
+      "accepted_sha256": "ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "created_at": "2026-08-07T18:46:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.2 \u2014 Post-adoption historical verification and final convergence",
+      "status": "accepted_current",
+      "summary": "Replaces the obsolete post-adoption live-candidate verifier rule with lifecycle-aware historical evidence verification, strengthens exact tested-image promotion identity, and removes the acceptance compatibility fallback.",
+      "validation": "Live canonical release run reached FINAL_VERIFIED; independent all-state verification passed with no failed invariants; exact tested image is authoritative on port 8000 and retired candidate verification is historical after adoption.",
+      "version": "v0.1.125.3.4.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "created_at": "2026-08-07T19:53:00+02:00",
+      "kind": "normal",
+      "slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+      "status": "candidate",
+      "summary": "Adds a canonical persistent whole-release ETA model to the release state machine, with duration evidence keyed by test profile, phase, transport and step; expected finish timestamps; confidence/evidence provenance; and advisory timeout-risk diagnostics.",
+      "validation": "Construction must prove persistent history, canonical-attempt seeding, profile-aware estimation, timeout-risk recommendations, ETA degradation isolation from validation authority, exact artifact hygiene, and canonical live lifecycle validation before acceptance.",
+      "version": "v0.1.126"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.zip",
+      "created_at": "2026-08-09T10:21:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.126.1.1.1 \u2014 Project Source text-add readiness and bounded recovery repair",
+      "status": "repair_required",
+      "summary": "Text-source readiness repair is live-proven; superseded by ask deadline/evidence plumbing repair after a 300-second raw ReadTimeout in browser.ask_question.",
+      "validation": "Focused text-source proof and the real full candidate flow passed Project Source text/file add and overwrite, then browser.ask_question hit the unpropagated 300-second service-client ReadTimeout boundary. TESTED_GREEN was not reached; accepted/current remained v0.1.125.3.4.2.",
+      "version": "v0.1.126.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.zip",
+      "created_at": "2026-08-09T12:22:00+02:00",
+      "kind": "repair",
+      "scope": "ask deadline/evidence repair passed full 53/53; publication blocked before worktree mutation by missing runtime fingerprint projection",
+      "slice": "v0.1.126.1.1.1.1 \u2014 Ask deadline propagation and structured timeout evidence repair",
+      "status": "repair_required",
+      "summary": "Propagates the Docker-service ask deadline into /v1/ask, makes the service internal deadline expire before the HTTP client boundary, preserves structured ask/submit evidence in the canonical full-suite step, and converts any residual service-client ReadTimeout into a fail-closed non-retryable structured result.",
+      "validation": "Full canonical live candidate validation passed 53/53; publication then failed before worktree mutation because RUNTIME_PREPARED omitted the checkpoint source_fingerprint projection.",
+      "version": "v0.1.126.1.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.1.zip",
+      "created_at": "2026-08-09T13:56:00+02:00",
+      "kind": "repair",
+      "scope": "runtime-checkpoint source-fingerprint authority, exact RUNTIME_PREPARED projection, and one canonical publication fingerprint accessor",
+      "slice": "v0.1.126.1.1.1.1.1 \u2014 Runtime fingerprint publication authority repair",
+      "status": "repair_required",
+      "summary": "Makes the persisted runtime checkpoint authoritative for source identity, projects the exact fingerprint into RUNTIME_PREPARED, and requires worktree/Git publication guards to consume one fail-closed accessor.",
+      "validation": "Live RUNTIME_PREPARED evidence showed accepted/current production absent before and after candidate preparation while accepted_runtime_unchanged remained true; accepted/current stayed v0.1.125.3.4.2.",
+      "version": "v0.1.126.1.1.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.2.zip",
+      "created_at": "2026-08-09T15:23:00+02:00",
+      "kind": "repair",
+      "scope": "accepted/current port-8000 precondition and immutable before/after production-runtime preservation; no automatic production recovery",
+      "slice": "v0.1.126.1.1.1.1.2 \u2014 Accepted-runtime precondition and preservation repair",
+      "status": "repair_required",
+      "summary": "Runtime preservation repair is live-proven; superseded by publication environment-authority propagation repair.",
+      "validation": "Live full candidate validation passed 53/53, but optional publication failed before Git commit because the release-contract sanitized environment dropped PROMPTBRANCH_RELEASE_VALIDATION_PYTHON; the runner fell back to foreign pytest 8.4.2 instead of candidate pytest 9.0.2.",
+      "version": "v0.1.126.1.1.1.1.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
+      "created_at": "2026-08-09T17:38:00+02:00",
+      "kind": "repair",
+      "scope": "propagate candidate validation-Python authority through the sanitized release-contract environment despite poisoned ambient PATH",
+      "slice": "v0.1.126.1.1.1.1.3 \u2014 Release validation Python authority propagation repair",
+      "status": "candidate",
+      "summary": "Adds PROMPTBRANCH_RELEASE_VALIDATION_PYTHON to the repository release-contract environment allowlist and regression coverage proving a foreign PATH cannot override the candidate interpreter selected by the canonical state machine.",
+      "validation": "Construction requires contract/env regressions, mandatory deterministic release groups under candidate Python, deterministic ZIP proof, Artifact Guardian, and live canonical FINAL_VERIFIED before acceptance.",
+      "version": "v0.1.126.1.1.1.1.3"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1137,23 +1248,86 @@
       "created_at": "2026-08-06T14:47:00+02:00",
       "kind": "repair",
       "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
-      "status": "candidate",
-      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
-      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "status": "superseded_after_direct_full_green",
+      "summary": "Preserved compileall and authority-drift repairs and passed direct full validation, but exposed that release identity, candidate registration, testing, acceptance, and current adoption were still separate operator-managed workflows.",
+      "validation": "Direct full release validation passed 52/52 with zero failures. Canonical candidate-test could not start because candidate registration was a separate omitted lifecycle step; v0.1.125.3.2 replaces that operator-dependent orchestration with one authoritative state machine.",
       "version": "v0.1.125.2"
+    },
+    {
+      "accepted_sha256": "c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip",
+      "created_at": "2026-08-06T21:53:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
+      "status": "accepted_current",
+      "summary": "Repairs exact-candidate test evidence ingestion by selecting one complete schema-bound report using action, profile and version; rejects nested or ambiguous JSON objects; persists report, stdout and stderr hashes plus completed/passed/failed/skipped and failed-group evidence; removes failure codes from successful transitions; and repairs the genuine full-suite failures caused by unconfigured read-only smoke state and ambiguous nested repository-root discovery.",
+      "validation": "Live canonical candidate testing passed with the exact SHA-bound full report and authoritative artifact/current projections converged to v0.1.125.3.2. The release-attempt record remained stale at TESTED_GREEN after a nested acceptance-result parsing defect; v0.1.125.3.3 repairs transactional reconciliation without invalidating the accepted v0.1.125.3.2 bytes.",
+      "version": "v0.1.125.3.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip",
+      "created_at": "2026-08-07T09:34:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.3 \u2014 Acceptance/adoption transactional reconciliation",
+      "status": "candidate",
+      "summary": "Repairs the canonical release state machine acceptance/adoption boundary by selecting only complete top-level artifact_accept_candidate and artifact_current command results, re-reading authoritative candidate/current projections after ambiguous, timed-out, or failed acceptance subprocess results, and reconciling a stale TESTED_GREEN attempt to ACCEPTED/ADOPTED_CURRENT/FINAL_VERIFIED without repeating adoption.",
+      "validation": "Requires action-aware parser regressions, side-effect-then-ambiguous acceptance reconciliation, stale TESTED_GREEN resume to FINAL_VERIFIED without a second accept-candidate call, all release-state-machine tests, mandatory release-validation groups, deterministic ZIP proof, and live canonical lifecycle validation.",
+      "version": "v0.1.125.3.3"
+    },
+    {
+      "accepted_sha256": "0aab96e53359ef3d7339ba7999affac0f31f8fdc94a190004cba45aa9c7f8f08",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip",
+      "created_at": "2026-08-07T18:36:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.1 \u2014 Candidate-test retry isolation and authoritative runtime final convergence",
+      "status": "accepted_current",
+      "summary": "Passed the exact full candidate suite 53/53, accepted and adopted the candidate, promoted the exact tested Docker image to the authoritative port-8000 service, verified live version/SHA/attempt identity, and removed stale candidate runtimes.",
+      "validation": "Operational adoption is proven. FINAL_VERIFIED remained blocked only because the verifier incorrectly required the intentionally retired candidate endpoint to remain live after cleanup.",
+      "version": "v0.1.125.3.4.1"
+    },
+    {
+      "accepted_sha256": "ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "created_at": "2026-08-07T18:46:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.2 \u2014 Post-adoption historical verification and final convergence",
+      "status": "accepted_current",
+      "summary": "Replaces the obsolete post-adoption live-candidate verifier rule with lifecycle-aware historical evidence verification, strengthens exact tested-image promotion identity, and removes the acceptance compatibility fallback.",
+      "validation": "Live canonical release run reached FINAL_VERIFIED; independent all-state verification passed with no failed invariants; exact tested image is authoritative on port 8000 and retired candidate verification is historical after adoption.",
+      "version": "v0.1.125.3.4.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "created_at": "2026-08-07T19:53:00+02:00",
+      "kind": "normal",
+      "slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+      "status": "candidate",
+      "summary": "Adds a canonical persistent whole-release ETA model to the release state machine, with duration evidence keyed by test profile, phase, transport and step; expected finish timestamps; confidence/evidence provenance; and advisory timeout-risk diagnostics.",
+      "validation": "Construction must prove persistent history, canonical-attempt seeding, profile-aware estimation, timeout-risk recommendations, ETA degradation isolation from validation authority, exact artifact hygiene, and canonical live lifecycle validation before acceptance.",
+      "version": "v0.1.126"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.zip",
+      "created_at": "2026-08-09T10:21:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.126.1.1.1 \u2014 Project Source text-add readiness and bounded recovery repair",
+      "status": "candidate",
+      "summary": "Repairs the live text-source Add/Save disabled path by selecting the body editor rather than generic text inputs, stabilizing controlled form events, preserving structured timeout evidence, and allowing one fail-closed zero-request reconciliation/retry.",
+      "validation": "Requires focused live project_source_add_text proof before another full canonical release run; accepted/current remains v0.1.125.3.4.2.",
+      "version": "v0.1.126.1.1.1"
     }
   ],
-  "last_completed_normal_slice": "v0.1.124 \u2014 Accepted local candidate/artifact lifecycle checkpoint",
-  "last_completed_normal_slice_version": "v0.1.124",
-  "last_completed_repair": "v0.1.123.2.6 \u2014 Correlated attachment intake and text-source backend identity repair",
-  "last_completed_repair_version": "v0.1.123.2.6",
-  "last_updated": "2026-08-06T14:47:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-  "next_normal_slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
-  "next_normal_version": "v0.1.125",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
-  "next_planned_slice_after_acceptance": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
-  "next_planned_version_after_acceptance": "v0.1.126",
+  "last_completed_normal_slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
+  "last_completed_normal_slice_version": "v0.1.125",
+  "last_completed_repair": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
+  "last_completed_repair_version": "v0.1.125.3.4.2",
+  "last_updated": "2026-08-09T15:23:00+02:00",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+  "next_normal_slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+  "next_normal_version": "v0.1.126",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
+  "next_planned_slice_after_acceptance": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
+  "next_planned_version_after_acceptance": "v0.1.127",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -1956,10 +2130,84 @@
       "created_at": "2026-08-06T14:47:00+02:00",
       "kind": "repair",
       "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
-      "status": "candidate",
-      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
-      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "status": "superseded_after_direct_full_green",
+      "summary": "Preserved compileall and authority-drift repairs and passed direct full validation, but exposed that release identity, candidate registration, testing, acceptance, and current adoption were still separate operator-managed workflows.",
+      "validation": "Direct full release validation passed 52/52 with zero failures. Canonical candidate-test could not start because candidate registration was a separate omitted lifecycle step; v0.1.125.3.2 replaces that operator-dependent orchestration with one authoritative state machine.",
       "version": "v0.1.125.2"
+    },
+    {
+      "accepted_sha256": "c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip",
+      "created_at": "2026-08-06T21:53:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
+      "status": "accepted_current",
+      "summary": "Repairs exact-candidate test evidence ingestion by selecting one complete schema-bound report using action, profile and version; rejects nested or ambiguous JSON objects; persists report, stdout and stderr hashes plus completed/passed/failed/skipped and failed-group evidence; removes failure codes from successful transitions; and repairs the genuine full-suite failures caused by unconfigured read-only smoke state and ambiguous nested repository-root discovery.",
+      "validation": "Live canonical candidate testing passed with the exact SHA-bound full report and authoritative artifact/current projections converged to v0.1.125.3.2. The release-attempt record remained stale at TESTED_GREEN after a nested acceptance-result parsing defect; v0.1.125.3.3 repairs transactional reconciliation without invalidating the accepted v0.1.125.3.2 bytes.",
+      "version": "v0.1.125.3.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip",
+      "created_at": "2026-08-07T09:34:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.3 \u2014 Acceptance/adoption transactional reconciliation",
+      "status": "candidate",
+      "summary": "Repairs the canonical release state machine acceptance/adoption boundary by selecting only complete top-level artifact_accept_candidate and artifact_current command results, re-reading authoritative candidate/current projections after ambiguous, timed-out, or failed acceptance subprocess results, and reconciling a stale TESTED_GREEN attempt to ACCEPTED/ADOPTED_CURRENT/FINAL_VERIFIED without repeating adoption.",
+      "validation": "Requires action-aware parser regressions, side-effect-then-ambiguous acceptance reconciliation, stale TESTED_GREEN resume to FINAL_VERIFIED without a second accept-candidate call, all release-state-machine tests, mandatory release-validation groups, deterministic ZIP proof, and live canonical lifecycle validation.",
+      "version": "v0.1.125.3.3"
+    },
+    {
+      "accepted_sha256": "0aab96e53359ef3d7339ba7999affac0f31f8fdc94a190004cba45aa9c7f8f08",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip",
+      "created_at": "2026-08-07T18:36:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.1 \u2014 Candidate-test retry isolation and authoritative runtime final convergence",
+      "status": "accepted_current",
+      "summary": "Passed the exact full candidate suite 53/53, accepted and adopted the candidate, promoted the exact tested Docker image to the authoritative port-8000 service, verified live version/SHA/attempt identity, and removed stale candidate runtimes.",
+      "validation": "Operational adoption is proven. FINAL_VERIFIED remained blocked only because the verifier incorrectly required the intentionally retired candidate endpoint to remain live after cleanup.",
+      "version": "v0.1.125.3.4.1"
+    },
+    {
+      "accepted_sha256": "ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "created_at": "2026-08-07T18:46:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.2 \u2014 Post-adoption historical verification and final convergence",
+      "status": "accepted_current",
+      "summary": "Replaces the obsolete post-adoption live-candidate verifier rule with lifecycle-aware historical evidence verification, strengthens exact tested-image promotion identity, and removes the acceptance compatibility fallback.",
+      "validation": "Live canonical release run reached FINAL_VERIFIED; independent all-state verification passed with no failed invariants; exact tested image is authoritative on port 8000 and retired candidate verification is historical after adoption.",
+      "version": "v0.1.125.3.4.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "created_at": "2026-08-07T19:53:00+02:00",
+      "kind": "normal",
+      "slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
+      "status": "candidate",
+      "summary": "Adds a canonical persistent whole-release ETA model to the release state machine, with duration evidence keyed by test profile, phase, transport and step; expected finish timestamps; confidence/evidence provenance; and advisory timeout-risk diagnostics.",
+      "validation": "Construction must prove persistent history, canonical-attempt seeding, profile-aware estimation, timeout-risk recommendations, ETA degradation isolation from validation authority, exact artifact hygiene, and canonical live lifecycle validation before acceptance.",
+      "version": "v0.1.126"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.zip",
+      "created_at": "2026-08-09T10:21:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.126.1.1.1 \u2014 Project Source text-add readiness and bounded recovery repair",
+      "status": "candidate",
+      "summary": "Repairs the live text-source Add/Save disabled path by selecting the body editor rather than generic text inputs, stabilizing controlled form events, preserving structured timeout evidence, and allowing one fail-closed zero-request reconciliation/retry.",
+      "validation": "Requires focused live project_source_add_text proof before another full canonical release run; accepted/current remains v0.1.125.3.4.2.",
+      "version": "v0.1.126.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.2.zip",
+      "created_at": "2026-08-09T15:23:00+02:00",
+      "kind": "repair",
+      "scope": "accepted/current port-8000 precondition and immutable before/after production-runtime preservation; no automatic production recovery",
+      "slice": "v0.1.126.1.1.1.1.2 \u2014 Accepted-runtime precondition and preservation repair",
+      "status": "candidate",
+      "summary": "Blocks RUNTIME_PREPARED unless accepted/current production is a single healthy exact-baseline service before candidate mutation and remains the same container, Docker image ID, and artifact SHA identity afterward; retry re-snapshots production after operator recovery.",
+      "validation": "Focused accepted-runtime negative/recovery tests and all release-state-machine tests must pass; deterministic release groups, ZIP proof, Artifact Guardian, and live FINAL_VERIFIED remain required before acceptance.",
+      "version": "v0.1.126.1.1.1.1.2"
     }
   ],
   "release_mode": "repair",
@@ -2356,10 +2604,74 @@
       "created_at": "2026-08-06T14:47:00+02:00",
       "kind": "repair",
       "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
-      "status": "candidate",
-      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
-      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "status": "superseded_after_direct_full_green",
+      "summary": "Preserved compileall and authority-drift repairs and passed direct full validation, but exposed that release identity, candidate registration, testing, acceptance, and current adoption were still separate operator-managed workflows.",
+      "validation": "Direct full release validation passed 52/52 with zero failures. Canonical candidate-test could not start because candidate registration was a separate omitted lifecycle step; v0.1.125.3.2 replaces that operator-dependent orchestration with one authoritative state machine.",
       "version": "v0.1.125.2"
+    },
+    {
+      "accepted_sha256": "c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip",
+      "created_at": "2026-08-06T21:53:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
+      "status": "accepted_current",
+      "summary": "Repairs exact-candidate test evidence ingestion by selecting one complete schema-bound report using action, profile and version; rejects nested or ambiguous JSON objects; persists report, stdout and stderr hashes plus completed/passed/failed/skipped and failed-group evidence; removes failure codes from successful transitions; and repairs the genuine full-suite failures caused by unconfigured read-only smoke state and ambiguous nested repository-root discovery.",
+      "validation": "Live canonical candidate testing passed with the exact SHA-bound full report and authoritative artifact/current projections converged to v0.1.125.3.2. The release-attempt record remained stale at TESTED_GREEN after a nested acceptance-result parsing defect; v0.1.125.3.3 repairs transactional reconciliation without invalidating the accepted v0.1.125.3.2 bytes.",
+      "version": "v0.1.125.3.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip",
+      "created_at": "2026-08-07T09:34:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.3 \u2014 Acceptance/adoption transactional reconciliation",
+      "status": "candidate",
+      "summary": "Repairs the canonical release state machine acceptance/adoption boundary by selecting only complete top-level artifact_accept_candidate and artifact_current command results, re-reading authoritative candidate/current projections after ambiguous, timed-out, or failed acceptance subprocess results, and reconciling a stale TESTED_GREEN attempt to ACCEPTED/ADOPTED_CURRENT/FINAL_VERIFIED without repeating adoption.",
+      "validation": "Requires action-aware parser regressions, side-effect-then-ambiguous acceptance reconciliation, stale TESTED_GREEN resume to FINAL_VERIFIED without a second accept-candidate call, all release-state-machine tests, mandatory release-validation groups, deterministic ZIP proof, and live canonical lifecycle validation.",
+      "version": "v0.1.125.3.3"
+    },
+    {
+      "accepted_sha256": "0aab96e53359ef3d7339ba7999affac0f31f8fdc94a190004cba45aa9c7f8f08",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip",
+      "created_at": "2026-08-07T18:36:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.1 \u2014 Candidate-test retry isolation and authoritative runtime final convergence",
+      "status": "accepted_current",
+      "summary": "Passed the exact full candidate suite 53/53, accepted and adopted the candidate, promoted the exact tested Docker image to the authoritative port-8000 service, verified live version/SHA/attempt identity, and removed stale candidate runtimes.",
+      "validation": "Operational adoption is proven. FINAL_VERIFIED remained blocked only because the verifier incorrectly required the intentionally retired candidate endpoint to remain live after cleanup.",
+      "version": "v0.1.125.3.4.1"
+    },
+    {
+      "accepted_sha256": "ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "created_at": "2026-08-07T18:46:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.3.4.2 \u2014 Post-adoption historical verification and final convergence",
+      "status": "accepted_current",
+      "summary": "Replaces the obsolete post-adoption live-candidate verifier rule with lifecycle-aware historical evidence verification, strengthens exact tested-image promotion identity, and removes the acceptance compatibility fallback.",
+      "validation": "Live canonical release run reached FINAL_VERIFIED; independent all-state verification passed with no failed invariants; exact tested image is authoritative on port 8000 and retired candidate verification is historical after adoption.",
+      "version": "v0.1.125.3.4.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.zip",
+      "created_at": "2026-08-09T10:21:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.126.1.1.1 \u2014 Project Source text-add readiness and bounded recovery repair",
+      "status": "candidate",
+      "summary": "Repairs the live text-source Add/Save disabled path by selecting the body editor rather than generic text inputs, stabilizing controlled form events, preserving structured timeout evidence, and allowing one fail-closed zero-request reconciliation/retry.",
+      "validation": "Requires focused live project_source_add_text proof before another full canonical release run; accepted/current remains v0.1.125.3.4.2.",
+      "version": "v0.1.126.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.2.zip",
+      "created_at": "2026-08-09T15:23:00+02:00",
+      "kind": "repair",
+      "scope": "accepted/current port-8000 precondition and immutable before/after production-runtime preservation; no automatic production recovery",
+      "slice": "v0.1.126.1.1.1.1.2 \u2014 Accepted-runtime precondition and preservation repair",
+      "status": "candidate",
+      "summary": "Blocks RUNTIME_PREPARED unless accepted/current production is a single healthy exact-baseline service before candidate mutation and remains the same container, Docker image ID, and artifact SHA identity afterward; retry re-snapshots production after operator recovery.",
+      "validation": "Focused accepted-runtime negative/recovery tests and all release-state-machine tests must pass; deterministic release groups, ZIP proof, Artifact Guardian, and live FINAL_VERIFIED remain required before acceptance.",
+      "version": "v0.1.126.1.1.1.1.2"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2392,126 +2704,148 @@
     "docs/backlog/ISSUE-001-global-release-lifecycle-engine.md",
     "docs/backlog/PBAI-001-full-ai-application-architecture.md"
   ],
+  "roadmap_milestones": {
+    "control_plane_hardened": {
+      "status": "planned",
+      "target_version": "v0.1.128"
+    },
+    "control_plane_proof": {
+      "status": "active",
+      "target_version": "v0.1.125"
+    },
+    "external_application_mvp": {
+      "status": "planned",
+      "target_version": "v0.1.132"
+    },
+    "non_production_deployment_mvp": {
+      "status": "planned",
+      "target_version": "v0.1.133"
+    },
+    "reusable_application_platform": {
+      "status": "planned",
+      "target_version": "v0.1.134"
+    }
+  },
   "rolling_slice_horizon": [
     {
-      "version": "v0.1.124",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
-      "release_mode": "normal",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "release_mode": "repair",
+      "scope": "post-adoption historical verification accepted; exact tested-image promotion and final convergence proven",
+      "slice": "v0.1.125.3.4.2 \u2014 Post-adoption historical verification and final convergence",
       "status": "accepted_current",
-      "system": "promptbranch_environment",
-      "slice": "v0.1.124 \u2014 Accepted local candidate/artifact lifecycle checkpoint",
-      "scope": "real ZIP, exact correlation, verification, candidate testing, explicit local acceptance and current-state proof"
+      "system": "promptbranch_control_plane",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip",
+      "version": "v0.1.125.3.4.2"
     },
     {
-      "version": "v0.1.125",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
-      "release_mode": "normal",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.zip",
+      "release_mode": "repair",
+      "scope": "ask deadline/evidence repair passed full 53/53; publication blocked before worktree mutation by missing runtime fingerprint projection",
+      "slice": "v0.1.126.1.1.1.1 \u2014 Ask deadline propagation and structured timeout evidence repair",
       "status": "repair_required",
       "system": "promptbranch_environment",
-      "slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
-      "scope": "canonical proof cycle implementation complete; candidate test exposed repository-polluting compileall bytecode"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.zip",
+      "version": "v0.1.126.1.1.1.1"
     },
     {
-      "version": "v0.1.125.2",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.2.zip",
       "release_mode": "repair",
+      "scope": "accepted-runtime guard live-proven; publication blocked because sanitized release environment dropped candidate validation-Python authority",
+      "slice": "v0.1.126.1.1.1.1.2 \u2014 Accepted-runtime precondition and preservation repair",
+      "status": "repair_required",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.2.zip",
+      "version": "v0.1.126.1.1.1.1.2"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
+      "release_mode": "repair",
+      "scope": "preserve explicit candidate validation-Python authority across sanitized release-contract execution even when ambient PATH points at a foreign pytest environment",
+      "slice": "v0.1.126.1.1.1.1.3 \u2014 Release validation Python authority propagation repair",
       "status": "active",
       "system": "promptbranch_environment",
-      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
-      "scope": "replace the stale version-specific authority-drift test mutation with a version-independent mutation, audit adjacent literals, and retain the v0.1.125.1 compileall repeatability repair without advancing scope"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
+      "version": "v0.1.126.1.1.1.1.3"
     },
     {
-      "version": "v0.1.126",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
       "release_mode": "normal",
+      "scope": "portable deterministic tool-authoring guidance and export without broad execution authority",
+      "slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
       "status": "planned_after_acceptance",
       "system": "promptbranch_environment",
-      "slice": "v0.1.126 \u2014 Persistent whole-release ETA estimator",
-      "scope": "historical duration model, expected finish, confidence and timeout-risk diagnostics"
-    },
-    {
-      "version": "v0.1.127",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
-      "release_mode": "normal",
-      "status": "planned",
-      "system": "promptbranch_environment",
-      "slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
-      "scope": "portable deterministic tool-authoring guidance and export without broad execution authority"
+      "version": "v0.1.127"
     },
     {
-      "version": "v0.1.128",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
       "release_mode": "normal",
+      "scope": "profile-aware timeouts, candidate recovery, summary consistency, mandatory test policy and clean-install proof",
+      "slice": "v0.1.128 \u2014 PB environment MVP hardening and freeze",
       "status": "planned",
       "system": "promptbranch_environment",
-      "slice": "v0.1.128 \u2014 PB environment MVP hardening and freeze",
-      "scope": "profile-aware timeouts, candidate recovery, summary consistency, mandatory test policy and clean-install proof"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
+      "version": "v0.1.128"
     },
     {
-      "version": "v0.1.129",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
       "release_mode": "normal",
-      "status": "planned",
-      "system": "external_application",
+      "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan",
       "slice": "v0.1.129 \u2014 External application pilot bootstrap",
-      "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan"
+      "status": "planned",
+      "system": "external_application",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+      "version": "v0.1.129"
     },
     {
-      "version": "v0.1.130",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
       "release_mode": "normal",
-      "status": "planned",
-      "system": "external_application",
+      "scope": "human-authorized bounded edits, snapshot and rollback evidence",
       "slice": "v0.1.130 \u2014 Controlled external application change execution",
-      "scope": "human-authorized bounded edits, snapshot and rollback evidence"
+      "status": "planned",
+      "system": "external_application",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+      "version": "v0.1.130"
     },
     {
-      "version": "v0.1.131",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
       "release_mode": "normal",
-      "status": "planned",
-      "system": "external_application",
+      "scope": "app tests, result classification, smallest correction, bounded retest",
       "slice": "v0.1.131 \u2014 Application test, diagnosis, and bounded correction loop",
-      "scope": "app tests, result classification, smallest correction, bounded retest"
+      "status": "planned",
+      "system": "external_application",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+      "version": "v0.1.131"
     },
     {
-      "version": "v0.1.132",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
       "release_mode": "normal",
-      "status": "planned",
-      "system": "external_application",
+      "scope": "app artifact verification, candidate registry, release tests and explicit app acceptance",
       "slice": "v0.1.132 \u2014 External application candidate and acceptance lifecycle",
-      "scope": "app artifact verification, candidate registry, release tests and explicit app acceptance"
-    },
-    {
-      "version": "v0.1.133",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
-      "release_mode": "normal",
       "status": "planned",
       "system": "external_application",
-      "slice": "v0.1.133 \u2014 Non-production deployment and post-deployment proof",
-      "scope": "explicit deploy authority, rollback and health/functional verification"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
+      "version": "v0.1.132"
     },
     {
-      "version": "v0.1.134",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
       "release_mode": "normal",
+      "scope": "explicit deploy authority, rollback and health/functional verification",
+      "slice": "v0.1.133 \u2014 Non-production deployment and post-deployment proof",
+      "status": "planned",
+      "system": "external_application",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.133.zip",
+      "version": "v0.1.133"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
+      "release_mode": "normal",
+      "scope": "templates, domain modules, test profiles, release sets, deployment and recovery adapters",
+      "slice": "v0.1.134 \u2014 Reusable PB application workflow and multi-repository generalization",
       "status": "planned",
       "system": "application_platform",
-      "slice": "v0.1.134 \u2014 Reusable PB application workflow and multi-repository generalization",
-      "scope": "templates, domain modules, test profiles, release sets, deployment and recovery adapters"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.134.zip",
+      "version": "v0.1.134"
     }
   ],
   "schema": "promptbranch.project.plan_state",
@@ -2527,37 +2861,11 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.125.2 repair candidate construction",
-  "roadmap_milestones": {
-    "control_plane_proof": {
-      "target_version": "v0.1.125",
-      "status": "active"
-    },
-    "control_plane_hardened": {
-      "target_version": "v0.1.128",
-      "status": "planned"
-    },
-    "external_application_mvp": {
-      "target_version": "v0.1.132",
-      "status": "planned"
-    },
-    "non_production_deployment_mvp": {
-      "target_version": "v0.1.133",
-      "status": "planned"
-    },
-    "reusable_application_platform": {
-      "target_version": "v0.1.134",
-      "status": "planned"
-    }
-  },
   "system_boundary": {
-    "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle",
     "external_application": "System B: separate repository, architecture, tests, artifact, acceptance and deployment",
+    "first_external_application_mutation_version": "v0.1.130",
     "first_external_application_read_only_version": "v0.1.129",
-    "first_external_application_mutation_version": "v0.1.130"
+    "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "active_candidate_status": "candidate_built_validation_pending",
-  "active_candidate_base_version": "v0.1.124",
-  "active_candidate_consolidates_runtime_version": "v0.1.123.2.6",
-  "active_candidate_documentation_checkpoint": "PB-DOC-2026-08-06.1"
+  "updated_for": "v0.1.126.1.1.1.1.3"
 }

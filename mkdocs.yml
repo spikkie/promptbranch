@@ -22,12 +22,22 @@ nav:
       - Living design HTML: design/promptbranch-living-design-overview.html
       - Application design: design/promptbranch-application-design.md
       - Release baseline evidence: design/promptbranch-release-baseline-evidence.md
+      - Canonical release state machine: project/canonical-release-state-machine.md
       - MVP living design: design/promptbranch-mvp-living-design.md
       - MVP gap analysis: design/promptbranch-mvp-gap-analysis.md
       - Orchestration current status: design/orchestration/docs/current_status.md
   - Releases:
+      - v0.1.126.1.1.1: release-v0.1.126.1.1.1.md
       - Overview: releases/index.md
-      - v0.1.125.2: release-v0.1.125.2.md
+      - v0.1.126.1.1: release-v0.1.126.1.1.md
+      - v0.1.126.1: release-v0.1.126.1.md
+      - v0.1.126: release-v0.1.126.md
+      - v0.1.125.3.4.2: release-v0.1.125.3.4.2.md
+      - v0.1.125.3.4.1: release-v0.1.125.3.4.1.md
+      - v0.1.125.3.4: release-v0.1.125.3.4.md
+      - v0.1.125.3.3: release-v0.1.125.3.3.md
+      - v0.1.125.3.2: release-v0.1.125.3.2.md
+      - v0.1.125.3.1: release-v0.1.125.3.1.md
       - v0.1.125.1: release-v0.1.125.1.md
       - v0.1.125: release-v0.1.125.md
       - v0.1.124: release-v0.1.124.md
@@ -64,5 +74,6 @@ markdown_extensions:
 # - docs/release-v0.1.125.md
 # - docs/release-v0.1.124.md
 
-# - docs/release-v0.1.125.2.md
+# - docs/release-v0.1.125.3.2.md
+# - docs/release-v0.1.125.3.1.md
 # - docs/release-v0.1.125.1.md

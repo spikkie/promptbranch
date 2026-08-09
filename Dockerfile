@@ -33,9 +33,11 @@ RUN playwright install --with-deps chromium
 ARG PROMPTBRANCH_VERSION=unknown
 ARG PROMPTBRANCH_ARTIFACT_SHA256=unknown
 ARG PROMPTBRANCH_SOURCE_FINGERPRINT=unknown
+ARG PROMPTBRANCH_RELEASE_ATTEMPT_ID=unknown
 LABEL promptbranch.version="${PROMPTBRANCH_VERSION}"
 LABEL promptbranch.artifact_sha256="${PROMPTBRANCH_ARTIFACT_SHA256}"
 LABEL promptbranch.source_fingerprint="${PROMPTBRANCH_SOURCE_FINGERPRINT}"
+LABEL promptbranch.release_attempt_id="${PROMPTBRANCH_RELEASE_ATTEMPT_ID}"
 
 RUN rm -rf /app/.pb_profile /app/profile
 
@@ -47,9 +49,10 @@ RUN printf '%s\n' "${PROMPTBRANCH_SOURCE_FINGERPRINT}" > /tmp/promptbranch_sourc
 COPY . .
 RUN python3 - "${PROMPTBRANCH_VERSION}" "${PROMPTBRANCH_SOURCE_FINGERPRINT}" <<'PY'
 from pathlib import Path
-import hashlib
 import re
 import sys
+
+from promptbranch_source_fingerprint import source_fingerprint
 
 expected = sys.argv[1].strip().removeprefix("v")
 expected_fingerprint = sys.argv[2].strip() if len(sys.argv) > 2 else "unknown"
@@ -63,16 +66,7 @@ actuals = {
     "promptbranch_version.py": version_py_match.group(1) if version_py_match else "",
     "pyproject.toml": pyproject_match.group(1) if pyproject_match else "",
 }
-def source_fingerprint() -> str:
-    digest = hashlib.sha256()
-    for rel in ("VERSION", "promptbranch_version.py", "pyproject.toml"):
-        path = Path("/app") / rel
-        digest.update(rel.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-actual_fingerprint = source_fingerprint()
+actual_fingerprint = source_fingerprint(Path("/app"))
 if expected_fingerprint not in ("", "unknown") and actual_fingerprint != expected_fingerprint:
     print(
         f"Docker build context fingerprint mismatch: expected {expected_fingerprint}; actual {actual_fingerprint}; actuals={actuals}",

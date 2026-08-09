@@ -7201,3 +7201,22 @@ def test_add_text_source_correlates_logical_name_with_pasted_backend_and_exact_i
     assert result["processing_stream_identity_new"] is True
     assert result["processing_stream_filename_correlation"] == "text_backend_canonical_pasted"
     assert result["source_content_match_verified"] is True
+
+
+def test_text_source_input_selectors_exclude_generic_title_input(browser_client: ChatGPTBrowserClient) -> None:
+    selectors = browser_client._project_source_input_selectors("text")
+    assert selectors
+    assert all('input[type="text"]' not in selector for selector in selectors)
+    assert any("textarea" in selector or "contenteditable" in selector or 'role="textbox"' in selector for selector in selectors)
+
+
+def test_response_timeout_error_preserves_structured_payload() -> None:
+    exc = ResponseTimeoutError(
+        "save disabled",
+        payload={"status": "project_source_save_button_disabled", "source_kind": "text"},
+    )
+    payload = exc.to_payload()
+    assert payload["ok"] is False
+    assert payload["status"] == "project_source_save_button_disabled"
+    assert payload["source_kind"] == "text"
+    assert payload["error"] == "save disabled"

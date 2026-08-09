@@ -7,11 +7,15 @@ from typing import Any
 import pytest
 from pathlib import Path
 
+from promptbranch_browser_auth.exceptions import ResponseTimeoutError
+
 from promptbranch_full_integration_test import (
     DockerServiceAdapter,
     SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS,
     StepResult,
     _attach_project_source_failure_diagnostic,
+    _recover_zero_request_source_add_once,
+    _run_step,
     _normalize_expected_missing_resolve_result,
     _extract_conversation_url_from_ask_result,
     _normalize_expected_skip_result,
@@ -258,6 +262,167 @@ def test_docker_service_adapter_source_add_timeout_returns_structured_failure(mo
     assert result["request_timeout_seconds"] > result["general_service_timeout_seconds"]
     assert result["recovery_guidance"]
 
+
+
+def test_docker_service_adapter_passes_service_deadline_to_ask_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            captured["client_timeout"] = kwargs.get("timeout")
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def ask_result(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+            captured["prompt"] = prompt
+            captured["ask_kwargs"] = kwargs
+            return {
+                "ok": True,
+                "answer": "INTEGRATION_OK",
+                "service_timeout_seconds": kwargs.get("service_timeout_seconds"),
+                "service_internal_timeout_seconds": float(kwargs.get("service_timeout_seconds")) - 8.0,
+            }
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+    )
+
+    result = adapter._ask_question_result_sync("hello", None, None, False, False, 0)
+
+    assert result["ok"] is True
+    assert captured["client_timeout"] == 300.0
+    assert captured["ask_kwargs"]["service_timeout_seconds"] == 300.0
+    assert result["service_internal_timeout_seconds"] == 292.0
+    assert result["service_internal_timeout_seconds"] < captured["client_timeout"]
+    assert captured["ask_kwargs"]["retries"] == 0
+
+
+def test_docker_service_adapter_ask_read_timeout_is_structured_and_not_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"ask": 0}
+
+    class ReadTimeout(Exception):
+        pass
+
+    class FakeClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> "FakeClient":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def ask_result(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+            calls["ask"] += 1
+            raise ReadTimeout("timed out")
+
+    monkeypatch.setattr("promptbranch_full_integration_test.ChatGPTServiceClient", FakeClient)
+    adapter = DockerServiceAdapter(
+        base_url="http://localhost:8000",
+        token=None,
+        timeout_seconds=300.0,
+        project_url="https://chatgpt.com/g/g-p-123/project",
+    )
+
+    result = adapter._ask_question_result_sync("hello", None, None, False, False, 0)
+
+    assert calls["ask"] == 1
+    assert result["ok"] is False
+    assert result["status"] == "service_client_read_timeout"
+    assert result["timeout_layer"] == "service_client"
+    assert result["partial_result"] is True
+    assert result["service_timeout_seconds"] == 300.0
+    assert result["service_client_timeout_seconds"] == 300.0
+    assert result["submit_outcome_known"] is False
+    assert result["retry_permitted"] is False
+
+
+def test_run_integration_ask_question_uses_structured_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"result": 0, "lossy": 0}
+
+    class FakeService:
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            calls["result"] += 1
+            assert kwargs["retries"] == 0
+            return {
+                "ok": True,
+                "action": "ask",
+                "answer": "INTEGRATION_OK",
+                "conversation_url": "https://chatgpt.com/g/g-p-123/c/chat-1",
+                "submit_evidence": {"submit_confirmed": True},
+                "timeout_layer": None,
+            }
+
+        async def ask_question(self, **kwargs: Any) -> Any:
+            calls["lossy"] += 1
+            raise AssertionError("answer-only ask API must not be used by the canonical ask_question step")
+
+    monkeypatch.setattr("promptbranch_full_integration_test.build_service", lambda *args, **kwargs: FakeService())
+    args = make_parser().parse_args([
+        "--only", "ask",
+        "--project-url", "https://chatgpt.com/g/g-p-123/project",
+        "--step-delay-seconds", "0",
+        "--post-ask-delay-seconds", "0",
+    ])
+
+    result = asyncio.run(run_integration(args))
+
+    assert result["ok"] is True
+    assert calls == {"result": 1, "lossy": 0}
+    ask_step = next(step for step in result["steps"] if step["name"] == "ask_question")
+    assert ask_step["ok"] is True
+    assert ask_step["details"]["submit_evidence"]["submit_confirmed"] is True
+
+
+def test_run_integration_submitted_ask_timeout_preserves_evidence_and_never_resubmits(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"result": 0}
+
+    class FakeService:
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            calls["result"] += 1
+            return {
+                "ok": False,
+                "action": "ask",
+                "status": "service_internal_deadline_timeout",
+                "timeout_layer": "service",
+                "partial_result": True,
+                "conversation_url": "https://chatgpt.com/g/g-p-123/c/chat-1",
+                "submit_evidence": {
+                    "submit_confirmed": True,
+                    "submit_confirmed_by": ["backend_task_message"],
+                },
+                "ask_phase_timings": {"submit_confirmed": True},
+                "service_timeout_seconds": 300.0,
+                "service_internal_timeout_seconds": 292.0,
+            }
+
+    monkeypatch.setattr("promptbranch_full_integration_test.build_service", lambda *args, **kwargs: FakeService())
+    args = make_parser().parse_args([
+        "--only", "ask",
+        "--project-url", "https://chatgpt.com/g/g-p-123/project",
+        "--step-delay-seconds", "0",
+        "--post-ask-delay-seconds", "0",
+        "--fail-fast",
+    ])
+
+    result = asyncio.run(run_integration(args))
+
+    assert result["ok"] is False
+    assert calls["result"] == 1
+    ask_step = next(step for step in result["steps"] if step["name"] == "ask_question")
+    assert ask_step["ok"] is False
+    assert ask_step["details"]["timeout_layer"] == "service"
+    assert ask_step["details"]["submit_evidence"]["submit_confirmed"] is True
+    assert ask_step["details"]["service_internal_timeout_seconds"] < ask_step["details"]["service_timeout_seconds"]
 
 def test_source_add_timeout_failure_diagnostic_lists_sources() -> None:
     class FakeProjectService:
@@ -872,3 +1037,133 @@ def test_changed_content_overwrite_fixture_changes_sha256(tmp_path: Path) -> Non
     assert replacement_sha256 != initial_sha256
     assert replacement_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
     assert "proof=changed-content-indexed-family-overwrite" in path.read_text(encoding="utf-8")
+
+
+def test_zero_request_source_add_reconciles_empty_surface_before_single_retry() -> None:
+    class FakeProjectService:
+        def __init__(self) -> None:
+            self.add_calls = 0
+            self.list_calls = 0
+
+        async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+            self.list_calls += 1
+            assert keep_open is True
+            return {"ok": True, "sources": [], "source_card_count": 0}
+
+        async def add_project_source(self, **kwargs: Any) -> dict[str, Any]:
+            self.add_calls += 1
+            return {"ok": True, "status": "source_added", "source_match": "pasted.txt Document"}
+
+    failure = {
+        "ok": False,
+        "status": "persistence_not_verified",
+        "source_match_candidates": ["pasted.txt Document", "pasted.txt"],
+        "save_request_summary": {"started": 0, "finished": 0, "saw_relevant": False, "saw_commit": False},
+    }
+    service = FakeProjectService()
+    steps: list[StepResult] = []
+    result = asyncio.run(_recover_zero_request_source_add_once(
+        steps,
+        service,
+        failure,
+        source_kind="text",
+        value="body",
+        display_name="integration-note",
+        keep_open=True,
+    ))
+
+    assert result["ok"] is True
+    assert result["controlled_retry_performed"] is True
+    assert result["recovery_mode"] == "single_controlled_retry_after_empty_surface"
+    assert service.list_calls == 1
+    assert service.add_calls == 1
+    assert [step.name for step in steps] == [
+        "project_source_add_text.reconcile_before_retry",
+        "project_source_add_text.retry_once",
+    ]
+
+
+def test_zero_request_source_add_uses_late_visible_source_without_retry() -> None:
+    class FakeProjectService:
+        def __init__(self) -> None:
+            self.add_calls = 0
+
+        async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+            return {"ok": True, "sources": [{"identity": "pasted.txt Document", "title": "pasted.txt"}]}
+
+        async def add_project_source(self, **kwargs: Any) -> dict[str, Any]:
+            self.add_calls += 1
+            return {"ok": True}
+
+    failure = {
+        "ok": False,
+        "status": "persistence_not_verified",
+        "source_match_candidates": ["pasted.txt Document", "pasted.txt"],
+        "save_request_summary": {"started": 0, "finished": 0, "saw_relevant": False, "saw_commit": False},
+    }
+    service = FakeProjectService()
+    result = asyncio.run(_recover_zero_request_source_add_once(
+        [], service, failure, source_kind="text", value="body", display_name="integration-note", keep_open=True,
+    ))
+
+    assert result["ok"] is True
+    assert result["status"] == "source_add_recovered_after_reconcile"
+    assert result["controlled_retry_performed"] is False
+    assert service.add_calls == 0
+
+
+def test_zero_request_source_add_fails_closed_on_unrelated_surface() -> None:
+    class FakeProjectService:
+        def __init__(self) -> None:
+            self.add_calls = 0
+
+        async def list_project_sources(self, *, keep_open: bool = False) -> dict[str, Any]:
+            return {"ok": True, "sources": [{"identity": "unrelated.txt Document"}]}
+
+        async def add_project_source(self, **kwargs: Any) -> dict[str, Any]:
+            self.add_calls += 1
+            return {"ok": True}
+
+    failure = {
+        "ok": False,
+        "status": "persistence_not_verified",
+        "source_match_candidates": ["pasted.txt Document", "pasted.txt"],
+        "save_request_summary": {"started": 0, "finished": 0, "saw_relevant": False, "saw_commit": False},
+    }
+    service = FakeProjectService()
+    result = asyncio.run(_recover_zero_request_source_add_once(
+        [], service, failure, source_kind="text", value="body", display_name="integration-note", keep_open=True,
+    ))
+
+    assert result["ok"] is False
+    assert result["recovery_mode"] == "fail_closed_ambiguous_or_unreadable_surface"
+    assert result["controlled_retry_performed"] is False
+    assert service.add_calls == 0
+
+
+def test_deferred_step_preserves_structured_timeout_payload() -> None:
+    async def failing_call():
+        raise ResponseTimeoutError(
+            "save disabled",
+            payload={
+                "ok": False,
+                "status": "project_source_save_button_disabled",
+                "save_request_summary": {"started": 0, "finished": 0, "saw_relevant": False, "saw_commit": False},
+                "source_match_candidates": ["pasted.txt Document"],
+            },
+        )
+
+    steps: list[StepResult] = []
+    result = asyncio.run(
+        _run_step(
+            steps,
+            "project_source_add_text",
+            failing_call(),
+            defer_fail_fast=True,
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "project_source_save_button_disabled"
+    assert result["save_request_summary"]["started"] == 0
+    assert steps[0].details["source_match_candidates"] == ["pasted.txt Document"]

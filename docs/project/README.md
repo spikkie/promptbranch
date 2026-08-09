@@ -29,3 +29,7 @@ accepted evidence: 9/9 GO, evidence-bound adoption, release_adopted_and_verified
 ## Backlog
 
 Formal open work is indexed by `docs/backlog/backlog.json` and projected in `docs/backlog/README.md`.
+
+## Release control
+
+- [Canonical release state machine](canonical-release-state-machine.md)

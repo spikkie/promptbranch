@@ -50,3 +50,7 @@ The documentation site is now release-checkable for build readiness. `docs/site.
 ## v0.1.65 release lifecycle config rule
 
 Release lifecycle policy now has a checked repo-root contract in `.promptbranch-release.yml`. The `pb release config --json` guard validates the config shape, repo-relative paths, safe hook template placeholders, and absence of embedded absolute local machine paths without executing hooks or mutating state.
+
+## Release control
+
+- [Canonical release state machine](../project/canonical-release-state-machine.md)

@@ -1,60 +1,65 @@
+> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+
+
+> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+
 # Promptbranch plan
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.124
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
-active_candidate_version: v0.1.125.2
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.2.zip
+accepted_current_version: v0.1.125.3.4.2
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
+active_candidate_version: v0.1.126.1.1.1.1.3
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
 ```
 
+accepted/current baseline: v0.1.125.3.4.2
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
+accepted/current SHA-256: ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f
+active repair artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+active repair slice: v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair
+next normal version: v0.1.126
+next normal slice: v0.1.126 — Persistent whole-release ETA estimator
+next planned after acceptance: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
 
-Documentation checkpoint: `PB-DOC-2026-08-06.1`
+## Active normal slice — v0.1.126
 
-accepted/current baseline: v0.1.124
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
-accepted/current SHA-256: e4202f93b3e711a591d4c41be81fb85d97ce177e0fec41431fc9f1715e6cb3de
-installed runtime observed during proof: v0.1.123.2.6
-active normal version: v0.1.125
-active normal slice: v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict
-active candidate status: built locally; validation and acceptance pending
-active candidate artifact: chatgpt_claudecode_workflow-2_v0.1.125.zip
-next planned after acceptance: v0.1.126 — Persistent whole-release ETA estimator
+1. Persist successful canonical transition duration evidence by test profile, lifecycle phase, execution transport, and step.
+2. Seed persistent ETA history from canonical `release_attempts_v2` evidence without duplicate observations.
+3. Estimate whole-release remaining duration and expected finish through `FINAL_VERIFIED`.
+4. Expose confidence and per-step evidence source.
+5. Expose candidate-test and optional outer-wrapper timeout risk plus profile-aware recommendations.
+6. Keep ETA strictly advisory; ETA degradation must never change release validation authority.
+7. Add read-only `pb release eta` inspection.
+8. Do not begin external application development.
+
+Rolling horizon authority remains `docs/project/plan-state.json`; successful acceptance advances to `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
 
 ## Current position
 
-`v0.1.124` is accepted/current as the local artifact baseline and its native candidate lifecycle reached `candidate_mvp_complete`. This proves the Promptbranch environment's candidate and local-adoption workflow. It does not prove external application development.
+`v0.1.125.3.4.2` is the accepted/current Promptbranch baseline. Its canonical lifecycle reached `FINAL_VERIFIED`, independent all-state verification passed, and the exact tested image is authoritative on production port `8000`. The `v0.1.125` control-plane proof-cycle DoD is closed.
 
 ```text
-PB environment/control-plane lifecycle: proven once and accepted at v0.1.124
-External application development using PB: not yet proven
+PB control-plane proof through v0.1.125: complete
+Active PB environment slice: v0.1.126 — Persistent whole-release ETA estimator
+External application development using PB: not yet started
 ```
-
-## Active normal slice — v0.1.125
-
-1. Preserve `v0.1.125` as the already-planned second PB environment proof cycle and final control-plane verdict.
-2. Start from the exact accepted/current `v0.1.124` artifact.
-3. Require one pinned, correlated, real-artifact lifecycle with no manual candidate-file or state recovery.
-4. Require candidate verification, mandatory full testing, explicit acceptance, current-state verification, and `candidate_mvp_complete`.
-5. Include the PB-environment-versus-application boundary documentation and updated draw.io architecture pages.
-6. Do not start external application mutation in this release.
 
 ## Rolling horizon authority
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.124` — accepted/current PB candidate lifecycle checkpoint.
-2. `v0.1.125` — active canonical PB environment proof cycle 2 and final control-plane verdict.
-3. `v0.1.126` — persistent whole-release ETA estimator.
-4. `v0.1.127` — portable Promptbranch tool-authoring skill and export bundle.
-5. `v0.1.128` — PB environment MVP hardening and freeze.
-6. `v0.1.129` — external application pilot bootstrap.
-7. `v0.1.130` — controlled external application change execution.
-8. `v0.1.131` — application test, diagnosis, and bounded correction loop.
-9. `v0.1.132` — external application candidate and acceptance lifecycle.
-10. `v0.1.133` — non-production deployment and post-deployment proof.
-11. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
+1. `v0.1.125.3.4.2` — accepted/current final-convergence baseline for completed `v0.1.125`.
+2. `v0.1.126` — active persistent whole-release ETA estimator.
+3. `v0.1.127` — portable Promptbranch tool-authoring skill and export bundle.
+4. `v0.1.128` — PB environment MVP hardening and freeze.
+5. `v0.1.129` — external application pilot bootstrap.
+6. `v0.1.130` — controlled external application change execution.
+7. `v0.1.131` — application test, diagnosis, and bounded correction loop.
+8. `v0.1.132` — external application candidate and acceptance lifecycle.
+9. `v0.1.133` — non-production deployment and post-deployment proof.
+10. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
 
 ## Architecture boundary
 
@@ -2303,14 +2308,53 @@ Implementation steps:
 
 Out of scope: fresh `v0.1.124` generation, candidate testing, Project Source mutation, adoption, formal proof advancement, Git commit, or Git push.
 
+## Active repair candidate — v0.1.125.3.3
 
-## Active repair candidate — v0.1.125.2
-
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
-- failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
-- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
-- next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.2.zip` (`v0.1.125.3.2`)
+- accepted baseline SHA-256: `c6e6617a22b526b6bb3ae7f65274ce6edd75898ce926e24bda204bfc8b68504f`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip`
+- active repair slice: v0.1.125.3.3 — Acceptance/adoption transactional reconciliation
+- next normal slice: `v0.1.126 — Persistent whole-release ETA estimator`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability
+- scope advancement: forbidden; repair only fixes action-aware acceptance/current result selection, post-side-effect reconciliation, idempotent stale-attempt recovery, and final state convergence
+
+
+## Active repair candidate — v0.1.125.3.4.1
+
+- control-plane accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.3.zip` (`v0.1.125.3.3`)
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.1.zip`
+- active repair slice: v0.1.125.3.4.1 — Candidate-test retry isolation and authoritative runtime final convergence
+- observed pre-repair authoritative Docker service: `promptbranch-service:0.1.125.2` on port `8000`
+- required promotion: retag the exact tested candidate image as `promptbranch-service:0.1.125.3.4.1`, recreate only the canonical `chatgpt_claudecode_workflow` service on port `8000`, and require live health plus version/SHA/attempt labels to match before `ADOPTED_CURRENT`
+- rollback: restore the previously healthy production image when promotion fails; keep the release attempt retryable
+- cleanup: remove isolated `pb-candidate-*` service containers only after authoritative runtime convergence
+- `FINAL_VERIFIED`: must independently re-probe the live port-8000 service and fail on runtime drift
+- next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`; repair scope does not advance application work
+
+
+## Repair definition — v0.1.126.1.1.1.1.2
+
+```text
+Release: v0.1.126.1.1.1.1.2
+Base release: v0.1.126.1.1.1.1.1 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.126.1.1.1.1.1 reached RUNTIME_PREPARED even though accepted/current production was absent before and after candidate preparation.
+In scope: fail closed when the accepted port-8000 runtime is absent, unhealthy, baseline-mismatched, disappears, or changes immutable image/artifact identity; re-snapshot production on retry; preserve isolated candidate ports.
+Out of scope: automatic production recovery, acceptance/adoption changes, ETA feature expansion, external application work.
+Expected validation: focused accepted-runtime negative/recovery tests, all release-state-machine tests, project control-surface validation, mandatory deterministic release groups, deterministic ZIP rebuild, Artifact Guardian; live FINAL_VERIFIED remains required before acceptance.
+```
+
+
+## Repair definition — v0.1.126.1.1.1.1.3
+
+```text
+Release: v0.1.126.1.1.1.1.3
+Base release: v0.1.126.1.1.1.1.2 candidate
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.126.1.1.1.1.2 passed full live candidate validation 53/53 but publication validation dropped the candidate-Python authority and resolved foreign pytest 8.4.2 from ambient PATH.
+In scope: release-contract environment propagation of PROMPTBRANCH_RELEASE_VALIDATION_PYTHON and poisoned-PATH regression coverage.
+Out of scope: browser/runtime behavior, automatic production recovery, ETA expansion, acceptance/adoption redesign, external application work.
+Expected validation: focused release-contract tests, mandatory deterministic release groups, deterministic ZIP rebuild, Artifact Guardian; live FINAL_VERIFIED remains required before acceptance.
+```

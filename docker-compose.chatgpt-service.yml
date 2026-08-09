@@ -9,13 +9,14 @@ services:
         PROMPTBRANCH_VERSION: ${PROMPTBRANCH_VERSION:-local}
         PROMPTBRANCH_ARTIFACT_SHA256: ${PROMPTBRANCH_ARTIFACT_SHA256:-unknown}
         PROMPTBRANCH_SOURCE_FINGERPRINT: ${PROMPTBRANCH_SOURCE_FINGERPRINT:-unknown}
+        PROMPTBRANCH_RELEASE_ATTEMPT_ID: ${PROMPTBRANCH_RELEASE_ATTEMPT_ID:-unknown}
     image: ${PROMPTBRANCH_SERVICE_IMAGE:-promptbranch-service:${PROMPTBRANCH_VERSION:-local}}
     pull_policy: build
     init: true
     shm_size: ${PROMPTBRANCH_DOCKER_SHM_SIZE:-2gb}
     user: "${PROMPTBRANCH_DOCKER_UID:-1000}:${PROMPTBRANCH_DOCKER_GID:-1000}"
     ports:
-      - "8000:8000"
+      - "${PROMPTBRANCH_SERVICE_PORT:-8000}:8000"
     environment:
       HOME: ${PROMPTBRANCH_CONTAINER_HOME:-/tmp/promptbranch-home}
       XDG_CACHE_HOME: ${PROMPTBRANCH_CONTAINER_XDG_CACHE_HOME:-/tmp/promptbranch-cache}
@@ -48,9 +49,9 @@ services:
       CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS: ${CHATGPT_CHALLENGE_WAIT_TIMEOUT_MS:-20000}
       CHATGPT_FAIL_FAST_ON_CHALLENGE: ${CHATGPT_FAIL_FAST_ON_CHALLENGE:-0}
     volumes:
-      - ./.pb_profile:/app/.pb_profile
+      - ${PROMPTBRANCH_HOST_STATE_PROFILE_DIR:-./.pb_profile}:/app/.pb_profile
       - ${PROMPTBRANCH_HOST_PROFILE_DIR:-./.pb_profile/browser/default}:/app/profile
-      - ./debug_artifacts:/app/debug_artifacts
+      - ${PROMPTBRANCH_HOST_DEBUG_ARTIFACT_DIR:-./debug_artifacts}:/app/debug_artifacts
     secrets:
       - chatgpt_password
     healthcheck:

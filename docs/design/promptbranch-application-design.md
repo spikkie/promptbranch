@@ -214,3 +214,7 @@ Release `v0.1.125` records the explicit boundary between the Promptbranch enviro
 ## v0.1.125.2 authority-drift fixture repair
 
 Release `v0.1.125.2` is a repair-only continuation of the `v0.1.125` control-plane proof. It derives the authority projection-drift test mutation from the current `pyproject.toml` version and asserts that the mutation occurred. It preserves the `v0.1.125.1` isolated compileall and cache-free template validation behavior and does not authorize external application mutation.
+
+## v0.1.125.3.2 release-control boundary
+
+The Promptbranch control plane owns the canonical release state machine. Application repositories remain independent authorities, but their candidate lifecycle must use the same invariants: immutable artifact identity, exact-byte testing, explicit mutation authorization, guarded acceptance, recoverable adoption, and independently verifiable final convergence.
