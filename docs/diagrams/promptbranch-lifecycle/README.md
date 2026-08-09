@@ -33,6 +33,6 @@ The editable source now includes `PB MVP Proven Lifecycle and Next Application L
 The draw.io source adds `PB Environment Exit and Application Pilot Roadmap`. The upper lane ends the PB environment proof/hardening line at `v0.1.128`; the lower lane begins the external application track at `v0.1.129`. Application mutation first appears at `v0.1.130`.
 
 
-## v0.1.125.1 repair gate
+## v0.1.125.2 repair gate
 
-The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, active `v0.1.125.1` repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.
+The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, failed `v0.1.125.1` full validation, active `v0.1.125.2` authority-fixture repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.

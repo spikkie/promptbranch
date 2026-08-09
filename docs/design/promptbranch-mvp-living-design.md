@@ -484,6 +484,6 @@ The editable diagram now also contains a page named `Release Roadmap — v0.1.12
 The roadmap is authoritative only together with `docs/project/plan-state.json` and `docs/project/pb-mvp-roadmap-v0.1.124.md`.
 
 
-## v0.1.125.1 repair gate
+## v0.1.125.2 repair gate
 
-The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, active `v0.1.125.1` repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.
+The draw.io source includes a dedicated repair page showing the accepted `v0.1.124` baseline, failed `v0.1.125` repeatability proof, failed `v0.1.125.1` full validation, active `v0.1.125.2` authority-fixture repair, and the explicit acceptance gate before `v0.1.126`. The repair remains inside the Promptbranch environment/control plane and does not start external application development.

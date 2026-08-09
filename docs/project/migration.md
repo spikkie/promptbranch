@@ -1473,12 +1473,13 @@ No migration is required. Existing `release_candidate_validation_failed` records
 No stored artifact bytes need to be regenerated. Exact validated intake may reuse the existing verified ZIP under `.pb_profile/artifact_inbox/`, reverify it, copy it to the repository root, and register one candidate. `candidate-run` now selects the persisted run by exact request ID and preserves repository, filename, and version expectations. This migration does not test, publish, adopt, commit, or push the candidate.
 
 
-## Active repair candidate — v0.1.125.1
+## Active repair candidate — v0.1.125.2
 
 - accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
 - failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
+- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
 - next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation
+- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability

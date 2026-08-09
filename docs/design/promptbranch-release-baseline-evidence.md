@@ -131,3 +131,7 @@ Documentation build readiness is source evidence only. `docs/site.md` documents 
 ## v0.1.125 baseline evidence scope
 
 For release `v0.1.125`, candidate construction evidence remains distinct from candidate verification, candidate testing, explicit acceptance, Project Source publication, and accepted/current evidence. The accepted baseline entering the proof cycle is `v0.1.124`; `v0.1.125` must not be described as accepted/current until the native candidate lifecycle proves it.
+
+## v0.1.125.2 baseline evidence scope
+
+The accepted/current baseline remains `v0.1.124`. `v0.1.125.2` is a repair candidate for the failed `v0.1.125.1` full-validation attempt. Construction evidence, operator candidate intake, registry-bound testing, explicit acceptance, Project Source state, and accepted/current evidence remain separate.

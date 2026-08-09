@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tomllib
 
 from promptbranch_project_authority import (
     AUTHORITY_GRAPH_REL,
@@ -94,7 +95,13 @@ def test_authority_graph_missing_authority_fails_closed(tmp_path: Path) -> None:
 def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.1.125"', 'version = "9.9.9"'), encoding="utf-8")
+    original = pyproject.read_text(encoding="utf-8")
+    current_version = tomllib.loads(original)["project"]["version"]
+    version_line = f'version = "{current_version}"'
+    assert version_line in original, "test precondition failed: pyproject version line was not found"
+    mutated = original.replace(version_line, 'version = "9.9.9"', 1)
+    assert mutated != original, "test precondition failed: pyproject version was not mutated"
+    pyproject.write_text(mutated, encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False

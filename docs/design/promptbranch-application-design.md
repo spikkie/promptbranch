@@ -210,3 +210,7 @@ document and the draw.io pages across all three editable diagram files.
 ## v0.1.125 control-plane/application-plane boundary
 
 Release `v0.1.125` records the explicit boundary between the Promptbranch environment (System A) and an external application developed using Promptbranch (System B). This release validates and documents the PB control plane only; external application mutation remains outside the release scope.
+
+## v0.1.125.2 authority-drift fixture repair
+
+Release `v0.1.125.2` is a repair-only continuation of the `v0.1.125` control-plane proof. It derives the authority projection-drift test mutation from the current `pyproject.toml` version and asserts that the mutation occurred. It preserves the `v0.1.125.1` isolated compileall and cache-free template validation behavior and does not authorize external application mutation.

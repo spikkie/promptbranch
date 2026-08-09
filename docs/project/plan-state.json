@@ -1,11 +1,11 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.124.zip",
   "accepted_current_version": "v0.1.124",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
-  "active_candidate_version": "v0.1.125.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+  "active_candidate_version": "v0.1.125.2",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+  "active_slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -571,9 +571,29 @@
       "summary": "Recomputes release-candidate validation after successful rendered-attachment materialization, normalizes input_baseline/target_version aliases, and idempotently finalizes the exact persisted run from its verified artifact inbox without redownload.",
       "validation": "Post-materialization finalization tests prove exact request/answer identity, inbox path, SHA-256, size, ZIP entry count, CRC, version, envelope metadata, and no release-state mutation before persisted status is promoted to reply_validated. Authenticated host finalization, strict release validation, publication, adoption, and MVP proof remain pending.",
       "version": "v0.1.123.2.6"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "created_at": "2026-08-06T14:39:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+      "status": "failed_full_validation",
+      "summary": "The compileall/template-cache repair passed focused repeatability proof, but full release validation exposed a stale hard-coded 0.1.125 mutation in the authority-graph drift test.",
+      "validation": "Candidate-bound focused tests passed 126/126 and structural repeatability passed 43/43 before and after isolated compileall. Full validation stopped at project_authority_behavioral_surface with 1 failed and 19 passed because the fixture no longer mutated pyproject.toml.",
+      "version": "v0.1.125.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "created_at": "2026-08-06T14:47:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+      "status": "candidate",
+      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
+      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "version": "v0.1.125.2"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1101,13 +1121,33 @@
       "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
       "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
       "version": "v0.1.123.2.6"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "created_at": "2026-08-06T14:39:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+      "status": "failed_full_validation",
+      "summary": "The compileall/template-cache repair passed focused repeatability proof, but full release validation exposed a stale hard-coded 0.1.125 mutation in the authority-graph drift test.",
+      "validation": "Candidate-bound focused tests passed 126/126 and structural repeatability passed 43/43 before and after isolated compileall. Full validation stopped at project_authority_behavioral_surface with 1 failed and 19 passed because the fixture no longer mutated pyproject.toml.",
+      "version": "v0.1.125.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "created_at": "2026-08-06T14:47:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+      "status": "candidate",
+      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
+      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "version": "v0.1.125.2"
     }
   ],
   "last_completed_normal_slice": "v0.1.124 \u2014 Accepted local candidate/artifact lifecycle checkpoint",
   "last_completed_normal_slice_version": "v0.1.124",
   "last_completed_repair": "v0.1.123.2.6 \u2014 Correlated attachment intake and text-source backend identity repair",
   "last_completed_repair_version": "v0.1.123.2.6",
-  "last_updated": "2026-08-06T10:00:00+02:00",
+  "last_updated": "2026-08-06T14:47:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.zip",
   "next_normal_slice": "v0.1.125 \u2014 Canonical PB environment proof cycle 2 and final control-plane verdict",
   "next_normal_version": "v0.1.125",
@@ -1900,6 +1940,26 @@
       "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
       "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
       "version": "v0.1.123.2.6"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "created_at": "2026-08-06T14:39:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+      "status": "failed_full_validation",
+      "summary": "The compileall/template-cache repair passed focused repeatability proof, but full release validation exposed a stale hard-coded 0.1.125 mutation in the authority-graph drift test.",
+      "validation": "Candidate-bound focused tests passed 126/126 and structural repeatability passed 43/43 before and after isolated compileall. Full validation stopped at project_authority_behavioral_surface with 1 failed and 19 passed because the fixture no longer mutated pyproject.toml.",
+      "version": "v0.1.125.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "created_at": "2026-08-06T14:47:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+      "status": "candidate",
+      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
+      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "version": "v0.1.125.2"
     }
   ],
   "release_mode": "repair",
@@ -2280,6 +2340,26 @@
       "summary": "Normalizes the exact historical attachment-only protocol-run shape inside explicit replay: selection identity fallbacks with conflict detection, ZIP MIME typing, input_baseline aliasing, and canonical attachment-only failure evidence.",
       "validation": "Replay-focused historical-shape and rejection tests pass 16/16; broader focused modules pass 178/178. Authenticated browser Gate 2, strict release validation, Project Source publication, adoption, and MVP proof remain pending.",
       "version": "v0.1.123.2.6"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "created_at": "2026-08-06T14:39:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
+      "status": "failed_full_validation",
+      "summary": "The compileall/template-cache repair passed focused repeatability proof, but full release validation exposed a stale hard-coded 0.1.125 mutation in the authority-graph drift test.",
+      "validation": "Candidate-bound focused tests passed 126/126 and structural repeatability passed 43/43 before and after isolated compileall. Full validation stopped at project_authority_behavioral_surface with 1 failed and 19 passed because the fixture no longer mutated pyproject.toml.",
+      "version": "v0.1.125.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "created_at": "2026-08-06T14:47:00+02:00",
+      "kind": "repair",
+      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+      "status": "candidate",
+      "summary": "Makes the authority projection-drift test derive the current pyproject version before replacing it, asserts that mutation occurred, and preserves the isolated compileall repair.",
+      "validation": "Focused authority/behavioral, project control, version, release-contract, repeatability, deterministic ZIP, clean extraction, and Artifact Guardian validation are required before operator lifecycle testing.",
+      "version": "v0.1.125.2"
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2334,14 +2414,14 @@
       "scope": "canonical proof cycle implementation complete; candidate test exposed repository-polluting compileall bytecode"
     },
     {
-      "version": "v0.1.125.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.1.zip",
+      "version": "v0.1.125.2",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.125.2.zip",
       "release_mode": "repair",
       "status": "active",
       "system": "promptbranch_environment",
-      "slice": "v0.1.125.1 \u2014 Isolated compileall and repeatable template-snapshot validation repair",
-      "scope": "isolate compileall bytecode, make snapshot comparison cache-safe, and prove repeatable cache-free validation without advancing scope"
+      "slice": "v0.1.125.2 \u2014 Version-independent authority-drift fixture repair",
+      "scope": "replace the stale version-specific authority-drift test mutation with a version-independent mutation, audit adjacent literals, and retain the v0.1.125.1 compileall repeatability repair without advancing scope"
     },
     {
       "version": "v0.1.126",
@@ -2447,7 +2527,7 @@
     "smallest testable next capability",
     "operational risk"
   ],
-  "updated_for": "v0.1.125 candidate construction",
+  "updated_for": "v0.1.125.2 repair candidate construction",
   "roadmap_milestones": {
     "control_plane_proof": {
       "target_version": "v0.1.125",

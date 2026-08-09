@@ -5,8 +5,8 @@
 ```text
 accepted_current_version: v0.1.124
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.124.zip
-active_candidate_version: v0.1.125.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.1.zip
+active_candidate_version: v0.1.125.2
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.125.2.zip
 ```
 
 
@@ -2304,12 +2304,13 @@ Implementation steps:
 Out of scope: fresh `v0.1.124` generation, candidate testing, Project Source mutation, adoption, formal proof advancement, Git commit, or Git push.
 
 
-## Active repair candidate — v0.1.125.1
+## Active repair candidate — v0.1.125.2
 
 - accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
 - failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
+- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
 - next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation
+- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability

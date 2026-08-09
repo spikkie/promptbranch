@@ -43,3 +43,4 @@ Release documentation includes the repo-local lifecycle config contract. `pb rel
 `pb release doctor --artifact ZIP --version VERSION --json` now consumes `.promptbranch-release.yml` when inspecting candidate ZIPs. It reports `candidate_artifact` and `release_config` sections, checks filename/config agreement, VERSION consistency, ZIP layout and hygiene, and accepted-baseline continuity without mutating release state.
 
 - [`v0.1.125.1`](../release-v0.1.125.1.md) — isolated compileall and repeatable template-snapshot validation repair.
+- [`v0.1.125.2`](../release-v0.1.125.2.md) — version-independent authority projection-drift fixture repair.

@@ -27,6 +27,8 @@ nav:
       - Orchestration current status: design/orchestration/docs/current_status.md
   - Releases:
       - Overview: releases/index.md
+      - v0.1.125.2: release-v0.1.125.2.md
+      - v0.1.125.1: release-v0.1.125.1.md
       - v0.1.125: release-v0.1.125.md
       - v0.1.124: release-v0.1.124.md
       - v0.1.66: release-v0.1.66.md
@@ -61,3 +63,6 @@ markdown_extensions:
 
 # - docs/release-v0.1.125.md
 # - docs/release-v0.1.124.md
+
+# - docs/release-v0.1.125.2.md
+# - docs/release-v0.1.125.1.md

@@ -1,0 +1,94 @@
+Traceback (most recent call last):
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    raise exc
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_sync/connection.py", line 78, in handle_request
+    stream = self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_sync/connection.py", line 124, in _connect
+    stream = self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_backends/sync.py", line 207, in connect_tcp
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/spikkie/.local/bin/promptbranch", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 29067, in main
+    return asyncio.run(_async_main(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 28935, in _async_main
+    return await cmd_task(backend, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 11307, in cmd_task
+    return await cmd_chat_show(backend, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 2629, in cmd_chat_show
+    result = await backend.get_chat(str(selected.get('conversation_url') or ''), keep_open=args.keep_open)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 1511, in get_chat
+    return await self._call(
+           ^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_cli.py", line 1439, in _call
+    return await asyncio.to_thread(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/promptbranch_service_client.py", line 376, in get_chat
+    return self._json(self._client.post("/v1/chats/get", json=payload))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+    return self.request(
+           ^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/spikkie/.local/share/pipx/venvs/promptbranch/lib/python3.12/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [Errno 111] Connection refused

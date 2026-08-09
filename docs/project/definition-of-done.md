@@ -1115,12 +1115,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-445 | `candidate-run` preserves the exact validated request ID and repository/filename/version expectations, reuses the verified artifact-inbox ZIP, and creates exactly one migrated candidate without browser redownload | focused_candidate | finalized-run-to-candidate-registry integration test | v0.1.123.2.6 |
 
 
-## Active repair candidate — v0.1.125.1
+## Active repair candidate — v0.1.125.2
 
 - accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.124.zip` (`v0.1.124`)
 - failed normal candidate retained as evidence: `chatgpt_claudecode_workflow-2_v0.1.125.zip`
-- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
-- active repair slice: v0.1.125.1 — Isolated compileall and repeatable template-snapshot validation repair
+- prior repair retained as failed full-validation evidence: `chatgpt_claudecode_workflow-2_v0.1.125.1.zip`
+- active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.125.2.zip`
+- active repair slice: v0.1.125.2 — Version-independent authority-drift fixture repair
 - next normal slice remains: `v0.1.125 — Canonical PB environment proof cycle 2 and final control-plane verdict`
 - planned after repair acceptance: `v0.1.126 — Persistent whole-release ETA estimator`
-- scope advancement: forbidden; repair only isolates compileall bytecode and restores repeatable cache-free validation
+- scope advancement: forbidden; repair only removes the stale version-specific authority test literal while preserving isolated compileall and cache-free repeatability

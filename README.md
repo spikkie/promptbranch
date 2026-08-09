@@ -1,3 +1,7 @@
+## v0.1.125.2 version-independent authority fixture repair
+
+`v0.1.125.2` is a repair-only candidate derived from `v0.1.125.1`. It does not advance Promptbranch scope. It replaces the stale hard-coded `0.1.125` mutation in the authority projection-drift regression with a mutation derived from the current `pyproject.toml` version, asserts that the fixture actually changed the file, and retains the isolated `compileall`/cache-free template validation introduced in `v0.1.125.1`. The accepted/current baseline remains `v0.1.124` until explicit candidate acceptance.
+
 ## v0.1.125.1 repeatable release-validation repair
 
 `v0.1.125.1` is a repair-only candidate derived from `v0.1.125`. It does not advance Promptbranch scope. It isolates `compileall` bytecode under the release-validation isolation root, makes tracked application-template snapshot comparison ignore interpreter-generated cache artifacts, and adds regression coverage proving structural validation remains repeatable and leaves `templates/pbai` cache-free. The accepted/current baseline remains `v0.1.124` until explicit candidate acceptance.
