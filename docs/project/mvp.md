@@ -1,7 +1,8 @@
-> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+## Active repair — v0.1.127.1.1
 
+Canonical ChatGPT project identity normalization for artifact conversation provenance validation. Accepted/current stays `v0.1.126.1.1.1.1.3`; `.127.1` routing/provenance semantics are preserved and no normal scope advances.
 
-> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+> v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`. The active scope is portable deterministic tool authoring/export with explicit proposal-only authority; external application development remains out of scope.
 
 # MVP
 
@@ -121,6 +122,16 @@ MVP layer targets:
 - reusable application platform: `v0.1.134`.
 
 The first external application mutation is forbidden before the `v0.1.130` execution-envelope and rollback gate.
+
+
+## Active normal candidate — v0.1.127
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`)
+- active artifact: `chatgpt_claudecode_workflow-2_v0.1.127.zip`
+- scope: tracked `promptbranch-tool-authoring` skill, machine-readable deterministic tool specification, fail-closed semantic validation, and byte-reproducible export bundle
+- portable targets: one self-contained `PROJECT_SOURCE.md` for ChatGPT Project Sources plus `SKILL.md`/`AGENTS.md`/schema/example for coding agents
+- authority: authoring is proposal-only; validation does not register, implement, execute, mutate, release, publish, or adopt a tool
+- next planned after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`
 
 ## Active repair candidate — v0.1.125.3.3
 

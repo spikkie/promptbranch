@@ -1,48 +1,50 @@
-> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+> v0.1.127.1.1 repair authority: accepted/current remains `v0.1.126.1.1.1.1.3`; canonical ChatGPT project identity normalization in durable artifact conversation provenance validation only; `.127.1` provenance/routing semantics remain unchanged and normal product scope remains v0.1.127.
 
+> v0.1.127.1 is repair-required live evidence after same-project slugged/unslugged URLs were rejected by the durable artifact validator.
 
-> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+> v0.1.127 normal-slice authority: built from accepted/current `v0.1.126.1.1.1.1.3`. This slice adds portable deterministic tool-authoring guidance and export only; it grants no execution authority and does not begin external application development.
 
 # Promptbranch plan
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.125.3.4.2
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
-active_candidate_version: v0.1.126.1.1.1.1.3
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+accepted_current_version: v0.1.126.1.1.1.1.3
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+active_candidate_version: v0.1.127.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip
 ```
 
-accepted/current baseline: v0.1.125.3.4.2
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
-accepted/current SHA-256: ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f
-active repair artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active repair slice: v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair
-next normal version: v0.1.126
-next normal slice: v0.1.126 — Persistent whole-release ETA estimator
-next planned after acceptance: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+accepted/current baseline: v0.1.126.1.1.1.1.3
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
+active normal artifact: chatgpt_claudecode_workflow-2_v0.1.127.zip
+active normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+next normal version: v0.1.127
+next normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
 
-## Active normal slice — v0.1.126
+## Active normal slice — v0.1.127
 
-1. Persist successful canonical transition duration evidence by test profile, lifecycle phase, execution transport, and step.
-2. Seed persistent ETA history from canonical `release_attempts_v2` evidence without duplicate observations.
-3. Estimate whole-release remaining duration and expected finish through `FINAL_VERIFIED`.
-4. Expose confidence and per-step evidence source.
-5. Expose candidate-test and optional outer-wrapper timeout risk plus profile-aware recommendations.
-6. Keep ETA strictly advisory; ETA degradation must never change release validation authority.
-7. Add read-only `pb release eta` inspection.
-8. Do not begin external application development.
+1. Track one portable read-only `promptbranch-tool-authoring` skill in the canonical AI registry.
+2. Define `promptbranch.tool.authoring` schema `1.0` with explicit identity, bounded JSON input, risk/read-only classification, validation, evidence, and fail-closed failure semantics.
+3. Keep authoring authority proposal-only: execution, mutation, release, publication, and adoption are never granted by this contract.
+4. Add deterministic semantic validation that rejects unknown top-level fields, unbounded inputs, risk/read-only mismatches, missing validators/evidence, and authority escalation.
+5. Export a byte-reproducible portable ZIP containing `SKILL.md`, schema, example, `PROJECT_SOURCE.md`, `AGENTS.md`, and a digest-bound manifest.
+6. Verify bundle entry set, safe paths, fixed timestamps/modes/compression, payload SHA-256 values, and authority boundary.
+7. Expose the workflow through `pb skill authoring-validate`, `tool-spec-validate`, `export`, and `verify-bundle`.
+8. Do not register or execute authored tools, and do not begin external application development.
 
-Rolling horizon authority remains `docs/project/plan-state.json`; successful acceptance advances to `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+Rolling horizon authority remains `docs/project/plan-state.json`; successful acceptance advances to `v0.1.128 — PB environment MVP hardening and freeze`.
 
 ## Current position
 
-`v0.1.125.3.4.2` is the accepted/current Promptbranch baseline. Its canonical lifecycle reached `FINAL_VERIFIED`, independent all-state verification passed, and the exact tested image is authoritative on production port `8000`. The `v0.1.125` control-plane proof-cycle DoD is closed.
+`v0.1.126.1.1.1.1.3` is the accepted/current Promptbranch baseline. Its canonical repair chain reached `FINAL_VERIFIED`, independent all-state verification passed, and the exact tested image/artifact/current projections align. The completed normal product scope through `v0.1.126` is therefore closed.
 
 ```text
 PB control-plane proof through v0.1.125: complete
-Active PB environment slice: v0.1.126 — Persistent whole-release ETA estimator
+Persistent whole-release ETA v0.1.126: complete via accepted repair chain
+Active PB environment slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
 External application development using PB: not yet started
 ```
 
@@ -50,16 +52,15 @@ External application development using PB: not yet started
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.125.3.4.2` — accepted/current final-convergence baseline for completed `v0.1.125`.
-2. `v0.1.126` — active persistent whole-release ETA estimator.
-3. `v0.1.127` — portable Promptbranch tool-authoring skill and export bundle.
-4. `v0.1.128` — PB environment MVP hardening and freeze.
-5. `v0.1.129` — external application pilot bootstrap.
-6. `v0.1.130` — controlled external application change execution.
-7. `v0.1.131` — application test, diagnosis, and bounded correction loop.
-8. `v0.1.132` — external application candidate and acceptance lifecycle.
-9. `v0.1.133` — non-production deployment and post-deployment proof.
-10. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
+1. `v0.1.126.1.1.1.1.3` — accepted/current baseline closing the `v0.1.126` repair chain.
+2. `v0.1.127` — active portable Promptbranch tool-authoring skill and export bundle.
+3. `v0.1.128` — PB environment MVP hardening and freeze.
+4. `v0.1.129` — external application pilot bootstrap.
+5. `v0.1.130` — controlled external application change execution.
+6. `v0.1.131` — application test, diagnosis, and bounded correction loop.
+7. `v0.1.132` — external application candidate and acceptance lifecycle.
+8. `v0.1.133` — non-production deployment and post-deployment proof.
+9. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
 
 ## Architecture boundary
 

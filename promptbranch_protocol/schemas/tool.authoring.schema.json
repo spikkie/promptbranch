@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://promptbranch.local/schemas/tool.authoring.schema.json",
+  "title": "Promptbranch deterministic tool authoring specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "id",
+    "description",
+    "provider",
+    "risk",
+    "read_only",
+    "input_schema",
+    "authority",
+    "validation",
+    "evidence",
+    "failure"
+  ],
+  "properties": {
+    "schema": {"const": "promptbranch.tool.authoring"},
+    "schema_version": {"const": "1.0"},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$"},
+    "description": {"type": "string", "minLength": 1},
+    "provider": {"type": "string", "minLength": 1},
+    "risk": {"enum": ["read", "external_process", "write", "destructive"]},
+    "read_only": {"type": "boolean"},
+    "input_schema": {
+      "type": "object",
+      "required": ["type", "properties", "additionalProperties"],
+      "properties": {
+        "type": {"const": "object"},
+        "properties": {"type": "object"},
+        "required": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "additionalProperties": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registration", "execution", "mutation", "release", "publication", "adoption"],
+      "properties": {
+        "registration": {"const": "proposal_only"},
+        "execution": {"const": "not_granted"},
+        "mutation": {"const": "not_granted"},
+        "release": {"const": "not_granted"},
+        "publication": {"const": "not_granted"},
+        "adoption": {"const": "not_granted"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preconditions", "validators"],
+      "properties": {
+        "preconditions": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "validators": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "contract", "fields"],
+      "properties": {
+        "required": {"const": true},
+        "contract": {"type": "string", "minLength": 1},
+        "fields": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "codes"],
+      "properties": {
+        "mode": {"const": "fail_closed"},
+        "codes": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "minItems": 1, "uniqueItems": true}
+      }
+    }
+  }
+}

@@ -1,26 +1,32 @@
-> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+# Active release status — v0.1.127.1.1
 
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.127.1.1 | repair | Canonical ChatGPT project identity for artifact conversation provenance | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip` candidate | construction validation | DOD-496–497 construction; DOD-498 live | — |
+| v0.1.127.1 | repair | Artifact-bound conversation provenance and successor ask routing | `chatgpt_claudecode_workflow-2_v0.1.127.1.zip` repair-required | live legacy bind exposed project-slug normalization defect | DOD-495 superseded by .1.1 proof | — |
+| v0.1.127 | normal | Portable tool-authoring/export | `chatgpt_claudecode_workflow-2_v0.1.127.zip` repair-required | live ask failed twice | DOD-490 open | — |
+| v0.1.126.1.1.1.1.3 | repair | Python validation authority | accepted/current | FINAL_VERIFIED | DOD-484 closed | `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7` |
 
-> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+> v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`; active candidate is `v0.1.127`. Tool authoring/export is PB-environment scope only and grants no execution authority.
 
 # Release Status
 
-Documentation checkpoint: `PB-ETA-2026-08-07.1`
+Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip` (`v0.1.125.3.4.2`).
-Accepted SHA-256: `ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f`.
-Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip`.
-Active repair slice: `v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair`.
-Next planned slice after acceptance: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`).
+Accepted SHA-256: `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`.
+Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.zip`.
+Active normal slice: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+Next planned slice after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`.
 
 | Version | Type | System | Slice | Status |
 |---|---|---|---|---|
-| v0.1.125.3.4.2 | repair | PB control plane | post-adoption historical verification and final convergence | accepted/current |
-| v0.1.126 | normal | PB environment | persistent whole-release ETA estimator | candidate_built |
+| v0.1.125.3.4.2 | repair | PB control plane | post-adoption historical verification and final convergence | superseded |
+| v0.1.126 | normal | PB environment | persistent whole-release ETA estimator | completed_via_repair |
 | v0.1.126.1.1.1.1.2 | repair | PB environment | accepted-runtime precondition and preservation | repair_required |
-| v0.1.126.1.1.1.1.3 | repair | PB environment | validation-Python authority propagation | candidate_built |
-| v0.1.127 | normal | PB environment | portable tool-authoring skill/export | planned_after_acceptance |
-| v0.1.128 | normal | PB environment | hardening and environment contract freeze | planned |
+| v0.1.126.1.1.1.1.3 | repair | PB environment | validation-Python authority propagation / v0.1.126 final convergence | accepted_current |
+| v0.1.127 | normal | PB environment | portable tool-authoring skill/export | candidate_built |
+| v0.1.128 | normal | PB environment | hardening and environment contract freeze | planned_after_acceptance |
 | v0.1.129 | normal | external application | read-only pilot bootstrap | planned |
 | v0.1.130 | normal | external application | controlled first change | planned |
 | v0.1.131 | normal | external application | test/diagnose/correct loop | planned |
@@ -28,14 +34,11 @@ Next planned slice after acceptance: `v0.1.127 — Portable Promptbranch tool-au
 | v0.1.133 | normal | external application | non-production deployment proof | planned |
 | v0.1.134 | normal | PB application platform | reusable/multi-repository workflow | planned |
 
-## Current v0.1.126 authority
+## Current v0.1.127 authority
 
-Accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip` (`v0.1.125.3.4.2`), SHA-256 `ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f`.
+Accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`), SHA-256 `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`.
 
-Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.126.zip` (`v0.1.126`) — persistent whole-release ETA, expected finish, confidence/provenance and timeout-risk diagnostics. Next planned slice after acceptance: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
-
-| v0.1.125.3.4.2 | repair | final convergence | accepted_current | full canonical lifecycle and independent all-state verification green | v0.1.125 DoD complete | ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f |
-| v0.1.126 | normal | persistent whole-release ETA | candidate | construction validation plus live canonical lifecycle pending | adds advisory release timing without weakening release authority | pending |
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.127.zip` (`v0.1.127`) — tracked `promptbranch-tool-authoring` skill, deterministic tool-spec schema/semantic validator, and reproducible portable bundle for ChatGPT Project Sources and coding agents. Authoring grants no execution authority. Next planned slice after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`.
 
 ## Status rule
 

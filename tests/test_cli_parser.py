@@ -1430,3 +1430,20 @@ def test_parser_accepts_orchestration_validate_ledger_command() -> None:
     assert args.command == "orchestration"
     assert args.orchestration_command == "validate-ledger"
     assert args.json is True
+
+
+def test_parser_accepts_tool_authoring_export_and_verify_bundle() -> None:
+    parser = make_parser()
+    export_args = parser.parse_args([
+        "skill", "export", "promptbranch-tool-authoring", "--path", ".",
+        "--output", "/tmp/tool-authoring.zip", "--json",
+    ])
+    assert export_args.command == "skill"
+    assert export_args.skill_command == "export"
+    assert export_args.skill == "promptbranch-tool-authoring"
+    verify_args = parser.parse_args(["skill", "verify-bundle", "/tmp/tool-authoring.zip", "--json"])
+    assert verify_args.skill_command == "verify-bundle"
+    spec_args = parser.parse_args(["skill", "tool-spec-validate", "spec.json", "--json"])
+    assert spec_args.skill_command == "tool-spec-validate"
+    source_args = parser.parse_args(["skill", "authoring-validate", "--path", ".", "--json"])
+    assert source_args.skill_command == "authoring-validate"

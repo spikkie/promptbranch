@@ -1488,3 +1488,31 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 - The canonical state machine may select the candidate pipx interpreter and export it as `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`.
 - Repository release-contract sanitization must preserve that explicit authority. Ambient `PATH` remains ordinary executable-search context and is not a fallback validation authority.
 - A missing or mismatched candidate validation runtime continues to fail closed at runner preflight; no compatibility fallback to foreign pytest is added.
+
+
+## ADR-PROJ-129 — Tool authoring is portable proposal material, never execution authority
+
+- **Status:** accepted for candidate `v0.1.127`.
+- **Baseline:** `v0.1.126.1.1.1.1.3` is accepted/current and `FINAL_VERIFIED`; `v0.1.127` is the active normal PB-environment slice.
+- **Decision:** track one read-only `promptbranch-tool-authoring` skill and one canonical `promptbranch.tool.authoring` schema `1.0`. A valid tool authoring specification describes identity, bounded JSON input, risk/read-only classification, deterministic validation, required evidence, and fail-closed failure semantics.
+- **Portable export:** `pb skill export promptbranch-tool-authoring` writes a byte-reproducible ZIP with fixed entry order/metadata and digest-bound `SKILL.md`, schema, example, `PROJECT_SOURCE.md`, and `AGENTS.md`. `pb skill verify-bundle` independently verifies the bundle.
+- **Authority:** authoring is proposal-only. The authoring contract and manifest explicitly grant no execution, mutation, release, publication, or adoption authority. Registration/implementation/execution remain separate operator-authorized Promptbranch transitions.
+- **Rejected:** free-form unbounded tool arguments, implicit authority from schema validity, compatibility aliases for superseded PB tools, and self-authorizing exported agent instructions.
+- **Next:** after acceptance, `v0.1.128 — PB environment MVP hardening and freeze`.
+
+
+## ADR-PROJ-1271 — Artifact origin conversation is successor-ask authority
+
+- `v0.1.127.1` stores immutable artifact origin conversation provenance.
+- Successor asks use explicit CLI first, then selected baseline artifact provenance; mutable current `pbs` chat is not authority.
+- Canonical live `ask_question` uses baseline provenance only; source/task integration remains isolated.
+- Missing/conflicting/cross-project provenance fails closed. Response-completion timeout semantics are unchanged.
+
+
+## ADR-PROJ-12711 — Canonical ChatGPT project identity is the provenance project key
+
+- Durable artifact provenance compares the stable `g-p-<32hex>` project identity, not the presentation slug.
+- `g-p-<32hex>` and `g-p-<32hex>-<human-readable-slug>` are the same project identity.
+- Different canonical project identities fail closed.
+- The exact conversation URL is preserved; no URL rewriting is introduced.
+- `.127.1` successor routing and authority semantics are unchanged.

@@ -1,3 +1,5 @@
+- [v0.1.127.1.1](../release-v0.1.127.1.1.md) — canonical ChatGPT project identity repair for artifact conversation provenance
+- [v0.1.127.1](../release-v0.1.127.1.md) — artifact-bound conversation provenance and successor ask routing repair
 - [`v0.1.126.1.1.1.1.3`](../release-v0.1.126.1.1.1.1.3.md) — preserve candidate validation-Python authority through sanitized publication validation.
 - [`v0.1.126.1.1.1.1.2`](../release-v0.1.126.1.1.1.1.2.md) — accepted-runtime precondition and immutable production preservation before TESTED_GREEN.
 - [`v0.1.126.1.1.1.1.1`](../release-v0.1.126.1.1.1.1.1.md) — runtime-checkpoint fingerprint authority, exact RUNTIME_PREPARED projection, and publication identity convergence.
@@ -28,6 +30,8 @@ This index provides a compact path into the current documentation-governance rel
 - [v0.1.61 — living-design HTML overview integration](../release-v0.1.61.md)
 - [v0.1.60 — release baseline evidence semantics](../release-v0.1.60.md)
 - [v0.1.59 — PB application design docs-status guard](../release-v0.1.59.md)
+
+- [v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle](../release-v0.1.127.md)
 
 ## Release rules
 

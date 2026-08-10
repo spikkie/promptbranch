@@ -126,6 +126,12 @@ def canonical_state(value: str | None) -> str:
     raise ReleaseStateMachineError(f"unknown release state: {value}")
 
 
+def _conversation_id_from_url(value: str | None) -> str | None:
+    text=str(value or "").strip()
+    if not text.startswith("https://chatgpt.com/g/") or "/c/" not in text: return None
+    tail=text.split("/c/",1)[1].split("/",1)[0].split("?",1)[0].strip(); return tail or None
+
+
 def _version_tuple(value: str) -> tuple[int, ...]:
     text = str(value or "").strip().removeprefix("v")
     try:
@@ -656,6 +662,7 @@ class ReleaseStateMachineConfig:
     push: bool = False
     upload_project_source: bool = False
     candidate_python: str | None = None
+    artifact_conversation_url: str | None = None
 
     def normalized(self) -> "ReleaseStateMachineConfig":
         repo_root = self.repo_root.expanduser().resolve()
@@ -690,6 +697,7 @@ class ReleaseStateMachineConfig:
             push=bool(self.push),
             upload_project_source=bool(self.upload_project_source),
             candidate_python=self.candidate_python,
+            artifact_conversation_url=str(self.artifact_conversation_url or "").strip() or None,
         )
 
 
@@ -1754,6 +1762,11 @@ class SubprocessReleaseExecutor:
                 "PROMPTBRANCH_ACCEPTED_RUNTIME_BEFORE_JSON": json.dumps(runtime_evidence.get("accepted_runtime_before") or {}, sort_keys=True),
             }
         )
+        current_probe=self.current_status(machine,record); current_result=current_probe.get("result") if isinstance(current_probe,dict) and isinstance(current_probe.get("result"),dict) else {}; repos=current_result.get("repos") if isinstance(current_result.get("repos"),dict) else {}; repo_current=repos.get(machine.repo_id) if isinstance(repos.get(machine.repo_id),dict) else {}; baseline_record=repo_current.get("registry_current") if isinstance(repo_current.get("registry_current"),dict) else {}
+        baseline_origin_url=str(baseline_record.get("origin_conversation_url") or "").strip(); baseline_origin_id=str(baseline_record.get("origin_conversation_id") or "").strip(); baseline_exact=str(baseline_record.get("version") or "")==machine.config.baseline_version; origin_exact=bool(baseline_origin_url and baseline_origin_id and _conversation_id_from_url(baseline_origin_url)==baseline_origin_id)
+        if current_probe.get("ok") is not True or not baseline_exact or not origin_exact:
+            return {"ok":False,"status":"baseline_artifact_conversation_provenance_missing","failure_code":"baseline_artifact_conversation_provenance_missing","artifact_sha256":record.get("artifact",{}).get("sha256"),"baseline_version":machine.config.baseline_version,"baseline_registry_record":baseline_record,"checks":{"current_probe_ok":current_probe.get("ok") is True,"baseline_artifact_exact":baseline_exact,"baseline_conversation_provenance_exact":origin_exact},"operator_action":f"pb artifact bind-conversation --repo {machine.repo_id} --version {machine.config.baseline_version} --conversation-url <chat-url> --json","test_subprocess_executed":False}
+
         active_attempt = record.get("active_test_attempt") if isinstance(record.get("active_test_attempt"), dict) else {}
         retry_number = int(active_attempt.get("retry_number") or 1)
         test_run_id = str(active_attempt.get("test_run_id") or f"candidate-test-r{retry_number:04d}")
@@ -1769,6 +1782,8 @@ class SubprocessReleaseExecutor:
             project_name,
             "--keep-project",
             "--fail-fast",
+            "--ask-conversation-url",
+            baseline_origin_url,
             "--json",
         ]
         started = utc_now()
@@ -1813,6 +1828,9 @@ class SubprocessReleaseExecutor:
             "artifact_sha256": record["artifact"]["sha256"],
             "candidate_python": str(candidate_python),
             "candidate_pytest_version": pytest_version,
+            "baseline_conversation_url": baseline_origin_url,
+            "baseline_conversation_id": baseline_origin_id,
+            "baseline_conversation_routing_source": "baseline_artifact_provenance",
             "candidate_service_base_url": service_base,
             "candidate_compose_project": runtime_evidence.get("candidate_compose_project"),
             "candidate_service_port": runtime_evidence.get("candidate_service_port"),
@@ -2698,6 +2716,7 @@ class ReleaseStateMachine:
                 "artifact_input_sha256": self.input_sha256,
                 "profile": self.config.profile,
                 "test_timeout": self.config.test_timeout,
+                "artifact_conversation_url": self.config.artifact_conversation_url,
                 "mutation_policy": {
                     "adopt": self.config.adopt,
                     "commit": self.config.commit,
@@ -2751,6 +2770,11 @@ class ReleaseStateMachine:
             request = record.setdefault("request", {})
             mutation_policy = request.setdefault("mutation_policy", {})
             changed = False
+            stored_origin=str(request.get("artifact_conversation_url") or "").strip() or None; requested_origin=str(self.config.artifact_conversation_url or "").strip() or None
+            if stored_origin and requested_origin and stored_origin != requested_origin:
+                raise TransitionTerminalFailure("artifact_conversation_provenance_conflict","release attempt is already bound to a different artifact origin conversation",details={"existing":stored_origin,"requested":requested_origin})
+            if requested_origin and not stored_origin:
+                request["artifact_conversation_url"]=requested_origin; changed=True
             for key, requested in {
                 "adopt": self.config.adopt,
                 "commit": self.config.commit,
@@ -2976,6 +3000,8 @@ class ReleaseStateMachine:
             "selected_protocol_reply": {
                 "request_id": self.attempt_id,
                 "correlation_id": self.attempt_id,
+                "conversation_url": self.config.artifact_conversation_url,
+                "conversation_id": _conversation_id_from_url(self.config.artifact_conversation_url),
                 "source": "canonical_release_state_machine",
             },
             "verification": record["evidence"]["ARTIFACT_VERIFIED"]["verification"],
@@ -3789,12 +3815,11 @@ class ReleaseStateMachine:
                     registry = _load_candidate_registry(self.config.profile_dir)
                     candidates = [item for item in registry.get("candidates", []) if isinstance(item, dict)]
                     exact = [item for item in candidates if _candidate_matches(item, repo_id=self.repo_id, version=self.config.version, sha256=str(artifact.get("sha256") or ""))]
-                checks = {
-                    "evidence_present": isinstance(evidence, dict),
-                    "exactly_one_candidate": len(exact) == 1,
-                    "no_conflicting_candidate": not conflicts,
-                    "candidate_verified": len(exact) == 1 and exact[0].get("verified") is True,
-                }
+                checks = {"evidence_present": isinstance(evidence, dict),"exactly_one_candidate": len(exact) == 1,"no_conflicting_candidate": not conflicts,"candidate_verified": len(exact) == 1 and exact[0].get("verified") is True}
+                expected_origin_url=str(self.config.artifact_conversation_url or "").strip()
+                if expected_origin_url:
+                    selected=exact[0].get("selected_protocol_reply") if len(exact)==1 and isinstance(exact[0].get("selected_protocol_reply"),dict) else {}
+                    checks["artifact_conversation_provenance_exact"]=(selected.get("conversation_url")==expected_origin_url and selected.get("conversation_id")==_conversation_id_from_url(expected_origin_url))
                 details.update({"exact_match_count": len(exact), "conflict_count": len(conflicts)})
             elif target == "RUNTIME_PREPARED":
                 runtime = evidence if isinstance(evidence, dict) else {}
@@ -3960,14 +3985,11 @@ class ReleaseStateMachine:
                 )
                 production_probe = self.executor.authoritative_runtime_status(self, record) if reached else {"ok": False}
                 cleanup = adopted.get("candidate_runtime_cleanup") if isinstance(adopted.get("candidate_runtime_cleanup"), dict) else {}
-                checks = {
-                    "evidence_present": isinstance(evidence, dict),
-                    "current_alignment_ok": adopted.get("ok") is True,
-                    "current_probe_ok": current_probe.get("ok") is True,
-                    "authoritative_runtime_exact": production_probe.get("ok") is True,
-                    "candidate_runtime_cleanup_ok": cleanup.get("ok") is True,
-                    **alignment,
-                }
+                checks = {"evidence_present": isinstance(evidence, dict),"current_alignment_ok": adopted.get("ok") is True,"current_probe_ok": current_probe.get("ok") is True,"authoritative_runtime_exact": production_probe.get("ok") is True,"candidate_runtime_cleanup_ok": cleanup.get("ok") is True,**alignment}
+                expected_origin_url=str(self.config.artifact_conversation_url or "").strip()
+                if expected_origin_url:
+                    repos=current_payload.get("repos") if isinstance(current_payload.get("repos"),dict) else {}; repo_payload=repos.get(self.repo_id) if isinstance(repos.get(self.repo_id),dict) else {}; current_record=repo_payload.get("registry_current") if isinstance(repo_payload.get("registry_current"),dict) else {}
+                    checks["registry_origin_conversation_exact"]=(current_record.get("origin_conversation_url")==expected_origin_url and current_record.get("origin_conversation_id")==_conversation_id_from_url(expected_origin_url))
                 details["current_probe"] = current_probe
                 details["authoritative_runtime_probe"] = production_probe
             elif target == "FINAL_VERIFIED":
@@ -4057,6 +4079,7 @@ def build_machine_from_args(
     push: bool = False,
     upload_project_source: bool = False,
     candidate_python: str | None = None,
+    artifact_conversation_url: str | None = None,
     executor: ReleaseExecutor | None = None,
 ) -> ReleaseStateMachine:
     return ReleaseStateMachine(
@@ -4075,6 +4098,7 @@ def build_machine_from_args(
             push=push,
             upload_project_source=upload_project_source,
             candidate_python=candidate_python,
+            artifact_conversation_url=artifact_conversation_url,
         ),
         executor=executor,
     )

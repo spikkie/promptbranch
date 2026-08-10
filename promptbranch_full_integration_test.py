@@ -350,6 +350,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
     parser.add_argument("--link-url", default="https://example.com/")
     parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    parser.add_argument("--ask-conversation-url", help="Pin only the ask_question smoke to this exact existing project conversation; source/task tests remain in the generated integration project.")
     parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
     parser.add_argument("--project-list-debug-scroll-rounds", type=int, default=12, help="Scroll rounds for the local project-list debug step.")
     parser.add_argument("--project-list-debug-wait-ms", type=int, default=350, help="Per-round wait in milliseconds for the local project-list debug step.")
@@ -746,6 +747,10 @@ class DockerServiceAdapter:
         with self._client() as client:
             return client.get_chat(conversation_url=conversation_url, keep_open=keep_open, project_url=self.project_url)
 
+    @staticmethod
+    def _project_url_for_conversation(conversation_url: str | None, fallback_project_url: str) -> str:
+        text=str(conversation_url or "").strip(); match=re.match(r"^(https://chatgpt\.com/g/[^/]+)/c/[^/?#]+",text); return f"{match.group(1)}/project" if match else fallback_project_url
+
     async def ask_question_result(
         self,
         *,
@@ -776,6 +781,7 @@ class DockerServiceAdapter:
         retries: Optional[int],
     ) -> dict[str, Any]:
         service_timeout = self._ask_service_timeout_seconds()
+        effective_project_url = self._project_url_for_conversation(conversation_url, self.project_url)
         with self._client() as client:
             try:
                 return client.ask_result(
@@ -785,7 +791,7 @@ class DockerServiceAdapter:
                     expect_json=expect_json,
                     keep_open=keep_open,
                     retries=retries,
-                    project_url=self.project_url,
+                    project_url=effective_project_url,
                     service_timeout_seconds=service_timeout,
                 )
             except Exception as exc:
@@ -802,7 +808,7 @@ class DockerServiceAdapter:
                     "service_timeout_seconds": service_timeout,
                     "service_client_timeout_seconds": float(self.timeout_seconds),
                     "conversation_url": conversation_url,
-                    "project_url": self.project_url,
+                    "project_url": effective_project_url,
                     "submit_outcome_known": False,
                     "retry_permitted": False,
                     "operator_action": "inspect preserved ask/service evidence and the correlated conversation before any retry",
@@ -2360,6 +2366,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
         "requested_only": list(selection.requested_only),
         "requested_skip": list(selection.requested_skip),
         "enabled_steps": list(selection.enabled_steps),
+        "ask_conversation_url": str(getattr(args,"ask_conversation_url",None) or "").strip() or None,
+        "ask_conversation_routing_source": "explicit_cli" if getattr(args,"ask_conversation_url",None) else "generated_test_project",
         "steps": [],
         "cleanup_steps": [],
         "error": None,
@@ -2687,6 +2695,7 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
                 "ask_question",
                 project_service.ask_question_result(
                     prompt=args.ask_prompt,
+                    conversation_url=getattr(args,"ask_conversation_url",None),
                     expect_json=False,
                     keep_open=args.keep_open,
                     retries=0,
@@ -2695,6 +2704,8 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             )
             _require(isinstance(ask_result, dict), f"ask_question did not return structured evidence: {ask_result!r}")
             _require(ask_result.get("ok") is True, f"ask_question returned a structured failure: {ask_result}")
+            if getattr(args,"ask_conversation_url",None):
+                _require(str(ask_result.get("conversation_url") or "").rstrip("/")==str(args.ask_conversation_url).rstrip("/"),f"ask_question did not stay on the pinned conversation: {ask_result}")
             ask_text = str(ask_result.get("answer") or "")
             _require(
                 "INTEGRATION_OK" in ask_text.upper(),

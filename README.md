@@ -1,3 +1,22 @@
+> **v0.1.127.1.1 repair candidate:** canonicalizes ChatGPT project identity for artifact conversation provenance so slugged and unslugged URLs for the same `g-p-<32hex>` project are equivalent; `.127.1` routing/provenance semantics otherwise remain unchanged.
+
+## v0.1.127 Portable Promptbranch tool-authoring skill and export bundle
+
+`v0.1.127` is the next normal Promptbranch environment slice from accepted/current `v0.1.126.1.1.1.1.3` (`chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip`, SHA-256 `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`). It packages a tracked read-only `promptbranch-tool-authoring` skill, a deterministic `promptbranch.tool.authoring` schema, fail-closed semantic validation, and a reproducible portable ZIP export for ChatGPT Project Sources and coding-agent use.
+
+Tool authoring is proposal-only. A valid authoring specification does not register, implement, execute, mutate, publish, release, or adopt a tool. The portable bundle manifest explicitly keeps execution, mutation, release, publication, and adoption authority false, and verification rejects missing, extra, modified, non-deterministic, or authority-escalating content.
+
+New read-only/portable commands:
+
+```text
+pb skill authoring-validate --path <repo> --json
+pb skill tool-spec-validate <spec.json> --json
+pb skill export promptbranch-tool-authoring --path <repo> --output <bundle.zip> --json
+pb skill verify-bundle <bundle.zip> --json
+```
+
+Accepted/current remains `v0.1.126.1.1.1.1.3` until the canonical `v0.1.127` lifecycle reaches `FINAL_VERIFIED`.
+
 ## v0.1.126.1.1.1.1.3 Release validation Python authority propagation repair
 
 `v0.1.126.1.1.1.1.3` is a narrow repair candidate built from the exact `v0.1.126.1.1.1.1.2` candidate after live full validation passed 53/53 but publication stopped before Git commit. The canonical state machine selected the candidate pipx interpreter with pytest 9.0.2, then the repository release-contract sanitizer dropped `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`, allowing ambient `PATH` to resolve `/home/spikkie/git/ai-aip/py_env/bin/python3` with pytest 8.4.2.

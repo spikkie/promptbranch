@@ -1546,3 +1546,20 @@ A retry refreshes the precondition snapshot. Operators therefore restore the acc
 ## v0.1.126.1.1.1.1.3 — Release-validation Python authority propagation
 
 No stored attempt migration is performed. `v0.1.126.1.1.1.1.2` remains immutable live failure evidence: 53/53 candidate tests passed, then publication preflight selected foreign pytest 8.4.2 because the release-contract sanitizer dropped `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`. New `v0.1.126.1.1.1.1.3` attempts preserve the explicit candidate-Python authority directly; no legacy ambient-Python fallback is retained.
+
+
+## v0.1.127 — portable tool-authoring contract
+
+`v0.1.127` starts from accepted/current `v0.1.126.1.1.1.1.3`. No user state, browser profile, Project Source, artifact registry, release-attempt, or accepted-runtime migration is required. The new tracked `promptbranch-tool-authoring` skill and `promptbranch.tool.authoring` schema are additive PB-environment control-plane material.
+
+There is no compatibility adapter for an older Promptbranch tool-authoring schema because no prior canonical schema exists. Tool specifications that do not satisfy schema/semantic version `1.0` fail closed. Export bundles are generated deterministically from tracked source and can be regenerated; they are not accepted/current release artifacts and do not grant execution authority. After `v0.1.127` acceptance, the next normal release is `v0.1.128`.
+
+
+## v0.1.127.1 provenance migration
+
+For older adopted artifacts without origin metadata, bind the exact historical conversation once using `pb artifact bind-conversation --repo <repo> --version <version> --conversation-url <chat-url> --json`. Never infer mutable current chat automatically.
+
+
+## v0.1.127.1.1 project-identity normalization
+
+No registry rewrite or automatic migration is performed. Re-run the exact `pb artifact bind-conversation --repo <repo> --version <version> --conversation-url <chat-url> --json` operation. The durable validator now canonicalizes the stable ChatGPT project identity before comparing artifact and conversation URLs. Existing exact provenance remains immutable.

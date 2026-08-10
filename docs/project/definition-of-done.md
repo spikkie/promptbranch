@@ -1231,3 +1231,35 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-482 | A poisoned ambient `PATH` pointing at a foreign pytest environment cannot replace explicit candidate validation-Python authority | focused | poisoned-PATH regression + deterministic runner preflight | v0.1.126.1.1.1.1.3 |
 | DOD-483 | All required deterministic release groups execute under the candidate interpreter rather than being preflight-skipped | construction | mandatory release-validation groups | v0.1.126.1.1.1.1.3 |
 | DOD-484 | Repair closes only after the canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.125.3.4.2` | live_pending | canonical release proof | v0.1.126.1.1.1.1.3 |
+
+
+## v0.1.127 normal-slice DoD
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-485 | Canonical AI registry tracks exactly one `promptbranch-tool-authoring` skill whose allowed runtime surface is read-only inspection only | focused | skill validation + registry validation | v0.1.127 |
+| DOD-486 | `promptbranch.tool.authoring` schema/semantic validation requires bounded JSON input, explicit risk/read-only classification, named validators, required evidence, stable failure codes, and rejects authority escalation | focused | positive/negative tool-spec regressions | v0.1.127 |
+| DOD-487 | Portable export contains `SKILL.md`, tool schema, valid example, `PROJECT_SOURCE.md`, `AGENTS.md`, and digest-bound `manifest.json` with deterministic ZIP metadata | focused + construction | byte-identical export regression + bundle verifier | v0.1.127 |
+| DOD-488 | Tool-authoring validation/export grants no execution, mutation, release, publication, or adoption authority | focused | manifest/source authority assertions | v0.1.127 |
+| DOD-489 | Bundle verification fails closed on missing/extra/tampered entries, digest mismatch, unsafe paths, non-deterministic metadata, or manifest authority escalation | focused | tamper/negative regressions | v0.1.127 |
+| DOD-490 | Normal slice closes only after canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.126.1.1.1.1.3` and scoped artifact-current aligns | live_pending | canonical release proof | v0.1.127 |
+
+
+## v0.1.127.1 repair DoD
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-491 | Exact origin conversation URL/ID and correlated protocol identity persist on accepted artifacts | focused | provenance regressions | v0.1.127.1 |
+| DOD-492 | Legacy binding is explicit, immutable, idempotent for same URL, conflict/project mismatch fail closed | focused | bind regressions | v0.1.127.1 |
+| DOD-493 | Successor ask uses explicit CLI first, baseline artifact provenance otherwise; mutable current chat cannot redirect | focused | routing regressions | v0.1.127.1 |
+| DOD-494 | Full release routes only ask_question to baseline origin, matching project URL; source/task stay isolated; missing provenance blocks | construction | harness/state-machine + required groups | v0.1.127.1 |
+| DOD-495 | Repair closes only at FINAL_VERIFIED from `.1.3` with scoped current exact `.127.1` and own origin provenance | live_pending | canonical live proof | v0.1.127.1 |
+
+
+## v0.1.127.1.1 repair DoD
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-496 | Artifact provenance accepts slugged and unslugged URLs when both canonicalize to the same `g-p-<32hex>` identity | focused | project-identity provenance regressions | v0.1.127.1.1 |
+| DOD-497 | Different canonical ChatGPT project identities remain rejected and the exact origin conversation URL is preserved | focused | negative provenance regressions | v0.1.127.1.1 |
+| DOD-498 | Repair proceeds beyond legacy migration only after the exact `.1.3` `artifact bind-conversation` live proof succeeds; closure still requires canonical `FINAL_VERIFIED` plus scoped current | live_pending | exact bind + canonical release proof | v0.1.127.1.1 |

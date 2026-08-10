@@ -90,6 +90,13 @@ from promptbranch_application_migration import (
     write_application_template,
     write_migration_report,
 )
+from promptbranch_tool_authoring import (
+    ToolAuthoringError,
+    export_tool_authoring_bundle,
+    validate_tool_authoring_source,
+    validate_tool_spec_file,
+    verify_tool_authoring_bundle,
+)
 from promptbranch_operational_evidence import (
     OperationalEvidenceError,
     build_operational_lifecycle_evidence,
@@ -4187,15 +4194,15 @@ def _candidate_protocol_selection(candidate: dict[str, Any] | None) -> dict[str,
     if not isinstance(candidate, dict):
         return None
     selected = candidate.get("selected_protocol_reply") if isinstance(candidate.get("selected_protocol_reply"), dict) else {}
-    request_id = candidate.get("reply_request_id") or selected.get("request_id")
-    message_id = candidate.get("message_id") or selected.get("message_id")
-    answer_id = candidate.get("answer_id") or selected.get("answer_id")
-    conversation_id = candidate.get("conversation_id") or selected.get("conversation_id")
+    request_id = selected.get("request_id") or candidate.get("reply_request_id")
+    message_id = selected.get("message_id") or candidate.get("message_id")
+    answer_id = selected.get("answer_id") or candidate.get("answer_id")
+    conversation_id = selected.get("conversation_id") or candidate.get("conversation_id")
     if not any([request_id, message_id, answer_id, conversation_id]):
         return None
     return {
         "request_id": request_id,
-        "correlation_id": candidate.get("reply_correlation_id") or selected.get("correlation_id"),
+        "correlation_id": selected.get("correlation_id") or candidate.get("reply_correlation_id"),
         "conversation_id": conversation_id,
         "conversation_url": selected.get("conversation_url"),
         "message_id": message_id,
@@ -4203,6 +4210,25 @@ def _candidate_protocol_selection(candidate: dict[str, Any] | None) -> dict[str,
         "answer_id": answer_id,
         "answer_index": selected.get("answer_index"),
     }
+
+
+def _artifact_origin_provenance(record: dict[str, Any] | None) -> dict[str, Any]:
+    item = record if isinstance(record, dict) else {}
+    return {
+        "conversation_url": str(item.get("origin_conversation_url") or "").strip() or None,
+        "conversation_id": str(item.get("origin_conversation_id") or "").strip() or None,
+        "request_id": str(item.get("origin_request_id") or "").strip() or None,
+        "correlation_id": str(item.get("origin_correlation_id") or "").strip() or None,
+        "message_id": str(item.get("origin_message_id") or "").strip() or None,
+        "answer_id": str(item.get("origin_answer_id") or "").strip() or None,
+    }
+
+
+def _artifact_origin_provenance_valid(record: dict[str, Any] | None) -> bool:
+    origin = _artifact_origin_provenance(record)
+    url = str(origin.get("conversation_url") or "")
+    cid = str(origin.get("conversation_id") or "")
+    return bool(url.startswith("https://chatgpt.com/g/") and "/c/" in url and cid and conversation_id_from_url(url) == cid)
 
 
 def _select_artifact_candidate_record(
@@ -6959,12 +6985,7 @@ async def cmd_project_source_remove(backend: CommandBackend, args: argparse.Name
     return 0
 
 
-def _protocol_request_from_current_baseline(
-    backend: Any,
-    args: argparse.Namespace,
-    *,
-    prompt: str,
-) -> dict[str, Any]:
+def _protocol_request_from_current_baseline(backend: Any, args: argparse.Namespace, *, prompt: str) -> dict[str, Any]:
     registry = _artifact_registry_from_args(args)
     current_payload = _artifact_current_payload(backend, registry)
     selected_repo_id, selected_current = _artifact_current_select_entry(current_payload)
@@ -6976,66 +6997,36 @@ def _protocol_request_from_current_baseline(
     current_source = state.get("source_ref") or current_artifact
     source_version = state.get("source_version") or current_version
     repo_name = selected_repo_id or _repo_name_from_artifact_name(str(current_artifact or registry_current.get("filename") or ""))
+    selected_origin_record = dict(registry_current)
     baseline_artifact_override = str(getattr(args, "baseline_artifact", None) or "").strip()
     baseline_version_override = _normalize_version_token(getattr(args, "baseline_version", None))
     baseline_override_applied = False
     if baseline_artifact_override:
-        current_artifact = Path(baseline_artifact_override).name
-        current_source = current_artifact
+        current_artifact = Path(baseline_artifact_override).name; current_source = current_artifact
         inferred_version = _normalize_version_token(_artifact_version_from_filename(current_artifact))
         current_version = baseline_version_override or inferred_version or current_version
-        source_version = current_version
-        repo_name = _repo_name_from_artifact_name(str(current_artifact)) or repo_name
-        baseline_override_applied = True
+        source_version = current_version; repo_name = _repo_name_from_artifact_name(str(current_artifact)) or repo_name; baseline_override_applied = True
     elif baseline_version_override:
-        current_version = baseline_version_override
-        source_version = baseline_version_override
-        baseline_override_applied = True
-    request_id = getattr(args, "request_id", None) or f"req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
-    artifact = {
-        "repo": repo_name,
-        "current_baseline": current_artifact,
-        "current_version": current_version,
-        "source_ref": current_source,
-        "source_version": source_version,
-        "registry_current": current_artifact if baseline_override_applied else registry_current.get("filename"),
-        "registry_current_version": current_version if baseline_override_applied else registry_current.get("version"),
-    }
+        current_version = baseline_version_override; source_version = baseline_version_override; baseline_override_applied = True
     if baseline_override_applied:
-        artifact["baseline_override"] = True
-        artifact["baseline_override_reason"] = "explicit_protocol_request_baseline"
-        artifact["observed_registry_current"] = registry_current.get("filename")
-        artifact["observed_registry_current_version"] = registry_current.get("version")
-    envelope = build_ask_request_envelope(
-        prompt=prompt,
-        request_id=request_id,
-        correlation_id=getattr(args, "correlation_id", None),
-        workspace={
-            "project_name": snapshot.get("project_name") or project_name_from_url(snapshot.get("resolved_project_home_url") or ""),
-            "project_home_url": snapshot.get("resolved_project_home_url"),
-        },
-        task={
-            "conversation_url": getattr(args, "conversation_url", None) or snapshot.get("conversation_url"),
-            "conversation_id": conversation_id_from_url(getattr(args, "conversation_url", None) or snapshot.get("conversation_url") or "") or "current",
-            "turn_policy": "assistant_may_return_one_protocol_reply",
-        },
-        artifact=artifact,
-        target_version=getattr(args, "target_version", None),
-        release_type=getattr(args, "release_type", "normal"),
-        intent_kind=getattr(args, "intent_kind", "software_release_request"),
-        infer_target_version=not bool(getattr(args, "no_target_version_inference", False)),
-    )
-    return {
-        "ok": True,
-        "action": "ask_protocol_request",
-        "status": "request_built",
-        "request": envelope,
-        "artifact_current": current_payload,
-        "automation_performed": False,
-        "download_performed": False,
-        "migration_performed": False,
-        "adoption_performed": False,
-    }
+        matches=[item for item in registry.list() if item.get("kind")=="adopted_release" and (not repo_name or item.get("repo_id")==repo_name) and _candidate_version_normalized(item.get("version"))==_candidate_version_normalized(current_version) and (not current_artifact or Path(str(item.get("filename") or "")).name==Path(str(current_artifact)).name)]
+        selected_origin_record=dict(matches[0]) if len(matches)==1 else {}
+    explicit = str(getattr(args,"conversation_url",None) or "").strip() or None
+    if explicit:
+        routed=explicit; source="explicit_cli"
+    elif _artifact_origin_provenance_valid(selected_origin_record):
+        routed=str(selected_origin_record.get("origin_conversation_url")); source="baseline_artifact_provenance"; args.conversation_url=routed
+    else:
+        return {"ok":False,"action":"ask_protocol_request","status":"baseline_artifact_conversation_provenance_missing","error":"successor protocol ask requires an explicit conversation or immutable origin conversation provenance on the selected baseline artifact","baseline_artifact":current_artifact,"baseline_version":current_version,"repo_id":repo_name,"routing_source":"none","required_command":f"pb artifact bind-conversation --repo {repo_name} --version {current_version} --conversation-url <chat-url> --json","artifact_current":current_payload,"automation_performed":False,"download_performed":False,"migration_performed":False,"adoption_performed":False}
+    cid=conversation_id_from_url(routed or "")
+    if not cid:
+        return {"ok":False,"action":"ask_protocol_request","status":"invalid_successor_conversation_url","error":"successor conversation must be an exact ChatGPT conversation URL","conversation_url":routed,"routing_source":source,"automation_performed":False,"download_performed":False,"migration_performed":False,"adoption_performed":False}
+    request_id=getattr(args,"request_id",None) or f"req_{utc_now().replace('-', '').replace(':', '').replace('.', '').replace('+', 'Z')}"
+    artifact={"repo":repo_name,"current_baseline":current_artifact,"current_version":current_version,"source_ref":current_source,"source_version":source_version,"registry_current":current_artifact if baseline_override_applied else registry_current.get("filename"),"registry_current_version":current_version if baseline_override_applied else registry_current.get("version")}
+    if baseline_override_applied:
+        artifact.update({"baseline_override":True,"baseline_override_reason":"explicit_protocol_request_baseline","observed_registry_current":registry_current.get("filename"),"observed_registry_current_version":registry_current.get("version")})
+    envelope=build_ask_request_envelope(prompt=prompt,request_id=request_id,correlation_id=getattr(args,"correlation_id",None),workspace={"project_name":snapshot.get("project_name") or project_name_from_url(snapshot.get("resolved_project_home_url") or ""),"project_home_url":snapshot.get("resolved_project_home_url")},task={"conversation_url":routed,"conversation_id":cid,"turn_policy":"assistant_may_return_one_protocol_reply"},artifact=artifact,target_version=getattr(args,"target_version",None),release_type=getattr(args,"release_type","normal"),intent_kind=getattr(args,"intent_kind","software_release_request"),infer_target_version=not bool(getattr(args,"no_target_version_inference",False)))
+    return {"ok":True,"action":"ask_protocol_request","status":"request_built","request":envelope,"artifact_current":current_payload,"conversation_routing":{"source":source,"conversation_url":routed,"conversation_id":cid,"baseline_artifact":current_artifact,"baseline_version":current_version},"automation_performed":False,"download_performed":False,"migration_performed":False,"adoption_performed":False}
 
 
 
@@ -9144,6 +9135,8 @@ async def cmd_ask_release(backend: CommandBackend, args: argparse.Namespace) -> 
     args.protocol = True
     args.intent_kind = "software_release_candidate_request"
     protocol_payload = _protocol_request_from_current_baseline(backend, args, prompt=raw_prompt or "release candidate request")
+    if protocol_payload.get("ok") is not True:
+        print(json.dumps(protocol_payload, indent=2, ensure_ascii=False)); return 2
     expected = _ask_release_expected_from_envelope(protocol_payload["request"], args)
     if not expected.get("expected_artifact") or not expected.get("expected_version"):
         payload = {
@@ -9844,6 +9837,8 @@ async def cmd_ask(backend: CommandBackend, args: argparse.Namespace) -> int:
     envelope: dict[str, Any] | None = None
     if getattr(args, "protocol", False):
         protocol_payload = _protocol_request_from_current_baseline(backend, args, prompt=prompt)
+        if protocol_payload.get("ok") is not True:
+            print(json.dumps(protocol_payload, indent=2, ensure_ascii=False)); return 2
         envelope = protocol_payload["request"]
         if getattr(args, "print_request_json", False):
             print(json.dumps(protocol_payload, indent=2, ensure_ascii=False))
@@ -10514,6 +10509,7 @@ async def cmd_test_project_source_file_reliability(args: argparse.Namespace) -> 
         'memory_mode': args.memory_mode,
         'link_url': args.link_url,
         'ask_prompt': args.ask_prompt,
+        'ask_conversation_url': getattr(args, 'ask_conversation_url', None),
         'json_out': args.json_out,
         'project_list_debug_scroll_rounds': args.project_list_debug_scroll_rounds,
         'project_list_debug_wait_ms': args.project_list_debug_wait_ms,
@@ -20980,6 +20976,9 @@ def _release_state_machine_verify_inputs(args: argparse.Namespace, repo_root: Pa
                 raise ReleaseStateMachineError("authoritative attempt artifact object is missing")
             if not getattr(args, "baseline_version", None):
                 args.baseline_version = attempt.get("baseline_version")
+            if not getattr(args, "artifact_conversation_url", None):
+                request = attempt.get("request") if isinstance(attempt.get("request"), dict) else {}
+                args.artifact_conversation_url = request.get("artifact_conversation_url")
     baseline = _candidate_version_normalized(getattr(args, "baseline_version", None))
     if not baseline:
         parsed = parse_canonical_artifact_filename(artifact.name)
@@ -20992,6 +20991,9 @@ def _release_state_machine_verify_inputs(args: argparse.Namespace, repo_root: Pa
         if len(attempts) == 1:
             attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
             baseline = _candidate_version_normalized(attempt.get("baseline_version"))
+            if not getattr(args, "artifact_conversation_url", None):
+                request = attempt.get("request") if isinstance(attempt.get("request"), dict) else {}
+                args.artifact_conversation_url = request.get("artifact_conversation_url")
     if not baseline:
         raise ReleaseStateMachineError("release verify could not resolve baseline version; pass --baseline-version")
     return artifact, baseline
@@ -21016,6 +21018,7 @@ async def cmd_release_state_machine_run(backend: Any, args: argparse.Namespace) 
             push=bool(getattr(args, "push", False)),
             upload_project_source=bool(getattr(args, "upload_project_source", False)),
             candidate_python=getattr(args, "candidate_python", None),
+            artifact_conversation_url=getattr(args, "artifact_conversation_url", None),
         )
         payload, code = machine.run()
     except ReleaseStateMachineError as exc:
@@ -21048,6 +21051,7 @@ async def cmd_release_state_machine_verify(backend: Any, args: argparse.Namespac
             test_timeout=float(getattr(args, "test_timeout", 3600.0) or 3600.0),
             until="final-verified",
             candidate_python=getattr(args, "candidate_python", None),
+            artifact_conversation_url=getattr(args, "artifact_conversation_url", None),
         )
         payload, code = machine.verify(repair_projections=not bool(getattr(args, "no_repair_projections", False)))
     except ReleaseStateMachineError as exc:
@@ -23695,6 +23699,23 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         return emit(preflight, 0)
 
     repo_id = infer_repo_id_from_artifact_filename(filename)
+    candidate_origin = _candidate_protocol_selection(candidate) or {}
+    origin_conversation_url = str(candidate_origin.get("conversation_url") or "").strip() or None
+    origin_conversation_id = str(candidate_origin.get("conversation_id") or "").strip() or None
+    # Persist artifact origin only when the candidate carries a complete, self-consistent
+    # ChatGPT conversation binding. Legacy candidates may still carry request/answer
+    # aliases without a conversation URL; those fields are not artifact provenance and
+    # must not create a partial origin record that the registry correctly rejects.
+    origin_is_complete = bool(
+        origin_conversation_url
+        and origin_conversation_id
+        and conversation_id_from_url(origin_conversation_url) == origin_conversation_id
+        and _looks_like_chatgpt_project_conversation(origin_conversation_url, origin_conversation_id)
+    )
+    if not origin_is_complete:
+        candidate_origin = {}
+        origin_conversation_url = None
+        origin_conversation_id = None
     record = ArtifactRecord(
         path=str(candidate_path),
         filename=filename,
@@ -23708,6 +23729,12 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         created_at=utc_now(),
         source_ref=filename,
         project_url=project_url,
+        origin_conversation_url=origin_conversation_url,
+        origin_conversation_id=origin_conversation_id,
+        origin_request_id=str(candidate_origin.get("request_id") or "").strip() or None,
+        origin_correlation_id=str(candidate_origin.get("correlation_id") or "").strip() or None,
+        origin_message_id=str(candidate_origin.get("message_id") or "").strip() or None,
+        origin_answer_id=str(candidate_origin.get("answer_id") or "").strip() or None,
     )
     try:
         artifact_payload = registry.add(record)
@@ -24307,11 +24334,40 @@ async def cmd_artifact_guard(backend: Any, args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+async def cmd_artifact_bind_conversation(backend: Any, args: argparse.Namespace) -> int:
+    del backend
+    registry=_artifact_registry_from_args(args); repo_id=normalize_repo_id(getattr(args,"repo",None)); version=_candidate_version_normalized(getattr(args,"version",None)); url=str(getattr(args,"conversation_url",None) or "").strip(); cid=conversation_id_from_url(url)
+    base={"ok":False,"action":"artifact_bind_conversation","repo_id":repo_id,"version":version,"conversation_url":url or None,"conversation_id":cid,"registry_file":str(registry.path),"mutation_performed":False}
+    if not repo_id or not version:
+        print(json.dumps({**base,"status":"invalid_artifact_scope","error":"--repo and --version must select one adopted release"},indent=2)); return 2
+    if not cid or not url.startswith("https://chatgpt.com/g/") or "/c/" not in url:
+        print(json.dumps({**base,"status":"invalid_conversation_url","error":"--conversation-url must be an exact ChatGPT project conversation URL"},indent=2)); return 2
+    payload=registry.load(); artifacts=[x for x in payload.get("artifacts",[]) if isinstance(x,dict)]; matches=[x for x in artifacts if x.get("kind")=="adopted_release" and x.get("repo_id")==repo_id and _candidate_version_normalized(x.get("version"))==version]
+    if len(matches)!=1:
+        print(json.dumps({**base,"status":"artifact_not_found_or_ambiguous","match_count":len(matches),"error":"exactly one adopted release must match --repo/--version"},indent=2)); return 1
+    record=matches[0]; project_url=str(record.get("project_url") or "").strip() or None; conv_project=url.split("/c/",1)[0].rstrip("/")+"/project"
+    if project_url and not _same_project_url_identity(project_url,conv_project):
+        print(json.dumps({**base,"status":"conversation_project_mismatch","artifact_project_url":project_url,"conversation_project_url":conv_project,"error":"origin conversation must belong to the artifact project"},indent=2)); return 1
+    existing=str(record.get("origin_conversation_url") or "").strip() or None; existing_id=str(record.get("origin_conversation_id") or "").strip() or None
+    if existing:
+        if existing!=url or existing_id!=cid:
+            print(json.dumps({**base,"status":"provenance_conflict","existing_conversation_url":existing,"existing_conversation_id":existing_id,"error":"artifact conversation provenance is immutable once bound"},indent=2)); return 1
+        print(json.dumps({**base,"ok":True,"status":"conversation_provenance_already_bound","artifact":record},indent=2)); return 0
+    record["origin_conversation_url"]=url; record["origin_conversation_id"]=cid
+    err=registry._record_validation_error(record)
+    if err:
+        print(json.dumps({**base,"status":"artifact_provenance_invalid","error":err},indent=2)); return 1
+    payload["updated_at"]=utc_now(); payload["artifacts"]=artifacts; registry.profile_dir.mkdir(parents=True,exist_ok=True); registry.path.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+    print(json.dumps({**base,"ok":True,"status":"conversation_provenance_bound","mutation_performed":True,"artifact":record},indent=2)); return 0
+
+
 async def cmd_artifact(backend: Any, args: argparse.Namespace) -> int:
     if args.artifact_command == "current":
         return await cmd_artifact_current(backend, args)
     if args.artifact_command == "list":
         return await cmd_artifact_list(backend, args)
+    if args.artifact_command == "bind-conversation":
+        return await cmd_artifact_bind_conversation(backend, args)
     if args.artifact_command == "adopt":
         return await cmd_artifact_adopt(backend, args)
     if args.artifact_command == "candidate-test":
@@ -24453,6 +24509,7 @@ def _apply_test_suite_defaults(args: argparse.Namespace) -> None:
         "memory_mode": "default",
         "link_url": "https://example.com/",
         "ask_prompt": "Reply with exactly the single token INTEGRATION_OK and nothing else.",
+        "ask_conversation_url": None,
         "json_out": None,
         "project_list_debug_scroll_rounds": 12,
         "project_list_debug_wait_ms": 350,
@@ -26961,6 +27018,32 @@ async def cmd_skill(backend: CommandBackend, args: argparse.Namespace) -> int:
         payload = skill_show(args.skill, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None), include_content=not getattr(args, "no_content", False))
     elif args.skill_command == "validate":
         payload = skill_validate(args.skill, repo_path=args.path, profile_dir=getattr(args, "profile_dir", None))
+    elif args.skill_command == "authoring-validate":
+        payload = validate_tool_authoring_source(args.path)
+    elif args.skill_command == "tool-spec-validate":
+        payload = validate_tool_spec_file(args.spec)
+    elif args.skill_command == "export":
+        if args.skill != "promptbranch-tool-authoring":
+            payload = {
+                "ok": False,
+                "action": "tool_authoring_export_bundle",
+                "status": "unsupported_skill",
+                "skill": args.skill,
+                "errors": ["only promptbranch-tool-authoring has a canonical portable export bundle"],
+            }
+        else:
+            try:
+                payload = export_tool_authoring_bundle(args.path, args.output, force=bool(args.force))
+            except ToolAuthoringError as exc:
+                payload = {
+                    "ok": False,
+                    "action": "tool_authoring_export_bundle",
+                    "status": "export_failed",
+                    "skill": args.skill,
+                    "errors": [str(exc)],
+                }
+    elif args.skill_command == "verify-bundle":
+        payload = verify_tool_authoring_bundle(args.bundle)
     else:
         raise RuntimeError(f"Unknown skill command: {args.skill_command}")
 
@@ -27225,6 +27308,7 @@ def _add_test_suite_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
     parser.add_argument("--link-url", default="https://example.com/")
     parser.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    parser.add_argument("--ask-conversation-url", help="Pin only ask_question to an exact existing project conversation; generated project/source/task coverage remains isolated.")
     parser.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
     parser.add_argument("--project-list-debug-scroll-rounds", type=int, default=12)
     parser.add_argument("--project-list-debug-wait-ms", type=int, default=350)
@@ -27573,6 +27657,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_run.add_argument("--test-timeout", type=float, default=3600.0, help="Bounded candidate-test timeout in seconds.")
     release_run.add_argument("--until", default="tested-green", help="Target state: declared, artifact-bound, artifact-verified, candidate-registered, runtime-prepared, tested-green, accepted, adopted-current, or final-verified.")
     release_run.add_argument("--candidate-python", help="Explicit candidate interpreter. Defaults to the Promptbranch pipx interpreter, then current Python.")
+    release_run.add_argument("--artifact-conversation-url", help="Exact ChatGPT conversation that produced this candidate artifact; persisted as immutable provenance on acceptance.")
     release_run.add_argument("--adopt", action="store_true", help="Explicitly authorize ACCEPTED and subsequent adopted/current transitions.")
     release_run.add_argument("--commit", action="store_true", help="Explicitly authorize guarded release-pipeline commit after candidate testing.")
     release_run.add_argument("--push", action="store_true", help="Explicitly authorize guarded push; requires --commit.")
@@ -27587,6 +27672,7 @@ def make_parser() -> argparse.ArgumentParser:
     release_verify.add_argument("--profile", choices=["smoke", "full"], default="full")
     release_verify.add_argument("--test-timeout", type=float, default=3600.0)
     release_verify.add_argument("--candidate-python")
+    release_verify.add_argument("--artifact-conversation-url", help="Expected exact origin conversation; when omitted, recover it from the durable attempt.")
     release_verify.add_argument("--all-states", action="store_true", help="Compatibility spelling; verification always reports every canonical state.")
     release_verify.add_argument("--no-repair-projections", action="store_true", help="Do not reconstruct missing derived candidate projections from authoritative attempt evidence.")
     release_verify.add_argument("--json", action="store_true", help="Emit all state checks as JSON.")
@@ -27979,6 +28065,12 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_list = artifact_subparsers.add_parser("list", help="List locally registered artifacts.")
     artifact_list.add_argument("--json", action="store_true")
 
+    artifact_bind_conversation = artifact_subparsers.add_parser("bind-conversation", help="Bind immutable origin conversation provenance to one adopted release.")
+    artifact_bind_conversation.add_argument("--repo", required=True)
+    artifact_bind_conversation.add_argument("--version", required=True)
+    artifact_bind_conversation.add_argument("--conversation-url", required=True)
+    artifact_bind_conversation.add_argument("--json", action="store_true")
+
     artifact_adopt = artifact_subparsers.add_parser("adopt", help="Adopt an existing Project Source ZIP as the current local artifact/source baseline.")
     artifact_adopt.add_argument("artifact", help="Artifact ZIP filename or local ZIP path to adopt, for example chatgpt_claudecode_workflow_v0.0.221.zip.")
     artifact_adopt.add_argument("--from-project-source", action="store_true", help="Verify the ZIP exists exactly once in current Project Sources before updating local registry/state.")
@@ -28223,6 +28315,25 @@ def make_parser() -> argparse.ArgumentParser:
     skill_validate_parser.add_argument("skill", help="Skill name or path, for example .promptbranch/skills/repo-inspection.")
     skill_validate_parser.add_argument("--path", default=".", help="Repo path used to discover local .promptbranch/skills.")
     skill_validate_parser.add_argument("--json", action="store_true")
+
+    skill_authoring_validate_parser = skill_subparsers.add_parser("authoring-validate", help="Validate the tracked promptbranch-tool-authoring source contract without mutation.")
+    skill_authoring_validate_parser.add_argument("--path", default=".", help="Repository root containing the tracked tool-authoring skill and schema.")
+    skill_authoring_validate_parser.add_argument("--json", action="store_true")
+
+    skill_tool_spec_validate_parser = skill_subparsers.add_parser("tool-spec-validate", help="Validate one deterministic Promptbranch tool-authoring JSON specification.")
+    skill_tool_spec_validate_parser.add_argument("spec", help="Path to a promptbranch.tool.authoring JSON specification.")
+    skill_tool_spec_validate_parser.add_argument("--json", action="store_true")
+
+    skill_export_parser = skill_subparsers.add_parser("export", help="Export the canonical portable promptbranch-tool-authoring bundle as a deterministic ZIP.")
+    skill_export_parser.add_argument("skill", help="Skill to export. v0.1.127 supports promptbranch-tool-authoring.")
+    skill_export_parser.add_argument("--path", default=".", help="Repository root containing the tracked skill sources.")
+    skill_export_parser.add_argument("--output", help="Output ZIP path. Defaults to promptbranch-tool-authoring_<VERSION>.zip in the current directory.")
+    skill_export_parser.add_argument("--force", action="store_true", help="Replace an existing output ZIP at the exact requested path.")
+    skill_export_parser.add_argument("--json", action="store_true")
+
+    skill_verify_bundle_parser = skill_subparsers.add_parser("verify-bundle", help="Verify a portable promptbranch-tool-authoring export ZIP and its fail-closed authority manifest.")
+    skill_verify_bundle_parser.add_argument("bundle", help="Portable promptbranch-tool-authoring ZIP to verify.")
+    skill_verify_bundle_parser.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")
     mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -28655,6 +28766,7 @@ def make_parser() -> argparse.ArgumentParser:
     test_suite.add_argument("--memory-mode", choices=["default", "project-only"], default="default")
     test_suite.add_argument("--link-url", default="https://example.com/")
     test_suite.add_argument("--ask-prompt", default="Reply with exactly the single token INTEGRATION_OK and nothing else.")
+    test_suite.add_argument("--ask-conversation-url", help="Pin only ask_question to an exact existing project conversation.")
     test_suite.add_argument("--json-out", help="Optional file path where the final JSON summary will be written.")
     test_suite.add_argument("--project-list-debug-scroll-rounds", type=int, default=12)
     test_suite.add_argument("--project-list-debug-wait-ms", type=int, default=350)

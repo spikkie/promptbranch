@@ -77,6 +77,7 @@ def _seed_protocol_project_scope(
     project_url: str,
     artifact_ref: str,
     artifact_version: str,
+    origin_conversation_url: str | None = None,
 ) -> None:
     """Create the tracked binding and adopted baseline required by protocol asks."""
     match = re.search(r"/g/(?P<project_id>g-p-[^/]+)/project(?:$|[?#])", project_url)
@@ -108,6 +109,9 @@ def _seed_protocol_project_scope(
         file_count=1,
         created_at="2026-07-25T00:00:00Z",
         source_ref=artifact_ref,
+        project_url=project_url,
+        origin_conversation_url=origin_conversation_url or project_url.replace("/project", "/c/abc123"),
+        origin_conversation_id=(origin_conversation_url or project_url.replace("/project", "/c/abc123")).rstrip("/").split("/c/", 1)[-1],
     ))
 
 
@@ -742,6 +746,7 @@ def test_ask_protocol_print_request_uses_current_baseline(monkeypatch, capsys, t
         file_count=1,
         created_at="2026-07-25T00:00:00Z",
         source_ref="chatgpt_claudecode_workflow_v0.0.206.zip",
+        project_url=project_url, origin_conversation_url=conversation_url, origin_conversation_id="abc123",
     ))
     store = ConversationStateStore(str(tmp_path))
     store.remember_project(project_url, project_name="Claude Code workflow in ChatGPT")
@@ -1515,6 +1520,7 @@ def test_ask_protocol_parse_reply_fails_closed_when_service_returns_wrong_conver
         project_url=project_url,
         artifact_ref="chatgpt_claudecode_workflow_v0.0.100.zip",
         artifact_version="v0.0.100",
+        origin_conversation_url=expected_conversation_url,
     )
     monkeypatch.setattr("promptbranch_cli.ChatGPTServiceClient", FakeServiceClient)
 

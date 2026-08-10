@@ -1,0 +1,36 @@
+{
+  "schema": "promptbranch.tool.authoring",
+  "schema_version": "1.0",
+  "id": "example.version.read",
+  "description": "Read the repository VERSION file without mutation.",
+  "provider": "promptbranch",
+  "risk": "read",
+  "read_only": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "authority": {
+    "registration": "proposal_only",
+    "execution": "not_granted",
+    "mutation": "not_granted",
+    "release": "not_granted",
+    "publication": "not_granted",
+    "adoption": "not_granted"
+  },
+  "validation": {
+    "preconditions": ["repo_path_exists"],
+    "validators": ["promptbranch.validator.application-architecture"]
+  },
+  "evidence": {
+    "required": true,
+    "contract": "promptbranch.evidence.skill-run",
+    "fields": ["tool_id", "arguments", "result", "ok"]
+  },
+  "failure": {
+    "mode": "fail_closed",
+    "codes": ["invalid_arguments", "authority_not_granted", "validation_failed"]
+  }
+}

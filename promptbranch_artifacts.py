@@ -400,6 +400,12 @@ class ArtifactRecord:
     source_requested_ref: str | None = None
     source_processed_file_id: str | None = None
     source_library_metadata_object_id: str | None = None
+    origin_conversation_url: str | None = None
+    origin_conversation_id: str | None = None
+    origin_request_id: str | None = None
+    origin_correlation_id: str | None = None
+    origin_message_id: str | None = None
+    origin_answer_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -575,6 +581,14 @@ class ArtifactRegistry:
         return [item for item in artifacts if isinstance(item, dict)] if isinstance(artifacts, list) else []
 
     @staticmethod
+    def _chatgpt_project_identity(url: str | None) -> str | None:
+        if not isinstance(url, str) or not url.startswith("https://chatgpt.com/g/"):
+            return None
+        slug = url.split("/g/", 1)[-1].split("/", 1)[0]
+        match = re.match(r"^(g-p-[0-9a-fA-F]{32})(?:-|$)", slug)
+        return match.group(1).lower() if match else (slug or None)
+
+    @staticmethod
     def _record_validation_error(record: Any) -> str | None:
         if not isinstance(record, dict):
             return "record must be a JSON object"
@@ -616,6 +630,23 @@ class ArtifactRegistry:
             project_url = record.get("project_url")
             if not isinstance(project_url, str) or not project_url.startswith("https://chatgpt.com/g/"):
                 return "project_url must identify a ChatGPT project when source evidence is present"
+
+        origin_url = record.get("origin_conversation_url")
+        origin_id = record.get("origin_conversation_id")
+        origin_fields = [origin_url, origin_id, record.get("origin_request_id"), record.get("origin_correlation_id"), record.get("origin_message_id"), record.get("origin_answer_id")]
+        origin_present = any(value not in (None, "") for value in origin_fields)
+        if origin_present:
+            if not isinstance(origin_url, str) or "/c/" not in origin_url or not origin_url.startswith("https://chatgpt.com/g/"):
+                return "origin_conversation_url must identify a ChatGPT project conversation when provenance is present"
+            derived_id = origin_url.rstrip("/").split("/c/", 1)[-1].split("/", 1)[0]
+            if not isinstance(origin_id, str) or not origin_id.strip() or origin_id != derived_id:
+                return "origin_conversation_id must exactly match origin_conversation_url"
+            project_url = record.get("project_url")
+            if isinstance(project_url, str) and project_url.startswith("https://chatgpt.com/g/"):
+                project_id = ArtifactRegistry._chatgpt_project_identity(project_url)
+                origin_project_id = ArtifactRegistry._chatgpt_project_identity(origin_url)
+                if not project_id or not origin_project_id or project_id != origin_project_id:
+                    return "origin conversation must belong to the artifact project"
         return None
 
     @staticmethod

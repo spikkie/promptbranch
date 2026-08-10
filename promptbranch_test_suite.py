@@ -418,6 +418,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "-q",
             "tests/test_promptbranch_application_architecture.py",
             "tests/test_promptbranch_application_migration.py",
+            "tests/test_promptbranch_tool_authoring.py",
         ),
     },
     "application_architecture_registry": {
@@ -526,6 +527,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_release_state_machine.py",
             "tests/test_release_state_machine_docker_integration.py",
             "tests/test_promptbranch_release_eta.py",
+            "tests/test_artifact_conversation_provenance.py",
         ),
     },
     "release_pipeline": {
@@ -1382,6 +1384,7 @@ def build_test_suite_namespace(
     memory_mode: Optional[str] = None,
     link_url: Optional[str] = None,
     ask_prompt: Optional[str] = None,
+    ask_conversation_url: Optional[str] = None,
     json_out: Optional[str] = None,
     project_list_debug_scroll_rounds: Optional[int] = None,
     project_list_debug_wait_ms: Optional[int] = None,
@@ -1430,6 +1433,7 @@ def build_test_suite_namespace(
         'memory_mode': memory_mode,
         'link_url': link_url,
         'ask_prompt': ask_prompt,
+        'ask_conversation_url': ask_conversation_url,
         'json_out': json_out,
         'project_list_debug_scroll_rounds': project_list_debug_scroll_rounds,
         'project_list_debug_wait_ms': project_list_debug_wait_ms,

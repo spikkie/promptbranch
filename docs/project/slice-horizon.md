@@ -1,21 +1,24 @@
-> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; no scope advance.
+## Active repair horizon
 
+- `v0.1.127` — repair-required after two live ask completion deadlines.
+- `v0.1.127.1 — Artifact-bound conversation provenance and successor ask routing` — repair-required after live same-project slug normalization failure.
+- `v0.1.127.1.1 — Canonical ChatGPT project identity for artifact conversation provenance` — active repair; no scope advancement.
+- `v0.1.128` — planned after acceptance.
+
+> v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`; `v0.1.127` is active; `v0.1.128` is planned after acceptance. Tool authoring does not grant execution authority.
 
 # Rolling Slice Horizon
 
-Documentation checkpoint: `PB-ETA-2026-08-07.1`
+Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 
 | Version | Mode | Status | System | Scope |
 |---|---|---|---|---|
-| v0.1.125.3.4.1 | repair | superseded | PB control plane | operational promotion checkpoint superseded by final convergence repair |
-| v0.1.125.3.4.2 | repair | accepted_current | PB control plane | post-adoption historical verification and final convergence |
-| v0.1.126.1.1.1 | repair | repair_required | PB environment | text-source body authority and bounded recovery; live full flow later blocked at ask timeout |
-| v0.1.126.1.1.1.1 | repair | repair_required | PB environment | ask repair passed 53/53; publication blocked by missing runtime fingerprint projection |
-| v0.1.126.1.1.1.1.1 | repair | repair_required | PB environment | publication fingerprint repair; live runtime evidence exposed missing-production preservation defect |
-| v0.1.126.1.1.1.1.2 | repair | repair_required | PB environment | accepted-runtime guard live-proven; publication environment authority defect remains |
-| v0.1.126.1.1.1.1.3 | repair | active | PB environment | preserve explicit candidate validation Python through sanitized publication execution |
-| v0.1.127 | normal | planned_after_acceptance | PB environment | portable `promptbranch-tool-authoring` skill and export bundle |
-| v0.1.128 | normal | planned | PB environment | profile-aware timeouts, candidate recovery, summary consistency, policy freeze |
+| v0.1.125.3.4.2 | repair | superseded | PB control plane | previous accepted control-plane checkpoint |
+| v0.1.126 | normal | completed_via_repair | PB environment | persistent whole-release ETA estimator |
+| v0.1.126.1.1.1.1.2 | repair | repair_required | PB environment | accepted-runtime guard live-proven; superseded by .3 |
+| v0.1.126.1.1.1.1.3 | repair | accepted_current | PB environment | validation-Python authority repair and final v0.1.126 convergence |
+| v0.1.127 | normal | active | PB environment | portable `promptbranch-tool-authoring` skill and deterministic export bundle |
+| v0.1.128 | normal | planned_after_acceptance | PB environment | profile-aware timeouts, candidate recovery, summary consistency, policy freeze |
 | v0.1.129 | normal | planned | external application | pilot repository bootstrap, target, architecture, DoD, read-only slice plan |
 | v0.1.130 | normal | planned | external application | human-authorized bounded source change and rollback evidence |
 | v0.1.131 | normal | planned | external application | application tests, diagnosis, smallest correction, bounded retest |
@@ -32,13 +35,13 @@ Documentation checkpoint: `PB-ETA-2026-08-07.1`
 The previously defined purposes of `v0.1.125`, `v0.1.126`, and `v0.1.127` are preserved. The new plan appends `v0.1.128` through `v0.1.134`; it does not reorder or replace those releases.
 
 
-## Active normal candidate — v0.1.126
+## Active normal candidate — v0.1.127
 
-- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip` (`v0.1.125.3.4.2`)
-- active artifact: `chatgpt_claudecode_workflow-2_v0.1.126.zip`
-- active slice: `v0.1.126 — Persistent whole-release ETA estimator`
-- next planned after acceptance: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`
-- ETA is advisory only; validation and adoption remain fail-closed and state-machine authoritative.
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`)
+- active artifact: `chatgpt_claudecode_workflow-2_v0.1.127.zip`
+- active slice: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`
+- next planned after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`
+- authoring/export is proposal-only; release/adoption authority remains state-machine controlled.
 
 ## Repair horizon rule
 

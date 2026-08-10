@@ -1,31 +1,34 @@
-> v0.1.126.1.1.1.1.3 repair authority: built from immutable v0.1.126.1.1.1.1.2; accepted/current remains v0.1.125.3.4.2. Repairs release-validation Python authority propagation through the sanitized publication environment; the predecessor remains immutable failure evidence and the v0.1.126 normal slice does not advance.
+> v0.1.127.1.1 repair authority: canonicalize ChatGPT project identity in durable artifact conversation provenance validation; accepted/current remains `.1.3`; `.127.1` is repair-required live evidence.
 
+> v0.1.127.1 preserved authority: bind artifact origin conversation and route successor/live ask from baseline artifact provenance; no routing semantics change in `.1.1`.
 
-> v0.1.126.1.1 repair authority: built from immutable v0.1.126.1; accepted/current remains v0.1.125.3.4.2. Repairs the canonical full-source fingerprint authority used by runtime/Docker/worktree/commit identity and blocked-retryable ETA semantics; v0.1.126.1 publication-convergence behavior is retained.
+> v0.1.127 normal-slice authority: built from accepted/current `v0.1.126.1.1.1.1.3` after the `v0.1.126` repair chain reached `FINAL_VERIFIED`. Tool authoring remains proposal-only and separate from execution authority.
 
 # Promptbranch status
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.125.3.4.2
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
-active_candidate_version: v0.1.126.1.1.1.1.3
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+accepted_current_version: v0.1.126.1.1.1.1.3
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+active_candidate_version: v0.1.127.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip
 ```
 
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip
-accepted/current version: v0.1.125.3.4.2
-accepted/current SHA-256: ed6752cc7e1cf654f0e3ea505110599d5be3e067dbb00f07b8ae90cf34a9510f
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active candidate status: accepted-runtime precondition/preservation repair constructed; live canonical validation pending
-active slice authority: v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair
-next normal slice: v0.1.126 — Persistent whole-release ETA estimator
-next planned after acceptance: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
+accepted/current version: v0.1.126.1.1.1.1.3
+accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.zip
+active candidate status: construction candidate; focused/local deterministic validation in progress
+active slice authority: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+next normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
 
 ## Current interpretation
 
 Promptbranch has proven its own local candidate/artifact lifecycle. We are still validating and hardening the PB environment itself. We have not yet developed and released a separate application using PB.
+
+Historical predecessor baseline before the completed v0.1.126 repair chain: `chatgpt_claudecode_workflow-2_v0.1.125.3.4.2.zip`.
 
 ## Release boundary
 
@@ -38,7 +41,7 @@ Promptbranch has proven its own local candidate/artifact lifecycle. We are still
 
 ## Next safe action
 
-Validate `v0.1.126.1.1.1.1.3` from accepted/current `v0.1.125.3.4.2`. The release-contract must preserve the state-machine-selected candidate Python into deterministic publication validation even when ambient `PATH` resolves a foreign pytest environment. Only after focused proof should the full canonical lifecycle continue toward `FINAL_VERIFIED`.
+Complete deterministic construction validation for `v0.1.127` from accepted/current `v0.1.126.1.1.1.1.3`. Prove the tracked skill/schema/example, deterministic export/verification, canonical application-architecture registry, version surface, project control surface, required release-validation groups, deterministic release ZIP rebuild, and Artifact Guardian. Do not claim acceptance/current until canonical live release-control/adoption reaches `FINAL_VERIFIED` and scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns.
 
 ## v0.1.102 candidate status
 

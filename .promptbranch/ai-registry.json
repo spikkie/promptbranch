@@ -24,7 +24,8 @@
       "skills": [
         "promptbranch.skill.repo-inspection",
         "promptbranch.skill.final-mvp",
-        "promptbranch.skill.application-architecture-proof"
+        "promptbranch.skill.application-architecture-proof",
+        "promptbranch.skill.tool-authoring"
       ],
       "tools": [
         "promptbranch.state.read",
@@ -112,6 +113,18 @@
         "max_steps": 2,
         "timeout_seconds": 30
       }
+    },
+    {
+      "id": "promptbranch.skill.tool-authoring",
+      "path": ".promptbranch/skills/promptbranch-tool-authoring/SKILL.md",
+      "name": "promptbranch-tool-authoring",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list"
+      ],
+      "validators": [
+        "promptbranch.validator.application-architecture"
+      ]
     }
   ],
   "tools": [
