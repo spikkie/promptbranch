@@ -132,6 +132,47 @@ def _conversation_id_from_url(value: str | None) -> str | None:
     tail=text.split("/c/",1)[1].split("/",1)[0].split("?",1)[0].strip(); return tail or None
 
 
+def _candidate_ask_route_verification(
+    report: dict[str, Any] | None,
+    *,
+    expected_url: str | None,
+    expected_id: str | None,
+) -> dict[str, Any]:
+    expected_url_text = str(expected_url or "").strip().rstrip("/")
+    expected_id_text = str(expected_id or "").strip()
+    browser = report.get("browser") if isinstance(report, dict) and isinstance(report.get("browser"), dict) else {}
+    steps = browser.get("steps") if isinstance(browser.get("steps"), list) else []
+    ask_steps = [item for item in steps if isinstance(item, dict) and str(item.get("name") or "") == "ask_question"]
+    ask_step = ask_steps[0] if len(ask_steps) == 1 else {}
+    details = ask_step.get("details") if isinstance(ask_step.get("details"), dict) else {}
+    browser_requested_url = str(browser.get("ask_conversation_url") or "").strip().rstrip("/")
+    browser_routing_source = str(browser.get("ask_conversation_routing_source") or "").strip()
+    actual_url = str(details.get("conversation_url") or "").strip().rstrip("/")
+    actual_id = _conversation_id_from_url(actual_url)
+    checks = {
+        "expected_url_present": bool(expected_url_text),
+        "expected_id_present": bool(expected_id_text),
+        "expected_url_id_exact": _conversation_id_from_url(expected_url_text) == expected_id_text if expected_url_text and expected_id_text else False,
+        "browser_requested_url_exact": browser_requested_url == expected_url_text if expected_url_text else False,
+        "browser_routing_source_explicit": browser_routing_source == "explicit_cli",
+        "exactly_one_ask_question_step": len(ask_steps) == 1,
+        "ask_question_step_green": ask_step.get("ok") is True if ask_step else False,
+        "actual_conversation_url_exact": actual_url == expected_url_text if expected_url_text else False,
+        "actual_conversation_id_exact": actual_id == expected_id_text if expected_id_text else False,
+    }
+    return {
+        "ok": all(checks.values()),
+        "expected_conversation_url": expected_url_text or None,
+        "expected_conversation_id": expected_id_text or None,
+        "browser_requested_conversation_url": browser_requested_url or None,
+        "browser_routing_source": browser_routing_source or None,
+        "actual_conversation_url": actual_url or None,
+        "actual_conversation_id": actual_id,
+        "ask_question_step_count": len(ask_steps),
+        "checks": checks,
+    }
+
+
 def _version_tuple(value: str) -> tuple[int, ...]:
     text = str(value or "").strip().removeprefix("v")
     try:
@@ -1875,6 +1916,12 @@ class SubprocessReleaseExecutor:
         failed = counts.get("failed")
         skipped = counts.get("skipped")
         counts_valid = isinstance(failed, int) and isinstance(skipped, int)
+        browser_payload = payload.get("browser") if isinstance(payload.get("browser"), dict) else {}
+        ask_route_verification = _candidate_ask_route_verification(
+            payload,
+            expected_url=baseline_origin_url,
+            expected_id=baseline_origin_id,
+        )
         ok = bool(
             returncode == 0
             and not timed_out
@@ -1882,15 +1929,16 @@ class SubprocessReleaseExecutor:
             and counts_valid
             and failed == 0
             and skipped == 0
+            and ask_route_verification.get("ok") is True
         )
         status = "candidate_test_passed" if ok else ("candidate_test_timeout" if timed_out else "candidate_test_failed")
-        browser_payload = payload.get("browser") if isinstance(payload.get("browser"), dict) else {}
         result = {
             **base_result,
             "ok": ok,
             "status": status,
             "result": payload,
             "project_url": browser_payload.get("project_url"),
+            "ask_conversation_route_verification": ask_route_verification,
             "report_schema": payload.get("schema"),
             "report_schema_version": payload.get("schema_version"),
             "report_sha256": _sha256_bytes(report_bytes),
@@ -1898,7 +1946,11 @@ class SubprocessReleaseExecutor:
             **counts,
         }
         if not ok:
-            result["failure_code"] = "candidate_test_failed"
+            result["failure_code"] = (
+                "candidate_test_ask_route_mismatch"
+                if ask_route_verification.get("ok") is not True
+                else "candidate_test_failed"
+            )
         return result
 
     def accept_candidate(self, machine: "ReleaseStateMachine", record: dict[str, Any]) -> dict[str, Any]:
@@ -3268,11 +3320,15 @@ class ReleaseStateMachine:
             return None
         if stderr_path and str(stderr_path) != "." and (not stderr_path.is_file() or sha256_file(stderr_path) != cached.get("stderr_sha256")):
             return None
-        return {**cached, "ok": True, "status": "candidate_test_reused_green", "report_selected": True, "failed": 0, "skipped": 0, "reused_green_test": True}
+        try:
+            report = _read_json(report_path)
+        except (OSError, json.JSONDecodeError, ReleaseStateMachineError):
+            return None
+        return {**cached, "ok": True, "status": "candidate_test_reused_green", "report_selected": True, "failed": 0, "skipped": 0, "reused_green_test": True, "result": report}
 
     def _persist_validated_candidate_test(self, record: dict[str, Any], result: dict[str, Any], test_record_path: Path) -> None:
         record["validated_candidate_test"] = {
-            key: result.get(key) for key in ("started_at", "finished_at", "artifact_sha256", "profile", "candidate_python", "candidate_pytest_version", "report_schema", "report_schema_version", "report_sha256", "stdout_sha256", "stderr_sha256", "completed", "passed", "failed", "skipped", "test_run_id", "retry_number", "project_name", "project_url")
+            key: result.get(key) for key in ("started_at", "finished_at", "artifact_sha256", "profile", "candidate_python", "candidate_pytest_version", "report_schema", "report_schema_version", "report_sha256", "stdout_sha256", "stderr_sha256", "completed", "passed", "failed", "skipped", "test_run_id", "retry_number", "project_name", "project_url", "baseline_conversation_url", "baseline_conversation_id", "baseline_conversation_routing_source", "ask_conversation_route_verification")
         }
         record["validated_candidate_test"].update({"report_selected": True, "report_path": result.get("report_path"), "stdout_path": result.get("stdout_log_path") or result.get("stdout_path"), "stderr_path": result.get("stderr_log_path") or result.get("stderr_path"), "test_record_path": str(test_record_path)})
         self.save(record)
@@ -3301,13 +3357,36 @@ class ReleaseStateMachine:
         failed_value = result.get("failed")
         skipped_value = result.get("skipped")
         report_selected = result.get("report_selected") is True
+        expected_route_url = str(result.get("baseline_conversation_url") or "").strip()
+        expected_route_id = str(result.get("baseline_conversation_id") or "").strip()
+        route_verification = _candidate_ask_route_verification(
+            result.get("result") if isinstance(result.get("result"), dict) else None,
+            expected_url=expected_route_url,
+            expected_id=expected_route_id,
+        )
         failure_guards = {
             "exact_candidate_sha_bound": result.get("artifact_sha256") == record["artifact"]["sha256"],
             "test_profile_exact": result.get("profile") == self.config.profile,
             "report_selected": report_selected,
             "failed_count_zero": failed_value == 0 if isinstance(failed_value, int) and not isinstance(failed_value, bool) else False,
             "required_skips_zero": skipped_value == 0 if isinstance(skipped_value, int) and not isinstance(skipped_value, bool) else False,
+            "baseline_conversation_routing_source_exact": result.get("baseline_conversation_routing_source") == "baseline_artifact_provenance",
+            "ask_conversation_route_verified": route_verification.get("ok") is True,
         }
+        result["ask_conversation_route_verification"] = route_verification
+        if (
+            result.get("baseline_conversation_routing_source") != "baseline_artifact_provenance"
+            or route_verification.get("ok") is not True
+        ):
+            return {
+                **result,
+                "ok": False,
+                "status": "candidate_test_ask_route_mismatch",
+                "guards": failure_guards,
+                "effects": {"acceptance_performed": False},
+                "failure_code": "candidate_test_ask_route_mismatch",
+                "error": "candidate ask_question did not execute on the exact baseline artifact conversation",
+            }
         if result.get("ok") is not True:
             return {
                 **result,
@@ -3958,6 +4037,15 @@ class ReleaseStateMachine:
                     "failed_count_zero": isinstance(result.get("detail"), dict) and int(result["detail"].get("failed") or 0) == 0,
                     "required_skips_zero": isinstance(result.get("detail"), dict) and int(result["detail"].get("skipped") or 0) == 0,
                 }
+                detail = result.get("detail") if isinstance(result.get("detail"), dict) else {}
+                route_verification = _candidate_ask_route_verification(
+                    detail.get("result") if isinstance(detail.get("result"), dict) else None,
+                    expected_url=str(detail.get("baseline_conversation_url") or "").strip(),
+                    expected_id=str(detail.get("baseline_conversation_id") or "").strip(),
+                )
+                checks["baseline_conversation_routing_source_exact"] = detail.get("baseline_conversation_routing_source") == "baseline_artifact_provenance"
+                checks["ask_conversation_route_verified"] = route_verification.get("ok") is True
+                details["ask_conversation_route_verification"] = route_verification
             elif target == "ACCEPTED":
                 accepted = evidence if isinstance(evidence, dict) else {}
                 mutation_policy = record.get("request", {}).get("mutation_policy", {}) if isinstance(record.get("request"), dict) else {}

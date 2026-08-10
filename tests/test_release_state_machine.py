@@ -51,8 +51,9 @@ def _candidate_zip(root: Path, *, version: str = VERSION, suffix: str = "") -> P
 
 
 class FakeExecutor:
-    def __init__(self, *, test_ok: bool = True, accept_ok: bool = True, current_ok: bool = True, promotion_ok: bool = True, cleanup_ok: bool = True):
+    def __init__(self, *, test_ok: bool = True, route_ok: bool = True, accept_ok: bool = True, current_ok: bool = True, promotion_ok: bool = True, cleanup_ok: bool = True):
         self.test_ok = test_ok
+        self.route_ok = route_ok
         self.accept_ok = accept_ok
         self.current_ok = current_ok
         self.promotion_ok = promotion_ok
@@ -163,6 +164,8 @@ class FakeExecutor:
         self.calls.append("run_tests")
         failed = 0 if self.test_ok else 1
         passed = 52 if self.test_ok else 51
+        expected_conversation_url = "https://chatgpt.com/g/g-p-1234567890abcdef1234567890abcdef-promptbranch3/c/6a78783b-3e00-83eb-8dc1-1e814fcf2a59"
+        actual_conversation_url = expected_conversation_url if self.route_ok else "https://chatgpt.com/g/g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-itest/c/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         report = {
             "ok": self.test_ok,
             "schema": "promptbranch.test_suite.report",
@@ -170,6 +173,18 @@ class FakeExecutor:
             "action": "test_suite",
             "profile": machine.config.profile,
             "version": machine.config.version,
+            "browser": {
+                "ok": True,
+                "ask_conversation_url": expected_conversation_url,
+                "ask_conversation_routing_source": "explicit_cli",
+                "steps": [
+                    {
+                        "name": "ask_question",
+                        "ok": True,
+                        "details": {"ok": True, "conversation_url": actual_conversation_url, "answer": "INTEGRATION_OK"},
+                    }
+                ],
+            },
             "progress": {
                 "total_units": 52,
                 "completed_units": 52,
@@ -190,6 +205,9 @@ class FakeExecutor:
             "artifact_sha256": record["artifact"]["sha256"],
             "candidate_python": sys.executable,
             "candidate_pytest_version": pytest.__version__,
+            "baseline_conversation_url": expected_conversation_url,
+            "baseline_conversation_id": "6a78783b-3e00-83eb-8dc1-1e814fcf2a59",
+            "baseline_conversation_routing_source": "baseline_artifact_provenance",
             "report_selected": True,
             "report_schema": "promptbranch.test_suite.report",
             "report_schema_version": "1.0",
@@ -601,6 +619,39 @@ def test_failed_candidate_test_blocks_acceptance_and_is_retryable(tmp_path: Path
     assert payload["failure"]["code"] == "candidate_test_failed"
     assert payload["current_state"] == "RUNTIME_PREPARED"
     assert "accept_candidate" not in executor.calls
+
+
+def test_candidate_test_route_mismatch_blocks_tested_green(tmp_path: Path) -> None:
+    executor = FakeExecutor(route_ok=False)
+    machine = _machine(tmp_path, until="tested-green", executor=executor)
+
+    payload, code = machine.run()
+
+    assert code == 1
+    assert payload["current_state"] == "RUNTIME_PREPARED"
+    assert payload["failure_state"] == "BLOCKED_RETRYABLE"
+    assert payload["failure"]["code"] == "candidate_test_ask_route_mismatch"
+    assert "accept_candidate" not in executor.calls
+
+
+def test_tested_green_verifier_detects_tampered_actual_ask_conversation(tmp_path: Path) -> None:
+    machine = _machine(tmp_path, until="tested-green")
+    payload, code = machine.run()
+    assert code == 0, payload
+    record = _record(machine)
+    test_path = Path(record["evidence"]["TESTED_GREEN"]["test_record_path"])
+    test_record = json.loads(test_path.read_text(encoding="utf-8"))
+    browser = test_record["result"]["detail"]["result"]["browser"]
+    ask_step = next(item for item in browser["steps"] if item.get("name") == "ask_question")
+    ask_step["details"]["conversation_url"] = "https://chatgpt.com/g/g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-itest/c/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    test_path.write_text(json.dumps(test_record), encoding="utf-8")
+
+    verification, verify_code = machine.verify()
+
+    assert verify_code == 1
+    tested = next(item for item in verification["states"] if item["state"] == "TESTED_GREEN")
+    assert tested["checks"]["ask_conversation_route_verified"] is False
+    assert tested["ask_conversation_route_verification"]["checks"]["actual_conversation_id_exact"] is False
 
 
 def test_successful_test_rerun_resumes_from_runtime_prepared(tmp_path: Path) -> None:

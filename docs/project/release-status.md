@@ -1,8 +1,9 @@
-# Active release status — v0.1.127.1.1
+# Active release status — v0.1.127.1.1.1
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.127.1.1 | repair | Canonical ChatGPT project identity for artifact conversation provenance | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip` candidate | construction validation | DOD-496–497 construction; DOD-498 live | — |
+| v0.1.127.1.1.1 | repair | Successor ask pin propagation and TESTED_GREEN route verification | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip` candidate | 17/17 required deterministic groups green; live route proof pending | DOD-499–501 construction; DOD-502 live | — |
+| v0.1.127.1.1 | repair | Canonical ChatGPT project identity for artifact conversation provenance | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip` repair-required | live 53/53 used generated itest conversation instead of baseline provenance | DOD-498 superseded by .1.1.1 route proof | — |
 | v0.1.127.1 | repair | Artifact-bound conversation provenance and successor ask routing | `chatgpt_claudecode_workflow-2_v0.1.127.1.zip` repair-required | live legacy bind exposed project-slug normalization defect | DOD-495 superseded by .1.1 proof | — |
 | v0.1.127 | normal | Portable tool-authoring/export | `chatgpt_claudecode_workflow-2_v0.1.127.zip` repair-required | live ask failed twice | DOD-490 open | — |
 | v0.1.126.1.1.1.1.3 | repair | Python validation authority | accepted/current | FINAL_VERIFIED | DOD-484 closed | `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7` |
@@ -15,8 +16,9 @@ Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 
 Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`).
 Accepted SHA-256: `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`.
-Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.zip`.
-Active normal slice: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip`.
+Active repair slice: `v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification`; the underlying normal slice remains `v0.1.127`.
+Next normal slice: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
 Next planned slice after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`.
 
 | Version | Type | System | Slice | Status |

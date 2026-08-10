@@ -1,4 +1,4 @@
-> v0.1.127.1.1 repair authority: canonicalize ChatGPT project identity in durable artifact conversation provenance validation; accepted/current remains `.1.3`; `.127.1` is repair-required live evidence.
+> v0.1.127.1.1.1 repair authority: propagate baseline artifact conversation routing into the actual full/browser ask and make `TESTED_GREEN` independently verify the executed `ask_question` URL/ID; accepted/current remains `.1.3`; `.127.1.1` is repair-required false-proof evidence.
 
 > v0.1.127.1 preserved authority: bind artifact origin conversation and route successor/live ask from baseline artifact provenance; no routing semantics change in `.1.1`.
 
@@ -11,16 +11,16 @@
 ```text
 accepted_current_version: v0.1.126.1.1.1.1.3
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip
+active_candidate_version: v0.1.127.1.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
 ```
 
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
 accepted/current version: v0.1.126.1.1.1.1.3
 accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.zip
-active candidate status: construction candidate; focused/local deterministic validation in progress
-active slice authority: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
+active candidate status: repair candidate; deterministic construction validation complete; live TESTED_GREEN route proof pending
+active slice authority: v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification
 next normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
 next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
 
@@ -41,7 +41,7 @@ Historical predecessor baseline before the completed v0.1.126 repair chain: `cha
 
 ## Next safe action
 
-Complete deterministic construction validation for `v0.1.127` from accepted/current `v0.1.126.1.1.1.1.3`. Prove the tracked skill/schema/example, deterministic export/verification, canonical application-architecture registry, version surface, project control surface, required release-validation groups, deterministic release ZIP rebuild, and Artifact Guardian. Do not claim acceptance/current until canonical live release-control/adoption reaches `FINAL_VERIFIED` and scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns.
+Complete deterministic construction validation for `v0.1.127.1.1.1`, then start a fresh immutable repair attempt from accepted/current `v0.1.126.1.1.1.1.3`. The live `TESTED_GREEN` gate must prove the executed `ask_question` conversation ID is exactly `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`; a subprocess flag or generic 53/53 report alone is insufficient. Do not advance to `ACCEPTED` until independent all-state verification confirms the route proof.
 
 ## v0.1.102 candidate status
 

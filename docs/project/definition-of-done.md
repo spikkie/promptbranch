@@ -1263,3 +1263,13 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-496 | Artifact provenance accepts slugged and unslugged URLs when both canonicalize to the same `g-p-<32hex>` identity | focused | project-identity provenance regressions | v0.1.127.1.1 |
 | DOD-497 | Different canonical ChatGPT project identities remain rejected and the exact origin conversation URL is preserved | focused | negative provenance regressions | v0.1.127.1.1 |
 | DOD-498 | Repair proceeds beyond legacy migration only after the exact `.1.3` `artifact bind-conversation` live proof succeeds; closure still requires canonical `FINAL_VERIFIED` plus scoped current | live_pending | exact bind + canonical release proof | v0.1.127.1.1 |
+
+
+## v0.1.127.1.1.1 repair DoD
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---|---|---|
+| DOD-499 | `pb test full --ask-conversation-url` propagates the exact pin into the browser/full runner and browser summary instead of dropping it at CLI dispatch | focused | CLI dispatch + browser namespace regression | v0.1.127.1.1.1 |
+| DOD-500 | `TESTED_GREEN` fails closed unless exactly one executed `ask_question` step reports the expected baseline conversation URL and exact conversation ID | focused | route-mismatch state-machine regression | v0.1.127.1.1.1 |
+| DOD-501 | Independent release verification recomputes the ask route from the persisted browser report and detects route tampering even when generic suite status remains green | focused | persisted-report tamper regression | v0.1.127.1.1.1 |
+| DOD-502 | Repair closes only after fresh canonical live proof executes `ask_question` on conversation `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`, reaches `FINAL_VERIFIED`, and scoped current aligns | live_pending | canonical release proof | v0.1.127.1.1.1 |

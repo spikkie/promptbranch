@@ -10588,6 +10588,7 @@ async def cmd_test_suite(args: argparse.Namespace) -> int:
         'memory_mode': args.memory_mode,
         'link_url': args.link_url,
         'ask_prompt': args.ask_prompt,
+        'ask_conversation_url': getattr(args, 'ask_conversation_url', None),
         'json_out': args.json_out,
         'project_list_debug_scroll_rounds': args.project_list_debug_scroll_rounds,
         'project_list_debug_wait_ms': args.project_list_debug_wait_ms,

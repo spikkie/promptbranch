@@ -1563,3 +1563,8 @@ For older adopted artifacts without origin metadata, bind the exact historical c
 ## v0.1.127.1.1 project-identity normalization
 
 No registry rewrite or automatic migration is performed. Re-run the exact `pb artifact bind-conversation --repo <repo> --version <version> --conversation-url <chat-url> --json` operation. The durable validator now canonicalizes the stable ChatGPT project identity before comparing artifact and conversation URLs. Existing exact provenance remains immutable.
+
+
+## v0.1.127.1.1.1 ask-route proof migration
+
+No historical `TESTED_GREEN` record from `v0.1.127.1.1` is upgraded or trusted as route proof. The predecessor attempt remains immutable evidence that generic green status was insufficient. A new `.127.1.1.1` artifact SHA and release attempt must execute the full candidate test again. Cached green test evidence is reusable only when its persisted report still independently verifies the exact baseline ask conversation URL and ID.

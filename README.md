@@ -1,4 +1,4 @@
-> **v0.1.127.1.1 repair candidate:** canonicalizes ChatGPT project identity for artifact conversation provenance so slugged and unslugged URLs for the same `g-p-<32hex>` project are equivalent; `.127.1` routing/provenance semantics otherwise remain unchanged.
+> **v0.1.127.1.1.1 repair candidate:** propagates the baseline artifact conversation pin into the full browser suite and makes `TESTED_GREEN` independently require the executed `ask_question` URL and conversation ID to match that baseline exactly; `.127.1.1` remains immutable false-proof evidence.
 
 ## v0.1.127 Portable Promptbranch tool-authoring skill and export bundle
 

@@ -1,4 +1,4 @@
-> v0.1.127.1.1 repair authority: accepted/current remains `v0.1.126.1.1.1.1.3`; canonical ChatGPT project identity normalization in durable artifact conversation provenance validation only; `.127.1` provenance/routing semantics remain unchanged and normal product scope remains v0.1.127.
+> v0.1.127.1.1.1 repair authority: accepted/current remains `v0.1.126.1.1.1.1.3`; propagate the baseline artifact conversation pin into the actual browser ask and require executed-route proof before `TESTED_GREEN`; `.127.1.1` remains immutable false-proof evidence and normal product scope remains v0.1.127.
 
 > v0.1.127.1 is repair-required live evidence after same-project slugged/unslugged URLs were rejected by the durable artifact validator.
 
@@ -11,8 +11,8 @@
 ```text
 accepted_current_version: v0.1.126.1.1.1.1.3
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip
+active_candidate_version: v0.1.127.1.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
 ```
 
 accepted/current baseline: v0.1.126.1.1.1.1.3
@@ -2358,4 +2358,19 @@ Reason: v0.1.126.1.1.1.1.2 passed full live candidate validation 53/53 but publi
 In scope: release-contract environment propagation of PROMPTBRANCH_RELEASE_VALIDATION_PYTHON and poisoned-PATH regression coverage.
 Out of scope: browser/runtime behavior, automatic production recovery, ETA expansion, acceptance/adoption redesign, external application work.
 Expected validation: focused release-contract tests, mandatory deterministic release groups, deterministic ZIP rebuild, Artifact Guardian; live FINAL_VERIFIED remains required before acceptance.
+```
+
+
+## Repair definition — v0.1.127.1.1.1
+
+```text
+Release: v0.1.127.1.1.1
+Base release: v0.1.127.1.1 candidate
+Accepted/current baseline: v0.1.126.1.1.1.1.3
+Type: repair candidate
+Slice advanced: no
+Reason: v0.1.127.1.1 reached TESTED_GREEN 53/53, but the release subprocess pin was omitted by cmd_test_suite before browser execution; ask_question therefore ran in the generated itest conversation.
+In scope: propagate --ask-conversation-url through test-suite dispatch; persist executed ask-route evidence; require exact expected URL and conversation ID before TESTED_GREEN; independently reverify the persisted route.
+Out of scope: response-completion recovery, source/task routing changes, browser submission redesign, tool-authoring scope expansion, acceptance/adoption redesign, external application work.
+Expected validation: focused CLI propagation, route-mismatch, persisted-report tamper and state-machine regressions; all required deterministic release groups; deterministic ZIP rebuild; Artifact Guardian; fresh live TESTED_GREEN proving conversation ID 6a78783b-3e00-83eb-8dc1-1e814fcf2a59 before acceptance.
 ```

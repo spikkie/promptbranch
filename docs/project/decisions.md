@@ -1516,3 +1516,12 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 - Different canonical project identities fail closed.
 - The exact conversation URL is preserved; no URL rewriting is introduced.
 - `.127.1` successor routing and authority semantics are unchanged.
+
+
+## ADR-PROJ-127111 — Executed ask route, not intended argv, is TESTED_GREEN authority
+
+- `v0.1.127.1.1` is immutable false-proof evidence: its release layer resolved baseline provenance and put `--ask-conversation-url` on the subprocess argv, but `cmd_test_suite` dropped the value before browser execution.
+- `v0.1.127.1.1.1` propagates the pin into the full/browser runner.
+- `TESTED_GREEN` requires the persisted browser report to show one green `ask_question`, the exact requested baseline URL, `explicit_cli` browser routing, and an actual conversation URL whose extracted ID equals the baseline artifact conversation ID.
+- Independent `release verify` recomputes this proof from persisted report content; a generic 53/53 result cannot substitute for route identity.
+- Source/task integration remains in the generated test project. Response-completion recovery remains out of scope until the correctly routed ask is live-tested.

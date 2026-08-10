@@ -2,7 +2,8 @@
 
 - `v0.1.127` — repair-required after two live ask completion deadlines.
 - `v0.1.127.1 — Artifact-bound conversation provenance and successor ask routing` — repair-required after live same-project slug normalization failure.
-- `v0.1.127.1.1 — Canonical ChatGPT project identity for artifact conversation provenance` — active repair; no scope advancement.
+- `v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification` — active repair; no scope advancement.
+- `v0.1.127.1.1 — Canonical ChatGPT project identity for artifact conversation provenance` — repair-required predecessor; project identity fix retained.
 - `v0.1.128` — planned after acceptance.
 
 > v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`; `v0.1.127` is active; `v0.1.128` is planned after acceptance. Tool authoring does not grant execution authority.

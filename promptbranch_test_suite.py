@@ -466,7 +466,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_artifacts.py",
             "tests/test_promptbranch_cli.py",
             "-k",
-            "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status",
+            "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status or test_suite_full_profile_dispatches_to_runner",
         ),
     },
     "repo_project_registry": {

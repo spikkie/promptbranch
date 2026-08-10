@@ -191,3 +191,13 @@ The first external application mutation is forbidden before the `v0.1.130` execu
 - scope: preserve explicit candidate validation-Python authority through release-contract environment sanitization; do not advance the normal ETA slice
 - proof basis: `v0.1.126.1.1.1.1.2` full live candidate suite passed 53/53; publication preflight failed only because foreign pytest 8.4.2 replaced candidate pytest 9.0.2
 - completion: requires live canonical lifecycle through `FINAL_VERIFIED` before any accepted/current claim
+
+
+## Active repair candidate — v0.1.127.1.1.1
+
+- repair input candidate: `v0.1.127.1.1`
+- accepted/current baseline: `v0.1.126.1.1.1.1.3`
+- scope: propagate `--ask-conversation-url` through `pb test full` into browser execution and make `TESTED_GREEN` require exact executed ask URL/conversation ID evidence
+- authority: a generic green suite or a flag present only in the subprocess argv is insufficient; route proof must come from the saved browser report
+- preserved: `.127.1` provenance semantics, `.127.1.1` project-identity normalization, source/task isolation, response-completion behavior, and the `v0.1.127` tool-authoring product scope
+- completion: requires fresh live route proof for conversation ID `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`, then canonical lifecycle through `FINAL_VERIFIED` before any accepted/current claim

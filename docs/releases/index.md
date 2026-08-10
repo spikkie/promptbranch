@@ -1,3 +1,4 @@
+- [v0.1.127.1.1.1](../release-v0.1.127.1.1.1.md) — successor ask pin propagation and executed-route verification repair
 - [v0.1.127.1.1](../release-v0.1.127.1.1.md) — canonical ChatGPT project identity repair for artifact conversation provenance
 - [v0.1.127.1](../release-v0.1.127.1.md) — artifact-bound conversation provenance and successor ask routing repair
 - [`v0.1.126.1.1.1.1.3`](../release-v0.1.126.1.1.1.1.3.md) — preserve candidate validation-Python authority through sanitized publication validation.

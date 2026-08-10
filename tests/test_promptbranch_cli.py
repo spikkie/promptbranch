@@ -2365,13 +2365,14 @@ def test_test_suite_full_profile_dispatches_to_runner(monkeypatch, capsys) -> No
         assert kwargs['profile'] == 'full'
         assert kwargs['path'] == '.'
         assert kwargs['package_zip'] == 'release.zip'
+        assert kwargs['ask_conversation_url'] == 'https://chatgpt.com/g/g-p-demo/c/c1'
         return {'ok': True, 'action': 'test_suite', 'profile': 'full'}
 
     monkeypatch.setattr('promptbranch_cli.run_test_suite_async', fake_run_test_suite_async)
 
     from promptbranch_cli import main
 
-    rc = main(['test-suite', '--profile', 'full', '--path', '.', '--package-zip', 'release.zip'])
+    rc = main(['test-suite', '--profile', 'full', '--path', '.', '--package-zip', 'release.zip', '--ask-conversation-url', 'https://chatgpt.com/g/g-p-demo/c/c1'])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload['profile'] == 'full'
