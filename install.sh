@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./install.sh <version> [zip-path] [--diagnostic-project-source-ab|--diagnostic-library-backing-reupload|--diagnostic-library-backend-protocol-reupload]
+Usage: ./install.sh <version> [zip-path]
 
 Strict all-all Promptbranch release gate for a new ZIP release.
 
@@ -16,11 +16,7 @@ Arguments:
 
 Default mode installs the candidate ZIP, runs product validation, runs explicit
 external ChatGPT live validation, requires live validation to pass, adopts only
-if all validation is GO, then prints pb artifact current --all --json evidence.
-
-Diagnostic mode imports/installs/starts the candidate without Git commit, Project
-Source upload, tests, or adoption, then runs the disposable legacy-vs-current
-Project Source A/B diagnostic.
+if all validation is GO, then prints exact scoped artifact-current evidence.
 USAGE
 }
 
@@ -29,22 +25,16 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if [[ $# -lt 1 || $# -gt 3 ]]; then
+if [[ $# -lt 1 || $# -gt 2 ]]; then
   usage >&2
   exit 64
 fi
 
 ver="$1"
 shift
-diagnostic_project_source_ab=0
-diagnostic_library_backing_reupload=0
-diagnostic_library_backend_protocol_reupload=0
 zip=""
 for arg in "$@"; do
   case "$arg" in
-    --diagnostic-project-source-ab) diagnostic_project_source_ab=1 ;;
-    --diagnostic-library-backing-reupload) diagnostic_library_backing_reupload=1 ;;
-    --diagnostic-library-backend-protocol-reupload) diagnostic_library_backend_protocol_reupload=1 ;;
     --*) echo "ERROR: unsupported install option: $arg" >&2; exit 64 ;;
     *)
       if [[ -n "$zip" ]]; then
@@ -65,6 +55,9 @@ esac
 
 zip="${zip:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"
 
+PB_PYTHON="${PB_PYTHON:-$HOME/.local/share/pipx/venvs/promptbranch/bin/python}"
+[[ "$PB_PYTHON" == /* && -x "$PB_PYTHON" ]] || { echo "ERROR: PB_PYTHON must be an absolute executable path: $PB_PYTHON" >&2; exit 64; }
+
 if [[ ! -f "${zip}" ]]; then
   echo "ERROR: candidate ZIP not found: ${zip}" >&2
   exit 66
@@ -73,7 +66,7 @@ fi
 # Validate the transport artifact before delegating to any script contained in
 # it. The transport basename is intentionally non-canonical; internal VERSION,
 # CRC integrity and the release-control entrypoint are authoritative.
-python3 - "${zip}" "${ver}" <<'PYVERIFY'
+"$PB_PYTHON" - "${zip}" "${ver}" <<'PYVERIFY'
 import sys
 import zipfile
 from pathlib import Path
@@ -105,59 +98,8 @@ cd "${script_dir}"
 
 mkdir -p "${HOME}/tmp"
 
-if [[ ${diagnostic_library_backend_protocol_reupload} -eq 1 ]]; then
-  timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
-    --install-from-zip "${zip}" \
-    --version "${ver}" \
-    --skip-commit \
-    --skip-source-add \
-    --skip-tests \
-    --skip-docker-logs \
-    --prune-release-logs \
-    --release-log-keep 12 \
-    2>&1 | tee "${HOME}/tmp/release_control.${ver}.diagnostic-install.log"
 
-  ./scripts/pb-library-backend-protocol-reupload-diagnostic.sh \
-    --service-base-url "${CHATGPT_SERVICE_BASE_URL:-http://localhost:8000}" \
-    | tee "${HOME}/tmp/library_backend_protocol_reupload.${ver}.json"
-  exit ${PIPESTATUS[0]}
-fi
 
-if [[ ${diagnostic_library_backing_reupload} -eq 1 ]]; then
-  timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
-    --install-from-zip "${zip}" \
-    --version "${ver}" \
-    --skip-commit \
-    --skip-source-add \
-    --skip-tests \
-    --skip-docker-logs \
-    --prune-release-logs \
-    --release-log-keep 12 \
-    2>&1 | tee "${HOME}/tmp/release_control.${ver}.diagnostic-install.log"
-
-  ./scripts/pb-library-backing-reupload-diagnostic.sh \
-    --service-base-url "${CHATGPT_SERVICE_BASE_URL:-http://localhost:8000}" \
-    | tee "${HOME}/tmp/library_backing_reupload.${ver}.json"
-  exit ${PIPESTATUS[0]}
-fi
-
-if [[ ${diagnostic_project_source_ab} -eq 1 ]]; then
-  timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
-    --install-from-zip "${zip}" \
-    --version "${ver}" \
-    --skip-commit \
-    --skip-source-add \
-    --skip-tests \
-    --skip-docker-logs \
-    --prune-release-logs \
-    --release-log-keep 12 \
-    2>&1 | tee "${HOME}/tmp/release_control.${ver}.diagnostic-install.log"
-
-  ./scripts/pb-project-source-ab-diagnostic.sh \
-    --service-base-url "${CHATGPT_SERVICE_BASE_URL:-http://localhost:8000}" \
-    | tee "${HOME}/tmp/project_source_ab.${ver}.json"
-  exit ${PIPESTATUS[0]}
-fi
 
 timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
   --install-from-zip "${zip}" \
@@ -171,4 +113,4 @@ timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
   --release-log-keep 12 \
   2>&1 | tee "${HOME}/tmp/release_control.${ver}.full.all-all.adopt.log"
 
-pb artifact current --all --json | tee "${HOME}/tmp/pb_current_after_${ver}.json"
+"$PB_PYTHON" "${script_dir}/promptbranch_cli.py" artifact current --repo chatgpt_claudecode_workflow-2 --json | tee "${HOME}/tmp/pb_current_after_${ver}.json"

@@ -841,7 +841,6 @@ pb artifact verify ./chatgpt_claudecode_workflow_v0.0.276.3.zip --json | python3
 scripts/finalize-artifact-intake-mvp.sh \
   --version v0.0.276.3 \
   --target-version v0.0.277 \
-  --pb-cmd promptbranch \
   --test-timeout 900
 ```
 
@@ -853,7 +852,6 @@ From `v0.0.276.6`, this strict form asks ChatGPT for an artifact-producing relea
 scripts/finalize-artifact-intake-mvp.sh \
   --version v0.0.276.6 \
   --target-version v0.0.277 \
-  --pb-cmd promptbranch \
   --require-real-candidate-mvp \
   --candidate-mvp-max-steps 4 \
   --candidate-run-step-timeout 3600 \

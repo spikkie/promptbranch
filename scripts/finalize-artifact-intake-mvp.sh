@@ -3,9 +3,8 @@ set -Euo pipefail
 
 # Final Artifact Intake MVP gate for chatgpt_claudecode_workflow.
 #
-# This script is now a compatibility/regression harness around the native
-# Promptbranch artifact candidate runner.  The native command is the source of
-# truth for the lifecycle:
+# This is a thin operator wrapper around the native Promptbranch artifact
+# candidate runner. The native command is the sole lifecycle implementation:
 #
 #   pb artifact candidate-run --execute-until-blocked ...
 #
@@ -14,7 +13,9 @@ set -Euo pipefail
 
 version=""
 target_version=""
-pb_cmd="${PB_CMD:-pb}"
+repo_root="$(pwd -P)"
+pb_python="${PB_PYTHON:-}"
+pb_cli="${repo_root}/promptbranch_cli.py"
 release_log_dir=""
 candidate_mvp_max_steps="6"
 candidate_run_step_timeout="600"
@@ -45,7 +46,7 @@ Required proof when --require-real-candidate-mvp is used:
 Options:
   -v, --version VERSION
       --target-version VERSION
-      --pb-cmd COMMAND
+      PB_PYTHON must name the exact Promptbranch launcher Python.
       --release-log-dir DIR
       --candidate-mvp-max-steps N
       --candidate-run-step-timeout SEC
@@ -57,12 +58,6 @@ Options:
           Explicitly allow candidate-run to adopt after the candidate test gate
           passes. Without this flag adoption is forbidden.
   -h, --help
-
-Accepted compatibility no-op flags:
-      --skip-protocol-smoke
-      --skip-artifact-intake
-      --skip-tests
-      --skip-zip-hygiene
 USAGE
 }
 
@@ -84,12 +79,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --target-version=*) target_version="${1#*=}"; shift ;;
-    --pb-cmd)
-      [[ $# -ge 2 ]] || { echo "ERROR: --pb-cmd requires a value" >&2; exit 2; }
-      pb_cmd="$2"
-      shift 2
-      ;;
-    --pb-cmd=*) pb_cmd="${1#*=}"; shift ;;
     --release-log-dir)
       [[ $# -ge 2 ]] || { echo "ERROR: --release-log-dir requires a value" >&2; exit 2; }
       release_log_dir="$2"
@@ -122,10 +111,6 @@ while [[ $# -gt 0 ]]; do
       accept_if_green=1
       shift
       ;;
-    --skip-protocol-smoke|--skip-artifact-intake|--skip-tests|--skip-zip-hygiene)
-      # Compatibility no-op. The native candidate-run command owns the proof path.
-      shift
-      ;;
     --adopt-if-accepted|--complete-candidate-mvp|--require-candidate-mvp-complete)
       echo "ERROR: $(basename "$0") delegates to candidate-run directly; do not pass $1 explicitly" >&2
       exit 2
@@ -134,11 +119,6 @@ while [[ $# -gt 0 ]]; do
       echo "ERROR: $1 conflicts with final Artifact Intake MVP completion validation" >&2
       exit 2
       ;;
-    --test-timeout)
-      [[ $# -ge 2 ]] || { echo "ERROR: --test-timeout requires a value" >&2; exit 2; }
-      shift 2
-      ;;
-    --test-timeout=*) shift ;;
     *)
       echo "ERROR: unknown option: $1" >&2
       usage >&2
@@ -146,6 +126,15 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "${pb_python}" || "${pb_python}" != /* || ! -x "${pb_python}" ]]; then
+  echo "ERROR: PB_PYTHON must be the absolute executable Promptbranch launcher Python" >&2
+  exit 2
+fi
+if [[ ! -f "${pb_cli}" ]]; then
+  echo "ERROR: canonical Promptbranch CLI not found: ${pb_cli}" >&2
+  exit 2
+fi
 
 if [[ -z "${version}" ]]; then
   echo "ERROR: --version is required" >&2
@@ -166,7 +155,7 @@ if [[ "${candidate_mvp_max_steps}" -lt 1 ]]; then
   echo "ERROR: --candidate-mvp-max-steps must be >= 1" >&2
   exit 2
 fi
-python3 - <<'PY' "${candidate_run_step_timeout}"
+"${pb_python}" - <<'PY' "${candidate_run_step_timeout}"
 import sys
 try:
     value = float(sys.argv[1])
@@ -207,16 +196,17 @@ fi
 echo "final Artifact Intake MVP validation starting"
 echo "version: ${version}"
 echo "target_version: ${target_version}"
-echo "pb_cmd: ${pb_cmd}"
+echo "pb_python: ${pb_python}"
+echo "pb_cli: ${pb_cli}"
 echo "candidate_run_log: ${candidate_run_log}"
-echo "delegated_command: ${pb_cmd} ${candidate_run_args[*]}"
+echo "delegated_command: ${pb_python} ${pb_cli} ${candidate_run_args[*]}"
 
 set +e
-"${pb_cmd}" "${candidate_run_args[@]}" > "${candidate_run_log}"
+"${pb_python}" "${pb_cli}" "${candidate_run_args[@]}" > "${candidate_run_log}"
 candidate_rc=$?
 set -e
 
-python3 - <<'PY' "${candidate_run_log}" "${summary_log}" "${version}" "${target_version}" "${require_real_candidate_mvp}" "${accept_if_green}" "${candidate_rc}"
+"${pb_python}" - <<'PY' "${candidate_run_log}" "${summary_log}" "${version}" "${target_version}" "${require_real_candidate_mvp}" "${accept_if_green}" "${candidate_rc}"
 import json
 import sys
 from pathlib import Path

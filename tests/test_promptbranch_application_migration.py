@@ -130,7 +130,7 @@ def test_cross_repository_executable_launcher_uses_promptbranch_runtime(tmp_path
     )
     import promptbranch_application_architecture as architecture
 
-    monkeypatch.setattr(architecture.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("PATH", "/definitely-not-a-promptbranch-path")
     result = architecture.validate_application_architecture(target, level="executable")
     assert result["ok"] is True
     assert result["executable"]["run"]["ok"] is True

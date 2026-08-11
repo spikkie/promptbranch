@@ -764,14 +764,6 @@ def test_parser_accepts_mcp_manifest_command() -> None:
     assert args.json is True
 
 
-def test_parser_keeps_deprecated_controlled_writes_alias() -> None:
-    parser = make_parser()
-    args = parser.parse_args(["mcp", "manifest", "--include-controlled-writes", "--json"])
-
-    assert args.command == "mcp"
-    assert args.mcp_command == "manifest"
-    assert args.include_controlled_processes is True
-    assert args.json is True
 
 
 def test_parser_accepts_mcp_config_command() -> None:

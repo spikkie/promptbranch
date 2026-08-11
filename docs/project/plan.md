@@ -1,4 +1,4 @@
-> v0.1.127.2.1 closure authority: accepted/current remains `v0.1.126.1.1.1.1.3`; consolidate all v0.1.127 tool-authoring/provenance/route/acceptance repairs, preserve the exact launcher path as sole Python authority, and close the complete v0.1.127 DoD without advancing normal scope.
+> v0.1.128 authority: accepted/current is FINAL_VERIFIED `v0.1.127.2.1`; remove only execution-critical dual-authority/legacy mutation paths, preserve current resilience, and freeze one canonical PB lifecycle without expanding release machinery.
 
 > v0.1.127.1 is repair-required live evidence after same-project slugged/unslugged URLs were rejected by the durable artifact validator.
 
@@ -9,42 +9,43 @@
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.126.1.1.1.1.3
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.2.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+accepted_current_version: v0.1.127.2.1
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+active_candidate_version: v0.1.128
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
 ```
 
-accepted/current baseline: v0.1.126.1.1.1.1.3
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
-active normal artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-active normal slice: v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair
+accepted/current baseline: v0.1.127.2.1
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+accepted/current SHA-256: 33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75
+active normal artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+active normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
 next normal version: v0.1.128
-next normal slice: v0.1.128 — PB environment MVP hardening and freeze
-next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
+next normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
+next planned after acceptance: v0.1.129 — External application pilot bootstrap
 
-## Active normal slice — v0.1.127
+## Active normal slice — v0.1.128
 
-1. Track one portable read-only `promptbranch-tool-authoring` skill in the canonical AI registry.
-2. Define `promptbranch.tool.authoring` schema `1.0` with explicit identity, bounded JSON input, risk/read-only classification, validation, evidence, and fail-closed failure semantics.
-3. Keep authoring authority proposal-only: execution, mutation, release, publication, and adoption are never granted by this contract.
-4. Add deterministic semantic validation that rejects unknown top-level fields, unbounded inputs, risk/read-only mismatches, missing validators/evidence, and authority escalation.
-5. Export a byte-reproducible portable ZIP containing `SKILL.md`, schema, example, `PROJECT_SOURCE.md`, `AGENTS.md`, and a digest-bound manifest.
-6. Verify bundle entry set, safe paths, fixed timestamps/modes/compression, payload SHA-256 values, and authority boundary.
-7. Expose the workflow through `pb skill authoring-validate`, `tool-spec-validate`, `export`, and `verify-bundle`.
-8. Do not register or execute authored tools, and do not begin external application development.
+1. Synchronize tracked control-surface accepted/current authority to the live FINAL_VERIFIED v0.1.127.2.1 baseline.
+2. Remove top-level artifact-current fallback; repository-loop projections are the only current-state input.
+3. Remove PATH/PB-command selectors from canonical and still-operational helper execution; one exact launcher Python plus repo-local CLI is authoritative.
+4. Remove the hidden MCP controlled-write alias and the executable `legacy_10_75` Project Source mutation/diagnostic branch.
+5. Preserve external-library compatibility, browser resilience, and fail-closed legacy-state detection where those do not create a second authority.
+6. Run every canonical construction validation group against the exact candidate and require deterministic rebuild plus Artifact Guardian.
+7. After construction proof, execute one fresh canonical lifecycle from v0.1.127.2.1 through FINAL_VERIFIED with independent verification and fresh scoped current evidence.
+8. Do not begin external application development until this PB-environment freeze is accepted/current.
 
-Rolling horizon authority remains `docs/project/plan-state.json`; successful acceptance advances to `v0.1.128 — PB environment MVP hardening and freeze`.
+Rolling horizon authority remains `docs/project/plan-state.json`; successful acceptance advances to `v0.1.129 — External application pilot bootstrap`.
 
 ## Current position
 
-`v0.1.126.1.1.1.1.3` is the accepted/current Promptbranch baseline. Its canonical repair chain reached `FINAL_VERIFIED`, independent all-state verification passed, and the exact tested image/artifact/current projections align. The completed normal product scope through `v0.1.126` is therefore closed.
+`v0.1.127.2.1` is the accepted/current Promptbranch baseline. Its full canonical lifecycle reached `FINAL_VERIFIED`, independent all-state verification passed, and fresh scoped current evidence aligned on the exact artifact SHA. The complete normal product scope through `v0.1.127` is closed.
 
 ```text
 PB control-plane proof through v0.1.125: complete
 Persistent whole-release ETA v0.1.126: complete via accepted repair chain
-Active PB environment slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+Portable tool-authoring/provenance v0.1.127: complete via accepted v0.1.127.2.1 repair chain
+Active PB environment slice: v0.1.128 — authority cleanup, hardening and freeze
 External application development using PB: not yet started
 ```
 
@@ -52,15 +53,14 @@ External application development using PB: not yet started
 
 The machine-readable authority is `docs/project/plan-state.json`.
 
-1. `v0.1.126.1.1.1.1.3` — accepted/current baseline closing the `v0.1.126` repair chain.
-2. `v0.1.127` — active portable Promptbranch tool-authoring skill and export bundle.
-3. `v0.1.128` — PB environment MVP hardening and freeze.
-4. `v0.1.129` — external application pilot bootstrap.
-5. `v0.1.130` — controlled external application change execution.
-6. `v0.1.131` — application test, diagnosis, and bounded correction loop.
-7. `v0.1.132` — external application candidate and acceptance lifecycle.
-8. `v0.1.133` — non-production deployment and post-deployment proof.
-9. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
+1. `v0.1.127.2.1` — FINAL_VERIFIED accepted/current baseline closing the `v0.1.127` repair chain.
+2. `v0.1.128` — active PB environment authority cleanup, hardening and freeze.
+3. `v0.1.129` — external application pilot bootstrap after acceptance.
+4. `v0.1.130` — controlled external application change execution.
+5. `v0.1.131` — application test, diagnosis, and bounded correction loop.
+6. `v0.1.132` — external application candidate and acceptance lifecycle.
+7. `v0.1.133` — non-production deployment proof.
+8. `v0.1.134` — reusable PB application workflow and multi-repository generalization.
 
 ## Architecture boundary
 

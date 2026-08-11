@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import sys
+
 import ast
 import hashlib
 import json
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -998,23 +999,26 @@ def _execute_registered_skill(
     from promptbranch_mcp import agent_run
 
     execution = skill["execution"]
-    installed = shutil.which("promptbranch") or shutil.which("pb")
-    launcher_path: Path | None = None
-    command = installed
-    if command is None:
-        handle = tempfile.NamedTemporaryFile("w", prefix="promptbranch-executable-proof-", suffix=".py", delete=False)
-        launcher_path = Path(handle.name)
-        runtime_root = Path(__file__).resolve().parent
-        handle.write(
-            "#!/usr/bin/env python3\n"
-            "import sys\n"
-            f"sys.path.insert(0, {str(runtime_root)!r})\n"
-            "from promptbranch_cli import main\n"
-            "raise SystemExit(main())\n"
-        )
-        handle.close()
-        launcher_path.chmod(0o700)
-        command = str(launcher_path)
+    interpreter = Path(sys.executable).expanduser()
+    if not interpreter.is_absolute() or not interpreter.is_file():
+        return {
+            "ok": False,
+            "status": "python_authority_invalid",
+            "candidate_python": str(interpreter),
+        }
+
+    handle = tempfile.NamedTemporaryFile("w", prefix="promptbranch-executable-proof-", suffix=".py", delete=False)
+    launcher_path = Path(handle.name)
+    runtime_root = Path(__file__).resolve().parent
+    handle.write(
+        f"#!{interpreter}\n"
+        "import sys\n"
+        f"sys.path.insert(0, {str(runtime_root)!r})\n"
+        "from promptbranch_cli import main\n"
+        "raise SystemExit(main())\n"
+    )
+    handle.close()
+    launcher_path.chmod(0o700)
     try:
         return agent_run(
             execution["request"],
@@ -1022,12 +1026,11 @@ def _execute_registered_skill(
             profile_dir=profile_dir,
             skill=skill["name"],
             proposal_mode="deterministic",
-            command=command,
+            command=str(launcher_path),
             mcp_timeout_seconds=float(execution["timeout_seconds"]),
         )
     finally:
-        if launcher_path is not None:
-            launcher_path.unlink(missing_ok=True)
+        launcher_path.unlink(missing_ok=True)
 
 
 def _validate_executable_architecture(

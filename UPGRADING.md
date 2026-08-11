@@ -611,7 +611,7 @@ pb agent mcp-llm-smoke "read VERSION" --path . --model llama3-groq-tool-use:8b -
 ## v0.0.150
 
 - Public MCP controlled mode is now named controlled processes. Use `--include-controlled-processes`.
-- Deprecated `--include-controlled-writes` remains as an alias but no longer implies source/artifact write tool exposure.
+- `--include-controlled-writes` is removed. Use `--include-controlled-processes` explicitly when the bounded process tool surface is required.
 - The controlled-process manifest exposes `test.smoke` only; source sync and artifact release write tools remain blocked.
 - Timeout diagnostics now separate `tool_timeout_seconds` from `transport_timeout_seconds` for controlled MCP process calls.
 

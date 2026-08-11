@@ -4,14 +4,9 @@
 
 `scripts/finalize-artifact-intake-mvp.sh` is the explicit operator gate for proving the final Artifact Intake MVP lifecycle.
 
-It is intentionally a thin wrapper around `scripts/post-release-validation.sh`. The wrapper does not add a new artifact lifecycle implementation. It makes the strict MVP-finalization mode repeatable by forcing these delegated flags:
+It is intentionally a thin operator wrapper around the native `artifact candidate-run` lifecycle. The wrapper does not add a new artifact lifecycle implementation. It requires one exact Promptbranch launcher through `PB_PYTHON` and the repo-local `promptbranch_cli.py`.
 
-```bash
---adopt-if-accepted
---complete-candidate-mvp
-```
-
-That means the wrapper can execute existing allowlisted candidate lifecycle steps through:
+The wrapper executes the existing candidate lifecycle through:
 
 ```bash
 pb artifact candidate-run \
@@ -36,7 +31,7 @@ The key invariant is that no new mutation path is created here. Mutation remains
 
 ### Hidden assumptions
 
-- `promptbranch` or `pb` resolves to the candidate runtime you are validating.
+- `PB_PYTHON` is the absolute executable Python launcher for the Promptbranch environment being validated.
 - The local working tree is the installed contents of the candidate ZIP.
 - `.pb_profile/` contains valid artifact/source state for the current project.
 - The current ChatGPT workspace/task context is suitable for a protocol smoke ask.
@@ -75,33 +70,31 @@ scripts/finalize-artifact-intake-mvp.sh \
   --candidate-run-step-timeout 3600
 ```
 
-Use `--pb-cmd promptbranch` to bypass a shell alias that prints extra text:
+Set the one Promptbranch Python authority explicitly:
 
 ```bash
+export PB_PYTHON="$HOME/.local/share/pipx/venvs/promptbranch/bin/python"
 scripts/finalize-artifact-intake-mvp.sh \
   --version v0.0.276.2 \
-  --target-version v0.0.277 \
-  --pb-cmd promptbranch
+  --target-version v0.0.277
 ```
 
 ## Options accepted by the wrapper
 
-The wrapper forwards these options to `scripts/post-release-validation.sh`:
+The wrapper accepts these options:
 
 ```text
 -v, --version VERSION
 --target-version VERSION
---pb-cmd COMMAND
 --release-log-dir DIR
---test-timeout SEC
 --candidate-mvp-max-steps N
 --candidate-run-step-timeout SEC
---skip-protocol-smoke
---skip-artifact-intake
---skip-tests
---skip-zip-hygiene
+--profile smoke|full
 --require-real-candidate-mvp
+--accept-if-green
 ```
+
+`PB_PYTHON` is an environment authority, not a CLI selector.
 
 The wrapper itself supplies these options and rejects them if you pass them directly:
 
@@ -133,12 +126,12 @@ POST_RELEASE_VALIDATION_SCRIPT=/tmp/fake-post-release-validation.sh \
     --target-version v9.9.10
 ```
 
-### `PB_CMD`
+### `PB_PYTHON`
 
-Inherited by `scripts/post-release-validation.sh` when `--pb-cmd` is not supplied.
+Required absolute executable path for the sole Promptbranch Python authority.
 
 ```bash
-PB_CMD=promptbranch \
+PB_PYTHON="$HOME/.local/share/pipx/venvs/promptbranch/bin/python" \
   scripts/finalize-artifact-intake-mvp.sh \
     --version v0.0.276.2 \
     --target-version v0.0.277
@@ -379,7 +372,6 @@ Run this only when the candidate ZIP is installed locally and already uploaded/v
 scripts/finalize-artifact-intake-mvp.sh \
   --version v0.0.276.2 \
   --target-version v0.0.277 \
-  --pb-cmd promptbranch \
   --candidate-mvp-max-steps 4 \
   --candidate-run-step-timeout 3600 \
   --require-real-candidate-mvp
@@ -391,7 +383,6 @@ When debugging browser/service issues, you may temporarily isolate local gates:
 scripts/finalize-artifact-intake-mvp.sh \
   --version v0.0.276.2 \
   --target-version v0.0.277 \
-  --pb-cmd promptbranch \
   --skip-protocol-smoke \
   --skip-artifact-intake
 ```

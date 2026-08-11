@@ -14925,63 +14925,8 @@ def test_artifact_adopt_rejects_explicit_repo_prefix_mismatch(capsys, tmp_path) 
     assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
 
 
-def test_artifact_current_selected_sections_prefers_repo_loop_over_legacy_top_level() -> None:
-    from promptbranch_cli import _artifact_current_selected_sections
-
-    payload = {
-        "runtime": {"version": "v0.0.1"},
-        "state": {"artifact_ref": "legacy_v0.0.1.zip", "artifact_version": "v0.0.1"},
-        "registry_current": {"filename": "legacy_v0.0.1.zip", "version": "v0.0.1"},
-        "repos": {
-            "chatgpt_claudecode_workflow-2": {
-                "runtime": {"version": "v0.1.76"},
-                "state": {
-                    "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.76.zip",
-                    "artifact_version": "v0.1.76",
-                    "source_ref": "chatgpt_claudecode_workflow-2_v0.1.76.zip",
-                    "source_version": "v0.1.76",
-                },
-                "registry_current": {
-                    "filename": "chatgpt_claudecode_workflow-2_v0.1.76.zip",
-                    "version": "v0.1.76",
-                },
-                "baseline_roles": {"registry_current_version": "v0.1.76"},
-                "consistency": {"code_version_matches_state_source": True},
-            }
-        },
-    }
-
-    sections = _artifact_current_selected_sections(payload, repo_id="chatgpt_claudecode_workflow-2")
-
-    assert sections["repo_id"] == "chatgpt_claudecode_workflow-2"
-    assert sections["runtime"]["version"] == "v0.1.76"
-    assert sections["state"]["artifact_ref"] == "chatgpt_claudecode_workflow-2_v0.1.76.zip"
-    assert sections["registry_current"]["filename"] == "chatgpt_claudecode_workflow-2_v0.1.76.zip"
-    assert sections["legacy_single_payload_used"] is False
 
 
-def test_artifact_current_selected_sections_keeps_legacy_fallback_explicit() -> None:
-    from promptbranch_cli import _artifact_current_selected_sections
-
-    legacy_payload = {
-        "runtime": {"version": "v0.1.75"},
-        "state": {
-            "artifact_ref": "chatgpt_claudecode_workflow-2_v0.1.75.zip",
-            "artifact_version": "v0.1.75",
-        },
-        "registry_current": {
-            "filename": "chatgpt_claudecode_workflow-2_v0.1.75.zip",
-            "version": "v0.1.75",
-        },
-        "baseline_roles": {"registry_current_version": "v0.1.75"},
-    }
-
-    sections = _artifact_current_selected_sections(legacy_payload)
-    disabled = _artifact_current_selected_sections(legacy_payload, allow_legacy_single_payload=False)
-
-    assert sections["state"]["artifact_ref"] == "chatgpt_claudecode_workflow-2_v0.1.75.zip"
-    assert sections["legacy_single_payload_used"] is True
-    assert disabled["repo_loop_entry_present"] is False
 
 
 def test_current_adopted_candidate_fallback_reads_repo_loop_payload() -> None:
@@ -16456,3 +16401,36 @@ def test_candidate_run_exact_finalized_materialized_protocol_run_migrates_one_ca
     assert candidate["version"] == "v0.1.124"
     assert candidate["repo_id"] == "chatgpt_claudecode_workflow-2"
     assert candidate["migration_performed"] is True
+
+
+def test_artifact_current_selected_sections_uses_repo_loop_only() -> None:
+    from promptbranch_cli import _artifact_current_selected_sections
+    payload = {
+        "repos": {
+            "chatgpt_claudecode_workflow-2": {
+                "runtime": {"version": "v0.1.128"},
+                "state": {"artifact_version": "v0.1.128"},
+                "registry_current": {"version": "v0.1.128"},
+            }
+        },
+        "runtime": {"version": "v0.0.1"},
+        "state": {"artifact_version": "v0.0.1"},
+    }
+    sections = _artifact_current_selected_sections(payload, repo_id="chatgpt_claudecode_workflow-2")
+    assert sections["repo_loop_entry_present"] is True
+    assert sections["runtime"]["version"] == "v0.1.128"
+    assert sections["state"]["artifact_version"] == "v0.1.128"
+
+
+def test_artifact_current_selected_sections_rejects_top_level_payload() -> None:
+    from promptbranch_cli import _artifact_current_selected_sections
+    payload = {
+        "runtime": {"version": "v0.0.1"},
+        "state": {"artifact_version": "v0.0.1"},
+        "registry_current": {"version": "v0.0.1"},
+    }
+    sections = _artifact_current_selected_sections(payload)
+    assert sections["repo_loop_entry_present"] is False
+    assert sections["runtime"] == {}
+    assert sections["state"] == {}
+    assert sections["registry_current"] == {}

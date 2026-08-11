@@ -14,7 +14,9 @@ test_timeout_seconds="${PROMPTBRANCH_TEST_TIMEOUT_SECONDS:-3600}"
 protocol_timeout_seconds="${PROMPTBRANCH_PROTOCOL_TIMEOUT_SECONDS:-120}"
 fresh_turn_timeout_seconds="${PROMPTBRANCH_PROTOCOL_FRESH_TURN_TIMEOUT_SECONDS:-60}"
 fresh_turn_poll_seconds="${PROMPTBRANCH_PROTOCOL_FRESH_TURN_POLL_SECONDS:-2}"
-pb_cmd_arg="${PB_CMD:-}"
+repo_root="$(pwd -P)"
+pb_python="${PB_PYTHON:-}"
+pb_cli="${repo_root}/promptbranch_cli.py"
 skip_protocol_smoke=0
 skip_artifact_intake=0
 skip_candidate_run=0
@@ -52,7 +54,7 @@ Runs the standard post-release validation sequence:
 Options:
   -v, --version VERSION          Release version under validation. Defaults to VERSION file.
       --target-version VERSION   Target version for protocol smoke. Defaults to next normal version.
-      --pb-cmd COMMAND           Promptbranch executable. Defaults to promptbranch, then pb.
+      PB_PYTHON                 Exact absolute Promptbranch launcher Python (required).
       --release-log-dir DIR      Release log root. Default: .pb_profile/release_logs.
       --test-timeout SEC         Timeout wrapper for pb test full. Default: ${test_timeout_seconds}.
       --skip-protocol-smoke      Skip pb ask --protocol smoke.
@@ -92,7 +94,7 @@ Options:
 Examples:
   scripts/post-release-validation.sh --version v0.0.222.1 --target-version v0.0.223
   scripts/post-release-validation.sh --version v0.0.222.1 --target-version v0.0.223 --adopt-if-accepted
-  PB_CMD=pb scripts/post-release-validation.sh --version v0.0.222.1
+  PB_PYTHON="$HOME/.local/share/pipx/venvs/promptbranch/bin/python" scripts/post-release-validation.sh --version v0.0.222.1
 USAGE
 }
 
@@ -129,27 +131,6 @@ release_type_for_version() {
   fi
 }
 
-select_pb_cmd() {
-  if [[ -n "${pb_cmd_arg}" ]]; then
-    command -v "${pb_cmd_arg}" >/dev/null 2>&1 || {
-      echo "ERROR: --pb-cmd not found: ${pb_cmd_arg}" >&2
-      return 1
-    }
-    printf '%s\n' "${pb_cmd_arg}"
-    return 0
-  fi
-  if command -v promptbranch >/dev/null 2>&1; then
-    printf 'promptbranch\n'
-    return 0
-  fi
-  if command -v pb >/dev/null 2>&1; then
-    printf 'pb\n'
-    return 0
-  fi
-  echo "ERROR: neither promptbranch nor pb found in PATH" >&2
-  return 1
-}
-
 run_step() {
   local label="$1"
   local outfile="$2"
@@ -181,19 +162,19 @@ run_step_with_stdin() {
 
 candidate_run_no_artifact_precondition() {
   local payload_path="$1"
-  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('status') == 'candidate_run_cycle_precondition_failed', completion.get('status') == 'candidate_mvp_no_artifact_candidate', payload.get('stopped_reason') == 'no_artifact_candidate', payload.get('mutating_actions_executed') is False, payload.get('download_performed') is False, payload.get('verification_performed') is False, payload.get('migration_performed') is False, payload.get('adoption_performed') is False]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+  "${pb_python}" -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); completion=payload.get('mvp_completion') if isinstance(payload.get('mvp_completion'), dict) else {}; checks=[payload.get('status') == 'candidate_run_cycle_precondition_failed', completion.get('status') == 'candidate_mvp_no_artifact_candidate', payload.get('stopped_reason') == 'no_artifact_candidate', payload.get('mutating_actions_executed') is False, payload.get('download_performed') is False, payload.get('verification_performed') is False, payload.get('migration_performed') is False, payload.get('adoption_performed') is False]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
 }
 
 
 artifact_intake_download_verify_proof() {
   local payload_path="$1"
-  python3 -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); checks=[payload.get('ok') is True, payload.get('download_performed') is True, payload.get('verification_performed') is True]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
+  "${pb_python}" -c "import json, sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding='utf-8').strip(); payload=json.loads(text[text.find('{'):text.rfind('}')+1] if not text.lstrip().startswith('{') else text); checks=[payload.get('ok') is True, payload.get('download_performed') is True, payload.get('verification_performed') is True]; raise SystemExit(0 if all(checks) else 1)" "${payload_path}"
 }
 
 candidate_run_download_proof() {
   local payload_path="$1"
   local intake_payload_path="${2:-}"
-  python3 -c "import json, sys; from pathlib import Path
+  "${pb_python}" -c "import json, sys; from pathlib import Path
 
 def load(path):
     text=Path(path).read_text(encoding='utf-8').strip()
@@ -227,12 +208,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --target-version=*) target_version_arg="${1#*=}"; shift ;;
-    --pb-cmd)
-      [[ $# -ge 2 ]] || { echo "ERROR: --pb-cmd requires a value" >&2; exit 2; }
-      pb_cmd_arg="$2"
-      shift 2
-      ;;
-    --pb-cmd=*) pb_cmd_arg="${1#*=}"; shift ;;
     --release-log-dir)
       [[ $# -ge 2 ]] || { echo "ERROR: --release-log-dir requires a value" >&2; exit 2; }
       release_log_root="$2"
@@ -283,7 +258,15 @@ if [[ -z "${target_version}" ]]; then
 else
   target_version="$(normalize_version "${target_version}")" || { echo "ERROR: invalid target version: ${target_version_arg}" >&2; exit 2; }
 fi
-pb_cmd="$(select_pb_cmd)" || exit 2
+if [[ -z "${pb_python}" || "${pb_python}" != /* || ! -x "${pb_python}" ]]; then
+  echo "ERROR: PB_PYTHON must be the absolute executable Promptbranch launcher Python" >&2
+  exit 2
+fi
+if [[ ! -f "${pb_cli}" ]]; then
+  echo "ERROR: canonical Promptbranch CLI not found: ${pb_cli}" >&2
+  exit 2
+fi
+pb_command=("${pb_python}" "${pb_cli}")
 target_release_type="$(release_type_for_version "${target_version}")"
 version_artifact="${project_name}_${version}.zip"
 target_artifact="${project_name}_${target_version}.zip"
@@ -296,7 +279,7 @@ if ! [[ "${candidate_mvp_max_steps}" =~ ^[0-9]+$ ]] || [[ "${candidate_mvp_max_s
   echo "ERROR: --candidate-mvp-max-steps must be a positive integer: ${candidate_mvp_max_steps}" >&2
   exit 2
 fi
-if ! python3 - "${candidate_run_step_timeout_seconds}" <<'PYTIMEOUT'
+if ! "${pb_python}" - "${candidate_run_step_timeout_seconds}" <<'PYTIMEOUT'
 import sys
 try:
     value = float(sys.argv[1])
@@ -332,7 +315,8 @@ echo "target_artifact:  ${target_artifact}"
 echo "target_release_type: ${target_release_type}"
 echo "release_logs:     ${release_log_dir}"
 echo "session_log:      ${session_log}"
-echo "pb_cmd:           ${pb_cmd}"
+echo "pb_python:        ${pb_python}"
+echo "pb_cli:           ${pb_cli}"
 echo "test_timeout:     ${test_timeout_seconds}"
 echo "skip_protocol:    ${skip_protocol_smoke}"
 echo "skip_intake:      ${skip_artifact_intake}"
@@ -369,12 +353,12 @@ candidate_run_phase="not_run"
 
 artifact_current_log="${release_log_dir}/pb_artifact_current.${version}.json"
 artifact_current_semantic_log="${release_log_dir}/pb_artifact_current.${version}.semantic.json"
-run_step "artifact current" "${artifact_current_log}" "${pb_cmd}" artifact current --json || { rc_current=$?; failures=$((failures + 1)); }
+run_step "artifact current" "${artifact_current_log}" "${pb_command[@]}" artifact current --json || { rc_current=$?; failures=$((failures + 1)); }
 if [[ "${rc_current}" -eq 0 ]]; then
   echo
   echo "===== artifact current semantic check ====="
   set +e
-  python3 - "${artifact_current_log}" "${version}" > "${artifact_current_semantic_log}" <<'PYSEMANTIC'
+  "${pb_python}" - "${artifact_current_log}" "${version}" > "${artifact_current_semantic_log}" <<'PYSEMANTIC'
 import json
 import sys
 from pathlib import Path
@@ -409,9 +393,6 @@ def artifact_current_entries(payload):
             if isinstance(repo_payload, dict):
                 yield repo_id, repo_payload
         return
-    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
-        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
-        yield scope.get("repo_id") or "legacy", payload
 
 field_paths = {
     "runtime.version": ("runtime", "version"),
@@ -484,7 +465,7 @@ run_protocol_smoke_step() {
   if [[ "${skip_protocol_smoke}" -eq 0 ]]; then
     if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
       run_step "artifact-producing ask-release (${phase})" "${protocol_log}" \
-        "${pb_cmd}" ask-release \
+        "${pb_command[@]}" ask-release \
           --target-version "${target_version}" \
           --release-type "${target_release_type}" \
           --baseline-artifact "${version_artifact}" \
@@ -500,7 +481,7 @@ run_protocol_smoke_step() {
         || { rc_protocol=$?; failures=$((failures + 1)); }
     else
       run_step "protocol smoke (${phase})" "${protocol_log}" \
-        "${pb_cmd}" ask "Protocol smoke only. Return a valid promptbranch.ask.reply envelope with status no_artifact. Do not create a ZIP." \
+        "${pb_command[@]}" ask "Protocol smoke only. Return a valid promptbranch.ask.reply envelope with status no_artifact. Do not create a ZIP." \
           --protocol \
           --from-current-baseline \
           --target-version "${target_version}" \
@@ -526,7 +507,7 @@ run_artifact_intake_step() {
     fi
     if [[ "${require_real_candidate_mvp}" -eq 1 ]]; then
       run_step "artifact intake download/verify (${phase})" "${intake_log}" \
-        "${pb_cmd}" artifact intake \
+        "${pb_command[@]}" artifact intake \
           --from-last-answer \
           --expect-artifact "${target_artifact}" \
           --expect-version "${target_version}" \
@@ -541,7 +522,7 @@ run_artifact_intake_step() {
       fi
     else
       run_step "artifact intake dry-run (${phase})" "${intake_log}" \
-        "${pb_cmd}" artifact intake --from-last-answer --dry-run --json || { rc_intake=$?; failures=$((failures + 1)); }
+        "${pb_command[@]}" artifact intake --from-last-answer --dry-run --json || { rc_intake=$?; failures=$((failures + 1)); }
     fi
   else
     printf '{"ok": true, "status": "skipped", "phase": "%s"}\n' "${phase}" > "${intake_log}"
@@ -582,7 +563,7 @@ run_artifact_candidate_run_step() {
     fi
     set +e
     run_step "${candidate_run_label}" "${candidate_run_log}" \
-      "${pb_cmd}" "${candidate_run_args[@]}"
+      "${pb_command[@]}" "${candidate_run_args[@]}"
     local candidate_rc=$?
     set -u
     if [[ "${candidate_rc}" -ne 0 ]]; then
@@ -636,11 +617,11 @@ test_full_log="${release_log_dir}/pb_test.full.${version}.log"
 test_report_log="${release_log_dir}/pb_test.full.${version}.report.json"
 if [[ "${skip_tests}" -eq 0 ]]; then
   if command -v timeout >/dev/null 2>&1; then
-    run_step "test full" "${test_full_log}" timeout "${test_timeout_seconds}" "${pb_cmd}" test full --json || { rc_test_full=$?; failures=$((failures + 1)); }
+    run_step "test full" "${test_full_log}" timeout "${test_timeout_seconds}" "${pb_command[@]}" test full --json || { rc_test_full=$?; failures=$((failures + 1)); }
   else
-    run_step "test full" "${test_full_log}" "${pb_cmd}" test full --json || { rc_test_full=$?; failures=$((failures + 1)); }
+    run_step "test full" "${test_full_log}" "${pb_command[@]}" test full --json || { rc_test_full=$?; failures=$((failures + 1)); }
   fi
-  run_step "test report" "${test_report_log}" "${pb_cmd}" test report "${test_full_log}" --json || { rc_test_report=$?; failures=$((failures + 1)); }
+  run_step "test report" "${test_report_log}" "${pb_command[@]}" test report "${test_full_log}" --json || { rc_test_report=$?; failures=$((failures + 1)); }
 else
   echo '{"ok": true, "status": "skipped"}' > "${test_full_log}"
   echo '{"ok": true, "status": "skipped"}' > "${test_report_log}"
@@ -650,7 +631,7 @@ zip_hygiene_log="${release_log_dir}/zip_hygiene.${version}.json"
 if [[ "${skip_zip_hygiene}" -eq 0 ]]; then
   artifact_zip="${project_name}_${version}.zip"
   set +e
-  python3 - "${artifact_zip}" > "${zip_hygiene_log}" <<'PY'
+  "${pb_python}" - "${artifact_zip}" > "${zip_hygiene_log}" <<'PY'
 import json
 import sys
 import zipfile
@@ -708,7 +689,7 @@ PY
   cat "${zip_hygiene_log}"
   if [[ "${rc_zip_hygiene}" -ne 0 ]]; then
     failures=$((failures + 1))
-  elif ! python3 - "${zip_hygiene_log}" <<'PY'
+  elif ! "${pb_python}" - "${zip_hygiene_log}" <<'PY'
 import json, sys
 payload=json.load(open(sys.argv[1], encoding="utf-8"))
 raise SystemExit(0 if payload.get("ok") is True else 1)
@@ -738,14 +719,14 @@ if [[ "${adopt_if_accepted}" -eq 1 && "${failures}" -eq 0 ]]; then
   else
     adopt_performed=1
     run_step "artifact adopt" "${adopt_log}" \
-      "${pb_cmd}" artifact adopt "${artifact_zip}" --from-project-source --json || { rc_adopt=$?; failures=$((failures + 1)); }
+      "${pb_command[@]}" artifact adopt "${artifact_zip}" --from-project-source --json || { rc_adopt=$?; failures=$((failures + 1)); }
   fi
   if [[ "${rc_adopt}" -eq 0 ]]; then
-    run_step "artifact current after adopt" "${adopt_current_log}" "${pb_cmd}" artifact current --json || { rc_adopt_semantic=$?; failures=$((failures + 1)); }
+    run_step "artifact current after adopt" "${adopt_current_log}" "${pb_command[@]}" artifact current --json || { rc_adopt_semantic=$?; failures=$((failures + 1)); }
     if [[ "${rc_adopt_semantic}" -eq 0 ]]; then
       adopt_semantic_performed=1
       set +e
-      python3 - "${adopt_current_log}" "${version}" > "${adopt_semantic_log}" <<'PYSEMANTIC2'
+      "${pb_python}" - "${adopt_current_log}" "${version}" > "${adopt_semantic_log}" <<'PYSEMANTIC2'
 import json
 import sys
 from pathlib import Path
@@ -779,9 +760,6 @@ def artifact_current_entries(payload):
             if isinstance(repo_payload, dict):
                 yield repo_id, repo_payload
         return
-    if any(isinstance(payload.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
-        scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
-        yield scope.get("repo_id") or "legacy", payload
 
 field_paths = {
     "runtime.version": ("runtime", "version"),
@@ -875,7 +853,7 @@ echo
 echo "===== release lifecycle-status snapshot ====="
 if [[ "${failures}" -eq 0 ]]; then
   lifecycle_status_performed=1
-  run_step "release lifecycle-status snapshot" "${lifecycle_status_log}"     "${pb_cmd}" release lifecycle-status --version "${version}" --target-version "${target_version}" --repo-path "$(pwd)" --json || { rc_lifecycle_status=$?; failures=$((failures + 1)); }
+  run_step "release lifecycle-status snapshot" "${lifecycle_status_log}"     "${pb_command[@]}" release lifecycle-status --version "${version}" --target-version "${target_version}" --repo-path "$(pwd)" --json || { rc_lifecycle_status=$?; failures=$((failures + 1)); }
 else
   printf '{"ok": true, "status": "skipped_due_to_prior_validation_failure", "version": "%s", "target_version": "%s"}
 ' "${version}" "${target_version}" > "${lifecycle_status_log}"
@@ -891,7 +869,7 @@ if [[ "${prior_failures_before_lifecycle_status}" -ne 0 ]]; then
   echo "release lifecycle-status consistency skipped because prior validation failures exist"
 else
   set +e
-  python3 -     "${lifecycle_status_log}"     "${lifecycle_status_consistency_log}"     "${version}"     "${target_version}"     "${adopt_performed}"     "${adopt_semantic_performed}"     "${rc_adopt_semantic}" <<'PYLCONSISTENCY'
+  "${pb_python}" -     "${lifecycle_status_log}"     "${lifecycle_status_consistency_log}"     "${version}"     "${target_version}"     "${adopt_performed}"     "${adopt_semantic_performed}"     "${rc_adopt_semantic}" <<'PYLCONSISTENCY'
 import json
 import sys
 from pathlib import Path
@@ -974,9 +952,6 @@ def _artifact_current_repo_entries(artifact_current):
     repos = artifact_current.get("repos")
     if isinstance(repos, dict):
         return [(str(repo_id), repo_payload) for repo_id, repo_payload in sorted(repos.items()) if isinstance(repo_payload, dict)]
-    if any(isinstance(artifact_current.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
-        scope = artifact_current.get("scope") if isinstance(artifact_current.get("scope"), dict) else {}
-        return [(str(scope.get("repo_id") or "legacy"), artifact_current)]
     return []
 
 
@@ -1134,7 +1109,7 @@ if [[ "${prior_failures_before_lifecycle_status}" -ne 0 ]]; then
   echo "release lifecycle human-summary guard skipped because prior validation failures exist"
 else
   set +e
-  python3 - \
+  "${pb_python}" - \
     "${lifecycle_status_log}" \
     "${human_summary_guard_log}" <<'PYHUMANGUARD'
 import json
@@ -1193,9 +1168,6 @@ def _artifact_current_entries(artifact_current):
     repos = artifact_current.get("repos")
     if isinstance(repos, dict):
         return [(str(repo_id), repo_payload) for repo_id, repo_payload in sorted(repos.items()) if isinstance(repo_payload, dict)]
-    if any(isinstance(artifact_current.get(key), dict) for key in ("runtime", "state", "registry_current", "baseline_roles")):
-        scope = artifact_current.get("scope") if isinstance(artifact_current.get("scope"), dict) else {}
-        return [(str(scope.get("repo_id") or "legacy"), artifact_current)]
     return []
 
 
@@ -1324,7 +1296,7 @@ PYHUMANGUARD
   fi
 fi
 
-python3 - \
+"${pb_python}" - \
   "${summary_json}" \
   "${version}" \
   "${target_version}" \
@@ -1723,7 +1695,7 @@ if [[ "${failures}" -ne 0 ]]; then
   echo "failure_count:        ${failures}"
   echo "summary_path:         ${summary_json}"
 else
-python3 - "${summary_json}" <<'PYHUMAN'
+"${pb_python}" - "${summary_json}" <<'PYHUMAN'
 import json
 import sys
 from pathlib import Path
@@ -1788,6 +1760,18 @@ def first_present(*items, default="unknown"):
 
 lifecycle = summary.get("lifecycle_status_snapshot") if isinstance(summary.get("lifecycle_status_snapshot"), dict) else {}
 raw_lifecycle = read_jsonish(summary.get("lifecycle_status_snapshot_path"))
+
+def artifact_current_repo(payload):
+    current = payload.get("artifact_current") if isinstance(payload.get("artifact_current"), dict) else {}
+    repos = current.get("repos") if isinstance(current.get("repos"), dict) else {}
+    for repo_id in sorted(repos):
+        repo_payload = repos.get(repo_id)
+        if isinstance(repo_payload, dict):
+            return repo_payload
+    return {}
+
+raw_current_repo = artifact_current_repo(raw_lifecycle)
+lifecycle_current_repo = artifact_current_repo(lifecycle)
 consistency = summary.get("lifecycle_status_snapshot_consistency") if isinstance(summary.get("lifecycle_status_snapshot_consistency"), dict) else {}
 human_guard = summary.get("lifecycle_human_summary_guard") if isinstance(summary.get("lifecycle_human_summary_guard"), dict) else {}
 classification = summary.get("validation_classification") if isinstance(summary.get("validation_classification"), dict) else {}
@@ -1807,16 +1791,16 @@ version_file_version = first_present(
     lifecycle.get("version_file_version"),
 )
 artifact_current_version = first_present(
-    get(raw_lifecycle, "artifact_current", "baseline_roles", "adopted_artifact_version", default=None),
-    get(raw_lifecycle, "artifact_current", "state", "artifact_version", default=None),
-    get(raw_lifecycle, "artifact_current", "registry_current", "version", default=None),
-    get(lifecycle, "artifact_current", "baseline_roles", "adopted_artifact_version", default=None),
+    get(raw_current_repo, "baseline_roles", "adopted_artifact_version", default=None),
+    get(raw_current_repo, "state", "artifact_version", default=None),
+    get(raw_current_repo, "registry_current", "version", default=None),
+    get(lifecycle_current_repo, "baseline_roles", "adopted_artifact_version", default=None),
     lifecycle.get("artifact_current_version"),
 )
 source_current_version = first_present(
-    get(raw_lifecycle, "artifact_current", "baseline_roles", "adopted_source_version", default=None),
-    get(raw_lifecycle, "artifact_current", "state", "source_version", default=None),
-    get(lifecycle, "artifact_current", "baseline_roles", "adopted_source_version", default=None),
+    get(raw_current_repo, "baseline_roles", "adopted_source_version", default=None),
+    get(raw_current_repo, "state", "source_version", default=None),
+    get(lifecycle_current_repo, "baseline_roles", "adopted_source_version", default=None),
     lifecycle.get("source_current_version"),
 )
 candidate_count = first_present(

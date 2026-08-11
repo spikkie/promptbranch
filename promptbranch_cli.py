@@ -4400,15 +4400,12 @@ def _run_release_control_candidate_acceptance(command: list[str], *, repo_root: 
 
 
 def _promptbranch_command_path() -> str:
-    """Return the current Promptbranch executable for delegated local test profiles."""
+    """Return the exact active Promptbranch CLI path without PATH fallback."""
 
     argv0 = Path(sys.argv[0]).expanduser()
-    if argv0.exists():
-        return str(argv0.resolve())
-    resolved = shutil.which("pb") or shutil.which("promptbranch")
-    if resolved:
-        return str(Path(resolved).resolve())
-    return sys.argv[0]
+    if argv0.is_file():
+        return str(argv0.absolute())
+    raise RuntimeError(f"active Promptbranch CLI path is not a file: {sys.argv[0]!r}")
 
 
 def _candidate_test_command_for_profile(
@@ -9755,8 +9752,6 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
     base["adoption_performed"] = True
 
     finalizer = repo_root / "scripts" / "finalize-mvp-proof-cycle.sh"
-    pipx_pb = Path.home() / ".local" / "share" / "pipx" / "venvs" / "promptbranch" / "bin" / "pb"
-    pb_cmd = str(pipx_pb) if pipx_pb.is_file() else (shutil.which("pb") or "pb")
     finalizer_command = [
         str(finalizer),
         "--cycle", str(cycle),
@@ -9767,7 +9762,8 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "--artifact-intake", str(intake_path),
         "--artifact-path", str(candidate_path),
         "--release-log-dir", str(release_log_dir),
-        "--pb-cmd", pb_cmd,
+        "--pb-python", sys.executable,
+        "--pb-cli", _promptbranch_command_path(),
         "--conversation-url", explicit_conversation_url,
     ]
     finalizer_step = _run_mvp_lifecycle_command(
@@ -12530,9 +12526,8 @@ def _artifact_current_selected_sections(
     repo_id: str | None = None,
     filename: str | None = None,
     version: str | None = None,
-    allow_legacy_single_payload: bool = True,
 ) -> dict[str, Any]:
-    """Return common sections from the mandatory project repo-loop payload."""
+    """Return common sections from the mandatory project repo-loop payload only."""
 
     selected_repo_id, selected_current = _artifact_current_select_entry(
         current_payload,
@@ -12541,13 +12536,6 @@ def _artifact_current_selected_sections(
         version=version,
     )
     repo_loop_entry_present = isinstance(selected_current, dict) and bool(selected_current)
-    legacy_single_payload_used = False
-    if not repo_loop_entry_present and allow_legacy_single_payload and any(
-        isinstance(current_payload.get(key), dict)
-        for key in ("state", "registry_current", "baseline_roles", "runtime", "consistency")
-    ):
-        selected_current = current_payload
-        legacy_single_payload_used = True
     if not isinstance(selected_current, dict):
         selected_current = {}
     state = selected_current.get("state") if isinstance(selected_current.get("state"), dict) else {}
@@ -12564,7 +12552,6 @@ def _artifact_current_selected_sections(
         "runtime": runtime,
         "consistency": consistency,
         "repo_loop_entry_present": repo_loop_entry_present,
-        "legacy_single_payload_used": legacy_single_payload_used,
     }
 
 
@@ -28340,13 +28327,11 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_manifest = mcp_subparsers.add_parser("manifest", help="Emit the Promptbranch MCP tool manifest.")
     mcp_manifest.add_argument("--include-controlled-processes", action="store_true", help="Include the bounded controlled process tool surface in addition to read-only tools.")
-    mcp_manifest.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_manifest.add_argument("--json", action="store_true")
 
     mcp_serve = mcp_subparsers.add_parser("serve", help="Run the read-only Promptbranch MCP stdio server.")
     mcp_serve.add_argument("--path", default=".", help="Repo path exposed to read-only filesystem/git tools. Defaults to current directory.")
     mcp_serve.add_argument("--include-controlled-processes", action="store_true", help="List and allow the bounded controlled process tool surface; source/artifact writes remain blocked.")
-    mcp_serve.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
 
     mcp_config = mcp_subparsers.add_parser("config", help="Emit an MCP host config snippet for pb mcp serve.")
     mcp_config.add_argument("--path", default=".", help="Repo path exposed to the MCP host. Defaults to current directory.")
@@ -28355,7 +28340,6 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_config.add_argument("--command", dest="mcp_executable", help="Executable used by the MCP host. Defaults to resolving promptbranch to an absolute path when possible.")
     mcp_config.add_argument("--no-resolve-command", action="store_true", help="Do not resolve the MCP executable to an absolute path.")
     mcp_config.add_argument("--include-controlled-processes", action="store_true", help="List the bounded controlled process tool surface in the server manifest; source/artifact writes remain blocked.")
-    mcp_config.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_config.add_argument("--json", action="store_true", help="Emit metadata and config as JSON. Without this flag, print only the config snippet.")
 
     mcp_host_smoke_parser = mcp_subparsers.add_parser("host-smoke", help="Launch the generated MCP host config and verify read-only tool calls.")
@@ -28365,7 +28349,6 @@ def make_parser() -> argparse.ArgumentParser:
     mcp_host_smoke_parser.add_argument("--command", dest="mcp_executable", help="Executable used by the MCP host. Defaults to resolving promptbranch to an absolute path when possible.")
     mcp_host_smoke_parser.add_argument("--no-resolve-command", action="store_true", help="Do not resolve the MCP executable to an absolute path.")
     mcp_host_smoke_parser.add_argument("--include-controlled-processes", action="store_true", help="List the bounded controlled process tool surface in the server manifest; source/artifact writes remain blocked.")
-    mcp_host_smoke_parser.add_argument("--include-controlled-writes", dest="include_controlled_processes", action="store_true", help=argparse.SUPPRESS)
     mcp_host_smoke_parser.add_argument("--timeout-seconds", type=float, default=8.0, help="Timeout for the host-smoke stdio subprocess.")
     mcp_host_smoke_parser.add_argument("--json", action="store_true", help="Emit the full host-smoke result as JSON.")
 

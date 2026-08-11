@@ -1583,3 +1583,10 @@ No registry or release-attempt state is edited in place. `v0.1.127.1.1.1.1` rema
 ## v0.1.127.2.1 consolidated closure migration
 
 No historical release attempt is upgraded, rewritten, or adopted. `v0.1.127.1.1.1.1.1` remains immutable failure evidence: its live runtime preparation invoked `/usr/bin/python3.12` after resolving the pipx/venv launcher symlink and therefore lost the Promptbranch environment/pytest. `v0.1.127.2.1` removes alternate Python authority selectors and preserves the exact launcher path. Start a fresh SHA-bound `v0.1.127.2.1` attempt from accepted/current `v0.1.126.1.1.1.1.3`; no registry is manually edited. Earlier v0.1.127 live-closure DoD rows are superseded by consolidated DOD-515.
+
+
+## v0.1.128 — authority cleanup and environment freeze
+
+`v0.1.128` starts from accepted/current `v0.1.127.2.1`. No legacy PB state is migrated into a second runtime representation. Tracked control metadata is synchronized to the live accepted baseline, artifact-current consumers use only repo-loop projections, and execution-critical PB delegation is rooted in the active launcher Python plus repo-local CLI. The obsolete `legacy_10_75` Project Source mutation/diagnostic path and hidden controlled-write alias are removed rather than adapted. External dependency compatibility, browser resilience, and fail-closed detection of stray historical state remain where they do not create an alternate authority.
+
+After v0.1.128 acceptance, the next planned normal slice is `v0.1.129 — External application pilot bootstrap`.

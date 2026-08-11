@@ -75,7 +75,7 @@ PBAI-001 registry validation and reference resolution remain read-only. Architec
 
 ## v0.1.114.2 deterministic candidate test-runner policy
 
-Strict release validation must execute the freshly installed pipx candidate, not an ambient virtual environment earlier on `PATH`. The candidate package must include `pytest==9.0.2`; release control must verify its distribution version, module path, and interpreter prefix inside the exact candidate venv before Project Source mutation. Every release-validation command must use the absolute candidate Python through `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON`; the venv launcher path must not be symlink-resolved to the base interpreter. FastAPI `0.128.2` and Starlette `0.50.0` remain the tested compatibility pair. This repair is scope-neutral and must not change PBAI executable or SkillRun authority.
+Strict release validation must execute the exact Python launcher that launched Promptbranch; this launcher path is the sole Python authority and must not be symlink-resolved to a base interpreter. The candidate package must include `pytest==9.0.2`, and release control must verify distribution version, module path, interpreter prefix, package/CLI version, and service identity inside that exact environment before Project Source mutation. Historical `PROMPTBRANCH_CANDIDATE_PYTHON` and `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` values are sanitization-only deny-list inputs and cannot select runtime authority. FastAPI `0.128.2` and Starlette `0.50.0` remain the tested external compatibility pair.
 
 ## v0.1.115 PBAI operational and fast-test policy
 

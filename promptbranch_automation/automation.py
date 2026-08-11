@@ -569,7 +569,6 @@ class ChatGPTAutomation:
         display_name: Optional[str] = None,
         keep_open: bool = False,
         overwrite_existing: bool = True,
-        transaction_mode: str = "current",
         protected_release_version: Optional[str] = None,
         protected_release_filename: Optional[str] = None,
     ) -> dict[str, Any]:
@@ -580,36 +579,11 @@ class ChatGPTAutomation:
             display_name=display_name,
             keep_open=keep_open,
             overwrite_existing=overwrite_existing,
-            transaction_mode=transaction_mode,
             protected_release_version=protected_release_version,
             protected_release_filename=protected_release_filename,
         )
 
-    async def run_library_backend_protocol_reupload_diagnostic(
-        self,
-        *,
-        project_name_prefix: str = "itest-pb-library-backend",
-        keep_open: bool = False,
-    ) -> dict[str, Any]:
-        return await self.client.run_library_backend_protocol_reupload_diagnostic(
-            project_name_prefix=project_name_prefix,
-            keep_open=keep_open,
-        )
 
-    async def delete_library_backing_object_diagnostic(
-        self,
-        *,
-        processed_file_id: str,
-        library_metadata_object_id: str,
-        filename: str,
-        keep_open: bool = False,
-    ) -> dict[str, Any]:
-        return await self.client.delete_library_backing_object_diagnostic(
-            processed_file_id=processed_file_id,
-            library_metadata_object_id=library_metadata_object_id,
-            filename=filename,
-            keep_open=keep_open,
-        )
 
     async def discover_project_source_capabilities(
         self,

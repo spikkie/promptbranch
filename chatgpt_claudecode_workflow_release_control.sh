@@ -1988,12 +1988,6 @@ PYTESTPY
   }
 
   candidate_runtime_bound=1
-  export PROMPTBRANCH_CANDIDATE_PIPX_HOME="${candidate_pipx_home}"
-  export PROMPTBRANCH_CANDIDATE_VENV="${candidate_venv_dir}"
-  export PROMPTBRANCH_CANDIDATE_PYTHON="${candidate_python}"
-  export PROMPTBRANCH_CANDIDATE_PB="${candidate_pb}"
-  export PROMPTBRANCH_CANDIDATE_PROMPTBRANCH="${candidate_promptbranch}"
-  export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"
   export PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION="9.0.2"
 
   echo "Candidate runtime bound:"

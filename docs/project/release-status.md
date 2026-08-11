@@ -1,8 +1,9 @@
-# Active release status — v0.1.127.2.1
+# Active release status — v0.1.128
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.127.2.1 | repair | Consolidated v0.1.127 closure construction-proof repair | `chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip` candidate | stale resolved-Python test fake removed; exact final ZIP passes all 17 canonical groups; deterministic rebuild and Guardian green; live DOD-515 pending | DOD-510–515 authority | — |
+| v0.1.128 | normal | PB environment authority cleanup, hardening and freeze | `chatgpt_claudecode_workflow-2_v0.1.128.zip` construction candidate | source-tree + exact extracted ZIP 17/17 canonical groups green; deterministic rebuild and Guardian green; final byte freeze revalidation required | DOD-516–522 construction-proven; DOD-523 live pending | — |
+| v0.1.127.2.1 | repair | Consolidated v0.1.127 closure | accepted/current, FINAL_VERIFIED | live lifecycle + independent all-state verify + fresh scoped current green | DOD-510–515 closed | `33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75` |
 | v0.1.127.2 | repair | Consolidated v0.1.127 closure and single-Python lifecycle repair | `chatgpt_claudecode_workflow-2_v0.1.127.2.zip` immutable repair-required | operator canonical validation exposed 14 release_pipeline failures because test fake still required `Path(sys.executable).resolve()`; no live attempt started | DOD-510–513 preserved; DOD-514 not satisfied | repair_required |
 | v0.1.127.1.1.1 | repair | Successor ask pin propagation and TESTED_GREEN route verification | immutable predecessor | live 53/53 + exact route verified; ACCEPTED blocked before mutation by undefined helper | DOD-499–502 route proof | repair_required |
 | v0.1.127.1.1.1.1.1 | repair | Single Python authority and acceptance-path repair | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip` repair-required | live RUNTIME_PREPARED exposed venv launcher collapse to `/usr/bin/python3.12`; no runtime prepared | DOD-506–509 superseded by v0.1.127.2 | repair_required |
@@ -18,12 +19,12 @@
 
 Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`).
-Accepted SHA-256: `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`.
-Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip`.
-Active repair slice: `v0.1.127.2.1 — Consolidated v0.1.127 closure construction-proof repair`; this supersedes immutable repair-required `v0.1.127.2` without advancing normal scope.
-Next normal slice: `v0.1.128 — PB environment MVP hardening and freeze`.
-Next planned slice after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip` (`v0.1.127.2.1`).
+Accepted SHA-256: `33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75`.
+Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.128.zip`.
+Active normal slice: `v0.1.128 — PB environment authority cleanup, hardening and freeze`.
+Next normal slice: `v0.1.128 — PB environment authority cleanup, hardening and freeze`.
+Next planned slice after acceptance: `v0.1.129 — External application pilot bootstrap`.
 
 | Version | Type | System | Slice | Status |
 |---|---|---|---|---|

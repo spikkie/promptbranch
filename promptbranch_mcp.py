@@ -200,26 +200,13 @@ class AgentPlan:
         }
 
 
-def _coerce_controlled_process_flag(
-    include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
-) -> bool:
-    """Normalize the v0.0.165 controlled-process flag.
-
-    ``include_controlled_writes`` is kept as a deprecated compatibility alias
-    for older callers, but it now exposes only controlled process tools. It does
-    not expose source/artifact write tools.
-    """
-
-    return bool(include_controlled_processes or include_controlled_writes)
 
 
 def mcp_tool_manifest(
     *,
     include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
 ) -> dict[str, Any]:
-    include_processes = _coerce_controlled_process_flag(include_controlled_processes, include_controlled_writes)
+    include_processes = bool(include_controlled_processes)
     tools = list(READ_ONLY_MCP_TOOLS)
     if include_processes:
         tools.extend(CONTROLLED_PROCESS_MCP_TOOLS)
@@ -305,14 +292,13 @@ def mcp_host_config(
     command: str | None = None,
     resolve_command: bool = True,
     include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
     host: str = "generic",
 ) -> dict[str, Any]:
     """Return an MCP host configuration snippet for this repo."""
 
     root = Path(repo_path).expanduser().resolve()
     resolved_profile = Path(profile_dir).expanduser().resolve() if profile_dir else None
-    include_processes = _coerce_controlled_process_flag(include_controlled_processes, include_controlled_writes)
+    include_processes = bool(include_controlled_processes)
     command_resolution = resolve_mcp_executable(command, resolve_command=resolve_command)
     args: list[str] = []
     if resolved_profile is not None:
@@ -723,8 +709,8 @@ def _tool_input_schema(tool_name: str) -> dict[str, Any]:
     return {"type": "object", "properties": {}, "additionalProperties": False}
 
 
-def mcp_server_tools(*, include_controlled_processes: bool = False, include_controlled_writes: bool | None = None) -> list[dict[str, Any]]:
-    manifest = mcp_tool_manifest(include_controlled_processes=include_controlled_processes, include_controlled_writes=include_controlled_writes)
+def mcp_server_tools(*, include_controlled_processes: bool = False) -> list[dict[str, Any]]:
+    manifest = mcp_tool_manifest(include_controlled_processes=include_controlled_processes)
     tools: list[dict[str, Any]] = []
     for tool in manifest.get("tools", []):
         if not isinstance(tool, dict):
@@ -957,9 +943,8 @@ def handle_mcp_jsonrpc_message(
     repo_path: str | Path = ".",
     profile_dir: str | Path | None = None,
     include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
 ) -> dict[str, Any] | None:
-    include_processes = _coerce_controlled_process_flag(include_controlled_processes, include_controlled_writes)
+    include_processes = bool(include_controlled_processes)
     message_id = message.get("id")
     method = message.get("method")
     params = message.get("params") if isinstance(message.get("params"), dict) else {}
@@ -1029,7 +1014,6 @@ def serve_mcp_stdio(
     repo_path: str | Path = ".",
     profile_dir: str | Path | None = None,
     include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
     input_stream: Any = None,
     output_stream: Any = None,
 ) -> int:
@@ -1054,7 +1038,6 @@ def serve_mcp_stdio(
                     repo_path=repo_path,
                     profile_dir=profile_dir,
                     include_controlled_processes=include_controlled_processes,
-                    include_controlled_writes=include_controlled_writes,
                 )
         if response is None:
             continue
@@ -1156,7 +1139,6 @@ def mcp_host_smoke(
     command: str | None = None,
     resolve_command: bool = True,
     include_controlled_processes: bool = False,
-    include_controlled_writes: bool | None = None,
     host: str = "generic",
     timeout_seconds: float = 8.0,
 ) -> dict[str, Any]:
@@ -1171,7 +1153,6 @@ def mcp_host_smoke(
         command=command,
         resolve_command=resolve_command,
         include_controlled_processes=include_controlled_processes,
-        include_controlled_writes=include_controlled_writes,
         host=host,
     )
     server = config["config"]["mcpServers"][server_name]
@@ -2928,7 +2909,6 @@ def mcp_tool_call_via_stdio(
     resolve_command: bool = True,
     timeout_seconds: float = 8.0,
     include_controlled_processes: bool | None = None,
-    include_controlled_writes: bool | None = None,
 ) -> dict[str, Any]:
     """Call one MCP tool through the actual stdio server boundary.
 
@@ -2942,7 +2922,7 @@ def mcp_tool_call_via_stdio(
     normalized_tool = _normalize_mcp_tool_name(tool)
     if include_controlled_processes is None:
         include_controlled_processes = normalized_tool in _controlled_process_tool_names()
-    include_processes = _coerce_controlled_process_flag(bool(include_controlled_processes), include_controlled_writes)
+    include_processes = bool(include_controlled_processes)
     config = mcp_host_config(repo_path=root, profile_dir=resolved_profile, command=command, resolve_command=resolve_command, include_controlled_processes=include_processes)
     server = config["config"]["mcpServers"]["promptbranch"]
     tool_arguments = arguments or {}

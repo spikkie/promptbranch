@@ -1,4 +1,4 @@
-> v0.1.127.2.1 closure authority: consolidate the complete v0.1.127 repair chain, preserve the exact pipx/venv launcher path as the sole Python authority, retain provenance/route/acceptance repairs, and close the v0.1.127 DoD through one canonical lifecycle; accepted/current remains `.1.3` until FINAL_VERIFIED.
+> v0.1.128 authority: accepted/current is FINAL_VERIFIED `v0.1.127.2.1`; perform only bounded execution-critical dual-authority cleanup, preserve resilience/external compatibility, prove one canonical lifecycle, then advance to external-application bootstrap.
 
 > v0.1.127.1 preserved authority: bind artifact origin conversation and route successor/live ask from baseline artifact provenance; no routing semantics change in `.1.1`.
 
@@ -9,20 +9,20 @@
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.126.1.1.1.1.3
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.2.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+accepted_current_version: v0.1.127.2.1
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+active_candidate_version: v0.1.128
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
 ```
 
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-accepted/current version: v0.1.126.1.1.1.1.3
-accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-active candidate status: consolidated v0.1.127 closure candidate; source-tree and exact-ZIP canonical construction groups green; deterministic rebuild and Artifact Guardian green; fresh live lifecycle required for DOD-515
-active slice authority: v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair
-next normal slice: v0.1.128 — PB environment MVP hardening and freeze
-next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+accepted/current version: v0.1.127.2.1
+accepted/current SHA-256: 33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.128.zip
+active candidate status: bounded execution-critical authority cleanup; construction proof in progress; no live acceptance claim
+active slice authority: v0.1.128 — PB environment authority cleanup, hardening and freeze
+next normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
+next planned after acceptance: v0.1.129 — External application pilot bootstrap
 
 ## Current interpretation
 
@@ -41,7 +41,7 @@ Historical predecessor baseline before the completed v0.1.126 repair chain: `cha
 
 ## Next safe action
 
-Start a fresh immutable `v0.1.127.2.1` consolidated closure attempt from accepted/current `v0.1.126.1.1.1.1.3`. Re-run through live `TESTED_GREEN` and independent route verification, then prove the provenance-bearing `ACCEPTED` transition completes without exception before any adoption/current movement.
+Finish bounded v0.1.128 construction validation against the exact accepted/current v0.1.127.2.1 baseline. Freeze no ZIP until every canonical validation group and Artifact Guardian are green. Then prove one fresh canonical lifecycle to FINAL_VERIFIED before beginning v0.1.129 external-application bootstrap.
 
 ## v0.1.102 candidate status
 

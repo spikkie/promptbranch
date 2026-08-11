@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 from promptbranch_mvp_proof import (
     evaluate_mvp_proof_cycle,
@@ -237,19 +238,18 @@ def _write_finalizer_fixture(tmp_path: Path, *, invalid_intake: bool = False) ->
     (release_log_dir / f"pb_artifact_current.{VERSION}.json").write_text(json.dumps(parts["current"]), encoding="utf-8")
 
     marker = tmp_path / "pb-called"
-    fake_pb = tmp_path / "fake-pb"
+    fake_pb = tmp_path / "promptbranch_cli.py"
     fake_pb.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        f"printf '%s\\n' called >> {marker!s}\n"
-        "if [[ \" $* \" == *\" --print-request-json \"* ]]; then\n"
-        f"  printf '%s\\n' '{json.dumps(parts['continuation_ask'])}'\n"
-        "else\n"
-        f"  printf '%s\\n' '{{\"ok\":true,\"status\":\"reply_validated\",\"conversation_url\":\"{PINNED_CONVERSATION}\"}}'\n"
-        "fi\n",
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        f"marker = Path({str(marker)!r})\n"
+        "with marker.open('a', encoding='utf-8') as fh: fh.write('called\\n')\n"
+        "if '--print-request-json' in sys.argv[1:]:\n"
+        f"    print(json.dumps({parts['continuation_ask']!r}))\n"
+        "else:\n"
+        f"    print(json.dumps({{'ok': True, 'status': 'reply_validated', 'conversation_url': {PINNED_CONVERSATION!r}}}))\n",
         encoding="utf-8",
     )
-    fake_pb.chmod(0o755)
     return artifact_path, release_log_dir, intake_path, fake_pb
 
 
@@ -265,17 +265,16 @@ def _run_finalizer(
     )
     if stale_continuation:
         fake_pb.write_text(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            f"printf '%s\\n' called >> {tmp_path / 'pb-called'}\n"
-            "if [[ \" $* \" == *\" --print-request-json \"* ]]; then\n"
-            f"  printf '%s\\n' '{{\"ok\":true,\"request\":{{\"schema\":\"promptbranch.ask.request\",\"baseline\":{{\"version\":\"{BASELINE}\"}},\"target\":{{\"version\":\"{NEXT_VERSION}\"}}}}}}'\n"
-            "else\n"
-            f"  printf '%s\\n' '{{\"ok\":true,\"status\":\"reply_validated\",\"conversation_url\":\"{PINNED_CONVERSATION}\"}}'\n"
-            "fi\n",
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            f"marker = Path({str(tmp_path / 'pb-called')!r})\n"
+            "with marker.open('a', encoding='utf-8') as fh: fh.write('called\\n')\n"
+            "if '--print-request-json' in sys.argv[1:]:\n"
+            f"    print(json.dumps({{'ok': True, 'request': {{'schema': 'promptbranch.ask.request', 'baseline': {{'version': {BASELINE!r}}}, 'target': {{'version': {NEXT_VERSION!r}}}}}}}))\n"
+            "else:\n"
+            f"    print(json.dumps({{'ok': True, 'status': 'reply_validated', 'conversation_url': {PINNED_CONVERSATION!r}}}))\n",
             encoding="utf-8",
         )
-        fake_pb.chmod(0o755)
 
     repo_root = Path(__file__).resolve().parents[1]
     script = repo_root / "scripts" / "finalize-mvp-proof-cycle.sh"
@@ -290,7 +289,8 @@ def _run_finalizer(
             "--artifact-intake", str(intake_path),
             "--artifact-path", str(artifact_path),
             "--release-log-dir", str(release_log_dir),
-            "--pb-cmd", str(fake_pb),
+            "--pb-python", sys.executable,
+            "--pb-cli", str(fake_pb),
             "--conversation-url", PINNED_CONVERSATION,
         ],
         cwd=repo_root,
@@ -298,7 +298,6 @@ def _run_finalizer(
         capture_output=True,
         check=False,
     )
-
 
 def test_finalizer_invalid_intake_stops_before_continuation_ask(tmp_path: Path) -> None:
     completed = _run_finalizer(tmp_path, invalid_intake=True)

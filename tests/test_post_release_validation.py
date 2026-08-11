@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "post-release-validat
 
 
 def _write_fake_promptbranch(
-    bin_dir: Path,
+    repo: Path,
     initial_artifact_version: str,
     adopted_version: str | None = None,
     fail_protocol_until_adopted: bool = False,
@@ -19,7 +20,7 @@ def _write_fake_promptbranch(
     lifecycle_status_version: str | None = None,
     fail_test_full: bool = False,
 ) -> Path:
-    exe = bin_dir / "promptbranch"
+    exe = repo / "promptbranch_cli.py"
     adopted_version = adopted_version or initial_artifact_version
     exe.write_text(
         "#!/usr/bin/env python3\n"
@@ -200,13 +201,11 @@ def _run_validation(
     fail_test_full: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     repo = tmp_path / "repo"
-    bin_dir = tmp_path / "bin"
     repo.mkdir()
-    bin_dir.mkdir()
     (repo / "VERSION").write_text(requested_version + "\n", encoding="utf-8")
     (repo / f"chatgpt_claudecode_workflow_{requested_version}.zip").write_text("fake zip for adopt command selection\n", encoding="utf-8")
     _write_fake_promptbranch(
-        bin_dir,
+        repo,
         artifact_version,
         adopted_version=adopted_version or requested_version,
         fail_protocol_until_adopted=fail_protocol_until_adopted,
@@ -216,7 +215,7 @@ def _run_validation(
         fail_test_full=fail_test_full,
     )
     env = os.environ.copy()
-    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PB_PYTHON"] = sys.executable
     env["POST_RELEASE_VALIDATION_DISABLE_SESSION_TEE"] = "1"
     return subprocess.run(
         [
@@ -470,7 +469,7 @@ def test_post_release_validation_adopt_if_accepted_runs_protocol_after_adoption(
     assert summary["steps"]["artifact_candidate_run_plan"]["rc"] == 0
     assert summary["steps"]["artifact_candidate_run_plan"]["require_complete"] is False
 
-    calls_path = tmp_path / "bin" / "calls.jsonl"
+    calls_path = tmp_path / "repo" / "calls.jsonl"
     calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
     adopt_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "adopt"])
     ask_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask")
@@ -503,7 +502,7 @@ def test_post_release_validation_strict_real_candidate_download_verify_runs_befo
     assert summary["steps"]["test_full"]["rc"] == 1
     assert summary["steps"]["artifact_adopt"] == {"enabled": True, "performed": False, "rc": 0}
 
-    calls_path = tmp_path / "bin" / "calls.jsonl"
+    calls_path = tmp_path / "repo" / "calls.jsonl"
     calls = [json.loads(line) for line in calls_path.read_text(encoding="utf-8").splitlines()]
     ask_release_index = next(i for i, call in enumerate(calls) if call and call[0] == "ask-release")
     intake_index = next(i for i, call in enumerate(calls) if call[:2] == ["artifact", "intake"] and "--download" in call and "--verify" in call)
@@ -519,23 +518,21 @@ def test_post_release_validation_strict_real_candidate_download_verify_runs_befo
 
 def test_post_release_validation_strict_real_candidate_requires_download_proof_after_adopt(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
-    bin_dir = tmp_path / "bin"
     repo.mkdir()
-    bin_dir.mkdir()
     requested_version = "v0.0.276.3"
     (repo / "VERSION").write_text(requested_version + "\n", encoding="utf-8")
     (repo / f"chatgpt_claudecode_workflow_{requested_version}.zip").write_text(
         "fake zip for adopt command selection\n", encoding="utf-8"
     )
     _write_fake_promptbranch(
-        bin_dir,
+        repo,
         "v0.0.276.2",
         adopted_version=requested_version,
         fail_protocol_until_adopted=False,
         candidate_mvp_complete=False,
     )
     env = os.environ.copy()
-    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PB_PYTHON"] = sys.executable
     env["POST_RELEASE_VALIDATION_DISABLE_SESSION_TEE"] = "1"
     stdout_path = tmp_path / "post_release_validation.stdout.log"
     with stdout_path.open("w", encoding="utf-8") as stdout:
@@ -591,7 +588,7 @@ def test_post_release_validation_strict_real_candidate_requires_download_proof_a
 
 def test_post_release_validation_strict_real_candidate_uses_ask_release_and_download_verify_path() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
-    assert '"${pb_cmd}" ask-release' in text
+    assert '"${pb_command[@]}" ask-release' in text
     assert '--baseline-artifact "${version_artifact}"' in text
     assert '--baseline-version "${version}"' in text
     assert '--expect-artifact "${target_artifact}"' in text

@@ -1302,4 +1302,18 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-512 | One candidate preserves the full v0.1.127 tool-authoring contract plus artifact project identity, exact conversation provenance, executed ask-route verification, and acceptance-path correlated provenance repairs | construction_proven | tool-authoring + provenance + route + executable acceptance regressions | v0.1.127.2.1 |
 | DOD-513 | Construction tests exercise every canonical release state through `FINAL_VERIFIED`, independent all-state verification, interruption/resume, fail-closed acceptance/adoption guards, and route-proof tamper detection | construction_proven | canonical release-state-machine group | v0.1.127.2.1 |
 | DOD-514 | Exact final ZIP is deterministic, CRC/path/hygiene clean, contains no nested ZIP, passes every required release-validation group, and Artifact Guardian reports `release_ready=true` | construction_proven | exact final ZIP + 17 required groups + Guardian | v0.1.127.2.1 |
-| DOD-515 | v0.1.127 closes only after a fresh immutable v0.1.127.2.1 attempt from accepted/current `.1.3` repeats exact baseline-routed `TESTED_GREEN`, independently verifies it, reaches `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and fresh scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns exactly | live_pending | canonical live release proof | v0.1.127.2.1 |
+| DOD-515 | v0.1.127 closes only after a fresh immutable v0.1.127.2.1 attempt from accepted/current `.1.3` repeats exact baseline-routed `TESTED_GREEN`, independently verifies it, reaches `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and fresh scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns exactly | live_proven | FINAL_VERIFIED + independent all-state verification + fresh scoped current exact SHA/alignment | v0.1.127.2.1 |
+
+
+## v0.1.128 PB environment authority cleanup DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-516 | Tracked control-surface accepted/current authority matches live FINAL_VERIFIED `v0.1.127.2.1` before new scope is packaged | construction_proven | plan-state/control-surface validation | v0.1.128 |
+| DOD-517 | Artifact-current consumers use repository-loop projections only; no top-level legacy current fallback can become authority | construction_proven | focused current/parallel-ask/post-release tests | v0.1.128 |
+| DOD-518 | Canonical and still-operational PB delegation is rooted in the exact active launcher Python plus repo-local CLI; PATH/PB-command selectors cannot become authority | construction_proven | poisoned-PATH + shell/helper regressions | v0.1.128 |
+| DOD-519 | Hidden `--include-controlled-writes` is removed; controlled process/write exposure has one current flag and contract | construction_proven | CLI/MCP parser and manifest regressions | v0.1.128 |
+| DOD-520 | Executable `legacy_10_75` Project Source mutation and its mutating diagnostics are absent; one current source-write transaction remains | construction_proven | source scan + current add/overwrite/persistence regressions | v0.1.128 |
+| DOD-521 | External-library compatibility, browser resilience, and fail-closed historical-state detection are retained where they do not create alternate authority | construction_proven | dependency/browser/legacy-detection regressions | v0.1.128 |
+| DOD-522 | Exact final ZIP is deterministic, hygiene-clean, passes every canonical construction group, and Artifact Guardian reports release-ready | construction_proven | exact ZIP + canonical groups + Guardian | v0.1.128 |
+| DOD-523 | One fresh immutable v0.1.128 lifecycle from accepted/current v0.1.127.2.1 reaches FINAL_VERIFIED, independently verifies all reached states, and fresh scoped current aligns exactly | live_pending | canonical live release proof | v0.1.128 |

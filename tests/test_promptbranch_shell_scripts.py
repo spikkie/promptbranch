@@ -1263,29 +1263,28 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
         archive.writestr("VERSION", f"{version}\n")
         archive.writestr("promptbranch_version.py", "PACKAGE_VERSION = '9.9.9.1'\n")
 
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
     calls = tmp_path / "calls.log"
-    fake_promptbranch = fake_bin / "promptbranch"
+    fake_promptbranch = repo / "promptbranch_cli.py"
     fake_promptbranch.write_text(
-        "#!/usr/bin/env bash\n"
-        "echo promptbranch \"$@\" >> \"$PB_FAKE_CALL_LOG\"\n"
-        "if [[ \"$1 $2\" == \"artifact current\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_current\"}'; exit 0; fi\n"
-        "if [[ \"$1\" == \"ask\" ]]; then echo '{\"ok\": true, \"action\": \"ask_protocol_run\", \"status\": \"reply_validated\", \"reply_status\": \"no_artifact\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"artifact intake\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_intake\", \"status\": \"no_artifact\", \"download_performed\": false}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"artifact candidate-run\" ]]; then echo '{\"ok\": true, \"action\": \"artifact_candidate_run\", \"status\": \"candidate_next_inspection_required\", \"mode\": \"plan_only\", \"mutating_actions_executed\": false}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test full\" ]]; then echo '{\"ok\": true, \"action\": \"test_suite\", \"version\": \"'" + version + "'\"}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"test report\" ]]; then echo '{\"ok\": true, \"action\": \"test_report\", \"status\": \"verified\", \"failure_count\": 0, \"suite\": {\"release_validation_groups\": {\"ok\": true, \"missing_required_groups\": [], \"groups\": {\"artifact_json_contracts\": {\"ok\": true}, \"browser_scheduler_source_lifecycle\": {\"ok\": true}, \"project_control_surface\": {\"ok\": true}}}}}'; exit 0; fi\n"
-        "if [[ \"$1 $2\" == \"release lifecycle-status\" ]]; then echo '{\"ok\": true, \"action\": \"release_lifecycle_status\", \"status\": \"passed\", \"severity\": \"ok\", \"lifecycle_phase\": \"adopted_current\", \"operator_verdict\": \"continue_normal_development\", \"warning_codes\": [], \"blocker_codes\": [], \"next_safe_action\": {\"kind\": \"continue_normal_development\"}}'; exit 0; fi\n"
-        "echo unexpected promptbranch args >&2\n"
-        "exit 2\n",
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "with Path(os.environ['PB_FAKE_CALL_LOG']).open('a', encoding='utf-8') as fh: fh.write('promptbranch ' + ' '.join(args) + '\\n')\n"
+        "if args[:2] == ['artifact', 'current']:\n"
+        f" print(json.dumps({{'ok': True, 'action': 'artifact_current_all', 'repo_count': 1, 'repos': {{'chatgpt_claudecode_workflow': {{'ok': True, 'action': 'artifact_current', 'runtime': {{'version': {version!r}, 'package_version': '9.9.9.1'}}, 'state': {{'artifact_version': {version!r}, 'source_version': {version!r}, 'artifact_ref': {artifact!r}, 'source_ref': {artifact!r}}}, 'registry_current': {{'version': {version!r}, 'filename': {artifact!r}}}, 'baseline_roles': {{'adopted_artifact_version': {version!r}, 'adopted_source_version': {version!r}, 'registry_current_version': {version!r}}}, 'consistency': {{'registry_current_matches_state_artifact': True, 'state_source_matches_state_artifact': True, 'code_version_matches_state_source': True}}}}}}, 'missing_repo_count': 0, 'missing_repos': []}})); raise SystemExit(0)\n"
+        "if args and args[0] in {'ask', 'ask-release'}: print(json.dumps({'ok': True, 'action': 'ask_protocol_run', 'status': 'reply_validated', 'reply_status': 'no_artifact'})); raise SystemExit(0)\n"
+        "if args[:2] == ['artifact', 'intake']: print(json.dumps({'ok': True, 'action': 'artifact_intake', 'status': 'no_artifact', 'download_performed': False})); raise SystemExit(0)\n"
+        "if args[:2] == ['artifact', 'candidate-run']: print(json.dumps({'ok': True, 'action': 'artifact_candidate_run', 'status': 'candidate_next_inspection_required', 'mode': 'plan_only', 'mutating_actions_executed': False})); raise SystemExit(0)\n"
+        f"if args[:2] == ['test', 'full']: print(json.dumps({{'ok': True, 'action': 'test_suite', 'version': {version!r}}})); raise SystemExit(0)\n"
+        "if args[:2] == ['test', 'report']: print(json.dumps({'ok': True, 'action': 'test_report', 'status': 'verified', 'failure_count': 0, 'suite': {'release_validation_groups': {'ok': True, 'missing_required_groups': [], 'groups': {'artifact_json_contracts': {'ok': True}, 'browser_scheduler_source_lifecycle': {'ok': True}, 'project_control_surface': {'ok': True}}}}})); raise SystemExit(0)\n"
+        "if args[:2] == ['release', 'lifecycle-status']: print(json.dumps({'ok': True, 'action': 'release_lifecycle_status', 'status': 'passed', 'severity': 'ok', 'lifecycle_phase': 'adopted_current', 'operator_verdict': 'continue_normal_development', 'warning_codes': [], 'blocker_codes': [], 'next_safe_action': {'kind': 'continue_normal_development'}})); raise SystemExit(0)\n"
+        "print(json.dumps({'ok': False, 'error': 'unexpected_args', 'argv': args})); raise SystemExit(2)\n",
         encoding="utf-8",
     )
-    fake_promptbranch.chmod(0o755)
 
     script = Path(__file__).resolve().parents[1] / "scripts" / "post-release-validation.sh"
     env = os.environ.copy()
-    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PB_PYTHON"] = sys.executable
     env["PB_FAKE_CALL_LOG"] = str(calls)
 
     result = subprocess.run(
@@ -1325,51 +1324,33 @@ def test_post_release_validation_script_runs_standard_sequence_with_fake_promptb
     assert "artifact adopt" not in call_text
     assert "src sync" not in call_text
 
-
 def test_finalize_artifact_intake_mvp_delegates_to_candidate_run(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    fake_pb = tmp_path / "pb"
     calls = tmp_path / "candidate_run_calls.json"
-    fake_pb.write_text(
-        "#!/usr/bin/env bash\n"
-        f"python3 - <<'PY' {str(calls)!r} \"$@\"\n"
+    fake_cli = repo / "promptbranch_cli.py"
+    fake_cli.write_text(
         "import json, sys\n"
         "from pathlib import Path\n"
-        "Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]))\n"
-        "print(json.dumps({\n"
-        "  'ok': True,\n"
-        "  'action': 'artifact_candidate_run',\n"
-        "  'status': 'candidate_run_cycle_acceptance_ready',\n"
-        "  'mvp_complete': True,\n"
-        "  'download_performed': True,\n"
-        "  'verification_performed': True,\n"
-        "  'migration_performed': True,\n"
-        "  'candidate_test_performed': True,\n"
-        "  'adoption_performed': False\n"
-        "}))\n"
-        "PY\n",
+        f"Path({str(calls)!r}).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')\n"
+        "print(json.dumps({'ok': True, 'action': 'artifact_candidate_run', 'status': 'candidate_run_cycle_acceptance_ready', 'mvp_complete': True, 'download_performed': True, 'verification_performed': True, 'migration_performed': True, 'candidate_test_performed': True, 'adoption_performed': False}))\n",
         encoding="utf-8",
     )
-    fake_pb.chmod(0o755)
     script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
+    env = os.environ.copy()
+    env["PB_PYTHON"] = sys.executable
 
     result = subprocess.run(
         [
             str(script),
-            "--version",
-            "v9.9.9",
-            "--target-version",
-            "v9.9.10",
-            "--candidate-mvp-max-steps",
-            "6",
-            "--candidate-run-step-timeout",
-            "42",
+            "--version", "v9.9.9",
+            "--target-version", "v9.9.10",
+            "--candidate-mvp-max-steps", "6",
+            "--candidate-run-step-timeout", "42",
             "--require-real-candidate-mvp",
-            "--pb-cmd",
-            str(fake_pb),
         ],
         cwd=repo,
+        env=env,
         text=True,
         capture_output=True,
         check=True,
@@ -1379,18 +1360,8 @@ def test_finalize_artifact_intake_mvp_delegates_to_candidate_run(tmp_path: Path)
     assert "final Artifact Intake MVP validation passed" in result.stdout
     args = json.loads(calls.read_text(encoding="utf-8"))
     assert args == [
-        "artifact",
-        "candidate-run",
-        "--execute-until-blocked",
-        "--max-steps",
-        "6",
-        "--step-timeout",
-        "42",
-        "--require-complete",
-        "--profile",
-        "smoke",
-        "--json",
-        "--require-real-candidate",
+        "artifact", "candidate-run", "--execute-until-blocked", "--max-steps", "6",
+        "--step-timeout", "42", "--require-complete", "--profile", "smoke", "--json", "--require-real-candidate",
     ]
     summary = json.loads((repo / ".pb_profile" / "release_logs" / "v9.9.9" / "finalize_artifact_intake_mvp.v9.9.9.summary.json").read_text(encoding="utf-8"))
     assert summary["ok"] is True
@@ -1399,43 +1370,23 @@ def test_finalize_artifact_intake_mvp_delegates_to_candidate_run(tmp_path: Path)
     assert summary["checks"]["migration_performed"] is True
     assert summary["checks"]["candidate_test_passed"] is True
 
-
 def test_finalize_artifact_intake_mvp_rejects_unrequested_adoption(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    fake_pb = tmp_path / "pb"
-    fake_pb.write_text(
-        "#!/usr/bin/env bash\n"
-        "python3 - <<'PY'\n"
+    fake_cli = repo / "promptbranch_cli.py"
+    fake_cli.write_text(
         "import json\n"
-        "print(json.dumps({\n"
-        "  'ok': True,\n"
-        "  'status': 'candidate_run_cycle_completed',\n"
-        "  'mvp_complete': True,\n"
-        "  'download_performed': True,\n"
-        "  'verification_performed': True,\n"
-        "  'migration_performed': True,\n"
-        "  'candidate_test_performed': True,\n"
-        "  'adoption_performed': True\n"
-        "}))\n"
-        "PY\n",
+        "print(json.dumps({'ok': True, 'status': 'candidate_run_cycle_completed', 'mvp_complete': True, 'download_performed': True, 'verification_performed': True, 'migration_performed': True, 'candidate_test_performed': True, 'adoption_performed': True}))\n",
         encoding="utf-8",
     )
-    fake_pb.chmod(0o755)
     script = Path(__file__).resolve().parents[1] / "scripts" / "finalize-artifact-intake-mvp.sh"
+    env = os.environ.copy()
+    env["PB_PYTHON"] = sys.executable
 
     result = subprocess.run(
-        [
-            str(script),
-            "--version",
-            "v9.9.9",
-            "--target-version",
-            "v9.9.10",
-            "--require-real-candidate-mvp",
-            "--pb-cmd",
-            str(fake_pb),
-        ],
+        [str(script), "--version", "v9.9.9", "--target-version", "v9.9.10", "--require-real-candidate-mvp"],
         cwd=repo,
+        env=env,
         text=True,
         capture_output=True,
     )
@@ -4000,7 +3951,7 @@ def test_install_sh_strict_all_all_release_gate_static() -> None:
     assert "set -euo pipefail" in script
     assert 'ver="$1"' in script
     assert 'zip="${zip:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"' in script
-    assert "--diagnostic-project-source-ab" in script
+    assert "--diagnostic-project-source-ab" not in script
     assert '--install-from-zip "${zip}"' in script
     assert '--version "${ver}"' in script
     assert "--run-all-tests" in script
@@ -4011,7 +3962,7 @@ def test_install_sh_strict_all_all_release_gate_static() -> None:
     assert "--prune-release-logs" in script
     assert "--release-log-keep 12" in script
     assert 'tee "${HOME}/tmp/release_control.${ver}.full.all-all.adopt.log"' in script
-    assert 'pb artifact current --all --json | tee "${HOME}/tmp/pb_current_after_${ver}.json"' in script
+    assert '"$PB_PYTHON" "${script_dir}/promptbranch_cli.py" artifact current --repo chatgpt_claudecode_workflow-2 --json' in script
 
 
 def test_install_sh_is_executable() -> None:
@@ -4366,7 +4317,7 @@ def test_release_control_binds_and_verifies_deterministic_candidate_pytest() -> 
     assert 'local expected_pytest_version="9.0.2"' in script
     assert 'candidate pytest verified: version=' in script
     assert 'candidate pytest module escaped venv' in script
-    assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"' in script
+    assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTHON="${candidate_python}"' not in script
     assert 'export PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION="9.0.2"' in script
 
 

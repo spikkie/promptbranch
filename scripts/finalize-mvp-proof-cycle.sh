@@ -9,7 +9,8 @@ repo_id="chatgpt_claudecode_workflow-2"
 artifact_intake=""
 artifact_path=""
 release_log_dir=""
-pb_cmd="${PB_CMD:-pb}"
+pb_python=""
+pb_cli=""
 conversation_url=""
 
 usage() {
@@ -17,7 +18,7 @@ usage() {
 Usage: scripts/finalize-mvp-proof-cycle.sh \
   --cycle N --version VERSION --baseline-version VERSION --next-version VERSION \
   --artifact-intake PATH [--artifact-path PATH] [--repo-id REPO_ID] \
-  [--release-log-dir DIR] [--pb-cmd COMMAND] --conversation-url URL
+  [--release-log-dir DIR] --pb-python PATH --pb-cli PATH --conversation-url URL
 
 Validates all non-continuation proof evidence first. Only after the intake,
 release, visual transport, adoption, accepted/current identity, and SHA-256
@@ -37,19 +38,21 @@ while [[ $# -gt 0 ]]; do
     --artifact-intake) artifact_intake="$2"; shift 2 ;;
     --artifact-path) artifact_path="$2"; shift 2 ;;
     --release-log-dir) release_log_dir="$2"; shift 2 ;;
-    --pb-cmd) pb_cmd="$2"; shift 2 ;;
+    --pb-python) pb_python="$2"; shift 2 ;;
+    --pb-cli) pb_cli="$2"; shift 2 ;;
     --conversation-url) conversation_url="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-for name in cycle version baseline_version next_version repo_id artifact_intake conversation_url; do
+for name in cycle version baseline_version next_version repo_id artifact_intake pb_python pb_cli conversation_url; do
   [[ -n "${!name}" ]] || { echo "ERROR: --${name//_/-} is required" >&2; exit 2; }
 done
-command -v "$pb_cmd" >/dev/null 2>&1 || { echo "ERROR: pb command not found: $pb_cmd" >&2; exit 2; }
+[[ "$pb_python" == /* && -x "$pb_python" ]] || { echo "ERROR: --pb-python must be an absolute executable path: $pb_python" >&2; exit 2; }
+[[ "$pb_cli" == /* && -f "$pb_cli" ]] || { echo "ERROR: --pb-cli must be an absolute file path: $pb_cli" >&2; exit 2; }
 [[ -f "$artifact_intake" ]] || { echo "ERROR: artifact intake evidence not found: $artifact_intake" >&2; exit 2; }
-python3 - "$conversation_url" <<'PY'
+"$pb_python" - "$conversation_url" <<'PY'
 import sys
 from urllib.parse import urlparse
 url = sys.argv[1]
@@ -103,7 +106,7 @@ verify_args=(
 
 # Fail closed before any ChatGPT continuation action. Invalid intake or identity
 # evidence must not create continuation request/run files.
-if python3 "$verify_script" \
+if "$pb_python" "$verify_script" \
   "${verify_args[@]}" \
   --preflight-only \
   --output "$preflight" \
@@ -118,7 +121,7 @@ fi
 continuation_prompt="Continue MVP proof cycle ${cycle} from accepted ${version} toward ${next_version}. Return a valid Promptbranch reply envelope with status no_artifact and result_type no_change; no artifact is required for this continuation proof."
 
 # Capture the exact request envelope before executing the same protocol ask.
-"$pb_cmd" ask "$continuation_prompt" \
+"$pb_python" "$pb_cli" ask "$continuation_prompt" \
   --protocol \
   --from-current-baseline \
   --target-version "$next_version" \
@@ -128,7 +131,7 @@ continuation_prompt="Continue MVP proof cycle ${cycle} from accepted ${version} 
   --json | tee "$continuation_request"
 
 # Execute the continuation ask and require a validated reply envelope.
-"$pb_cmd" ask "$continuation_prompt" \
+"$pb_python" "$pb_cli" ask "$continuation_prompt" \
   --protocol \
   --from-current-baseline \
   --target-version "$next_version" \
@@ -137,7 +140,7 @@ continuation_prompt="Continue MVP proof cycle ${cycle} from accepted ${version} 
   --parse-reply \
   --json | tee "$continuation_run"
 
-python3 - "$continuation_request" "$continuation_run" "$continuation" "$conversation_url" <<'PY'
+"$pb_python" - "$continuation_request" "$continuation_run" "$continuation" "$conversation_url" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -182,7 +185,7 @@ if not combined["ok"]:
     raise SystemExit(1)
 PY
 
-if python3 "$verify_script" \
+if "$pb_python" "$verify_script" \
   "${verify_args[@]}" \
   --continuation-ask "$continuation" \
   --output "$proof" \

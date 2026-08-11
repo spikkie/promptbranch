@@ -1261,81 +1261,8 @@ class ChatGPTAutomationService:
         )
 
 
-    async def run_library_backend_protocol_reupload_diagnostic(
-        self,
-        *,
-        project_name_prefix: str = "itest-pb-library-backend",
-        keep_open: bool = False,
-        profile_lock_wait_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        async with self._lock.operation(
-            "library_backend_protocol_reupload_diagnostic",
-            wait_timeout_seconds=profile_lock_wait_seconds,
-        ):
-            return await self._build_bot().run_library_backend_protocol_reupload_diagnostic(
-                project_name_prefix=project_name_prefix,
-                keep_open=keep_open,
-            )
 
-    async def delete_library_backing_object_diagnostic(
-        self,
-        *,
-        processed_file_id: str,
-        library_metadata_object_id: str,
-        filename: str,
-        keep_open: bool = False,
-        profile_lock_wait_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        async with self._lock.operation(
-            "delete_library_backing_object_diagnostic",
-            wait_timeout_seconds=profile_lock_wait_seconds,
-        ):
-            return await self._build_bot().delete_library_backing_object_diagnostic(
-                processed_file_id=processed_file_id,
-                library_metadata_object_id=library_metadata_object_id,
-                filename=filename,
-                keep_open=keep_open,
-            )
 
-    async def add_project_source_diagnostic(
-        self,
-        *,
-        source_kind: str,
-        value: Optional[str] = None,
-        file_path: Optional[str] = None,
-        display_name: Optional[str] = None,
-        keep_open: bool = False,
-        overwrite_existing: bool = True,
-        transaction_mode: str = "current",
-        profile_lock_wait_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        """Run one explicitly selected Project Source transaction for A/B diagnostics.
-
-        This bypasses the service's remembered-source optimization so the selected
-        browser transaction is the only overwrite algorithm under test.
-        """
-        normalized_mode = str(transaction_mode or "current").strip().lower()
-        if normalized_mode not in {"current", "legacy_10_75"}:
-            raise ValueError(f"Unsupported Project Source diagnostic transaction mode: {transaction_mode!r}")
-        async with self._lock.operation(
-            f"add_project_source_diagnostic_{normalized_mode}",
-            wait_timeout_seconds=profile_lock_wait_seconds,
-        ):
-            bot = self._build_bot()
-            result = await bot.add_project_source(
-                source_kind=source_kind,
-                value=value,
-                file_path=file_path,
-                display_name=display_name,
-                keep_open=keep_open,
-                overwrite_existing=overwrite_existing,
-                transaction_mode=normalized_mode,
-            )
-            if isinstance(result, dict):
-                result = dict(result)
-                result.setdefault("diagnostic_transaction_mode", normalized_mode)
-                result.setdefault("remembered_source_optimization_bypassed", True)
-            return result
 
     async def add_project_source(
         self,
