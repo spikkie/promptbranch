@@ -1316,4 +1316,20 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-520 | Executable `legacy_10_75` Project Source mutation and its mutating diagnostics are absent; one current source-write transaction remains | construction_proven | source scan + current add/overwrite/persistence regressions | v0.1.128 |
 | DOD-521 | External-library compatibility, browser resilience, and fail-closed historical-state detection are retained where they do not create alternate authority | construction_proven | dependency/browser/legacy-detection regressions | v0.1.128 |
 | DOD-522 | Exact final ZIP is deterministic, hygiene-clean, passes every canonical construction group, and Artifact Guardian reports release-ready | construction_proven | exact ZIP + canonical groups + Guardian | v0.1.128 |
-| DOD-523 | One fresh immutable v0.1.128 lifecycle from accepted/current v0.1.127.2.1 reaches FINAL_VERIFIED, independently verifies all reached states, and fresh scoped current aligns exactly | live_pending | canonical live release proof | v0.1.128 |
+| DOD-523 | One fresh immutable v0.1.128 lifecycle from accepted/current v0.1.127.2.1 reaches FINAL_VERIFIED, independently verifies all reached states, and fresh scoped current aligns exactly | live_proven | canonical live release proof + independent FINAL_VERIFIED verify + fresh scoped current | v0.1.128 |
+
+
+## v0.1.128.1 artifact single-authority repair DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-524 | Every authoritative release identity `(repo_id, version)` binds to exactly one SHA-256 across release/adopt lifecycle kinds; conflicting bytes fail closed without registry mutation | construction_proven | artifact authority conflict/idempotence regressions | v0.1.128.1 |
+| DOD-525 | Explicit artifact paths are terminal inputs: a missing `--local-path` fails immediately and no cwd/Downloads/same-name fallback may substitute bytes | construction_proven | explicit-path negative regression | v0.1.128.1 |
+| DOD-526 | External ZIPs are verified imports into one PB-owned SHA-addressed project artifact object; subsequent registry/adoption operations use that immutable object | construction_proven | object import/SHA/path regressions | v0.1.128.1 |
+| DOD-527 | Release-to-adopt is lifecycle state for one immutable object; registry cannot retain competing release/adopt records for the same repo/version and `current` selects adopted identity only | construction_proven | registry uniqueness/current regressions | v0.1.128.1 |
+| DOD-528 | `artifact current --repo` verifies registry object existence/SHA and state/source projection agreement without hidden registry-to-state synthesis | construction_proven | current projection regressions | v0.1.128.1 |
+| DOD-529 | `repo doctor` fails on multi-SHA release identity, duplicate logical identities, missing/tampered current object, non-PB object authority, or state projection conflict | construction_proven | doctor authority regressions | v0.1.128.1 |
+| DOD-530 | Project Source remains publication evidence only and external repository version/runtime domains remain explicitly non-applicable where appropriate | construction_proven | source/current external-domain regressions | v0.1.128.1 |
+| DOD-531 | One resumable operator command drives each canonical state and performs an independent all-state verify after every transition, then fresh scoped `artifact current`, using only the launcher Python and tracked repo identity | construction_proven | lifecycle-proof wrapper regression + source review | v0.1.128.1 |
+| DOD-532 | Exact final v0.1.128.1 ZIP is deterministic, hygiene-clean, passes all canonical construction groups and Artifact Guardian | construction_proven | exact ZIP + canonical groups + Guardian | v0.1.128.1 |
+| DOD-533 | Fresh controlled repository release→adopt→current→doctor flow passes, a deliberate second SHA for the same repo/version fails closed with current unchanged, and the v0.1.128.1 canonical PB lifecycle reaches independently verified FINAL_VERIFIED/current | live_pending | disposable authority proof + one-command canonical lifecycle proof | v0.1.128.1 |

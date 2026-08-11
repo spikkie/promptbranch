@@ -1,3 +1,19 @@
+# Active release status — v0.1.128.1
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.128.1 | repair | Single authority for Promptbranch release artifacts | construction worktree; exact ZIP pending | focused artifact-authority tests green; canonical full matrix pending | DOD-524–531 construction in progress; DOD-532–533 pending | — |
+| v0.1.128 | normal | PB environment authority cleanup, hardening and freeze | accepted/current, FINAL_VERIFIED | 17/17 canonical groups + deterministic ZIP/Guardian + full live lifecycle + independent final verify + fresh current green | DOD-516–523 closed | `5d1d64e8d146a3bf58f388149d6a917982239c1dbb9e2f5256f3ef33ba9abaac` |
+
+Documentation checkpoint: `PB-ARTIFACT-AUTHORITY-2026-08-11.1`
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.zip` (`v0.1.128`).
+Accepted SHA-256: `5d1d64e8d146a3bf58f388149d6a917982239c1dbb9e2f5256f3ef33ba9abaac`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.1.zip`.
+Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.
+
+---
+
 # Active release status — v0.1.128
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |

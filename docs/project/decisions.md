@@ -1552,3 +1552,16 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 - **Python:** execute the exact `sys.executable` launcher path without `Path.resolve()`. Remove selectable candidate/validation Python and release PB-command overrides from the canonical path.
 - **Lifecycle:** construction must exercise all nine canonical states and independent verification before freezing the candidate; live closure still requires exact baseline-routed `TESTED_GREEN`, `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and scoped current alignment.
 - **Scope:** no external application development and no v0.1.128 hardening scope is pulled into this release.
+
+
+## ADR-PROJ-1281 — Repository/version release identity has one immutable SHA authority
+
+- **Status:** accepted for repair candidate `v0.1.128.1`.
+- **Baseline:** accepted/current `v0.1.128` is FINAL_VERIFIED; this repair does not reopen or rewrite it.
+- **Identity:** `(repo_id, version)` binds to one SHA-256 across release/adopt lifecycle state. Filename and filesystem location are metadata/input, never identity.
+- **Object authority:** verified external ZIP bytes are imported to the project-scoped SHA-addressed PB object store before becoming registry authority. Other copies, including release-attempt objects and Project Source attachments, are caches/projections/publications bound by SHA.
+- **Strict paths:** explicit local paths either exist and verify or fail immediately; no name-based fallback follows an explicit path.
+- **Current/state:** current is the adopted registry identity; state artifact/source fields are verified projections and are never silently synthesized by read commands.
+- **Diagnostics:** `repo doctor` detects logical multi-SHA conflicts, duplicate release identities, missing/tampered/non-authoritative current objects, and state projection divergence. Existing conflicts are reported, not auto-resolved.
+- **Lifecycle proof:** a wrapper may orchestrate existing canonical `release run`/`release verify` transitions but creates no new release state or authority path; it uses the launcher Python and tracked repository identity.
+- **Next:** only after v0.1.128.1 is FINAL_VERIFIED/current may `v0.1.129 — External application pilot bootstrap` begin.

@@ -5713,9 +5713,39 @@ class _FakeArtifactAdoptBackend:
 
 
 def _write_test_release_zip(path: Path, version: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("VERSION", version + "\n")
         archive.writestr("README.md", "demo\n")
+
+
+def _add_test_adopted_release(
+    registry: ArtifactRegistry,
+    path: Path,
+    *,
+    filename: str,
+    version: str,
+    repo_id: str,
+    created_at: str,
+    source_ref: str | None = None,
+    project_url: str | None = None,
+) -> dict:
+    _write_test_release_zip(path, version)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return registry.add(ArtifactRecord(
+        path=str(path),
+        filename=filename,
+        kind="adopted_release",
+        version=version,
+        repo_path=None,
+        repo_id=repo_id,
+        sha256=digest,
+        size_bytes=path.stat().st_size,
+        file_count=2,
+        created_at=created_at,
+        source_ref=source_ref or filename,
+        project_url=project_url,
+    ))
 
 
 def test_artifact_adopt_existing_project_source_updates_registry_and_state(capsys, tmp_path) -> None:
@@ -14631,8 +14661,8 @@ def test_artifact_current_repo_arg_returns_repo_scoped_payload(capsys, tmp_path)
     )
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_v0.0.200.zip"), filename="my_awx_v0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
-    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_v0.0.4.zip"), filename="platform-gitops_v0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+    _add_test_adopted_release(registry, tmp_path / "my_awx_v0.0.200.zip", filename="my_awx_v0.0.200.zip", version="0.0.200", repo_id="my_awx", created_at="2026-06-10T10:00:00Z")
+    _add_test_adopted_release(registry, tmp_path / "platform-gitops_v0.0.4.zip", filename="platform-gitops_v0.0.4.zip", version="0.0.4", repo_id="platform-gitops", created_at="2026-06-10T11:00:00Z")
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo="my_awx", all=False, json=True)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
@@ -14658,8 +14688,8 @@ def test_artifact_current_all_returns_all_repo_payloads(capsys, tmp_path) -> Non
     store.remember_artifact(project_url=project_url, repo_id="platform-gitops", artifact_ref="platform-gitops_v0.0.4.zip", artifact_version="0.0.4", source_ref="platform-gitops_v0.0.4.zip", source_version="0.0.4")
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_v0.0.200.zip"), filename="my_awx_v0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
-    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_v0.0.4.zip"), filename="platform-gitops_v0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+    _add_test_adopted_release(registry, tmp_path / "my_awx_v0.0.200.zip", filename="my_awx_v0.0.200.zip", version="0.0.200", repo_id="my_awx", created_at="2026-06-10T10:00:00Z")
+    _add_test_adopted_release(registry, tmp_path / "platform-gitops_v0.0.4.zip", filename="platform-gitops_v0.0.4.zip", version="0.0.4", repo_id="platform-gitops", created_at="2026-06-10T11:00:00Z")
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo=None, all=True, json=True)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
@@ -14672,43 +14702,38 @@ def test_artifact_current_all_returns_all_repo_payloads(capsys, tmp_path) -> Non
     assert payload["repos"]["platform-gitops"]["registry_current"]["filename"] == "platform-gitops_v0.0.4.zip"
 
 
-def test_artifact_current_repo_registry_current_populates_state_when_repo_state_missing(capsys, tmp_path) -> None:
+def test_artifact_current_repo_registry_current_fails_when_repo_state_missing(capsys, tmp_path) -> None:
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="architecture-process")
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [])
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(
-        path=str(tmp_path / "architecture-process_v0.29.0.zip"),
+    _add_test_adopted_release(
+        registry,
+        tmp_path / "architecture-process_v0.29.0.zip",
         filename="architecture-process_v0.29.0.zip",
-        kind="adopted_release",
         version="v0.29.0",
-        repo_path=None,
         repo_id="architecture-process",
-        sha256="a" * 64,
-        size_bytes=10,
-        file_count=2,
         created_at="2026-06-11T10:00:00Z",
         source_ref="architecture-process_v0.29.0.zip",
         project_url=project_url,
-    ))
+    )
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo="architecture-process", all=False, json=True)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
     payload = json.loads(capsys.readouterr().out)
 
-    assert exit_code == 0
-    assert payload["ok"] is True
-    assert payload["repos"]["architecture-process"]["state"]["artifact_ref"] == "architecture-process_v0.29.0.zip"
-    assert payload["repos"]["architecture-process"]["state"]["artifact_version"] == "v0.29.0"
-    assert payload["repos"]["architecture-process"]["state"]["source_ref"] == "architecture-process_v0.29.0.zip"
-    assert payload["repos"]["architecture-process"]["state"]["source_version"] == "v0.29.0"
-    assert payload["repos"]["architecture-process"]["baseline_roles"]["adopted_artifact_ref"] == "architecture-process_v0.29.0.zip"
-    assert payload["repos"]["architecture-process"]["baseline_roles"]["code_version_relation"] == "external_repo_baseline"
-    assert payload["repos"]["architecture-process"]["baseline_roles"]["code_version_match_applicable"] is False
-    assert payload["repos"]["architecture-process"]["consistency"]["registry_current_matches_state_artifact"] is True
-    assert payload["repos"]["architecture-process"]["consistency"]["state_source_matches_state_artifact"] is True
-    assert payload["repos"]["architecture-process"]["consistency"]["code_version_match_status"] == "not_applicable_external_repo_baseline"
+    assert exit_code == 2
+    assert payload["ok"] is False
+    repo_payload = payload["repos"]["architecture-process"]
+    assert repo_payload["status"] == "artifact_current_consistency_failed"
+    assert repo_payload["state"]["artifact_ref"] is None
+    assert repo_payload["state"]["artifact_version"] is None
+    assert repo_payload["state"]["source_ref"] is None
+    assert repo_payload["state"]["source_version"] is None
+    assert repo_payload["registry_current"]["filename"] == "architecture-process_v0.29.0.zip"
+    assert repo_payload["consistency"]["registry_current_matches_state_artifact"] is False
+    assert repo_payload["consistency"]["state_projection_matches_registry"] is False
 
 
 def test_artifact_current_without_repo_blocks_when_multiple_repos_exist(capsys, tmp_path) -> None:
@@ -14717,8 +14742,8 @@ def test_artifact_current_without_repo_blocks_when_multiple_repos_exist(capsys, 
     backend = _FakeArtifactAdoptBackend(profile, project_url, [])
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_v0.0.200.zip"), filename="my_awx_v0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
-    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_v0.0.4.zip"), filename="platform-gitops_v0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+    _add_test_adopted_release(registry, tmp_path / "my_awx_v0.0.200.zip", filename="my_awx_v0.0.200.zip", version="0.0.200", repo_id="my_awx", created_at="2026-06-10T10:00:00Z")
+    _add_test_adopted_release(registry, tmp_path / "platform-gitops_v0.0.4.zip", filename="platform-gitops_v0.0.4.zip", version="0.0.4", repo_id="platform-gitops", created_at="2026-06-10T11:00:00Z")
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo=None, all=False, json=True)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
@@ -14753,8 +14778,8 @@ def test_artifact_current_missing_repo_returns_not_found_without_legacy_state(ca
     )
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_v0.0.200.zip"), filename="my_awx_v0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
-    registry.add(ArtifactRecord(path=str(tmp_path / "platform-gitops_v0.0.4.zip"), filename="platform-gitops_v0.0.4.zip", kind="adopted_release", version="0.0.4", repo_path=None, repo_id="platform-gitops", sha256="b" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T11:00:00Z"))
+    _add_test_adopted_release(registry, tmp_path / "my_awx_v0.0.200.zip", filename="my_awx_v0.0.200.zip", version="0.0.200", repo_id="my_awx", created_at="2026-06-10T10:00:00Z")
+    _add_test_adopted_release(registry, tmp_path / "platform-gitops_v0.0.4.zip", filename="platform-gitops_v0.0.4.zip", version="0.0.4", repo_id="platform-gitops", created_at="2026-06-10T11:00:00Z")
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo="does-not-exist", all=False, json=True)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
@@ -14781,7 +14806,7 @@ def test_artifact_current_missing_repo_non_json_does_not_crash(capsys, tmp_path)
     store.remember_artifact(project_url=project_url, repo_id="my_awx", artifact_ref="my_awx_v0.0.200.zip", artifact_version="0.0.200")
     registry = ArtifactRegistry(profile)
     registry.initialize()
-    registry.add(ArtifactRecord(path=str(tmp_path / "my_awx_v0.0.200.zip"), filename="my_awx_v0.0.200.zip", kind="adopted_release", version="0.0.200", repo_path=None, repo_id="my_awx", sha256="a" * 64, size_bytes=10, file_count=2, created_at="2026-06-10T10:00:00Z"))
+    _add_test_adopted_release(registry, tmp_path / "my_awx_v0.0.200.zip", filename="my_awx_v0.0.200.zip", version="0.0.200", repo_id="my_awx", created_at="2026-06-10T10:00:00Z")
 
     args = argparse.Namespace(profile_dir=str(profile), repo_path=str(repo), repo="does-not-exist", all=False, json=False)
     exit_code = asyncio.run(cmd_artifact_current(backend, args))
@@ -14902,7 +14927,7 @@ def test_artifact_adopt_missing_local_path_reports_attempted_path(capsys, tmp_pa
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 1
-    assert payload["status"] == "local_artifact_not_found"
+    assert payload["status"] == "explicit_artifact_path_not_found"
     assert payload["attempted_local_path"] == str(missing_zip)
     assert payload["attempted_artifact_ref"] == filename
     assert "--local-path" in payload["next_safe_action"]

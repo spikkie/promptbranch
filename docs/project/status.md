@@ -1,28 +1,23 @@
-> v0.1.128 authority: accepted/current is FINAL_VERIFIED `v0.1.127.2.1`; perform only bounded execution-critical dual-authority cleanup, preserve resilience/external compatibility, prove one canonical lifecycle, then advance to external-application bootstrap.
-
-> v0.1.127.1 preserved authority: bind artifact origin conversation and route successor/live ask from baseline artifact provenance; no routing semantics change in `.1.1`.
-
-> v0.1.127 normal-slice authority: built from accepted/current `v0.1.126.1.1.1.1.3` after the `v0.1.126` repair chain reached `FINAL_VERIFIED`. Tool authoring remains proposal-only and separate from execution authority.
+> v0.1.128.1 authority: accepted/current is FINAL_VERIFIED `v0.1.128`; repair only artifact identity ownership/strict resolution/registry projection correctness from PB Ticket single-authority scope. No release-state expansion and no external-application scope.
 
 # Promptbranch status
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.127.2.1
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-active_candidate_version: v0.1.128
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+accepted_current_version: v0.1.128
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+active_candidate_version: v0.1.128.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
 ```
 
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-accepted/current version: v0.1.127.2.1
-accepted/current SHA-256: 33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.128.zip
-active candidate status: bounded execution-critical authority cleanup; construction proof in progress; no live acceptance claim
-active slice authority: v0.1.128 — PB environment authority cleanup, hardening and freeze
-next normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
-next planned after acceptance: v0.1.129 — External application pilot bootstrap
+accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+accepted/current version: v0.1.128
+accepted/current SHA-256: 5d1d64e8d146a3bf58f388149d6a917982239c1dbb9e2f5256f3ef33ba9abaac
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
+active candidate status: bounded artifact single-authority repair; construction proof in progress; no acceptance/current claim
+active slice authority: v0.1.128.1 — Single authority for Promptbranch release artifacts
+next normal slice: v0.1.129 — External application pilot bootstrap
 
 ## Current interpretation
 

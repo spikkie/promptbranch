@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json,sys,zipfile
 from pathlib import Path
-from promptbranch_artifacts import ArtifactRegistry,ArtifactRecord
+from promptbranch_artifacts import ArtifactRegistry,ArtifactRecord,sha256_file
 from promptbranch_cli import make_parser,_candidate_protocol_selection
 from promptbranch_full_integration_test import DockerServiceAdapter
 from promptbranch_release_state_machine import SubprocessReleaseExecutor,build_machine_from_args
@@ -11,7 +11,10 @@ def test_selected_protocol_reply_is_origin_authority():
  x=_candidate_protocol_selection(c); assert x["conversation_id"]=="exact" and x["answer_id"]=="exact-a"
 
 def test_registry_origin_validation(tmp_path):
- r=ArtifactRegistry(tmp_path/'r');r.initialize(); rec=ArtifactRecord(path=str(tmp_path/'repo_v0.1.2.zip'),filename='repo_v0.1.2.zip',kind='adopted_release',version='v0.1.2',repo_path=None,repo_id='repo',sha256='a'*64,size_bytes=1,file_count=1,created_at='2026-08-10T00:00:00Z',source_ref='repo_v0.1.2.zip',project_url='https://chatgpt.com/g/g-p-demo/project',origin_conversation_url='https://chatgpt.com/g/g-p-demo/c/c1',origin_conversation_id='c1');r.add(rec); bad=rec.to_dict();bad['origin_conversation_id']='x';assert 'must exactly match' in r._record_validation_error(bad)
+ r=ArtifactRegistry(tmp_path/'r');r.initialize(); artifact=tmp_path/'repo_v0.1.2.zip'
+ with zipfile.ZipFile(artifact,'w',compression=zipfile.ZIP_STORED) as z:
+  z.writestr('VERSION','v0.1.2\n');z.writestr('README.md','origin fixture\n')
+ rec=ArtifactRecord(path=str(artifact),filename=artifact.name,kind='adopted_release',version='v0.1.2',repo_path=None,repo_id='repo',sha256=sha256_file(artifact),size_bytes=artifact.stat().st_size,file_count=2,created_at='2026-08-10T00:00:00Z',source_ref=artifact.name,project_url='https://chatgpt.com/g/g-p-demo/project',origin_conversation_url='https://chatgpt.com/g/g-p-demo/c/c1',origin_conversation_id='c1');r.add(rec); bad=rec.to_dict();bad['origin_conversation_id']='x';assert 'must exactly match' in r._record_validation_error(bad)
 
 def test_parser_options():
  p=make_parser(); assert p.parse_args(['artifact','bind-conversation','--repo','repo','--version','v0.1.2','--conversation-url','https://chatgpt.com/g/g-p-demo/c/c1']).artifact_command=='bind-conversation'; assert p.parse_args(['test','full','--ask-conversation-url','https://chatgpt.com/g/g-p-demo/c/c1']).ask_conversation_url.endswith('/c/c1')

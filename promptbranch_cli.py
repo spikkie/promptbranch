@@ -11603,8 +11603,9 @@ def _local_source_sync_verification(
         filename=record.filename,
         sha256=record.sha256,
     )
+    is_release = str(getattr(record, "kind", "") or "") == "release"
     state_artifact_updated = True
-    if project_url:
+    if project_url and not is_release:
         state_artifact_updated = (
             state_after.get("artifact_ref") == record.filename
             and state_after.get("artifact_version") == record.version
@@ -11614,8 +11615,20 @@ def _local_source_sync_verification(
         "zip_crc_ok": bool(zip_check.get("ok")) and zip_check.get("testzip") is None,
         "zip_sha256_matches_record": bool(Path(record.path).is_file()) and verify_zip_artifact(record.path).get("sha256") == record.sha256,
         "registry_contains_artifact": registry_contains,
-        "registry_current_matches_artifact": bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == record.filename,
+        "registry_current_matches_artifact": (
+            True if is_release else bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == record.filename
+        ),
         "state_artifact_updated": state_artifact_updated,
+        "release_not_promoted_to_current": (
+            True if not is_release else (
+                not (bool(after_registry.get("current")) and str((after_registry.get("current") or {}).get("filename") or "") == record.filename)
+                or (
+                    bool(before_registry.get("current"))
+                    and str((before_registry.get("current") or {}).get("filename") or "") == record.filename
+                    and str((before_registry.get("current") or {}).get("sha256") or "") == record.sha256
+                )
+            )
+        ),
         "project_source_not_mutated": True,
         "project_source_mutated": False,
     }
@@ -12114,6 +12127,9 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
             filename=getattr(args, "filename", None),
             kind=getattr(args, "artifact_kind", "source_snapshot"),
         )
+        export_path = record.path
+        if record.kind == "release":
+            record = registry.prepare_release_object(record)
     except ValueError as exc:
         print(json.dumps({"ok": False, "action": "src_sync", "status": "package_failed", "error": str(exc), "preflight": preflight_plan["preflight"]}, indent=2, ensure_ascii=False))
         return 2
@@ -12187,7 +12203,7 @@ async def cmd_src_sync(backend: Any, args: argparse.Namespace) -> int:
     if no_upload_requested or uploaded:
         artifact_payload = registry.add(record)
         registry_updated = True
-        if project_url:
+        if project_url and record.kind != "release":
             if uploaded:
                 store.remember_artifact(
                     project_url=project_url,
@@ -12326,25 +12342,39 @@ def _read_zip_version_file(path: str | Path) -> str | None:
 
 
 def _resolve_adopt_local_zip(artifact_name: str, *, local_path: str | None, registry: ArtifactRegistry) -> Path | None:
-    candidates: list[Path] = []
-    if local_path:
-        candidates.append(Path(local_path).expanduser())
-    raw = Path(artifact_name).expanduser()
-    candidates.append(raw)
-    if not raw.is_absolute():
-        candidates.append(Path.cwd() / raw)
-        candidates.append(registry.artifact_dir / raw.name)
-    seen: set[Path] = set()
-    for candidate in candidates:
+    # PB-AUTH-003: an explicit --local-path is terminal authority for this input.
+    # If it is missing, do not search cwd, Downloads, artifact directories, or any
+    # same-named fallback.
+    if local_path is not None:
+        explicit = Path(local_path).expanduser()
         try:
-            resolved = candidate.resolve()
+            resolved = explicit.resolve()
         except OSError:
-            resolved = candidate.absolute()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        if resolved.is_file():
-            return resolved
+            resolved = explicit.absolute()
+        return resolved if resolved.is_file() else None
+
+    # A positional filesystem path is also explicit. Relative paths are resolved
+    # only as written against cwd; there is no filename search.
+    raw = Path(artifact_name).expanduser()
+    try:
+        resolved_raw = raw.resolve()
+    except OSError:
+        resolved_raw = raw.absolute()
+    if resolved_raw.is_file():
+        return resolved_raw
+
+    # PB-AUTH-004: once a release is registered, adoption may resolve the exact
+    # repo/version identity to the PB-owned immutable object. Filename is merely
+    # descriptive metadata; release_record() requires one unique logical identity.
+    parsed = parse_canonical_artifact_filename(raw.name)
+    if parsed is not None:
+        registered = registry.release_record(parsed["repo_id"], parsed["version"])
+        if isinstance(registered, dict):
+            registered_path = Path(str(registered.get("path") or "")).expanduser()
+            if registered_path.is_file():
+                observed = verify_zip_artifact(registered_path)
+                if observed.get("ok") and str(observed.get("sha256") or "") == str(registered.get("sha256") or ""):
+                    return registered_path.resolve()
     return None
 
 
@@ -12698,13 +12728,6 @@ def _artifact_current_payload(
             "project_home_url": snapshot.get("resolved_project_home_url"),
             "repo_id": scope_repo_id or snapshot.get("artifact_repo_id"),
         }
-        if scope_repo_id and registry_current and not state_has_artifact:
-            state.update({
-                "artifact_ref": registry_filename or None,
-                "artifact_version": registry_version or None,
-                "source_ref": registry_source_ref or None,
-                "source_version": registry_version or None,
-            })
         state_artifact_ref = str(state.get("artifact_ref") or "")
         state_artifact_version = str(state.get("artifact_version") or "")
         state_source_ref = str(state.get("source_ref") or "")
@@ -12719,8 +12742,18 @@ def _artifact_current_payload(
             else ("external_repo_baseline" if scope_repo_id else "runtime_source_mismatch")
         )
         code_version_match_applicable = not bool(scope_repo_id and not code_matches_adopted_source)
+        current_object_exists = False
+        current_artifact_sha_exact = False
+        if isinstance(registry_current, dict):
+            current_path = Path(str(registry_current.get("path") or "")).expanduser()
+            current_object_exists = current_path.is_file()
+            if current_object_exists:
+                current_verification = verify_zip_artifact(current_path)
+                current_artifact_sha_exact = bool(current_verification.get("ok")) and str(current_verification.get("sha256") or "") == str(registry_current.get("sha256") or "")
+        state_projection_matches_registry = bool(registry_matches_state and state_source_matches_artifact)
+        current_ok = bool(registry_current) and current_object_exists and current_artifact_sha_exact and state_projection_matches_registry
         return {
-            "ok": True,
+            "ok": current_ok,
             "action": "artifact_current",
             "scope": {"kind": "repo", "repo_id": scope_repo_id or identity.repo_id, "project_id": identity.project_id},
             "runtime": {
@@ -12747,13 +12780,16 @@ def _artifact_current_payload(
             "consistency": {
                 "registry_current_matches_state_artifact": registry_matches_state,
                 "state_source_matches_state_artifact": state_source_matches_artifact,
+                "state_projection_matches_registry": state_projection_matches_registry,
+                "current_artifact_object_exists": current_object_exists,
+                "current_artifact_sha_exact": current_artifact_sha_exact,
                 "code_version_matches_state_source": code_matches_adopted_source,
                 "code_version_relation": code_version_relation,
                 "code_version_match_applicable": code_version_match_applicable,
                 "code_version_match_status": "matches" if code_matches_adopted_source else ("not_applicable_external_repo_baseline" if not code_version_match_applicable else "mismatch"),
                 "project_home_url_present": bool(state.get("project_home_url")),
             },
-            "status": str(registry_state.get("status") or "artifact_registry_loaded"),
+            "status": str(registry_state.get("status") or "artifact_registry_loaded") if current_ok else "artifact_current_consistency_failed",
             "registry_source": "project_registry",
             "registry_file": str(registry.path),
             "registry_exists": True,
@@ -12780,8 +12816,10 @@ def _artifact_current_payload(
         }
         if repo_filter:
             scope["repo_filter"] = repo_filter
-        missing = [repo_id for repo_id, repo_payload in repos.items() if isinstance(repo_payload, dict) and not repo_payload.get("ok")]
-        ok = not bool(repo_filter and missing)
+        failed = [repo_id for repo_id, repo_payload in repos.items() if isinstance(repo_payload, dict) and not repo_payload.get("ok")]
+        not_found = [repo_id for repo_id in failed if str((repos.get(repo_id) or {}).get("status") or "") == "repo_current_not_found"]
+        inconsistent = [repo_id for repo_id in failed if repo_id not in not_found]
+        ok = not bool(repo_filter and failed)
         payload = {
             "ok": ok,
             "action": "artifact_current_all",
@@ -12789,8 +12827,10 @@ def _artifact_current_payload(
             "scope": scope,
             "repo_count": len(repos),
             "repos": repos,
-            "missing_repo_count": len(missing),
-            "missing_repos": missing,
+            "missing_repo_count": len(not_found),
+            "missing_repos": not_found,
+            "inconsistent_repo_count": len(inconsistent),
+            "inconsistent_repos": inconsistent,
             "registry_source": "project_registry",
             "registry_file": str(registry.path),
             "registry_exists": True,
@@ -12801,9 +12841,11 @@ def _artifact_current_payload(
             "resolution_method": "identity_manifest",
             "fallback_used": False,
         }
-        if repo_filter and missing:
+        if repo_filter and not_found:
             payload["status"] = "repo_current_not_found"
             payload["available_repos"] = available_repo_ids()
+        elif repo_filter and inconsistent:
+            payload["status"] = "artifact_current_consistency_failed"
         return payload
 
     return all_payload(normalized_repo_id or None)
@@ -21486,6 +21528,81 @@ def _repo_doctor_payload(args: argparse.Namespace) -> dict[str, Any]:
     check("repo_roots_exist", not bad_roots, missing_repo_roots=bad_roots)
     check("artifact_patterns_match_repo_ids", not bad_patterns, mismatched_patterns=bad_patterns)
     check("configured_repo_identities_match", not mismatched_identities, mismatched_identity_repos=mismatched_identities)
+
+    authority_registry = ArtifactRegistry(project_registry_dir(project_id))
+    authority_issues = authority_registry.release_identity_issues()
+    check(
+        "repo_versions_have_single_sha",
+        not authority_issues.get("sha_conflicts"),
+        conflicts=authority_issues.get("sha_conflicts") or [],
+    )
+    check(
+        "registry_artifact_identity_unique",
+        not authority_issues.get("duplicate_identities"),
+        duplicates=authority_issues.get("duplicate_identities") or [],
+    )
+
+    current_by_repo = authority_registry.current_all()
+    missing_objects: list[dict[str, Any]] = []
+    sha_mismatches: list[dict[str, Any]] = []
+    non_object_authority: list[dict[str, Any]] = []
+    projection_conflicts: list[dict[str, Any]] = []
+    object_root = authority_registry.object_dir.resolve()
+    for configured_repo_id in repo_ids:
+        current_record = current_by_repo.get(configured_repo_id)
+        if not isinstance(current_record, dict):
+            continue
+        object_path = Path(str(current_record.get("path") or "")).expanduser()
+        if not object_path.is_file():
+            missing_objects.append({"repo_id": configured_repo_id, "path": str(object_path), "version": current_record.get("version")})
+        else:
+            observed = verify_zip_artifact(object_path)
+            expected_sha = str(current_record.get("sha256") or "")
+            if not observed.get("ok") or str(observed.get("sha256") or "") != expected_sha:
+                sha_mismatches.append({
+                    "repo_id": configured_repo_id,
+                    "version": current_record.get("version"),
+                    "path": str(object_path),
+                    "expected_sha256": expected_sha,
+                    "observed_sha256": observed.get("sha256"),
+                    "verification_ok": bool(observed.get("ok")),
+                })
+            try:
+                resolved_object = object_path.resolve()
+                resolved_object.relative_to(object_root)
+            except (OSError, ValueError):
+                non_object_authority.append({
+                    "repo_id": configured_repo_id,
+                    "version": current_record.get("version"),
+                    "path": str(object_path),
+                    "expected_object_root": str(object_root),
+                })
+
+        state_snapshot = ConversationStateStore(str(project_registry_dir(project_id))).snapshot(
+            str(base.get("project_home_url") or "") or None, repo_id=configured_repo_id
+        )
+        state_summary = _state_artifact_summary(state_snapshot)
+        state_ok = (
+            state_summary.get("artifact_ref") == current_record.get("filename")
+            and canonical_version_tag(state_summary.get("artifact_version")) == canonical_version_tag(current_record.get("version"))
+            and canonical_version_tag(state_summary.get("source_version")) == canonical_version_tag(current_record.get("version"))
+        )
+        if not state_ok:
+            projection_conflicts.append({
+                "repo_id": configured_repo_id,
+                "registry": {
+                    "filename": current_record.get("filename"),
+                    "version": current_record.get("version"),
+                    "sha256": current_record.get("sha256"),
+                },
+                "state": state_summary,
+            })
+
+    check("current_artifact_object_exists", not missing_objects, missing_objects=missing_objects)
+    check("current_artifact_sha_exact", not sha_mismatches, mismatches=sha_mismatches)
+    check("current_artifact_under_pb_object_authority", not non_object_authority, non_object_authority=non_object_authority)
+    check("state_projection_matches_registry", not projection_conflicts, conflicts=projection_conflicts)
+
     missing_payload = _artifact_current_payload(
         None,
         ArtifactRegistry(project_registry_dir(project_id)),
@@ -23947,7 +24064,7 @@ async def cmd_artifact_adopt(backend: Any, args: argparse.Namespace) -> int:
         attempted_local_path = getattr(args, "local_path", None)
         payload = {
             **base_payload,
-            "status": "local_artifact_not_found",
+            "status": "explicit_artifact_path_not_found" if attempted_local_path is not None else "local_artifact_not_found",
             "artifact_version": filename_version,
             "source_version": filename_version,
             "source_verified": bool(from_project_source and len(matched_sources) == 1),
@@ -24250,29 +24367,56 @@ async def cmd_artifact_release(backend: Any, args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(json.dumps({"ok": False, "action": "artifact_release", "status": "failed", "error": str(exc)}, indent=2, ensure_ascii=False))
         return 2
-    artifact_payload = registry.add(record)
+    export_path = record.path
+    try:
+        artifact_payload = registry.add(record)
+    except ArtifactIdentityConflictError as exc:
+        payload = {
+            "ok": False,
+            "action": "artifact_release",
+            **exc.to_payload(),
+            "release_workflow": "artifact_release_local_v2",
+            "export_path": export_path,
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "project_source_mutated": False,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 1
+    except ValueError as exc:
+        payload = {
+            "ok": False,
+            "action": "artifact_release",
+            "status": "artifact_object_import_failed",
+            "release_workflow": "artifact_release_local_v2",
+            "export_path": export_path,
+            "artifact_registry_updated": False,
+            "state_artifact_updated": False,
+            "state_source_updated": False,
+            "project_source_mutated": False,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 1
     project_url = _artifact_state_project_url(backend)
-    if project_url:
-        _artifact_state_store(registry).remember_artifact(
-            project_url=project_url,
-            artifact_ref=record.filename,
-            artifact_version=record.version,
-            repo_id=record.repo_id,
-        )
-    verify = verify_zip_artifact(record.path)
+    verify = verify_zip_artifact(str(artifact_payload.get("path") or ""))
     payload = {
         "ok": bool(verify.get("ok")),
         "action": "artifact_release",
-        "status": "packaged" if verify.get("ok") else "failed",
-        "release_workflow": "artifact_release_local_v1",
+        "status": "registered_release" if verify.get("ok") else "failed",
+        "release_workflow": "artifact_release_local_v2",
         "artifact": artifact_payload,
+        "export_path": export_path,
         "included_count": len(included),
         "verify": verify,
         "project_url": project_url,
         "artifact_registry_updated": True,
-        "state_artifact_updated": bool(project_url),
+        "state_artifact_updated": False,
         "state_source_updated": False,
         "project_source_mutated": False,
+        "current_updated": False,
     }
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))

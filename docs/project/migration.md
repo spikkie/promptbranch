@@ -1590,3 +1590,8 @@ No historical release attempt is upgraded, rewritten, or adopted. `v0.1.127.1.1.
 `v0.1.128` starts from accepted/current `v0.1.127.2.1`. No legacy PB state is migrated into a second runtime representation. Tracked control metadata is synchronized to the live accepted baseline, artifact-current consumers use only repo-loop projections, and execution-critical PB delegation is rooted in the active launcher Python plus repo-local CLI. The obsolete `legacy_10_75` Project Source mutation/diagnostic path and hidden controlled-write alias are removed rather than adapted. External dependency compatibility, browser resilience, and fail-closed detection of stray historical state remain where they do not create an alternate authority.
 
 After v0.1.128 acceptance, the next planned normal slice is `v0.1.129 — External application pilot bootstrap`.
+
+
+## v0.1.128.1 — immutable artifact authority repair
+
+`v0.1.128.1` starts from accepted/current FINAL_VERIFIED `v0.1.128`. Existing conflicting repo/version registry identities are not auto-migrated or guessed. The project artifact registry detects them and `repo doctor` fails closed until the operator makes an explicit cleanup decision. New release/import bytes are verified and copied under the project-scoped SHA-addressed PB object authority; release-to-adopt transitions retain one logical object identity. Explicit missing artifact paths never fall back to same-named filesystem copies. State remains a checked projection of registry authority rather than a bidirectionally synchronized source. After this repair closes, the next normal slice remains `v0.1.129 — External application pilot bootstrap`.

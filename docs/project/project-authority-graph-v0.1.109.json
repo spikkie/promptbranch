@@ -147,12 +147,15 @@
     },
     {
       "domain": "artifact.adopted_identity",
-      "description": "Evidence-bound adopted artifact and exact assigned Project Source identity.",
+      "description": "Project-scoped adopted artifact identity; repo/version binds to one SHA-addressed PB object and Project Source/filesystem copies are projections or inputs.",
       "authority": {
         "kind": "runtime_registry",
         "selector": "current_adopted_record",
         "resolver": "project_registry_file(project_id)",
-        "location_contract": "user_state/promptbranch/projects/<project_id>/promptbranch_artifacts.json"
+        "location_contract": "user_state/promptbranch/projects/<project_id>/promptbranch_artifacts.json",
+        "object_location_contract": "user_state/promptbranch/projects/<project_id>/objects/<sha256>/<canonical-filename>",
+        "identity_key": "repo_id+version+sha256",
+        "filename_is_identity": false
       },
       "projections": [],
       "conflict_policy": "fail_closed",

@@ -85,3 +85,7 @@ Promptbranch, `promptbranch-method`, and every application repository retain ind
 - active repair slice: v0.1.125.3.4.2 — Post-adoption historical verification and final convergence
 - old post-adoption live-candidate verification is replaced, not retained as a compatibility mode
 - next normal slice remains `v0.1.126 — Persistent whole-release ETA estimator`
+
+## v0.1.128.1 repair horizon
+
+`v0.1.128.1 — Single authority for Promptbranch release artifacts` is the active bounded repair on accepted/current `v0.1.128`. It does not advance normal scope. The next normal slice remains `v0.1.129 — External application pilot bootstrap` after the repair reaches FINAL_VERIFIED/current.

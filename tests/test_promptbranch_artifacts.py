@@ -537,9 +537,20 @@ def test_repo_snapshot_includes_tracked_project_binding(tmp_path: Path) -> None:
 def test_adopted_release_version_hash_is_immutable(tmp_path: Path) -> None:
     registry = ArtifactRegistry(tmp_path / "profile")
     registry.initialize()
-    first = ArtifactRecord(path=str(tmp_path / "demo_v1.2.3.zip"), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256="a" * 64, size_bytes=1, file_count=1, created_at="2026-08-02T00:00:00Z")
+    first_path = tmp_path / "demo_v1.2.3.zip"
+    with zipfile.ZipFile(first_path, "w") as archive:
+        archive.writestr("VERSION", "v1.2.3\n")
+        archive.writestr("payload.txt", "A\n")
+    first_verify = verify_zip_artifact(first_path)
+    first = ArtifactRecord(path=str(first_path), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256=first_verify["sha256"], size_bytes=first_verify["size_bytes"], file_count=first_verify["entry_count"], created_at="2026-08-02T00:00:00Z")
     registry.add(first)
-    second = ArtifactRecord(path=str(tmp_path / "other" / "demo_v1.2.3.zip"), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256="b" * 64, size_bytes=1, file_count=1, created_at="2026-08-02T00:01:00Z")
+    second_path = tmp_path / "other" / "demo_v1.2.3.zip"
+    second_path.parent.mkdir()
+    with zipfile.ZipFile(second_path, "w") as archive:
+        archive.writestr("VERSION", "v1.2.3\n")
+        archive.writestr("payload.txt", "B\n")
+    second_verify = verify_zip_artifact(second_path)
+    second = ArtifactRecord(path=str(second_path), filename="demo_v1.2.3.zip", kind="adopted_release", version="v1.2.3", repo_path=None, repo_id="demo", sha256=second_verify["sha256"], size_bytes=second_verify["size_bytes"], file_count=second_verify["entry_count"], created_at="2026-08-02T00:01:00Z")
     import pytest
     with pytest.raises(ArtifactIdentityConflictError):
         registry.add(second)

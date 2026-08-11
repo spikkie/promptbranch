@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import zipfile
 
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, sha256_file
 from promptbranch_behavioral_surface import BEHAVIORAL_SURFACE_REL, build_behavioral_surface_show_payload, validate_behavioral_surface
@@ -88,7 +89,9 @@ def test_runtime_authority_resolves_project_registry(tmp_path: Path, monkeypatch
     registry = ArtifactRegistry(project_registry_dir("project-x"))
     registry.initialize()
     artifact = repo / "chatgpt_claudecode_workflow-2_v0.1.109.zip"
-    artifact.write_bytes(b"placeholder")
+    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("VERSION", "v0.1.109\n")
+        archive.writestr("README.md", "runtime authority fixture\n")
     registry.add(ArtifactRecord(
         path=str(artifact),
         filename=artifact.name,

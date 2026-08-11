@@ -1,30 +1,30 @@
-> v0.1.128 authority: accepted/current is FINAL_VERIFIED `v0.1.127.2.1`; remove only execution-critical dual-authority/legacy mutation paths, preserve current resilience, and freeze one canonical PB lifecycle without expanding release machinery.
-
-> v0.1.127.1 is repair-required live evidence after same-project slugged/unslugged URLs were rejected by the durable artifact validator.
-
-> v0.1.127 normal-slice authority: built from accepted/current `v0.1.126.1.1.1.1.3`. This slice adds portable deterministic tool-authoring guidance and export only; it grants no execution authority and does not begin external application development.
+> v0.1.128.1 authority: accepted/current is FINAL_VERIFIED `v0.1.128`; implement only the PB artifact single-authority ticket, prove it against one canonical lifecycle, then return to v0.1.129 external-application work.
 
 # Promptbranch plan
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.127.2.1
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-active_candidate_version: v0.1.128
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+accepted_current_version: v0.1.128
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
+active_candidate_version: v0.1.128.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
+active_candidate_base_version: v0.1.128
+next_normal_version: v0.1.129
+next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
 
-accepted/current baseline: v0.1.127.2.1
-accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
-accepted/current SHA-256: 33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75
-active normal artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
-active normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
-next normal version: v0.1.128
-next normal slice: v0.1.128 — PB environment authority cleanup, hardening and freeze
-next planned after acceptance: v0.1.129 — External application pilot bootstrap
+## Active repair slice — v0.1.128.1
 
-## Active normal slice — v0.1.128
+- Enforce `(repo_id, version) -> exactly one immutable SHA-256`.
+- Make explicit artifact paths strict and forbid filename/path fallback authority.
+- Import released bytes into one PB-owned SHA-addressed project object.
+- Model release→adopt as state on one object and make adopted registry identity the only current pointer.
+- Verify state as a projection, and make `repo doctor` detect authority conflicts/tampering.
+- Add one resumable wrapper around the existing canonical lifecycle run+independent-verify cadence; no new lifecycle states.
+- Freeze no ZIP until all canonical validation groups and Artifact Guardian are green.
+- After live FINAL_VERIFIED/current proof, resume v0.1.129.
+
 
 1. Synchronize tracked control-surface accepted/current authority to the live FINAL_VERIFIED v0.1.127.2.1 baseline.
 2. Remove top-level artifact-current fallback; repository-loop projections are the only current-state input.

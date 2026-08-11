@@ -5,9 +5,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import zipfile
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -15,6 +16,8 @@ from typing import Any, Iterable, Optional
 VERSION_PATTERN = r"^v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
 ARTIFACT_REGISTRY_NAME = "promptbranch_artifacts.json"
 ARTIFACT_DIR_NAME = "artifacts"
+ARTIFACT_OBJECT_DIR_NAME = "objects"
+RELEASE_IDENTITY_KINDS = frozenset({"release", "adopted_release"})
 
 DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     ".git/",
@@ -471,6 +474,7 @@ class ArtifactRegistry:
         self.profile_dir = base
         self.path = base / ARTIFACT_REGISTRY_NAME
         self.artifact_dir = base / ARTIFACT_DIR_NAME
+        self.object_dir = base / ARTIFACT_OBJECT_DIR_NAME
 
     def inspect(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -658,6 +662,117 @@ class ArtifactRegistry:
         ids = {repo_id for item in self.list() if (repo_id := self._record_repo_id(item))}
         return sorted(ids)
 
+    @staticmethod
+    def _release_identity_key(record: dict[str, Any] | ArtifactRecord) -> tuple[str, str] | None:
+        if isinstance(record, ArtifactRecord):
+            kind = record.kind
+            repo_id = normalize_repo_id(record.repo_id)
+            version = canonical_version_tag(record.version)
+        else:
+            kind = str(record.get("kind") or "")
+            repo_id = normalize_repo_id(record.get("repo_id"))
+            version = canonical_version_tag(record.get("version") if isinstance(record.get("version"), str) else None)
+        if kind not in RELEASE_IDENTITY_KINDS or not repo_id or not version:
+            return None
+        return repo_id, version
+
+    def release_identity_issues(self, *, repo_id: str | None = None) -> dict[str, Any]:
+        normalized_repo = normalize_repo_id(repo_id)
+        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for item in self.list():
+            key = self._release_identity_key(item)
+            if key is None or (normalized_repo and key[0] != normalized_repo):
+                continue
+            groups.setdefault(key, []).append(item)
+        sha_conflicts: list[dict[str, Any]] = []
+        duplicate_identities: list[dict[str, Any]] = []
+        for (group_repo, version), records in sorted(groups.items()):
+            sha_values = [str(item.get("sha256") or "") for item in records]
+            nonempty = sorted({value for value in sha_values if value})
+            if any(not value for value in sha_values) or len(nonempty) != 1:
+                sha_conflicts.append({
+                    "repo_id": group_repo,
+                    "version": version,
+                    "sha256_values": nonempty,
+                    "missing_sha_count": sum(1 for value in sha_values if not value),
+                    "records": records,
+                })
+            if len(records) > 1:
+                duplicate_identities.append({
+                    "repo_id": group_repo,
+                    "version": version,
+                    "record_count": len(records),
+                    "sha256_values": nonempty,
+                    "kinds": sorted({str(item.get("kind") or "") for item in records}),
+                    "records": records,
+                })
+        return {
+            "ok": not sha_conflicts and not duplicate_identities,
+            "sha_conflicts": sha_conflicts,
+            "duplicate_identities": duplicate_identities,
+            "group_count": len(groups),
+        }
+
+    def release_record(self, repo_id: str, version: str) -> dict[str, Any] | None:
+        normalized_repo = normalize_repo_id(repo_id)
+        normalized_version = canonical_version_tag(version)
+        if not normalized_repo or not normalized_version:
+            return None
+        matches = [
+            item for item in self.list()
+            if self._release_identity_key(item) == (normalized_repo, normalized_version)
+        ]
+        if len(matches) != 1:
+            return None
+        return matches[0]
+
+    def object_path(self, sha256: str, filename: str) -> Path:
+        digest = str(sha256 or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("release artifact sha256 must be a 64-character lowercase hex digest")
+        canonical_name = Path(filename).name
+        if canonical_name != filename or parse_canonical_artifact_filename(canonical_name) is None:
+            raise ValueError("release artifact filename must be canonical")
+        return self.object_dir / digest / canonical_name
+
+    def prepare_release_object(self, record: ArtifactRecord) -> ArtifactRecord:
+        if record.kind not in RELEASE_IDENTITY_KINDS:
+            return record
+        source = Path(record.path).expanduser().resolve()
+        if not source.is_file():
+            raise ValueError(f"release artifact input does not exist: {source}")
+        verification = verify_zip_artifact(source)
+        if not verification.get("ok"):
+            raise ValueError(f"release artifact failed verification: {verification.get('error') or 'zip verification failed'}")
+        observed_sha = str(verification.get("sha256") or "")
+        if not observed_sha or observed_sha != str(record.sha256 or ""):
+            raise ValueError(f"release artifact sha256 mismatch: record={record.sha256} observed={observed_sha}")
+        parsed = parse_canonical_artifact_filename(record.filename)
+        if parsed is None:
+            raise ValueError("release artifact filename must be canonical")
+        try:
+            with zipfile.ZipFile(source) as archive:
+                embedded_version = archive.read("VERSION").decode("utf-8", errors="replace").strip()
+        except (OSError, zipfile.BadZipFile, KeyError) as exc:
+            raise ValueError(f"release artifact VERSION could not be read: {exc}") from exc
+        if canonical_version_tag(embedded_version) != canonical_version_tag(record.version):
+            raise ValueError("release artifact embedded VERSION does not match record version")
+        destination = self.object_path(observed_sha, record.filename)
+        if destination.is_file():
+            existing_sha = sha256_file(destination)
+            if existing_sha != observed_sha:
+                raise ValueError(f"immutable artifact object is corrupt: {destination}")
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_suffix(destination.suffix + ".tmp")
+            shutil.copy2(source, temporary)
+            copied_sha = sha256_file(temporary)
+            if copied_sha != observed_sha:
+                temporary.unlink(missing_ok=True)
+                raise ValueError("immutable artifact object copy sha256 mismatch")
+            temporary.replace(destination)
+        return replace(record, path=str(destination))
+
     def add(self, record: ArtifactRecord) -> dict[str, Any]:
         payload = self.load()
         artifacts = [item for item in payload.get("artifacts", []) if isinstance(item, dict)]
@@ -665,23 +780,38 @@ class ArtifactRegistry:
         record_error = self._record_validation_error(record_payload)
         if record_error:
             raise ValueError(f"artifact record is invalid: {record_error}")
-        if record.kind == "adopted_release":
-            for existing in artifacts:
-                if (
-                    existing.get("kind") == "adopted_release"
-                    and existing.get("repo_id") == record.repo_id
-                    and canonical_version_tag(existing.get("version")) == canonical_version_tag(record.version)
-                ):
-                    existing_sha = str(existing.get("sha256") or "")
-                    if not existing_sha or existing_sha != record.sha256:
-                        raise ArtifactIdentityConflictError(
-                            repo_id=str(record.repo_id or ""),
-                            version=str(canonical_version_tag(record.version) or record.version or ""),
-                            existing_sha256=existing_sha,
-                            candidate_sha256=record.sha256,
-                        )
-        artifacts = [item for item in artifacts if item.get("path") != record.path]
-        artifacts.append(record_payload)
+
+        key = self._release_identity_key(record)
+        matching: list[dict[str, Any]] = []
+        if key is not None:
+            matching = [item for item in artifacts if self._release_identity_key(item) == key]
+            for existing in matching:
+                existing_sha = str(existing.get("sha256") or "")
+                if not existing_sha or existing_sha != str(record.sha256 or ""):
+                    raise ArtifactIdentityConflictError(
+                        repo_id=key[0],
+                        version=key[1],
+                        existing_sha256=existing_sha,
+                        candidate_sha256=str(record.sha256 or ""),
+                    )
+            # Validate/copy candidate bytes only after the logical identity conflict
+            # guard has proven that the version is either unbound or bound to the
+            # same immutable SHA.
+            record = self.prepare_release_object(record)
+            record_payload = record.to_dict()
+
+            existing_adopted = next((item for item in matching if item.get("kind") == "adopted_release"), None)
+            if record.kind == "release" and existing_adopted is not None:
+                selected = existing_adopted
+            else:
+                selected = record_payload
+            artifacts = [item for item in artifacts if self._release_identity_key(item) != key]
+            artifacts.append(selected)
+            record_payload = selected
+        else:
+            artifacts = [item for item in artifacts if item.get("path") != record.path]
+            artifacts.append(record_payload)
+
         artifacts.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
         payload["schema_version"] = 1
         payload["updated_at"] = utc_now()
@@ -691,7 +821,7 @@ class ArtifactRegistry:
         return record_payload
 
     def current(self, repo_id: str | None = None) -> dict[str, Any] | None:
-        artifacts = self.list()
+        artifacts = [item for item in self.list() if item.get("kind") == "adopted_release"]
         normalized_repo = normalize_repo_id(repo_id)
         if normalized_repo:
             for item in artifacts:
@@ -706,6 +836,8 @@ class ArtifactRegistry:
     def current_all(self) -> dict[str, dict[str, Any]]:
         current_by_repo: dict[str, dict[str, Any]] = {}
         for item in self.list():
+            if item.get("kind") != "adopted_release":
+                continue
             repo_id = self._record_repo_id(item) or "__unscoped__"
             current_by_repo.setdefault(repo_id, item)
         return current_by_repo

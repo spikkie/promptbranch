@@ -471,8 +471,9 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "-q",
             "tests/test_promptbranch_artifacts.py",
             "tests/test_promptbranch_cli.py",
+            "tests/test_promptbranch_artifact_authority.py",
             "-k",
-            "adopt or artifact_current or local_only or local_artifact_not_found or promptbranch_repo or baseline_status or mvp_status or test_suite_full_profile_dispatches_to_runner",
+            "artifact_authority or adopt or artifact_current or local_only or local_artifact_not_found or explicit_artifact_path_not_found or promptbranch_repo or baseline_status or mvp_status or test_suite_full_profile_dispatches_to_runner",
         ),
     },
     "repo_project_registry": {
@@ -531,6 +532,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "pytest",
             "-q",
             "tests/test_release_state_machine.py",
+            "tests/test_release_lifecycle_proof_script.py",
             "tests/test_promptbranch_python_authority.py",
             "tests/test_release_state_machine_docker_integration.py",
             "tests/test_promptbranch_release_eta.py",

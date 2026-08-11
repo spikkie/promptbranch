@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import zipfile
 from pathlib import Path
 
-from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, sha256_file
 from promptbranch_cli import ProjectRegistryResolutionError, _artifact_current_payload, _artifact_registry_from_args, _repo_doctor_payload, _repo_list_payload, build_backend, make_parser
 from promptbranch_project import load_repo_identity, project_registry_dir, write_repo_identity, join_local_repo
 from promptbranch_state import ConversationStateStore
@@ -33,20 +34,27 @@ def _add_current(project_dir: Path, repo_id: str, version: str) -> None:
     registry = ArtifactRegistry(project_dir)
     normalized_version = version if version.startswith("v") else f"v{version}"
     filename = f"{repo_id}_{normalized_version}.zip"
-    registry.add(ArtifactRecord(
-        path=str(project_dir / filename),
+    source = project_dir / filename
+    source.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("VERSION", normalized_version + "\n")
+        archive.writestr("README.md", f"{repo_id} {normalized_version}\n")
+    verification_sha = sha256_file(source)
+    registered = registry.add(ArtifactRecord(
+        path=str(source),
         filename=filename,
         kind="adopted_release",
         version=normalized_version,
         repo_path=None,
         repo_id=repo_id,
-        sha256="a" * 64,
-        size_bytes=1,
-        file_count=1,
+        sha256=verification_sha,
+        size_bytes=source.stat().st_size,
+        file_count=2,
         created_at=f"2026-06-10T10:00:0{len(registry.list())}Z",
         source_ref=filename,
         project_url=PROJECT_URL,
     ))
+    assert Path(str(registered["path"])).is_file()
     ConversationStateStore(str(project_dir)).remember_artifact(
         project_url=PROJECT_URL,
         artifact_ref=filename,

@@ -44,20 +44,25 @@ def _artifact(repo: Path, repo_id: str, version: str) -> tuple[str, str]:
     return filename, sha256_file(path)
 
 
-def _add_current(project_dir: Path, repo_id: str, version: str) -> None:
+def _add_current(project_dir: Path, repo_id: str, version: str, *, created_at: str = "2026-08-03T08:00:00Z") -> None:
     filename = f"{repo_id}_{version}.zip"
+    source = project_dir / filename
+    source.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("VERSION", version + "\n")
+        archive.writestr("README.md", f"{repo_id} {version}\n")
     ArtifactRegistry(project_dir).add(
         ArtifactRecord(
-            path=str(project_dir / filename),
+            path=str(source),
             filename=filename,
             kind="adopted_release",
             version=version,
             repo_path=None,
             repo_id=repo_id,
-            sha256="a" * 64,
-            size_bytes=1,
-            file_count=1,
-            created_at="2026-08-03T08:00:00Z",
+            sha256=sha256_file(source),
+            size_bytes=source.stat().st_size,
+            file_count=2,
+            created_at=created_at,
             source_ref=filename,
             source_requested_ref=filename,
             source_processed_file_id=f"file_{repo_id.replace('-', '')}_{version.replace('.', '').replace('v', '')}",
@@ -410,9 +415,21 @@ def _rollout_runner(plan: dict, *, fail_repo: str | None = None, fail_rollback: 
         source_ref: str | None = None, processed_file_id: str | None = None, library_id: str | None = None,
     ) -> None:
         counter["value"] += 1
-        ArtifactRegistry(project_registry_dir(PROJECT_ID)).add(
+        registry_now = ArtifactRegistry(project_registry_dir(PROJECT_ID))
+        requested_source = Path(rows.get(repo_id, {}).get("repo_root") or "/tmp") / filename
+        if not requested_source.is_file():
+            matching = next((
+                item for item in registry_now.list()
+                if item.get("repo_id") == repo_id
+                and item.get("version") == version
+                and item.get("sha256") == sha256
+                and Path(str(item.get("path") or "")).is_file()
+            ), None)
+            if matching is not None:
+                requested_source = Path(str(matching["path"]))
+        registry_now.add(
             ArtifactRecord(
-                path=str(Path(rows.get(repo_id, {}).get("repo_root") or "/tmp") / filename),
+                path=str(requested_source),
                 filename=filename,
                 kind="adopted_release",
                 version=version,
@@ -790,8 +807,15 @@ def test_release_set_reconcile_finalizes_operator_repaired_incomplete_rollback(m
     assert failed["status"] == "release_set_rollout_failed_rollback_incomplete"
 
     previous = failed["pre_rollout_current"]["platform-gitops"]
-    ArtifactRegistry(project_registry_dir(PROJECT_ID)).add(ArtifactRecord(
-        path=str(repos["platform-gitops"] / previous["filename"]),
+    repair_registry = ArtifactRegistry(project_registry_dir(PROJECT_ID))
+    previous_object = next(
+        item for item in repair_registry.list()
+        if item.get("repo_id") == "platform-gitops"
+        and item.get("version") == previous["version"]
+        and item.get("sha256") == previous["sha256"]
+    )
+    repair_registry.add(ArtifactRecord(
+        path=str(previous_object["path"]),
         filename=previous["filename"],
         kind="adopted_release",
         version=previous["version"],
@@ -850,23 +874,7 @@ def test_release_set_reconcile_blocks_ambiguous_current_identity(monkeypatch, tm
         _execute_rollout(repos, manifest, plan, interrupt_after_first)
     checkpoint = _latest_rollout_checkpoint(repos["platform-gitops"], plan["release_set_id"])
 
-    ArtifactRegistry(project_registry_dir(PROJECT_ID)).add(ArtifactRecord(
-        path=str(repos["platform-gitops"] / "platform-gitops_v9.9.9.zip"),
-        filename="platform-gitops_v9.9.9.zip",
-        kind="adopted_release",
-        version="v9.9.9",
-        repo_path=None,
-        repo_id="platform-gitops",
-        sha256="f" * 64,
-        size_bytes=1,
-        file_count=1,
-        created_at=datetime.now(timezone.utc).isoformat(),
-        source_ref="platform-gitops_v9.9.9.zip",
-        source_requested_ref="platform-gitops_v9.9.9.zip",
-        source_processed_file_id="file_ambiguous",
-        source_library_metadata_object_id="libfile_ambiguous",
-        project_url=PROJECT_URL,
-    ))
+    _add_current(project_registry_dir(PROJECT_ID), "platform-gitops", "v9.9.9", created_at=datetime.now(timezone.utc).isoformat())
 
     reconciliation = reconcile_rollout_evidence(repos["platform-gitops"], manifest=manifest, evidence=checkpoint)
     assert reconciliation["ok"] is False
