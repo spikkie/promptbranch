@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import zipfile
-import faulthandler
-faulthandler.dump_traceback_later(20, repeat=True)
 from pathlib import Path
 
 from promptbranch_release_engine import load_contract
@@ -95,11 +94,11 @@ class FakeRunner:
         args = [str(value) for value in argv]
         self.calls.append(args)
         stdout = ""
-        if args == ["python3", "build_artifact.py"]:
+        if args == [str(Path(sys.executable)), "build_artifact.py"]:
             repo = Path(kwargs.get("cwd", "."))
             with zipfile.ZipFile(repo / "demo-repo_v1.2.3.zip", "w") as archive:
                 archive.write(repo / "VERSION", "VERSION")
-        elif args[:2] == ["python3", "-c"]:
+        elif args[:2] == [str(Path(sys.executable)), "-c"]:
             stdout = "ok\n"
         elif args[:3] == ["git", "status", "--porcelain=v1"]:
             stdout = " M VERSION\n"

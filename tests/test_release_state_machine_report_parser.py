@@ -146,7 +146,6 @@ def test_subprocess_executor_persists_selected_report_and_hashes(tmp_path: Path,
     class Machine:
         attempt_dir = tmp_path / "attempt"
         config = SimpleNamespace(
-            candidate_python=None,
             profile="full",
             version=VERSION,
             test_timeout=3600.0,
@@ -200,7 +199,6 @@ def test_missing_report_never_claims_failed_count_zero(tmp_path: Path, monkeypat
     class Machine:
         attempt_dir = tmp_path / "attempt"
         config = SimpleNamespace(
-            candidate_python=None,
             profile="full",
             version=VERSION,
             test_timeout=3600.0,
@@ -304,7 +302,6 @@ def test_production_accept_candidate_uses_action_selected_top_level_result(tmp_p
         attempt_dir = tmp_path / "attempt"
         repo_id = "chatgpt_claudecode_workflow-2"
         config = SimpleNamespace(
-            candidate_python=None,
             version=VERSION,
             profile_dir=tmp_path / "profile",
             repo_root=tmp_path / "repo",

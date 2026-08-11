@@ -1,15 +1,15 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
   "accepted_current_version": "v0.1.126.1.1.1.1.3",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
   "active_candidate_base_version": "v0.1.126.1.1.1.1.3",
   "active_candidate_consolidates_runtime_version": "v0.1.126.1.1.1.1.3",
   "active_candidate_documentation_checkpoint": "PB-ASK-ROUTE-PROOF-2026-08-10.1",
-  "active_candidate_status": "candidate",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
-  "active_candidate_version": "v0.1.127.1.1.1",
+  "active_candidate_status": "candidate_construction_validation",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+  "active_candidate_version": "v0.1.127.2.1",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.127.1.1.1 \u2014 Successor ask pin propagation and TESTED_GREEN route verification",
+  "active_slice": "v0.1.127.2.1 \u2014 Consolidated v0.1.127 closure and single-Python lifecycle repair",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -693,6 +693,7 @@
       "version": "v0.1.126.1.1.1.1.2"
     },
     {
+      "accepted_sha256": "07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
       "created_at": "2026-08-09T17:38:00+02:00",
       "kind": "repair",
@@ -701,55 +702,83 @@
       "status": "accepted_current",
       "summary": "Canonical repair chain closed at FINAL_VERIFIED; candidate Python authority, full live validation, Git/Project Source publication, adoption, production promotion, and current alignment are proven.",
       "validation": "53/53 full candidate tests passed on retry r0002; 17/17 deterministic release groups passed under candidate pytest 9.0.2; independent all-state verification and scoped artifact current both aligned to the exact artifact SHA.",
-      "version": "v0.1.126.1.1.1.1.3",
-      "accepted_sha256": "07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7"
+      "version": "v0.1.126.1.1.1.1.3"
     },
     {
-      "version": "v0.1.127",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
-      "kind": "normal",
-      "status": "repair_required",
       "created_at": "2026-08-09T20:37:00+02:00",
-      "slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
+      "kind": "normal",
       "scope": "portable deterministic tool-authoring guidance, machine-readable schema validation, reproducible export bundle, and explicit no-execution authority boundary",
+      "slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
+      "status": "repair_required",
       "summary": "Construction green; live r0001/r0002 both stopped at browser.ask_question service_internal_deadline_timeout before TESTED_GREEN; no rate-limit evidence.",
-      "validation": "RUNTIME_PREPARED exact; source add/file/overwrite passed twice; unchanged r0003 forbidden."
+      "validation": "RUNTIME_PREPARED exact; source add/file/overwrite passed twice; unchanged r0003 forbidden.",
+      "version": "v0.1.127"
     },
     {
-      "version": "v0.1.127.1",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.zip",
-      "kind": "repair",
-      "status": "repair_required",
       "created_at": "2026-08-10T10:41:00+02:00",
-      "slice": "v0.1.127.1 \u2014 Artifact-bound conversation provenance and successor ask routing",
+      "kind": "repair",
       "scope": "immutable artifact origin conversation provenance and baseline-provenance successor/live ask routing; source/task isolation preserved",
-      "summary": "Narrow routing/provenance repair; no product scope advancement.",
-      "validation": "Live legacy bind exposed durable artifact validator raw-slug comparison; superseded by v0.1.127.1.1."
-    },
-    {
-      "version": "v0.1.127.1.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip",
-      "kind": "repair",
+      "slice": "v0.1.127.1 \u2014 Artifact-bound conversation provenance and successor ask routing",
       "status": "repair_required",
-      "created_at": "2026-08-10T12:24:00+02:00",
-      "slice": "v0.1.127.1.1 \u2014 Canonical ChatGPT project identity for artifact conversation provenance",
-      "scope": "canonical ChatGPT project identity normalization in artifact conversation provenance validation only; .127.1 routing/provenance behavior preserved",
-      "summary": "Narrow repair for slugged/unslugged ChatGPT project URL identity equivalence.",
-      "validation": "Live TESTED_GREEN reached 53/53, but the subprocess flag was dropped before browser execution: browser ask_conversation_url was null and ask_question executed in the generated itest conversation. Superseded by v0.1.127.1.1.1."
+      "summary": "Narrow routing/provenance repair; no product scope advancement.",
+      "validation": "Live legacy bind exposed durable artifact validator raw-slug comparison; superseded by v0.1.127.1.1.",
+      "version": "v0.1.127.1"
     },
     {
-      "version": "v0.1.127.1.1.1",
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip",
+      "created_at": "2026-08-10T12:24:00+02:00",
       "kind": "repair",
-      "status": "candidate",
+      "scope": "canonical ChatGPT project identity normalization in artifact conversation provenance validation only; .127.1 routing/provenance behavior preserved",
+      "slice": "v0.1.127.1.1 \u2014 Canonical ChatGPT project identity for artifact conversation provenance",
+      "status": "repair_required",
+      "summary": "Narrow repair for slugged/unslugged ChatGPT project URL identity equivalence.",
+      "validation": "Live TESTED_GREEN reached 53/53, but the subprocess flag was dropped before browser execution: browser ask_conversation_url was null and ask_question executed in the generated itest conversation. Superseded by v0.1.127.1.1.1.",
+      "version": "v0.1.127.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
       "created_at": "2026-08-10T18:19:00+02:00",
-      "slice": "v0.1.127.1.1.1 \u2014 Successor ask pin propagation and TESTED_GREEN route verification",
+      "kind": "repair",
       "scope": "propagate --ask-conversation-url into full/browser execution and fail TESTED_GREEN unless the executed ask_question URL and conversation ID exactly match baseline artifact provenance",
+      "slice": "v0.1.127.1.1.1 \u2014 Successor ask pin propagation and TESTED_GREEN route verification",
+      "status": "repair_required",
       "summary": "Narrow repair of live ask-route propagation and release-proof authority; no response-completion changes and no product scope advancement.",
-      "validation": "All 17 mandatory deterministic release-validation groups passed under /opt/pyvenv/bin/python3 (pytest 9.0.2); live TESTED_GREEN must still prove actual ask conversation ID 6a78783b-3e00-83eb-8dc1-1e814fcf2a59."
+      "validation": "Live baseline-routed TESTED_GREEN passed 53/53 and independent route verification passed, but ACCEPTED failed deterministically before mutation with NameError: _looks_like_chatgpt_project_conversation was undefined. Superseded by v0.1.127.1.1.1.1.",
+      "version": "v0.1.127.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.zip",
+      "created_at": "2026-08-10T19:57:00+02:00",
+      "kind": "repair",
+      "scope": "define one canonical ChatGPT project-conversation predicate, reuse it for artifact-origin validation, and execute the provenance-bearing accept-candidate branch in construction tests; no routing, response-completion, adoption-authority, or normal-scope change",
+      "slice": "v0.1.127.1.1.1.1 \u2014 Acceptance-path conversation provenance validator repair",
+      "status": "candidate",
+      "summary": "Narrow acceptance-path repair after exact baseline-routed TESTED_GREEN; no product scope advancement.",
+      "validation": "All 17 required deterministic construction groups passed under /opt/pyvenv/bin/python3 with pytest 9.0.2, including exact extracted-candidate validation; deterministic rebuild and Artifact Guardian are green. Fresh immutable live lifecycle remains required.",
+      "version": "v0.1.127.1.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip",
+      "baseline": "v0.1.126.1.1.1.1.3",
+      "slice": "v0.1.127.1.1.1.1.1 \u2014 Single Python authority and acceptance-path repair",
+      "status": "candidate_construction_green_exact_artifact",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip",
+      "type": "repair",
+      "validation": "17/17 deterministic construction groups + deterministic exact ZIP/Guardian green; fresh live lifecycle required.",
+      "version": "v0.1.127.1.1.1.1.1"
+    },
+    {
+      "version": "v0.1.127.2.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+      "slice": "v0.1.127.2.1 \u2014 Consolidated v0.1.127 closure and single-Python lifecycle repair",
+      "status": "candidate",
+      "validation": "construction validation in progress; live FINAL_VERIFIED required"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1366,10 +1395,10 @@
   "last_completed_normal_slice_version": "v0.1.126",
   "last_completed_repair": "v0.1.125.3.2 \u2014 Deterministic candidate-test report selection and hermetic full-gate repair",
   "last_completed_repair_version": "v0.1.126.1.1.1.1.3",
-  "last_updated": "2026-08-10T18:19:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
-  "next_normal_slice": "v0.1.127 \u2014 Portable Promptbranch tool-authoring skill and export bundle",
-  "next_normal_version": "v0.1.127",
+  "last_updated": "v0.1.127.2.1",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
+  "next_normal_slice": "v0.1.128 \u2014 PB environment MVP hardening and freeze",
+  "next_normal_version": "v0.1.128",
   "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
   "next_planned_slice_after_acceptance": "v0.1.128 \u2014 PB environment MVP hardening and freeze",
   "next_planned_version_after_acceptance": "v0.1.128",
@@ -2719,22 +2748,45 @@
       "version": "v0.1.126.1.1.1.1.2"
     },
     {
-      "version": "v0.1.127.1",
-      "status": "repair_required",
       "base_version": "v0.1.126.1.1.1.1.3",
-      "reason": "v0.1.127 live ask smoke timed out twice; remove ambient/new-test-chat routing variable first."
+      "reason": "v0.1.127 live ask smoke timed out twice; remove ambient/new-test-chat routing variable first.",
+      "status": "repair_required",
+      "version": "v0.1.127.1"
     },
     {
-      "version": "v0.1.127.1.1",
-      "status": "repair_required",
       "base_version": "v0.1.126.1.1.1.1.3",
-      "reason": "v0.1.127.1 legacy bind rejected same ChatGPT project when artifact URL was unslugged and conversation URL carried the project name suffix."
+      "reason": "v0.1.127.1 legacy bind rejected same ChatGPT project when artifact URL was unslugged and conversation URL carried the project name suffix.",
+      "status": "repair_required",
+      "version": "v0.1.127.1.1"
     },
     {
-      "version": "v0.1.127.1.1.1",
+      "base_version": "v0.1.126.1.1.1.1.3",
+      "reason": "v0.1.127.1.1.1 proved exact baseline ask routing and TESTED_GREEN, then ACCEPTED failed before mutation because cmd_artifact_accept_candidate called undefined _looks_like_chatgpt_project_conversation.",
+      "status": "repair_required",
+      "version": "v0.1.127.1.1.1"
+    },
+    {
+      "base_version": "v0.1.126.1.1.1.1.3",
+      "reason": "Repair deterministic ACCEPTED-path NameError exposed only after valid v0.1.127.1.1.1 TESTED_GREEN and independent route verification.",
       "status": "candidate",
-      "base_version": "v0.1.126.1.1.1.1.3",
-      "reason": "v0.1.127.1.1 TESTED_GREEN was a false proof: the release layer supplied the baseline chat, but cmd_test_suite omitted ask_conversation_url and the browser ask ran in the generated integration conversation."
+      "version": "v0.1.127.1.1.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip",
+      "baseline": "v0.1.126.1.1.1.1.3",
+      "slice": "v0.1.127.1.1.1.1.1 \u2014 Single Python authority and acceptance-path repair",
+      "status": "candidate_construction_green_exact_artifact",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip",
+      "type": "repair",
+      "validation": "17/17 deterministic construction groups + deterministic exact ZIP/Guardian green; fresh live lifecycle required.",
+      "version": "v0.1.127.1.1.1.1.1"
+    },
+    {
+      "version": "v0.1.127.2.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+      "slice": "v0.1.127.2.1 \u2014 Consolidated v0.1.127 closure and single-Python lifecycle repair",
+      "reason": "Supersedes v0.1.127.1.1.1.1.1 after live RUNTIME_PREPARED exposed Path.resolve() collapsing the pipx venv launcher to /usr/bin/python3.12."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2831,14 +2883,15 @@
       "version": "v0.1.127"
     },
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
       "release_mode": "repair",
-      "scope": "exact baseline-conversation ask propagation and executed-route verification only; no scope advancement",
-      "slice": "v0.1.127.1.1.1 \u2014 Successor ask pin propagation and TESTED_GREEN route verification",
+      "scope": "single launcher-Python authority plus preserved acceptance-path conversation provenance repair; no scope advancement",
+      "slice": "v0.1.127.2.1 \u2014 Consolidated v0.1.127 closure and single-Python lifecycle repair",
       "status": "active",
       "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip",
-      "version": "v0.1.127.1.1.1"
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
+      "version": "v0.1.127.2.1",
+      "reason": "Consolidates the v0.1.127 repair chain; fixes venv launcher-path identity and carries all v0.1.127 DoD into one final closure candidate."
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
@@ -2930,5 +2983,5 @@
     "first_external_application_read_only_version": "v0.1.129",
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "updated_for": "v0.1.127.1.1.1"
+  "updated_for": "v0.1.127.2.1"
 }

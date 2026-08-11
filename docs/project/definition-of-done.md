@@ -1242,7 +1242,7 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-487 | Portable export contains `SKILL.md`, tool schema, valid example, `PROJECT_SOURCE.md`, `AGENTS.md`, and digest-bound `manifest.json` with deterministic ZIP metadata | focused + construction | byte-identical export regression + bundle verifier | v0.1.127 |
 | DOD-488 | Tool-authoring validation/export grants no execution, mutation, release, publication, or adoption authority | focused | manifest/source authority assertions | v0.1.127 |
 | DOD-489 | Bundle verification fails closed on missing/extra/tampered entries, digest mismatch, unsafe paths, non-deterministic metadata, or manifest authority escalation | focused | tamper/negative regressions | v0.1.127 |
-| DOD-490 | Normal slice closes only after canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.126.1.1.1.1.3` and scoped artifact-current aligns | live_pending | canonical release proof | v0.1.127 |
+| DOD-490 | Normal slice closes only after canonical lifecycle reaches `FINAL_VERIFIED` from accepted/current `v0.1.126.1.1.1.1.3` and scoped artifact-current aligns | superseded_by_DOD-515 | consolidated v0.1.127.2.1 closure proof | v0.1.127 |
 
 
 ## v0.1.127.1 repair DoD
@@ -1253,7 +1253,7 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-492 | Legacy binding is explicit, immutable, idempotent for same URL, conflict/project mismatch fail closed | focused | bind regressions | v0.1.127.1 |
 | DOD-493 | Successor ask uses explicit CLI first, baseline artifact provenance otherwise; mutable current chat cannot redirect | focused | routing regressions | v0.1.127.1 |
 | DOD-494 | Full release routes only ask_question to baseline origin, matching project URL; source/task stay isolated; missing provenance blocks | construction | harness/state-machine + required groups | v0.1.127.1 |
-| DOD-495 | Repair closes only at FINAL_VERIFIED from `.1.3` with scoped current exact `.127.1` and own origin provenance | live_pending | canonical live proof | v0.1.127.1 |
+| DOD-495 | Repair closes only at FINAL_VERIFIED from `.1.3` with scoped current exact `.127.1` and own origin provenance | superseded_by_DOD-515 | canonical live proof | v0.1.127.1 |
 
 
 ## v0.1.127.1.1 repair DoD
@@ -1262,7 +1262,7 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 |---|---|---|---|---|
 | DOD-496 | Artifact provenance accepts slugged and unslugged URLs when both canonicalize to the same `g-p-<32hex>` identity | focused | project-identity provenance regressions | v0.1.127.1.1 |
 | DOD-497 | Different canonical ChatGPT project identities remain rejected and the exact origin conversation URL is preserved | focused | negative provenance regressions | v0.1.127.1.1 |
-| DOD-498 | Repair proceeds beyond legacy migration only after the exact `.1.3` `artifact bind-conversation` live proof succeeds; closure still requires canonical `FINAL_VERIFIED` plus scoped current | live_pending | exact bind + canonical release proof | v0.1.127.1.1 |
+| DOD-498 | Repair proceeds beyond legacy migration only after the exact `.1.3` `artifact bind-conversation` live proof succeeds; closure still requires canonical `FINAL_VERIFIED` plus scoped current | superseded_by_DOD-515 | exact bind + consolidated v0.1.127.2.1 closure proof | v0.1.127.1.1 |
 
 
 ## v0.1.127.1.1.1 repair DoD
@@ -1272,4 +1272,34 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-499 | `pb test full --ask-conversation-url` propagates the exact pin into the browser/full runner and browser summary instead of dropping it at CLI dispatch | focused | CLI dispatch + browser namespace regression | v0.1.127.1.1.1 |
 | DOD-500 | `TESTED_GREEN` fails closed unless exactly one executed `ask_question` step reports the expected baseline conversation URL and exact conversation ID | focused | route-mismatch state-machine regression | v0.1.127.1.1.1 |
 | DOD-501 | Independent release verification recomputes the ask route from the persisted browser report and detects route tampering even when generic suite status remains green | focused | persisted-report tamper regression | v0.1.127.1.1.1 |
-| DOD-502 | Repair closes only after fresh canonical live proof executes `ask_question` on conversation `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`, reaches `FINAL_VERIFIED`, and scoped current aligns | live_pending | canonical release proof | v0.1.127.1.1.1 |
+| DOD-502 | Repair closes only after fresh canonical live proof executes `ask_question` on conversation `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`, reaches `FINAL_VERIFIED`, and scoped current aligns | superseded_by_DOD-515 | consolidated v0.1.127.2.1 closure proof | v0.1.127.1.1.1 |
+
+
+## v0.1.127.1.1.1.1 repair DoD
+
+| ID | Requirement | Proof class | Construction proof | Release |
+|---|---|---|---|---|
+| DOD-503 | Acceptance uses a defined canonical ChatGPT project-conversation predicate and artifact-origin validation delegates to the same predicate | focused | helper unit/acceptance branch regression | v0.1.127.1.1.1.1 |
+| DOD-504 | A tested candidate carrying complete selected protocol provenance executes `artifact accept-candidate --adopt-if-green` without exception and preserves exact conversation URL/ID plus correlated request/message/answer identifiers | focused | provenance-bearing acceptance executable-path regression | v0.1.127.1.1.1.1 |
+| DOD-505 | Repair closes only after a fresh immutable `v0.1.127.1.1.1.1` attempt repeats exact baseline-routed `TESTED_GREEN`, independently verifies it, reaches `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and fresh scoped current aligns | superseded_by_DOD-515 | consolidated v0.1.127.2.1 closure proof | v0.1.127.1.1.1.1 |
+
+
+## v0.1.127.1.1.1.1.1 repair DoD
+
+| ID | Requirement | Proof class | Construction proof | Release |
+|---|---|---|---|---|
+| DOD-506 | The Python interpreter that launches Promptbranch is the sole release Python authority and is persisted as candidate/release-validation Python | focused | state-machine authority regressions | v0.1.127.1.1.1.1.1 |
+| DOD-507 | Explicit candidate or validation Python values that resolve to a different interpreter fail closed before release mutation | focused | configuration/preflight mismatch regressions | v0.1.127.1.1.1.1.1 |
+| DOD-508 | Release-contract `python`/`python3` and `pb`/`promptbranch` operations execute through the same launcher interpreter and do not depend on PATH-selected Promptbranch/Python | focused | release-engine poisoned-PATH regressions | v0.1.127.1.1.1.1.1 |
+| DOD-509 | Repair closes only after a fresh immutable `v0.1.127.1.1.1.1.1` attempt repeats exact baseline-routed `TESTED_GREEN`, independently verifies it, reaches `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and fresh scoped current aligns | superseded_by_DOD-515 | consolidated v0.1.127.2.1 closure proof | v0.1.127.1.1.1.1.1 |
+
+## v0.1.127.2.1 consolidated v0.1.127 closure DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-510 | The exact interpreter path that launches Promptbranch is the sole release Python authority; venv/pipx launcher symlinks are executed unchanged and retain their environment prefix instead of being resolved to a system Python target | construction_proven | symlink-path + real-venv subprocess regressions | v0.1.127.2.1 |
+| DOD-511 | Canonical release CLI, validation, contract, pipeline, and release-set execution expose no alternate candidate/validation Python or PB-command selector; obsolete selector environment values cannot become authority | construction_proven | CLI/source assertions + poisoned-environment contract/validation regressions | v0.1.127.2.1 |
+| DOD-512 | One candidate preserves the full v0.1.127 tool-authoring contract plus artifact project identity, exact conversation provenance, executed ask-route verification, and acceptance-path correlated provenance repairs | construction_proven | tool-authoring + provenance + route + executable acceptance regressions | v0.1.127.2.1 |
+| DOD-513 | Construction tests exercise every canonical release state through `FINAL_VERIFIED`, independent all-state verification, interruption/resume, fail-closed acceptance/adoption guards, and route-proof tamper detection | construction_proven | canonical release-state-machine group | v0.1.127.2.1 |
+| DOD-514 | Exact final ZIP is deterministic, CRC/path/hygiene clean, contains no nested ZIP, passes every required release-validation group, and Artifact Guardian reports `release_ready=true` | construction_proven | exact final ZIP + 17 required groups + Guardian | v0.1.127.2.1 |
+| DOD-515 | v0.1.127 closes only after a fresh immutable v0.1.127.2.1 attempt from accepted/current `.1.3` repeats exact baseline-routed `TESTED_GREEN`, independently verifies it, reaches `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and fresh scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns exactly | live_pending | canonical live release proof | v0.1.127.2.1 |

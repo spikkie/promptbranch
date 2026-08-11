@@ -1896,3 +1896,19 @@ def test_v012611111_prepare_runtime_projects_checkpoint_source_fingerprint_sourc
     assert '"source_fingerprint": str(checkpoint.get("source_fingerprint") or "")' in text
     assert 'expected_fingerprint = str(runtime.get("source_fingerprint") or "")' not in text
     assert 'expected_fp = str(runtime.get("source_fingerprint") or "")' not in text
+
+
+def test_release_config_uses_launcher_as_single_python_authority(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"; repo.mkdir()
+    artifact = repo / "repo_v0.1.127.2.1.zip"; artifact.write_bytes(b"zip")
+    machine = build_machine_from_args(repo_root=repo, profile_dir=repo / ".pb_profile", artifact=artifact, version="v0.1.127.2.1", baseline_version="v0.1.126.1.1.1.1.3")
+    expected = Path(os.path.abspath(os.path.expanduser(sys.executable)))
+    assert not hasattr(machine.config, "candidate_python")
+    assert SubprocessReleaseExecutor()._python(machine) == expected
+
+
+def test_release_cli_has_no_candidate_python_selector() -> None:
+    source = (Path(__file__).resolve().parents[1] / "promptbranch_cli.py").read_text(encoding="utf-8")
+    assert 'add_argument("--candidate-python"' not in source
+    assert "PROMPTBRANCH_CANDIDATE_PYTHON" not in source
+    assert "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON" not in source

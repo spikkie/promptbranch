@@ -10887,6 +10887,73 @@ def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_co
     assert candidate_registry["candidates"][0]["accepted"] is True
 
 
+
+def test_artifact_accept_candidate_preserves_complete_protocol_conversation_provenance(monkeypatch, capsys, tmp_path) -> None:
+    filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    zip_path = repo / filename
+    _write_test_release_zip(zip_path, "v0.0.225")
+    repo, profile = _initialize_test_project_scope(
+        tmp_path,
+        repo_id="chatgpt_claudecode_workflow",
+        repo_root=repo,
+        project_id="6a43ea5129508191be8c8ebcf9fc7391",
+    )
+    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225", tested=True)
+    registry_path = profile / "artifact_candidates.json"
+    candidate_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    conversation_url = (
+        "https://chatgpt.com/g/"
+        "g-p-6a43ea5129508191be8c8ebcf9fc7391-promptbranch3/"
+        "c/6a78783b-3e00-83eb-8dc1-1e814fcf2a59"
+    )
+    candidate_registry["candidates"][0]["selected_protocol_reply"] = {
+        "request_id": "req-accept-origin",
+        "correlation_id": "corr-accept-origin",
+        "conversation_url": conversation_url,
+        "conversation_id": "6a78783b-3e00-83eb-8dc1-1e814fcf2a59",
+        "message_id": "msg-origin",
+        "answer_id": "answer-origin",
+    }
+    registry_path.write_text(json.dumps(candidate_registry, indent=2) + "\n", encoding="utf-8")
+    project_url = "https://chatgpt.com/g/g-p-6a43ea5129508191be8c8ebcf9fc7391/project"
+    backend = _FakeArtifactAdoptBackend(profile, project_url, [])
+
+    def fake_run(command, cwd, stdout, stderr, text, timeout, check):
+        raise AssertionError("accept-candidate must not run release-control")
+
+    monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
+    args = argparse.Namespace(
+        artifact=None,
+        version="v0.0.225",
+        repo_path=str(repo),
+        from_project_source=False,
+        run_release_control=False,
+        adopt_if_green=True,
+        test_timeout=3600.0,
+        release_log_keep=12,
+        skip_docker_logs=True,
+        prune_release_logs=True,
+        keep_open=False,
+        json=True,
+        profile_dir=str(profile),
+    )
+
+    exit_code = asyncio.run(cmd_artifact_accept_candidate(backend, args))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "accepted_candidate"
+    artifact_registry = json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))
+    adopted = artifact_registry["artifacts"][0]
+    assert adopted["origin_conversation_url"] == conversation_url
+    assert adopted["origin_conversation_id"] == "6a78783b-3e00-83eb-8dc1-1e814fcf2a59"
+    assert adopted["origin_request_id"] == "req-accept-origin"
+    assert adopted["origin_correlation_id"] == "corr-accept-origin"
+    assert adopted["origin_message_id"] == "msg-origin"
+    assert adopted["origin_answer_id"] == "answer-origin"
+
 def test_artifact_accept_candidate_rejects_release_control_runner(capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"

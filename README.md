@@ -1,4 +1,4 @@
-> **v0.1.127.1.1.1 repair candidate:** propagates the baseline artifact conversation pin into the full browser suite and makes `TESTED_GREEN` independently require the executed `ask_question` URL and conversation ID to match that baseline exactly; `.127.1.1` remains immutable false-proof evidence.
+> **v0.1.127.1.1.1.1 repair candidate:** fixes the acceptance-path provenance predicate that blocked `artifact accept-candidate --adopt-if-green` after valid live `TESTED_GREEN`; the complete conversation URL/ID is preserved, accepted/current remains `.1.3`, and `v0.1.127.1.1.1` remains immutable failure evidence.
 
 ## v0.1.127 Portable Promptbranch tool-authoring skill and export bundle
 

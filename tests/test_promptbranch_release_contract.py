@@ -59,12 +59,13 @@ def test_tracked_contract_uses_sole_version_authority_for_release_identity():
                     assert arg==version
 
 
-def test_tracked_contract_forwards_release_validation_python_authority():
+def test_tracked_contract_has_no_selectable_python_authority():
     data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
-    assert 'PROMPTBRANCH_RELEASE_VALIDATION_PYTHON' in data['environment']
+    assert 'PROMPTBRANCH_RELEASE_VALIDATION_PYTHON' not in data['environment']
+    assert 'PROMPTBRANCH_CANDIDATE_PYTHON' not in data['environment']
 
 
-def test_release_engine_preserves_explicit_validation_python_with_poisoned_path(tmp_path: Path, monkeypatch):
+def test_release_engine_enforces_launcher_python_with_poisoned_path(tmp_path: Path, monkeypatch):
     data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
     data['operations']['validate']=[{
         'id':'env-probe',
@@ -75,10 +76,8 @@ def test_release_engine_preserves_explicit_validation_python_with_poisoned_path(
     (tmp_path/'.promptbranch-repo.json').write_text('{}\n', encoding='utf-8')
     (tmp_path/'.pb_profile').mkdir()
     contract=load_contract(tmp_path)
-    candidate_python='/candidate/pipx/bin/python'
     poisoned_path='/foreign/pytest-8/bin:/usr/bin'
     monkeypatch.setenv('PATH', poisoned_path)
-    monkeypatch.setenv('PROMPTBRANCH_RELEASE_VALIDATION_PYTHON', candidate_python)
     observed={}
 
     class Result:
@@ -94,4 +93,39 @@ def test_release_engine_preserves_explicit_validation_python_with_poisoned_path(
     result=execute(tmp_path, contract, 'validate', runner=fake_runner)
     assert result['ok'] is True
     assert observed['env']['PATH'] == poisoned_path
-    assert observed['env']['PROMPTBRANCH_RELEASE_VALIDATION_PYTHON'] == candidate_python
+    authority=str(Path(__import__('sys').executable).absolute())
+    assert observed['argv'][0] == authority
+    assert 'PROMPTBRANCH_RELEASE_VALIDATION_PYTHON' not in observed['env']
+    assert 'PROMPTBRANCH_CANDIDATE_PYTHON' not in observed['env']
+
+
+def test_release_engine_routes_pb_contract_step_through_same_python(tmp_path: Path, monkeypatch):
+    data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
+    data['operations']['publish']=[{
+        'id':'pb-probe',
+        'argv':['pb','--version'],
+        'timeout_seconds':30,
+    }]
+    (tmp_path/'.promptbranch-release.json').write_text(json.dumps(data), encoding='utf-8')
+    (tmp_path/'.promptbranch-repo.json').write_text('{}\n', encoding='utf-8')
+    (tmp_path/'.pb_profile').mkdir()
+    (tmp_path/'promptbranch_cli.py').write_text('print("ok")\n', encoding='utf-8')
+    artifact=tmp_path/data['artifact']['path']
+    artifact.write_bytes(b'not-a-zip')
+    contract=load_contract(tmp_path)
+    observed={}
+    class Result:
+        returncode=0
+        stdout=''
+        stderr=''
+    def fake_runner(argv, *, cwd, env, text, capture_output, timeout, check):
+        observed['argv']=argv
+        observed['env']=dict(env)
+        return Result()
+    # Publish will fail artifact verification because the test artifact is not a ZIP,
+    # but command resolution occurs first and is the invariant under test.
+    execute(tmp_path, contract, 'publish', runner=fake_runner)
+    authority=str(Path(__import__('sys').executable).absolute())
+    assert observed['argv'][:3] == [authority, '-m', 'promptbranch.cli']
+    assert 'PROMPTBRANCH_RELEASE_VALIDATION_PYTHON' not in observed['env']
+    assert 'PROMPTBRANCH_CANDIDATE_PYTHON' not in observed['env']

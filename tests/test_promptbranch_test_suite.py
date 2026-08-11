@@ -676,53 +676,30 @@ def test_release_validation_group_manifest_contains_required_release_gate_groups
 
 
 
-def test_release_validation_groups_default_to_current_promptbranch_python(monkeypatch) -> None:
-    monkeypatch.delenv(suite.RELEASE_VALIDATION_PYTHON_ENV, raising=False)
-    monkeypatch.delenv("PROMPTBRANCH_CANDIDATE_PYTHON", raising=False)
+def test_release_validation_groups_use_exact_launcher_python(monkeypatch) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_RELEASE_VALIDATION_PYTHON", "/foreign/python")
+    monkeypatch.setenv("PROMPTBRANCH_CANDIDATE_PYTHON", "/foreign/python")
     manifest = suite.release_validation_group_manifest()
-
     for group in suite.RELEASE_VALIDATION_GROUPS:
-        assert manifest[group]["command"][0] == suite.sys.executable
+        assert manifest[group]["command"][0] == suite.release_validation_python()
         assert suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER not in manifest[group]["command"]
 
 
-def test_release_validation_groups_support_python_override(monkeypatch) -> None:
-    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, "/opt/project-python")
-    manifest = suite.release_validation_group_manifest()
-
-    assert manifest["project_control_surface"]["command"][0] == "/opt/project-python"
-    assert manifest["artifact_json_contracts"]["command"][0] == "/opt/project-python"
-
-
-def test_run_release_validation_group_resolves_python_override(monkeypatch, tmp_path: Path) -> None:
+def test_run_release_validation_group_ignores_obsolete_python_selector_env(monkeypatch, tmp_path: Path) -> None:
     captured = {}
-
     def fake_run(command, **kwargs):
-        captured["command"] = command
-
-        class Completed:
-            returncode = 0
-            stdout = "ok"
-            stderr = ""
-
+        captured["command"] = command; captured["env"] = kwargs.get("env", {})
+        class Completed: returncode=0; stdout="ok"; stderr=""
         return Completed()
-
-    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, "/opt/project-python")
+    monkeypatch.setenv("PROMPTBRANCH_RELEASE_VALIDATION_PYTHON", "/foreign/python")
+    monkeypatch.setenv("PROMPTBRANCH_CANDIDATE_PYTHON", "/foreign/python")
     monkeypatch.setattr(suite, "_release_validation_isolation_preflight", _preflight_ok)
     monkeypatch.setattr(suite.subprocess, "run", fake_run)
-
-    result = suite._run_release_validation_group(
-        "demo",
-        {
-            "required": True,
-            "description": "demo",
-            "command": [suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER, "-m", "pytest"],
-        },
-        repo_path=tmp_path,
-    )
-
+    result=suite._run_release_validation_group("demo", {"required":True,"description":"demo","command":[suite.RELEASE_VALIDATION_PYTHON_PLACEHOLDER,"-m","pytest"]}, repo_path=tmp_path)
     assert result["ok"] is True
-    assert captured["command"] == ["/opt/project-python", "-m", "pytest"]
+    assert captured["command"] == [suite.release_validation_python(), "-m", "pytest"]
+    assert "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON" not in captured["env"]
+    assert "PROMPTBRANCH_CANDIDATE_PYTHON" not in captured["env"]
 
 
 def test_run_release_validation_group_disables_ambient_pytest_plugins(monkeypatch, tmp_path: Path) -> None:
@@ -1398,7 +1375,6 @@ def test_browser_profile_fail_fast_marks_remaining_browser_units_skipped(monkeyp
     assert result["progress"]["states"]["browser.login_check"] == "skipped:browser_failure"
 
 def test_release_validation_runner_preflight_verifies_pinned_pytest(monkeypatch) -> None:
-    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, suite.sys.executable)
     monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTEST_VERSION_ENV, "9.0.2")
 
     result = suite.release_validation_runner_preflight()
@@ -1411,7 +1387,6 @@ def test_release_validation_runner_preflight_verifies_pinned_pytest(monkeypatch)
 
 
 def test_release_validation_runner_preflight_fails_on_pytest_version_drift(monkeypatch) -> None:
-    monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTHON_ENV, suite.sys.executable)
     monkeypatch.setenv(suite.RELEASE_VALIDATION_PYTEST_VERSION_ENV, "0.0.0")
 
     result = suite.release_validation_runner_preflight()
@@ -1462,9 +1437,19 @@ py-modules = ["promptbranch_version"]
     assert result["ok"] is False
     assert result["dependency_consistency"]["mismatches"][0]["name"] == "pytest"
 
-def test_release_validation_runner_preserves_candidate_launcher_path() -> None:
+def test_release_validation_runner_preserves_launcher_path_without_resolve() -> None:
     source = Path(suite.__file__).read_text(encoding="utf-8")
-    assert 'Path(release_validation_python()).expanduser().absolute()' in source
-    assert 'Path(release_validation_python()).expanduser().resolve()' not in source
-    assert 'Path(sys.executable).absolute()' in source
+    assert "return launcher_python()" in source
+    assert "Path(release_validation_python()).expanduser().resolve()" not in source
 
+
+def test_release_validation_python_is_exact_launcher_authority() -> None:
+    assert suite.release_validation_python() == str(Path(suite.sys.executable).absolute())
+
+
+def test_release_validation_runner_ignores_obsolete_python_selector_env(monkeypatch) -> None:
+    monkeypatch.setenv("PROMPTBRANCH_RELEASE_VALIDATION_PYTHON", "/foreign/python")
+    monkeypatch.setenv("PROMPTBRANCH_CANDIDATE_PYTHON", "/foreign/python")
+    result = suite.release_validation_runner_preflight()
+    assert result["ok"] is True
+    assert result["python_executable"] == suite.release_validation_python()

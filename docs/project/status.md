@@ -1,4 +1,4 @@
-> v0.1.127.1.1.1 repair authority: propagate baseline artifact conversation routing into the actual full/browser ask and make `TESTED_GREEN` independently verify the executed `ask_question` URL/ID; accepted/current remains `.1.3`; `.127.1.1` is repair-required false-proof evidence.
+> v0.1.127.2.1 closure authority: consolidate the complete v0.1.127 repair chain, preserve the exact pipx/venv launcher path as the sole Python authority, retain provenance/route/acceptance repairs, and close the v0.1.127 DoD through one canonical lifecycle; accepted/current remains `.1.3` until FINAL_VERIFIED.
 
 > v0.1.127.1 preserved authority: bind artifact origin conversation and route successor/live ask from baseline artifact provenance; no routing semantics change in `.1.1`.
 
@@ -11,17 +11,17 @@
 ```text
 accepted_current_version: v0.1.126.1.1.1.1.3
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.1.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
+active_candidate_version: v0.1.127.2.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
 ```
 
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
 accepted/current version: v0.1.126.1.1.1.1.3
 accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
-active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
-active candidate status: repair candidate; deterministic construction validation complete; live TESTED_GREEN route proof pending
-active slice authority: v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification
-next normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+active candidate build: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+active candidate status: consolidated v0.1.127 closure candidate; source-tree and exact-ZIP canonical construction groups green; deterministic rebuild and Artifact Guardian green; fresh live lifecycle required for DOD-515
+active slice authority: v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair
+next normal slice: v0.1.128 — PB environment MVP hardening and freeze
 next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
 
 ## Current interpretation
@@ -41,7 +41,7 @@ Historical predecessor baseline before the completed v0.1.126 repair chain: `cha
 
 ## Next safe action
 
-Complete deterministic construction validation for `v0.1.127.1.1.1`, then start a fresh immutable repair attempt from accepted/current `v0.1.126.1.1.1.1.3`. The live `TESTED_GREEN` gate must prove the executed `ask_question` conversation ID is exactly `6a78783b-3e00-83eb-8dc1-1e814fcf2a59`; a subprocess flag or generic 53/53 report alone is insufficient. Do not advance to `ACCEPTED` until independent all-state verification confirms the route proof.
+Start a fresh immutable `v0.1.127.2.1` consolidated closure attempt from accepted/current `v0.1.126.1.1.1.1.3`. Re-run through live `TESTED_GREEN` and independent route verification, then prove the provenance-bearing `ACCEPTED` transition completes without exception before any adoption/current movement.
 
 ## v0.1.102 candidate status
 

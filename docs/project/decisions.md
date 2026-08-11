@@ -1525,3 +1525,30 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 - `TESTED_GREEN` requires the persisted browser report to show one green `ask_question`, the exact requested baseline URL, `explicit_cli` browser routing, and an actual conversation URL whose extracted ID equals the baseline artifact conversation ID.
 - Independent `release verify` recomputes this proof from persisted report content; a generic 53/53 result cannot substitute for route identity.
 - Source/task integration remains in the generated test project. Response-completion recovery remains out of scope until the correctly routed ask is live-tested.
+
+
+## ADR-PROJ-1271111 — Acceptance provenance uses the canonical project-conversation predicate
+
+- `v0.1.127.1.1.1` is immutable failure evidence: live routing and `TESTED_GREEN` were valid, but acceptance raised `NameError` before mutation because `_looks_like_chatgpt_project_conversation` was referenced but undefined.
+- `v0.1.127.1.1.1.1` defines that predicate from the existing ChatGPT project-conversation URL validator plus exact URL-derived conversation-ID equality.
+- Artifact-origin provenance validation delegates to the same predicate; no second acceptance-only rule is introduced.
+- Acceptance preserves exact selected protocol provenance when complete and self-consistent; incomplete legacy aliases still do not create partial artifact provenance.
+- No registry editing, acceptance-authority expansion, response-completion change, or browser-routing change is permitted in this repair.
+
+
+## ADR-PROJ-12711111 — One launcher Python is Promptbranch release authority
+
+- `v0.1.127.1.1.1.1.1` supersedes `v0.1.127.1.1.1.1` before live execution because the operator requires one Python binary for build, test, verification, release control, and contract execution.
+- The interpreter that launches Promptbranch (`sys.executable`) is authoritative. Alternate candidate/validation interpreter selectors may only resolve to that same file; mismatches fail closed.
+- Release-contract `python`/`python3` commands are rewritten to the launcher interpreter. `pb`/`promptbranch` commands are executed as launcher-Python + `-m promptbranch.cli`, preventing PATH shadowing while remaining portable across managed repositories.
+- The acceptance-path provenance predicate repair from `v0.1.127.1.1.1.1` is preserved exactly; no registry mutation, browser-routing change, response-completion change, or scope advancement is introduced.
+
+
+## ADR-PROJ-1272 — One semantic authority per release identity
+
+- **Status:** accepted for candidate `v0.1.127.2.1`.
+- **Baseline:** accepted/current remains `v0.1.126.1.1.1.1.3` until `v0.1.127.2.1` reaches `FINAL_VERIFIED` and fresh scoped current aligns.
+- **Decision:** consolidate the accumulated v0.1.127 repairs into one final closure candidate. Artifact bytes/SHA, canonical ChatGPT project identity, exact conversation ID, executed ask route, selected protocol provenance, runtime image labels, and exact launcher-Python path are semantic authorities; presentation strings or symlink targets cannot substitute for them.
+- **Python:** execute the exact `sys.executable` launcher path without `Path.resolve()`. Remove selectable candidate/validation Python and release PB-command overrides from the canonical path.
+- **Lifecycle:** construction must exercise all nine canonical states and independent verification before freezing the candidate; live closure still requires exact baseline-routed `TESTED_GREEN`, `ACCEPTED`, `ADOPTED_CURRENT`, `FINAL_VERIFIED`, and scoped current alignment.
+- **Scope:** no external application development and no v0.1.128 hardening scope is pulled into this release.

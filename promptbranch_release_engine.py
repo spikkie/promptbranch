@@ -4,12 +4,15 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from promptbranch_python_authority import launcher_python
 
 SCHEMA = "promptbranch.release.contract"
 SCHEMA_VERSION = "1.0"
@@ -37,6 +40,23 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _python_authority() -> str:
+    return launcher_python()
+
+
+def _resolve_contract_argv(repo: Path, argv: list[str]) -> list[str]:
+    if not argv:
+        raise ReleaseContractError("release step argv must not be empty")
+    authority = _python_authority()
+    first = str(argv[0])
+    name = Path(first).name.lower()
+    if name in {"python", "python3"} or name.startswith("python3."):
+        return [authority, *argv[1:]]
+    if name in {"pb", "promptbranch"}:
+        return [authority, "-m", "promptbranch.cli", *argv[1:]]
+    return list(argv)
 
 
 def _safe_relative(value: str, label: str) -> str:
@@ -260,10 +280,12 @@ def execute(
             if name in os.environ:
                 env[name] = os.environ[name]
         env.update(step.get("env", {}))
+        python_authority = _python_authority()
+        resolved_argv = _resolve_contract_argv(repo, step["argv"])
         timed_out = False
         error = None
         try:
-            proc = runner(step["argv"], cwd=repo / step["cwd"], env=env, text=True, capture_output=True, timeout=float(step["timeout_seconds"]), check=False)
+            proc = runner(resolved_argv, cwd=repo / step["cwd"], env=env, text=True, capture_output=True, timeout=float(step["timeout_seconds"]), check=False)
             rc = proc.returncode
             stdout_path.write_text(proc.stdout, encoding="utf-8")
             stderr_path.write_text(proc.stderr, encoding="utf-8")
@@ -280,7 +302,8 @@ def execute(
             error = f"execution_error: {exc}"
         step_ok = not timed_out and error is None and rc in step["accepted_exit_codes"]
         results.append({
-            "id": step["id"], "argv": step["argv"], "resolved_executable": step["argv"][0],
+            "id": step["id"], "argv": step["argv"], "resolved_argv": resolved_argv,
+            "resolved_executable": resolved_argv[0], "python_authority": python_authority,
             "cwd": step["cwd"], "timeout_seconds": step["timeout_seconds"], "started_at": started,
             "ended_at": _utc(), "duration_seconds": round(time.monotonic() - start, 6), "exit_code": rc,
             "timed_out": timed_out, "ok": step_ok, "error": error,

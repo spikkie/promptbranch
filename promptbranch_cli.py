@@ -722,6 +722,11 @@ def _same_project_url_identity(left: Optional[str], right: Optional[str]) -> boo
     return bool(left_home and right_home and str(left_home).rstrip("/") == str(right_home).rstrip("/"))
 
 
+def _looks_like_chatgpt_project_conversation(url: Optional[str], conversation_id: Optional[str]) -> bool:
+    cid = str(conversation_id or "").strip()
+    return bool(is_project_conversation_url(url) and cid and conversation_id_from_url(url) == cid)
+
+
 def _ask_result_has_submission_evidence(result: Any) -> bool:
     if not isinstance(result, dict):
         return False
@@ -4226,9 +4231,10 @@ def _artifact_origin_provenance(record: dict[str, Any] | None) -> dict[str, Any]
 
 def _artifact_origin_provenance_valid(record: dict[str, Any] | None) -> bool:
     origin = _artifact_origin_provenance(record)
-    url = str(origin.get("conversation_url") or "")
-    cid = str(origin.get("conversation_id") or "")
-    return bool(url.startswith("https://chatgpt.com/g/") and "/c/" in url and cid and conversation_id_from_url(url) == cid)
+    return _looks_like_chatgpt_project_conversation(
+        str(origin.get("conversation_url") or ""),
+        str(origin.get("conversation_id") or ""),
+    )
 
 
 def _select_artifact_candidate_record(
@@ -21018,7 +21024,6 @@ async def cmd_release_state_machine_run(backend: Any, args: argparse.Namespace) 
             commit=bool(getattr(args, "commit", False)),
             push=bool(getattr(args, "push", False)),
             upload_project_source=bool(getattr(args, "upload_project_source", False)),
-            candidate_python=getattr(args, "candidate_python", None),
             artifact_conversation_url=getattr(args, "artifact_conversation_url", None),
         )
         payload, code = machine.run()
@@ -21051,7 +21056,6 @@ async def cmd_release_state_machine_verify(backend: Any, args: argparse.Namespac
             profile=getattr(args, "profile", "full"),
             test_timeout=float(getattr(args, "test_timeout", 3600.0) or 3600.0),
             until="final-verified",
-            candidate_python=getattr(args, "candidate_python", None),
             artifact_conversation_url=getattr(args, "artifact_conversation_url", None),
         )
         payload, code = machine.verify(repair_projections=not bool(getattr(args, "no_repair_projections", False)))
@@ -21100,7 +21104,6 @@ async def cmd_release_state_machine_eta(backend: Any, args: argparse.Namespace) 
             commit=bool(mutation_policy.get("commit")),
             push=bool(mutation_policy.get("push")),
             upload_project_source=bool(mutation_policy.get("upload_project_source")),
-            candidate_python=getattr(args, "candidate_python", None),
         )
         payload, code = machine.eta_status(
             configured_outer_timeout_seconds=getattr(args, "outer_timeout", None),
@@ -27657,7 +27660,6 @@ def make_parser() -> argparse.ArgumentParser:
     release_run.add_argument("--profile", choices=["smoke", "full"], default="full", help="Exact candidate validation profile.")
     release_run.add_argument("--test-timeout", type=float, default=3600.0, help="Bounded candidate-test timeout in seconds.")
     release_run.add_argument("--until", default="tested-green", help="Target state: declared, artifact-bound, artifact-verified, candidate-registered, runtime-prepared, tested-green, accepted, adopted-current, or final-verified.")
-    release_run.add_argument("--candidate-python", help="Explicit candidate interpreter. Defaults to the Promptbranch pipx interpreter, then current Python.")
     release_run.add_argument("--artifact-conversation-url", help="Exact ChatGPT conversation that produced this candidate artifact; persisted as immutable provenance on acceptance.")
     release_run.add_argument("--adopt", action="store_true", help="Explicitly authorize ACCEPTED and subsequent adopted/current transitions.")
     release_run.add_argument("--commit", action="store_true", help="Explicitly authorize guarded release-pipeline commit after candidate testing.")
@@ -27672,7 +27674,6 @@ def make_parser() -> argparse.ArgumentParser:
     release_verify.add_argument("--repo-path", default=".", help="Repository root.")
     release_verify.add_argument("--profile", choices=["smoke", "full"], default="full")
     release_verify.add_argument("--test-timeout", type=float, default=3600.0)
-    release_verify.add_argument("--candidate-python")
     release_verify.add_argument("--artifact-conversation-url", help="Expected exact origin conversation; when omitted, recover it from the durable attempt.")
     release_verify.add_argument("--all-states", action="store_true", help="Compatibility spelling; verification always reports every canonical state.")
     release_verify.add_argument("--no-repair-projections", action="store_true", help="Do not reconstruct missing derived candidate projections from authoritative attempt evidence.")
@@ -27686,7 +27687,6 @@ def make_parser() -> argparse.ArgumentParser:
     release_eta.add_argument("--release-type", choices=["normal", "repair"], help="Fallback release type only when the durable attempt does not yet contain one.")
     release_eta.add_argument("--test-timeout", type=float, default=3600.0, help="Fallback candidate-test timeout only when the durable attempt does not yet contain one.")
     release_eta.add_argument("--outer-timeout", type=float, help="Optional outer-wrapper timeout to assess against the current whole-release estimate; advisory only.")
-    release_eta.add_argument("--candidate-python")
     release_eta.add_argument("--json", action="store_true", help="Emit the read-only ETA status as JSON.")
     release_set = release_subparsers.add_parser("set", help="Read-only multi-repository release-set dependency planning and compatibility analysis.")
     release_set_subparsers = release_set.add_subparsers(dest="release_set_command", required=True)

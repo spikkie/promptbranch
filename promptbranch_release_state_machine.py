@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from promptbranch_python_authority import launcher_python_path
+
 from promptbranch_source_fingerprint import SOURCE_PRESERVE_ROOTS, SOURCE_TRANSIENT_PARTS, source_fingerprint
 from promptbranch_release_eta import (
     append_release_eta_observation,
@@ -702,13 +704,13 @@ class ReleaseStateMachineConfig:
     commit: bool = False
     push: bool = False
     upload_project_source: bool = False
-    candidate_python: str | None = None
     artifact_conversation_url: str | None = None
 
     def normalized(self) -> "ReleaseStateMachineConfig":
         repo_root = self.repo_root.expanduser().resolve()
         profile_dir = self.profile_dir.expanduser().resolve()
         artifact = self.artifact.expanduser().resolve()
+        python_authority = launcher_python_path()
         version = self.version if self.version.startswith("v") else f"v{self.version}"
         baseline = self.baseline_version if self.baseline_version.startswith("v") else f"v{self.baseline_version}"
         if not valid_version_text(version):
@@ -737,7 +739,6 @@ class ReleaseStateMachineConfig:
             commit=bool(self.commit),
             push=bool(self.push),
             upload_project_source=bool(self.upload_project_source),
-            candidate_python=self.candidate_python,
             artifact_conversation_url=str(self.artifact_conversation_url or "").strip() or None,
         )
 
@@ -763,13 +764,11 @@ class SubprocessReleaseExecutor:
     )
 
     def _python(self, machine: "ReleaseStateMachine") -> Path:
-        explicit = machine.config.candidate_python or os.environ.get("PROMPTBRANCH_CANDIDATE_PYTHON")
-        if explicit:
-            candidate = Path(explicit).expanduser().resolve()
-            if candidate.is_file():
-                return candidate
-        pipx = Path.home() / ".local/share/pipx/venvs/promptbranch/bin/python"
-        return pipx if pipx.is_file() else Path(sys.executable).resolve()
+        del machine
+        try:
+            return launcher_python_path()
+        except RuntimeError as exc:
+            raise ReleaseStateMachineError(str(exc)) from exc
 
     def _runtime_paths(self, machine: "ReleaseStateMachine") -> dict[str, Path]:
         root = machine.attempt_dir / "runtime"
@@ -903,7 +902,6 @@ class SubprocessReleaseExecutor:
                 "XDG_CONFIG_HOME": str(paths["xdg_config"]),
                 "HOME": str(paths["home"]),
                 "PYTHONPATH": str(paths["extracted"]),
-                "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON": str(self._python(machine)),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ATTEMPT_ID": str(record.get("attempt_id") or ""),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ATTEMPT_DIR": str(machine.attempt_dir),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ARTIFACT": str(record.get("artifact", {}).get("object_path") or ""),
@@ -931,7 +929,6 @@ class SubprocessReleaseExecutor:
             {
                 "PYTHONPYCACHEPREFIX": str(control_pycache),
                 "PYTHONPATH": str(paths["extracted"]),
-                "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON": str(self._python(machine)),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ATTEMPT_ID": str(record.get("attempt_id") or ""),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ATTEMPT_DIR": str(machine.attempt_dir),
                 "PROMPTBRANCH_RELEASE_STATE_MACHINE_ARTIFACT": str(record.get("artifact", {}).get("object_path") or ""),
@@ -4166,7 +4163,6 @@ def build_machine_from_args(
     commit: bool = False,
     push: bool = False,
     upload_project_source: bool = False,
-    candidate_python: str | None = None,
     artifact_conversation_url: str | None = None,
     executor: ReleaseExecutor | None = None,
 ) -> ReleaseStateMachine:
@@ -4185,7 +4181,6 @@ def build_machine_from_args(
             commit=commit,
             push=push,
             upload_project_source=upload_project_source,
-            candidate_python=candidate_python,
             artifact_conversation_url=artifact_conversation_url,
         ),
         executor=executor,

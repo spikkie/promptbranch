@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+from promptbranch_python_authority import launcher_python
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -290,29 +292,33 @@ def utc_now() -> str:
 
 
 RELEASE_VALIDATION_PYTHON_PLACEHOLDER = "{release_validation_python}"
-RELEASE_VALIDATION_PYTHON_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON"
 RELEASE_VALIDATION_PYTEST_VERSION_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_PYTEST_VERSION"
 RELEASE_VALIDATION_PYTEST_VERSION = "9.0.2"
 RELEASE_VALIDATION_SKIP_DUPLICATE_ENV = "PROMPTBRANCH_RELEASE_VALIDATION_GROUPS_SKIP_DUPLICATE"
 
 
 def release_validation_python() -> str:
-    """Return the exact Python authority for release-validation groups.
+    """Return the exact Promptbranch launcher interpreter.
 
-    The release controller exports the installed candidate interpreter explicitly.
-    Standalone invocations use the current Promptbranch interpreter.  The runner
-    preflight below proves pytest identity before any required group executes.
+    No environment or CLI selector may replace release-validation Python.
     """
-
-    return (
-        os.environ.get(RELEASE_VALIDATION_PYTHON_ENV)
-        or os.environ.get("PROMPTBRANCH_CANDIDATE_PYTHON")
-        or sys.executable
-    )
+    return launcher_python()
 
 
 def release_validation_runner_preflight(*, timeout_seconds: float = 10.0) -> dict[str, Any]:
-    python_executable = str(Path(release_validation_python()).expanduser().absolute())
+    try:
+        python_executable = release_validation_python()
+    except RuntimeError as exc:
+        return {
+            "ok": False,
+            "status": "python_authority_mismatch",
+            "python_executable": launcher_python(),
+            "expected_pytest_version": os.environ.get(
+                RELEASE_VALIDATION_PYTEST_VERSION_ENV, RELEASE_VALIDATION_PYTEST_VERSION
+            ),
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
     expected_pytest_version = os.environ.get(
         RELEASE_VALIDATION_PYTEST_VERSION_ENV,
         RELEASE_VALIDATION_PYTEST_VERSION,
@@ -525,6 +531,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "pytest",
             "-q",
             "tests/test_release_state_machine.py",
+            "tests/test_promptbranch_python_authority.py",
             "tests/test_release_state_machine_docker_integration.py",
             "tests/test_promptbranch_release_eta.py",
             "tests/test_artifact_conversation_provenance.py",
@@ -677,6 +684,8 @@ def _release_validation_group_env(
         "PROMPTBRANCH_BROWSER_PROFILE_LOCK_WAIT_SECONDS",
         "PROMPTBRANCH_BROWSER_PROFILE_STALE_LOCK_SECONDS",
         "PROMPTBRANCH_SOURCE_MUTATION_PROFILE_WAIT_SECONDS",
+        "PROMPTBRANCH_CANDIDATE_PYTHON",
+        "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON",
     ):
         env.pop(key, None)
     # Avoid operator-level pytest customizations in the release-validation

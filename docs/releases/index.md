@@ -1,3 +1,4 @@
+- [v0.1.127.1.1.1.1](../release-v0.1.127.1.1.1.1.md) — acceptance-path conversation provenance validator repair
 - [v0.1.127.1.1.1](../release-v0.1.127.1.1.1.md) — successor ask pin propagation and executed-route verification repair
 - [v0.1.127.1.1](../release-v0.1.127.1.1.md) — canonical ChatGPT project identity repair for artifact conversation provenance
 - [v0.1.127.1](../release-v0.1.127.1.md) — artifact-bound conversation provenance and successor ask routing repair
@@ -62,3 +63,6 @@ Release documentation includes the repo-local lifecycle config contract. `pb rel
 - [`v0.1.125.2`](../release-v0.1.125.2.md) — version-independent authority projection-drift fixture repair.
 
 - `v0.1.126.1` — whole-release publication convergence repair (superseded by `v0.1.126.1.1`; never accepted).
+
+- `v0.1.127.2.1` — construction-proof repair for consolidated v0.1.127 closure (`docs/release-v0.1.127.2.1.md`).
+- `v0.1.127.2` — consolidated v0.1.127 closure and single-Python lifecycle repair (`docs/release-v0.1.127.2.md`).

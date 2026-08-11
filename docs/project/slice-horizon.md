@@ -2,7 +2,9 @@
 
 - `v0.1.127` — repair-required after two live ask completion deadlines.
 - `v0.1.127.1 — Artifact-bound conversation provenance and successor ask routing` — repair-required after live same-project slug normalization failure.
-- `v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification` — active repair; no scope advancement.
+- `v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair` — active consolidated closure repair; no scope advancement.
+- `v0.1.127.1.1.1.1 — Acceptance-path conversation provenance validator repair` — superseded before live by single-Python authority requirement.
+- `v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification` — repair-required predecessor; live route proof passed, ACCEPTED blocked before mutation by undefined helper.
 - `v0.1.127.1.1 — Canonical ChatGPT project identity for artifact conversation provenance` — repair-required predecessor; project identity fix retained.
 - `v0.1.128` — planned after acceptance.
 
@@ -18,7 +20,7 @@ Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 | v0.1.126 | normal | completed_via_repair | PB environment | persistent whole-release ETA estimator |
 | v0.1.126.1.1.1.1.2 | repair | repair_required | PB environment | accepted-runtime guard live-proven; superseded by .3 |
 | v0.1.126.1.1.1.1.3 | repair | accepted_current | PB environment | validation-Python authority repair and final v0.1.126 convergence |
-| v0.1.127 | normal | active | PB environment | portable `promptbranch-tool-authoring` skill and deterministic export bundle |
+| v0.1.127.2.1 | repair | active | PB environment | consolidated v0.1.127 tool-authoring + provenance + route + acceptance + single-Python closure |
 | v0.1.128 | normal | planned_after_acceptance | PB environment | profile-aware timeouts, candidate recovery, summary consistency, policy freeze |
 | v0.1.129 | normal | planned | external application | pilot repository bootstrap, target, architecture, DoD, read-only slice plan |
 | v0.1.130 | normal | planned | external application | human-authorized bounded source change and rollback evidence |

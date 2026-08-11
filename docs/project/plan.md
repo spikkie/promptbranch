@@ -1,4 +1,4 @@
-> v0.1.127.1.1.1 repair authority: accepted/current remains `v0.1.126.1.1.1.1.3`; propagate the baseline artifact conversation pin into the actual browser ask and require executed-route proof before `TESTED_GREEN`; `.127.1.1` remains immutable false-proof evidence and normal product scope remains v0.1.127.
+> v0.1.127.2.1 closure authority: accepted/current remains `v0.1.126.1.1.1.1.3`; consolidate all v0.1.127 tool-authoring/provenance/route/acceptance repairs, preserve the exact launcher path as sole Python authority, and close the complete v0.1.127 DoD without advancing normal scope.
 
 > v0.1.127.1 is repair-required live evidence after same-project slugged/unslugged URLs were rejected by the durable artifact validator.
 
@@ -11,17 +11,17 @@
 ```text
 accepted_current_version: v0.1.126.1.1.1.1.3
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
-active_candidate_version: v0.1.127.1.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip
+active_candidate_version: v0.1.127.2.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
 ```
 
 accepted/current baseline: v0.1.126.1.1.1.1.3
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip
 accepted/current SHA-256: 07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7
-active normal artifact: chatgpt_claudecode_workflow-2_v0.1.127.zip
-active normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
-next normal version: v0.1.127
-next normal slice: v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle
+active normal artifact: chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip
+active normal slice: v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair
+next normal version: v0.1.128
+next normal slice: v0.1.128 — PB environment MVP hardening and freeze
 next planned after acceptance: v0.1.128 — PB environment MVP hardening and freeze
 
 ## Active normal slice — v0.1.127
@@ -2374,3 +2374,42 @@ In scope: propagate --ask-conversation-url through test-suite dispatch; persist 
 Out of scope: response-completion recovery, source/task routing changes, browser submission redesign, tool-authoring scope expansion, acceptance/adoption redesign, external application work.
 Expected validation: focused CLI propagation, route-mismatch, persisted-report tamper and state-machine regressions; all required deterministic release groups; deterministic ZIP rebuild; Artifact Guardian; fresh live TESTED_GREEN proving conversation ID 6a78783b-3e00-83eb-8dc1-1e814fcf2a59 before acceptance.
 ```
+
+
+## Repair definition — v0.1.127.1.1.1.1
+
+Release: v0.1.127.1.1.1.1
+
+- Baseline authority remains accepted/current `v0.1.126.1.1.1.1.3`.
+- `v0.1.127.1.1.1` remains immutable evidence: 53/53 live tests and exact baseline ask-route verification passed, then `ACCEPTED` failed before mutation because `cmd_artifact_accept_candidate` called undefined `_looks_like_chatgpt_project_conversation`.
+- Define one canonical ChatGPT project-conversation predicate from `is_project_conversation_url()` plus exact `conversation_id_from_url()` equality, and reuse it for artifact-origin validation.
+- Add a provenance-bearing acceptance regression that executes `cmd_artifact_accept_candidate(... adopt_if_green=True)` and proves exact origin URL/ID/request/correlation/message/answer persistence.
+- No response-completion changes, browser-routing changes, source/task changes, acceptance authority expansion, manual registry mutation, or normal product-scope advancement.
+- Fresh immutable live proof must rerun through `TESTED_GREEN`, independent verification, `ACCEPTED`, `ADOPTED_CURRENT`, and `FINAL_VERIFIED` before current authority moves.
+
+
+## Repair definition — v0.1.127.1.1.1.1.1
+
+Release: v0.1.127.1.1.1.1.1
+
+- Baseline authority remains accepted/current `v0.1.126.1.1.1.1.3`.
+- `v0.1.127.1.1.1.1` remains immutable construction-green evidence and is superseded before live execution by the operator requirement that Promptbranch use exactly one Python interpreter.
+- Promptbranch launcher `sys.executable` is the sole release Python authority. `--candidate-python`, `PROMPTBRANCH_CANDIDATE_PYTHON`, and `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` may only restate the same resolved interpreter; drift fails closed.
+- Release-contract `python`/`python3` steps and `pb`/`promptbranch` steps are resolved through the same launcher interpreter (`-m promptbranch.cli` for PB commands) instead of PATH.
+- The acceptance-path `_looks_like_chatgpt_project_conversation` repair and provenance-bearing acceptance regression from `v0.1.127.1.1.1.1` are preserved unchanged.
+- Fresh immutable live proof must rerun through exact baseline-routed `TESTED_GREEN`, independent verification, `ACCEPTED`, `ADOPTED_CURRENT`, and `FINAL_VERIFIED`.
+
+
+## Consolidated closure definition — v0.1.127.2.1
+
+Release: v0.1.127.2.1
+Baseline: `v0.1.126.1.1.1.1.3`
+Mode: repair/consolidation; no normal-scope advancement.
+
+1. Preserve the v0.1.127 portable tool-authoring/export contract and proposal-only authority boundary.
+2. Preserve canonical artifact project/conversation provenance and exact executed ask-route proof.
+3. Preserve the defined acceptance-path provenance predicate and complete selected-protocol provenance.
+4. Make the exact Promptbranch launcher path the only release Python authority; never resolve a venv launcher to its system target.
+5. Remove alternate candidate/validation Python selectors and release-pipeline PB-command overrides from the canonical path.
+6. Exercise every canonical release state in construction tests, including acceptance/adoption/final verification behavior and independent verification.
+7. Close v0.1.127 only after fresh live `FINAL_VERIFIED` plus scoped artifact-current exact alignment.

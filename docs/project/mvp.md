@@ -1,6 +1,6 @@
-## Active repair — v0.1.127.1.1
+## Active closure repair — v0.1.127.2.1
 
-Canonical ChatGPT project identity normalization for artifact conversation provenance validation. Accepted/current stays `v0.1.126.1.1.1.1.3`; `.127.1` routing/provenance semantics are preserved and no normal scope advances.
+Consolidated v0.1.127 closure from accepted/current `v0.1.126.1.1.1.1.3`: portable tool authoring, immutable conversation provenance, exact executed ask routing, acceptance provenance, and one exact launcher-Python authority are carried into one canonical candidate. No external-application scope advances; v0.1.127 closes only at live `FINAL_VERIFIED` plus scoped current alignment.
 
 > v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`. The active scope is portable deterministic tool authoring/export with explicit proposal-only authority; external application development remains out of scope.
 

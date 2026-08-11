@@ -1568,3 +1568,18 @@ No registry rewrite or automatic migration is performed. Re-run the exact `pb ar
 ## v0.1.127.1.1.1 ask-route proof migration
 
 No historical `TESTED_GREEN` record from `v0.1.127.1.1` is upgraded or trusted as route proof. The predecessor attempt remains immutable evidence that generic green status was insufficient. A new `.127.1.1.1` artifact SHA and release attempt must execute the full candidate test again. Cached green test evidence is reusable only when its persisted report still independently verifies the exact baseline ask conversation URL and ID.
+
+
+## v0.1.127.1.1.1.1 acceptance-path repair migration
+
+No registry or release-attempt state is edited in place. `v0.1.127.1.1.1` remains immutable blocked evidence at `TESTED_GREEN`; its failed `ACCEPTED` transition performed no mutation. Build a new `v0.1.127.1.1.1.1` artifact SHA and fresh release attempt from accepted/current `v0.1.126.1.1.1.1.3`, rerun the live candidate test and independent route verification, then retry acceptance through the repaired executable path.
+
+
+## v0.1.127.1.1.1.1.1 single-Python authority migration
+
+No registry or release-attempt state is edited in place. `v0.1.127.1.1.1.1` remains immutable construction-green predecessor evidence and is not run live. Start a fresh `v0.1.127.1.1.1.1.1` SHA-bound attempt from accepted/current `v0.1.126.1.1.1.1.3`. Invoke every operator-side Promptbranch build/test/verify/release command with the pipx Promptbranch interpreter; inside Promptbranch, that launcher interpreter becomes the sole subprocess authority. Any conflicting candidate/validation Python selector fails closed rather than falling back to PATH or another virtual environment.
+
+
+## v0.1.127.2.1 consolidated closure migration
+
+No historical release attempt is upgraded, rewritten, or adopted. `v0.1.127.1.1.1.1.1` remains immutable failure evidence: its live runtime preparation invoked `/usr/bin/python3.12` after resolving the pipx/venv launcher symlink and therefore lost the Promptbranch environment/pytest. `v0.1.127.2.1` removes alternate Python authority selectors and preserves the exact launcher path. Start a fresh SHA-bound `v0.1.127.2.1` attempt from accepted/current `v0.1.126.1.1.1.1.3`; no registry is manually edited. Earlier v0.1.127 live-closure DoD rows are superseded by consolidated DOD-515.

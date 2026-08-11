@@ -1,14 +1,18 @@
-# Active release status — v0.1.127.1.1.1
+# Active release status — v0.1.127.2.1
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.127.1.1.1 | repair | Successor ask pin propagation and TESTED_GREEN route verification | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip` candidate | 17/17 required deterministic groups green; live route proof pending | DOD-499–501 construction; DOD-502 live | — |
+| v0.1.127.2.1 | repair | Consolidated v0.1.127 closure construction-proof repair | `chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip` candidate | stale resolved-Python test fake removed; exact final ZIP passes all 17 canonical groups; deterministic rebuild and Guardian green; live DOD-515 pending | DOD-510–515 authority | — |
+| v0.1.127.2 | repair | Consolidated v0.1.127 closure and single-Python lifecycle repair | `chatgpt_claudecode_workflow-2_v0.1.127.2.zip` immutable repair-required | operator canonical validation exposed 14 release_pipeline failures because test fake still required `Path(sys.executable).resolve()`; no live attempt started | DOD-510–513 preserved; DOD-514 not satisfied | repair_required |
+| v0.1.127.1.1.1 | repair | Successor ask pin propagation and TESTED_GREEN route verification | immutable predecessor | live 53/53 + exact route verified; ACCEPTED blocked before mutation by undefined helper | DOD-499–502 route proof | repair_required |
+| v0.1.127.1.1.1.1.1 | repair | Single Python authority and acceptance-path repair | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.1.zip` repair-required | live RUNTIME_PREPARED exposed venv launcher collapse to `/usr/bin/python3.12`; no runtime prepared | DOD-506–509 superseded by v0.1.127.2 | repair_required |
+| v0.1.127.1.1.1.1 | repair | Acceptance-path conversation provenance validator repair | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.1.zip` immutable predecessor | construction green; superseded before live by single-Python operator invariant | DOD-503–504 preserved | superseded_before_live |
 | v0.1.127.1.1 | repair | Canonical ChatGPT project identity for artifact conversation provenance | `chatgpt_claudecode_workflow-2_v0.1.127.1.1.zip` repair-required | live 53/53 used generated itest conversation instead of baseline provenance | DOD-498 superseded by .1.1.1 route proof | — |
 | v0.1.127.1 | repair | Artifact-bound conversation provenance and successor ask routing | `chatgpt_claudecode_workflow-2_v0.1.127.1.zip` repair-required | live legacy bind exposed project-slug normalization defect | DOD-495 superseded by .1.1 proof | — |
 | v0.1.127 | normal | Portable tool-authoring/export | `chatgpt_claudecode_workflow-2_v0.1.127.zip` repair-required | live ask failed twice | DOD-490 open | — |
 | v0.1.126.1.1.1.1.3 | repair | Python validation authority | accepted/current | FINAL_VERIFIED | DOD-484 closed | `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7` |
 
-> v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`; active candidate is `v0.1.127`. Tool authoring/export is PB-environment scope only and grants no execution authority.
+> v0.1.127 normal-slice authority: accepted/current is `v0.1.126.1.1.1.1.3`; active repair candidate is `v0.1.127.2.1`. The underlying normal slice remains `v0.1.127`; tool authoring/export is PB-environment scope only and grants no execution authority.
 
 # Release Status
 
@@ -16,9 +20,9 @@ Documentation checkpoint: `PB-TOOL-AUTHORING-2026-08-09.1`
 
 Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip` (`v0.1.126.1.1.1.1.3`).
 Accepted SHA-256: `07ed977b948dd2b8779a93ff74512817e75ba9cbb3f2bdbdb87351b838dbf0e7`.
-Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.1.1.1.zip`.
-Active repair slice: `v0.1.127.1.1.1 — Successor ask pin propagation and TESTED_GREEN route verification`; the underlying normal slice remains `v0.1.127`.
-Next normal slice: `v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle`.
+Active candidate artifact: `chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip`.
+Active repair slice: `v0.1.127.2.1 — Consolidated v0.1.127 closure construction-proof repair`; this supersedes immutable repair-required `v0.1.127.2` without advancing normal scope.
+Next normal slice: `v0.1.128 — PB environment MVP hardening and freeze`.
 Next planned slice after acceptance: `v0.1.128 — PB environment MVP hardening and freeze`.
 
 | Version | Type | System | Slice | Status |

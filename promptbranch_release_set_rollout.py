@@ -72,8 +72,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _pb_command() -> list[str]:
-    override = str(os.environ.get("PROMPTBRANCH_RELEASE_SET_PB_COMMAND") or "").strip()
-    return [override] if override else [sys.executable, "-m", "promptbranch.cli"]
+    return [sys.executable, "-m", "promptbranch.cli"]
 
 
 def _command(

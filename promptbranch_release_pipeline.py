@@ -287,9 +287,6 @@ def _command_result(
 
 
 def _pb_command() -> list[str]:
-    override = str(os.environ.get("PROMPTBRANCH_PIPELINE_PB_COMMAND") or "").strip()
-    if override:
-        return [override]
     return [sys.executable, "-m", "promptbranch.cli"]
 
 
