@@ -89,3 +89,8 @@ Promptbranch, `promptbranch-method`, and every application repository retain ind
 ## v0.1.128.1 repair horizon
 
 `v0.1.128.1 — Single authority for Promptbranch release artifacts` is the active bounded repair on accepted/current `v0.1.128`. It does not advance normal scope. The next normal slice remains `v0.1.129 — External application pilot bootstrap` after the repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.1.1 repair horizon
+
+`v0.1.128.1.1 — Lifecycle resume, progress, diagnostics, and control-projection repair` is the active bounded repair on accepted/current `v0.1.128.1`. It fixes only wrapper retry-resume, live stderr progress/ETA, ask failure classification, and authoritative-current control projection. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance.

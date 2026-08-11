@@ -1565,3 +1565,8 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 - **Diagnostics:** `repo doctor` detects logical multi-SHA conflicts, duplicate release identities, missing/tampered/non-authoritative current objects, and state projection divergence. Existing conflicts are reported, not auto-resolved.
 - **Lifecycle proof:** a wrapper may orchestrate existing canonical `release run`/`release verify` transitions but creates no new release state or authority path; it uses the launcher Python and tracked repository identity.
 - **Next:** only after v0.1.128.1 is FINAL_VERIFIED/current may `v0.1.129 — External application pilot bootstrap` begin.
+
+
+## ADR-PROJ-113 — Control state is a verified projection of adopted artifact authority
+
+For v0.1.128.1.1, the project-scoped immutable artifact registry/current object remains authoritative. Tracked `plan-state.json` and current-baseline documentation are synchronized only after exact `ADOPTED_CURRENT` convergence and are independently checked against the authoritative registry. Wrapper retry handling and progress reporting do not add lifecycle states.

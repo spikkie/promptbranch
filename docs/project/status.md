@@ -1,14 +1,18 @@
-> v0.1.128.1 authority: accepted/current is FINAL_VERIFIED `v0.1.128`; repair only artifact identity ownership/strict resolution/registry projection correctness from PB Ticket single-authority scope. No release-state expansion and no external-application scope.
+> v0.1.128.1.1 authority: accepted/current is FINAL_VERIFIED `v0.1.128.1`; repair only lifecycle-wrapper resume/progress, ask failure classification, and tracked control-projection convergence. No external-application scope.
 
 # Promptbranch status
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.128
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
-active_candidate_version: v0.1.128.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
+accepted_current_version: v0.1.128.1
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
+accepted_current_sha256: 645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8
+active_candidate_version: v0.1.128.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip
+active_candidate_base_version: v0.1.128.1
+next_normal_version: v0.1.129
+next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
 
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip

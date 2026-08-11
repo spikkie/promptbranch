@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from promptbranch_python_authority import launcher_python_path
+from promptbranch_project_control import synchronize_project_control_after_adoption, validate_project_control_surface
 
 from promptbranch_source_fingerprint import SOURCE_PRESERVE_ROOTS, SOURCE_TRANSIENT_PARTS, source_fingerprint
 from promptbranch_release_eta import (
@@ -151,19 +152,20 @@ def _candidate_ask_route_verification(
     browser_routing_source = str(browser.get("ask_conversation_routing_source") or "").strip()
     actual_url = str(details.get("conversation_url") or "").strip().rstrip("/")
     actual_id = _conversation_id_from_url(actual_url)
-    checks = {
+    route_checks = {
         "expected_url_present": bool(expected_url_text),
         "expected_id_present": bool(expected_id_text),
         "expected_url_id_exact": _conversation_id_from_url(expected_url_text) == expected_id_text if expected_url_text and expected_id_text else False,
         "browser_requested_url_exact": browser_requested_url == expected_url_text if expected_url_text else False,
         "browser_routing_source_explicit": browser_routing_source == "explicit_cli",
         "exactly_one_ask_question_step": len(ask_steps) == 1,
-        "ask_question_step_green": ask_step.get("ok") is True if ask_step else False,
         "actual_conversation_url_exact": actual_url == expected_url_text if expected_url_text else False,
         "actual_conversation_id_exact": actual_id == expected_id_text if expected_id_text else False,
     }
+    checks = {**route_checks, "ask_question_step_green": ask_step.get("ok") is True if ask_step else False}
     return {
-        "ok": all(checks.values()),
+        "ok": all(route_checks.values()),
+        "ask_question_step_green": checks["ask_question_step_green"],
         "expected_conversation_url": expected_url_text or None,
         "expected_conversation_id": expected_id_text or None,
         "browser_requested_conversation_url": browser_requested_url or None,
@@ -172,7 +174,23 @@ def _candidate_ask_route_verification(
         "actual_conversation_id": actual_id,
         "ask_question_step_count": len(ask_steps),
         "checks": checks,
+        "route_checks": route_checks,
     }
+
+
+def _candidate_ask_failure_code(report: dict[str, Any] | None, route_verification: dict[str, Any]) -> str | None:
+    if route_verification.get("ok") is not True:
+        return "candidate_test_ask_route_mismatch"
+    browser = report.get("browser") if isinstance(report, dict) and isinstance(report.get("browser"), dict) else {}
+    steps = browser.get("steps") if isinstance(browser.get("steps"), list) else []
+    ask_step = next((item for item in steps if isinstance(item, dict) and str(item.get("name") or "") == "ask_question"), None)
+    if not isinstance(ask_step, dict) or ask_step.get("ok") is True:
+        return None
+    details = ask_step.get("details") if isinstance(ask_step.get("details"), dict) else {}
+    timeout_markers = " ".join(str(details.get(key) or "") for key in ("status", "error", "error_type", "timeout_layer", "recovery_hint")).lower()
+    if "timeout" in timeout_markers or "deadline" in timeout_markers:
+        return "candidate_test_ask_timeout"
+    return "candidate_test_ask_failed"
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -1943,11 +1961,8 @@ class SubprocessReleaseExecutor:
             **counts,
         }
         if not ok:
-            result["failure_code"] = (
-                "candidate_test_ask_route_mismatch"
-                if ask_route_verification.get("ok") is not True
-                else "candidate_test_failed"
-            )
+            ask_failure_code = _candidate_ask_failure_code(payload, ask_route_verification)
+            result["failure_code"] = ask_failure_code or "candidate_test_failed"
         return result
 
     def accept_candidate(self, machine: "ReleaseStateMachine", record: dict[str, Any]) -> dict[str, Any]:
@@ -3633,6 +3648,16 @@ class ReleaseStateMachine:
             "candidate_runtime_cleanup_ok": cleanup.get("ok") is True,
         }
         adopted = all(checks.values())
+        control_projection = {"ok": True, "status": "control_projection_not_attempted", "performed": False}
+        if adopted:
+            control_projection = synchronize_project_control_after_adoption(
+                self.config.repo_root,
+                version=self.config.version,
+                artifact_filename=str(record.get("artifact", {}).get("filename") or ""),
+                sha256=str(record.get("artifact", {}).get("sha256") or ""),
+            )
+            checks["control_projection_synchronized"] = control_projection.get("ok") is True
+            adopted = adopted and control_projection.get("ok") is True
         payload = {
             "ok": adopted,
             "status": "adopted_current_verified" if adopted else "adopted_current_mismatch",
@@ -3641,11 +3666,13 @@ class ReleaseStateMachine:
             "promotion": promotion,
             "authoritative_runtime": production,
             "candidate_runtime_cleanup": cleanup,
+            "control_projection": control_projection,
             "guards": checks,
             "effects": {
                 "authoritative_runtime_promotion_performed": bool(promotion.get("promotion_performed")),
                 "authoritative_runtime_recovered": bool(promotion.get("recovered")),
                 "candidate_runtimes_cleaned": cleanup.get("ok") is True,
+                "control_projection_synchronized": control_projection.get("ok") is True and bool(control_projection.get("performed") or control_projection.get("status") == "control_projection_not_applicable"),
             },
         }
         if not adopted:
@@ -3656,6 +3683,8 @@ class ReleaseStateMachine:
     def _final_verify(self, record: dict[str, Any]) -> dict[str, Any]:
         verification = self.verify_record(record, repair_projections=True)
         production = self.executor.authoritative_runtime_status(self, record)
+        plan_state_path = self.config.repo_root / "docs" / "project" / "plan-state.json"
+        control_validation = validate_project_control_surface(self.config.repo_root) if plan_state_path.is_file() else {"ok": True, "status": "control_projection_not_applicable"}
         checks = {
             "all_prior_states_verified": all(
                 item.get("verified") is True
@@ -3667,6 +3696,7 @@ class ReleaseStateMachine:
             "candidate_accepted": bool(record.get("evidence", {}).get("ACCEPTED", {}).get("ok")),
             "accepted_candidate_matches_current": bool(record.get("evidence", {}).get("ADOPTED_CURRENT", {}).get("ok")),
             "authoritative_runtime_exact": production.get("ok") is True,
+            "control_projection_exact": control_validation.get("ok") is True,
         }
         final_ok = all(checks.values())
         payload = {
@@ -3674,6 +3704,7 @@ class ReleaseStateMachine:
             "status": "final_verified" if final_ok else "final_verification_failed",
             "verification": verification,
             "authoritative_runtime": production,
+            "control_projection_validation": control_validation,
             "guards": checks,
             "effects": {"lifecycle_complete": final_ok},
         }

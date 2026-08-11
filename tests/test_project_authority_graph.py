@@ -112,7 +112,7 @@ def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
 def test_plan_state_markdown_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     status = repo / "docs/project/status.md"
-    status.write_text(status.read_text().replace("chatgpt_claudecode_workflow-2_v0.1.128.zip", "drifted.zip"), encoding="utf-8")
+    status.write_text(status.read_text().replace("chatgpt_claudecode_workflow-2_v0.1.128.1.zip", "drifted.zip"), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False

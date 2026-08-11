@@ -1333,3 +1333,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-531 | One resumable operator command drives each canonical state and performs an independent all-state verify after every transition, then fresh scoped `artifact current`, using only the launcher Python and tracked repo identity | construction_proven | lifecycle-proof wrapper regression + source review | v0.1.128.1 |
 | DOD-532 | Exact final v0.1.128.1 ZIP is deterministic, hygiene-clean, passes all canonical construction groups and Artifact Guardian | construction_proven | exact ZIP + canonical groups + Guardian | v0.1.128.1 |
 | DOD-533 | Fresh controlled repository release→adopt→current→doctor flow passes, a deliberate second SHA for the same repo/version fails closed with current unchanged, and the v0.1.128.1 canonical PB lifecycle reaches independently verified FINAL_VERIFIED/current | live_pending | disposable authority proof + one-command canonical lifecycle proof | v0.1.128.1 |
+
+
+## v0.1.128.1.1 repair DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-534 | One-command lifecycle wrapper resumes directly from `BLOCKED_RETRYABLE` at the next legal transition without replaying/rejecting already-reached states | construction_proven | retry-resume wrapper regression | v0.1.128.1.1 |
+| DOD-535 | Lifecycle wrapper emits live transition/subphase/ETA progress to stderr while stdout remains one final JSON object | construction_proven | wrapper stderr/stdout regression | v0.1.128.1.1 |
+| DOD-536 | Candidate ask failure classification distinguishes exact-route timeout/failure from true route mismatch | construction_proven | state-machine classification regressions | v0.1.128.1.1 |
+| DOD-537 | `ADOPTED_CURRENT` synchronizes tracked project control projection from authoritative adopted identity, and the one-command wrapper guarded-commits/pushes only known projection files with HEAD/upstream convergence | construction_proven | control synchronization + Git-backed publication regressions | v0.1.128.1.1 |
+| DOD-538 | `project validate-control-surface` fails closed when tracked accepted/current or an already-adopted active candidate disagrees with authoritative project artifact registry | construction_proven | authoritative-current drift regressions | v0.1.128.1.1 |

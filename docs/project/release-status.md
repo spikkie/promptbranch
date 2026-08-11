@@ -1,3 +1,17 @@
+# Active release status — v0.1.128.1.1
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.128.1.1 | repair | lifecycle resume/progress/diagnostics/control projection | construction worktree; exact ZIP pending | focused tests pending | DOD-534–538 in progress | — |
+| v0.1.128.1 | repair | Single authority for Promptbranch release artifacts | accepted/current, FINAL_VERIFIED | live lifecycle + fresh current green | DOD-524–533 closed except wrapper retry-resume defect | `645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8` |
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.1.zip` (`v0.1.128.1`).
+Accepted SHA-256: `645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip`.
+Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.
+
+---
+
 # Active release status — v0.1.128.1
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |

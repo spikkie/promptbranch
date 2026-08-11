@@ -838,6 +838,7 @@ def test_final_convergence_assertions_are_all_true(tmp_path: Path) -> None:
         "candidate_accepted": True,
         "accepted_candidate_matches_current": True,
         "authoritative_runtime_exact": True,
+        "control_projection_exact": True,
     }
     assert record["state"] == "FINAL_VERIFIED"
     assert record["lifecycle_complete"] is True
@@ -1912,3 +1913,47 @@ def test_release_cli_has_no_candidate_python_selector() -> None:
     assert 'add_argument("--candidate-python"' not in source
     assert "PROMPTBRANCH_CANDIDATE_PYTHON" not in source
     assert "PROMPTBRANCH_RELEASE_VALIDATION_PYTHON" not in source
+
+
+def test_candidate_ask_failure_classification_separates_route_timeout_and_failure() -> None:
+    from promptbranch_release_state_machine import _candidate_ask_failure_code, _candidate_ask_route_verification
+
+    expected = "https://chatgpt.com/g/g-p-1234567890abcdef1234567890abcdef-promptbranch3/c/6a78783b-3e00-83eb-8dc1-1e814fcf2a59"
+    report = {
+        "browser": {
+            "ask_conversation_url": expected,
+            "ask_conversation_routing_source": "explicit_cli",
+            "steps": [
+                {
+                    "name": "ask_question",
+                    "ok": False,
+                    "details": {
+                        "conversation_url": expected,
+                        "status": "service_internal_deadline_timeout",
+                        "error": "browser service internal deadline reached before client timeout",
+                    },
+                }
+            ],
+        }
+    }
+    route = _candidate_ask_route_verification(
+        report,
+        expected_url=expected,
+        expected_id="6a78783b-3e00-83eb-8dc1-1e814fcf2a59",
+    )
+    assert route["ok"] is True
+    assert route["checks"]["ask_question_step_green"] is False
+    assert _candidate_ask_failure_code(report, route) == "candidate_test_ask_timeout"
+
+    report["browser"]["steps"][0]["details"]["status"] = "answer_parse_failed"
+    report["browser"]["steps"][0]["details"]["error"] = "unexpected answer format"
+    assert _candidate_ask_failure_code(report, route) == "candidate_test_ask_failed"
+
+    report["browser"]["steps"][0]["details"]["conversation_url"] = "https://chatgpt.com/g/g-p-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-itest/c/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    bad_route = _candidate_ask_route_verification(
+        report,
+        expected_url=expected,
+        expected_id="6a78783b-3e00-83eb-8dc1-1e814fcf2a59",
+    )
+    assert bad_route["ok"] is False
+    assert _candidate_ask_failure_code(report, bad_route) == "candidate_test_ask_route_mismatch"
