@@ -1,3 +1,6 @@
+<!-- promptbranch-live-control-projection -->
+> Live control projection after adoption: accepted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
+
 <!-- promptbranch-release-construction-baseline -->
 > Construction baseline: adopted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active normal learning-completeness slice is `v0.1.128.2 — Promptbranch learning and skills completeness`; next planned slice after acceptance is `v0.1.129 — External application pilot bootstrap`.
 
