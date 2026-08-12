@@ -9,17 +9,38 @@ import textwrap
 import zipfile
 
 
+def _write_project_current_registry(tmp_path: Path, *, project_id: str, repo_id: str, version: str, sha256: str = "a" * 64) -> Path:
+    state_home = tmp_path / "project-state"
+    registry_dir = state_home / project_id
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{repo_id}_{version}.zip"
+    (registry_dir / "promptbranch_artifacts.json").write_text(json.dumps({
+        "schema_version": 1,
+        "artifacts": [{
+            "path": str(registry_dir / "objects" / sha256 / filename),
+            "filename": filename,
+            "kind": "adopted_release",
+            "version": version,
+            "repo_id": repo_id,
+            "sha256": sha256,
+            "created_at": "2026-08-12T00:00:00Z",
+        }],
+    }) + "\n", encoding="utf-8")
+    return state_home
+
+
 def test_release_lifecycle_proof_runs_and_independently_verifies_each_state(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "run-release-lifecycle-proof.py"
     repo = tmp_path / "checkout-name-is-not-authority"
     repo.mkdir()
     repo_id = "authority-demo"
+    project_id = "g-p-00000000000000000000000000000000-demo"
     (repo / ".promptbranch-repo.json").write_text(
         json.dumps({
             "schema": "promptbranch.repo.identity",
-            "schema_version": "1.0",
-            "project_id": "g-p-00000000000000000000000000000000-demo",
+            "schema_version": 1,
+            "project_id": project_id,
             "project_home_url": "https://chatgpt.com/g/g-p-00000000000000000000000000000000-demo/project",
             "repo_id": repo_id,
             "artifact_pattern": f"{repo_id}_<version>.zip",
@@ -72,13 +93,15 @@ def test_release_lifecycle_proof_runs_and_independently_verifies_each_state(tmp_
             raise SystemExit(3)
     '''), encoding="utf-8")
 
+    project_state_home = _write_project_current_registry(tmp_path, project_id=project_id, repo_id=repo_id, version="v1.2.2")
+    env = dict(__import__("os").environ)
+    env["PROMPTBRANCH_PROJECT_STATE_HOME"] = str(project_state_home)
     result = subprocess.run(
         [
             sys.executable, str(script),
             "--cli", str(fake_cli),
             "--artifact", str(artifact),
             "--version", "v1.2.3",
-            "--baseline-version", "v1.2.2",
             "--release-type", "repair",
             "--repo-path", str(repo),
             "--profile-dir", str(profile),
@@ -90,6 +113,7 @@ def test_release_lifecycle_proof_runs_and_independently_verifies_each_state(tmp_
         text=True,
         capture_output=True,
         check=False,
+        env=env,
     )
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
@@ -106,6 +130,9 @@ def test_release_lifecycle_proof_runs_and_independently_verifies_each_state(tmp_
     assert len(calls) == 11
     assert sum(1 for call in calls if "release" in call and "run" in call) == 5
     assert sum(1 for call in calls if "release" in call and "verify" in call) == 5
+    for call in calls:
+        if "release" in call and ("run" in call or "verify" in call):
+            assert call[call.index("--baseline-version") + 1] == "v1.2.2"
     assert calls[-1][calls[-1].index("--repo") + 1] == repo_id
 
 
@@ -115,9 +142,10 @@ def test_release_lifecycle_proof_resumes_blocked_retryable_and_keeps_json_stdout
     repo = tmp_path / "repo"
     repo.mkdir()
     repo_id = "authority-demo"
+    project_id = "g-p-00000000000000000000000000000000-demo"
     (repo / ".promptbranch-repo.json").write_text(json.dumps({
         "schema_version": 1,
-        "project_id": "g-p-00000000000000000000000000000000-demo",
+        "project_id": project_id,
         "project_home_url": "https://chatgpt.com/g/g-p-00000000000000000000000000000000-demo/project",
         "repo_id": repo_id,
         "artifact_pattern": f"{repo_id}_<version>.zip",
@@ -163,13 +191,16 @@ def test_release_lifecycle_proof_resumes_blocked_retryable_and_keeps_json_stdout
         else:
             raise SystemExit(3)
     '''))
+    project_state_home = _write_project_current_registry(tmp_path, project_id=project_id, repo_id=repo_id, version="v1.2.2")
+    env = dict(__import__("os").environ)
+    env["PROMPTBRANCH_PROJECT_STATE_HOME"] = str(project_state_home)
     result = subprocess.run([
         sys.executable, str(script), "--cli", str(fake_cli), "--artifact", str(artifact),
         "--version", "v1.2.3", "--baseline-version", "v1.2.2", "--repo-path", str(repo),
         "--profile-dir", str(profile), "--artifact-conversation-url",
         "https://chatgpt.com/g/g-p-00000000000000000000000000000000-demo/c/00000000-0000-0000-0000-000000000000",
         "--skip-publication", "--json",
-    ], cwd=root, text=True, capture_output=True, check=False)
+    ], cwd=root, text=True, capture_output=True, check=False, env=env)
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
     assert payload["status"] == "final_verified_and_current"
@@ -180,6 +211,58 @@ def test_release_lifecycle_proof_resumes_blocked_retryable_and_keeps_json_stdout
     runtime_step = next(item for item in payload["steps"] if item["target"] == "RUNTIME_PREPARED")
     assert runtime_step["run_status"] == "already_reached_retry_resume"
     assert runtime_step["all_reached_states_verified"] is True
+
+
+
+def test_release_lifecycle_proof_resolves_authoritative_current_when_baseline_omitted(tmp_path: Path) -> None:
+    module = _load_release_lifecycle_proof_module()
+    repo = tmp_path / "repo"; repo.mkdir()
+    project_id = "g-p-00000000000000000000000000000000-demo"
+    repo_id = "authority-demo"
+    (repo / ".promptbranch-repo.json").write_text(json.dumps({"schema_version": 1, "project_id": project_id, "repo_id": repo_id}) + "\n")
+    cli = Path(__file__).resolve().parents[1] / "promptbranch_cli.py"
+    state_home = _write_project_current_registry(tmp_path, project_id=project_id, repo_id=repo_id, version="v1.2.2")
+    import os
+    old = os.environ.get("PROMPTBRANCH_PROJECT_STATE_HOME")
+    os.environ["PROMPTBRANCH_PROJECT_STATE_HOME"] = str(state_home)
+    try:
+        baseline, source = module.resolve_lifecycle_baseline(repo=repo, cli=cli, repo_id=repo_id, target_version="v1.2.3", attempt_path=tmp_path / "missing.json", expected_baseline=None)
+    finally:
+        if old is None: os.environ.pop("PROMPTBRANCH_PROJECT_STATE_HOME", None)
+        else: os.environ["PROMPTBRANCH_PROJECT_STATE_HOME"] = old
+    assert baseline == "v1.2.2"
+    assert source == "authoritative_project_current"
+
+
+def test_release_lifecycle_proof_reuses_attempt_bound_baseline_after_current_advances(tmp_path: Path) -> None:
+    module = _load_release_lifecycle_proof_module()
+    repo = tmp_path / "repo"; repo.mkdir()
+    repo_id = "authority-demo"
+    (repo / ".promptbranch-repo.json").write_text(json.dumps({"schema_version": 1, "project_id": "g-p-00000000000000000000000000000000-demo", "repo_id": repo_id}) + "\n")
+    attempt = tmp_path / "attempt.json"
+    attempt.write_text(json.dumps({"baseline_version": "v1.2.2", "state": "ADOPTED_CURRENT"}) + "\n")
+    baseline, source = module.resolve_lifecycle_baseline(repo=repo, cli=Path(__file__).resolve().parents[1] / "promptbranch_cli.py", repo_id=repo_id, target_version="v1.2.3", attempt_path=attempt, expected_baseline=None)
+    assert baseline == "v1.2.2"
+    assert source == "durable_attempt"
+
+
+def test_release_lifecycle_proof_rejects_explicit_stale_baseline_assertion(tmp_path: Path) -> None:
+    module = _load_release_lifecycle_proof_module()
+    repo = tmp_path / "repo"; repo.mkdir()
+    project_id = "g-p-00000000000000000000000000000000-demo"
+    repo_id = "authority-demo"
+    (repo / ".promptbranch-repo.json").write_text(json.dumps({"schema_version": 1, "project_id": project_id, "repo_id": repo_id}) + "\n")
+    cli = Path(__file__).resolve().parents[1] / "promptbranch_cli.py"
+    state_home = _write_project_current_registry(tmp_path, project_id=project_id, repo_id=repo_id, version="v1.2.2")
+    import os, pytest
+    old = os.environ.get("PROMPTBRANCH_PROJECT_STATE_HOME")
+    os.environ["PROMPTBRANCH_PROJECT_STATE_HOME"] = str(state_home)
+    try:
+        with pytest.raises(RuntimeError, match="baseline assertion mismatch"):
+            module.resolve_lifecycle_baseline(repo=repo, cli=cli, repo_id=repo_id, target_version="v1.2.3", attempt_path=tmp_path / "missing.json", expected_baseline="v1.2.1")
+    finally:
+        if old is None: os.environ.pop("PROMPTBRANCH_PROJECT_STATE_HOME", None)
+        else: os.environ["PROMPTBRANCH_PROJECT_STATE_HOME"] = old
 
 
 def _load_release_lifecycle_proof_module():

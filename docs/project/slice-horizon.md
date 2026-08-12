@@ -112,3 +112,36 @@ Promptbranch, `promptbranch-method`, and every application repository retain ind
 ## v0.1.128.2 — Promptbranch learning and skills completeness
 
 Active normal PB-environment slice. Completes canonical onboarding for humans, ChatGPT Projects, Claude/coding agents, generic coding agents, and PB-aware agents through deterministic read-only learning/operator bundles. After acceptance, `v0.1.129 — External application pilot bootstrap` becomes active. Repair horizon rule remains unchanged: repair releases must not advance scope.
+
+
+## v0.1.128.2.1 — Release smoke timeout auto-recovery repair
+
+- Mode: repair.
+- Baseline construction artifact: `v0.1.128.2`; accepted/current remains `v0.1.128.1.1.1.1.1`.
+- Scope: preserve learning/skills completeness; make deterministic release smoke asks auto-recover supported transient service/response timeouts inside the initial lifecycle invocation.
+- Fail-closed exclusions: authentication/challenge, 429/cooldown, exact-route mismatch, permission, and ambiguous submit causality are never converted into automatic success/retry.
+- Next normal after repair: `v0.1.129 — External application pilot bootstrap`.
+- Planned after next: `v0.1.130 — Controlled external application change execution`.
+
+## v0.1.128.2.2 — Accepted-runtime baseline auto-reconciliation repair
+
+- Mode: repair.
+- System: Promptbranch environment/control plane.
+- Scope: preserve v0.1.128.2 learning/skills and v0.1.128.2.1 smoke-timeout recovery; make the canonical lifecycle reconstruct missing/unhealthy/mismatched production baseline from the exact adopted registry artifact before candidate preparation.
+- Authority: repository-scoped adopted artifact record + exact SHA/ZIP/VERSION proof; fail closed on ambiguity.
+- After acceptance: `v0.1.129` becomes active; `v0.1.130` remains planned after acceptance.
+
+
+## v0.1.128.2.3 — Project-scoped baseline registry authority repair
+
+Repair only the baseline-recovery registry namespace: use tracked repo identity → canonical project-scoped artifact registry; preserve learning/skills, smoke-timeout recovery, and accepted-runtime reconstruction. Successful adoption advances directly to v0.1.129.
+
+
+## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
+
+Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
+
+The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.

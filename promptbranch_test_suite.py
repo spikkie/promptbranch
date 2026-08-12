@@ -516,6 +516,12 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_response_completion.py::test_wait_and_get_response_completes_when_fresh_stream_finishes_as_baseline_text",
             "tests/test_response_completion.py::test_response_chain_diagnostics_capture_project_to_conversation_transition",
             "tests/test_promptbranch_container_api.py::test_ask_endpoint_internal_deadline_preserves_latest_submit_progress",
+            "tests/test_full_integration_harness.py::test_release_smoke_ask_recovers_completed_backend_answer_without_resubmit",
+            "tests/test_full_integration_harness.py::test_release_smoke_ask_retries_transient_timeout_inside_same_command",
+            "tests/test_full_integration_harness.py::test_release_smoke_ask_does_not_retry_rate_limit",
+            "tests/test_full_integration_harness.py::test_release_smoke_ask_recovers_new_project_conversation_without_duplicate_submit",
+            "tests/test_full_integration_harness.py::test_release_smoke_ask_rejects_pinned_route_mismatch_without_retry",
+            "tests/test_full_integration_harness.py::test_run_integration_submitted_ask_timeout_auto_recovers_inside_initial_command",
         ),
     },
     "release_lifecycle_plan": {

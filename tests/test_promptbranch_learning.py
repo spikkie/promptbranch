@@ -25,7 +25,7 @@ def test_learning_and_operator_skills_are_tracked_read_only() -> None:
 def test_learning_source_covers_all_audiences_and_core_domains() -> None:
     payload = learning.validate_learning_source(ROOT)
     assert payload["ok"] is True, payload
-    assert payload["version"] == "v0.1.128.2"
+    assert payload["version"] == "v0.1.128.2.5"
     assert payload["audiences"] == sorted(learning.AUDIENCE_MATRIX)
     assert payload["coverage_domains"] == list(learning.COVERAGE_DOMAINS)
     assert payload["authority"] == learning.NO_AUTHORITY
@@ -34,7 +34,7 @@ def test_learning_source_covers_all_audiences_and_core_domains() -> None:
 def test_operator_source_is_read_only_and_registered() -> None:
     payload = learning.validate_operator_source(ROOT)
     assert payload["ok"] is True, payload
-    assert payload["version"] == "v0.1.128.2"
+    assert payload["version"] == "v0.1.128.2.5"
     assert payload["authority"] == learning.NO_AUTHORITY
 
 

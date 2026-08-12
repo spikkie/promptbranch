@@ -1580,3 +1580,35 @@ For v0.1.128.1.1, the project-scoped immutable artifact registry/current object 
 - **Portable learning:** deterministic learning/operator ZIPs use fixed entry ordering/timestamps/modes, digest-bound manifests, explicit audience/coverage metadata, and fail-closed authority fields. Bundle validity never grants execution, mutation, publication, acceptance, adoption, deployment, Git commit, or Git push authority.
 - **Curriculum:** beginner → authority → read-only inspection → operator → developer → exercises. A learner is operator-ready only after demonstrating the authority/current/artifact/conversation distinctions from evidence.
 - **Scope:** this is the final PB-environment onboarding completeness slice before `v0.1.129 — External application pilot bootstrap`; it does not start external application development.
+
+## ADR-PROJ-12821 — Release smoke owns bounded timeout recovery
+
+- **Status:** accepted for construction candidate `v0.1.128.2.1`.
+- **Context:** previous live lifecycle attempts could return `candidate_test_ask_timeout` after submit causality was already proven, forcing the operator to issue another lifecycle/focused command. The release smoke prompts are deterministic, bounded probes and should not leak transient ChatGPT/browser timing into manual release choreography.
+- **Decision:** keep generic ask semantics fail-closed, but make the canonical release integration harness own a bounded `observe → retry-if-still-transient` policy. A timeout first triggers read-only correlated conversation inspection. If the expected token is already committed, reuse it without resubmission. Otherwise retry the deterministic smoke prompt within the same command, preserving an exact pinned route where one exists and reusing a discovered new-project conversation when possible. Authentication/challenge, 429/cooldown, permission, route mismatch, and ambiguous submit causality remain terminal.
+- **Consequences:** normal release operation needs no timeout-specific fix command; every attempt remains visible in one machine-readable step; transient recovery cannot silently bypass authority or causality failures; v0.1.128.2 learning/skills scope is preserved without rework.
+
+## ADR-PROJ-12822 — Reconstruct accepted runtime from adopted artifact authority
+
+- **Status:** accepted for construction candidate `v0.1.128.2.2`.
+- **Context:** the initial v0.1.128.2.1 live lifecycle failed before candidate runtime preparation with `accepted_runtime_baseline_mismatch`. A release command that requires the operator to repair port 8000 first violates the one-command lifecycle contract.
+- **Decision:** when the production runtime is absent, unhealthy, or not the requested accepted baseline, resolve the repository-scoped `adopted_release` record from the artifact registry, verify exact baseline version, SHA-256, ZIP safety and embedded VERSION, rebuild/restart the authoritative service from those bytes, and verify exact baseline health before continuing. Candidate artifacts cannot satisfy this recovery authority. Invalid or ambiguous adopted authority fails closed without candidate preparation.
+- **Consequence:** recoverable operational drift no longer leaks into manual release choreography, while artifact authority remains immutable and explicit. `v0.1.129` stays the next normal slice and `v0.1.130` remains planned after it.
+
+
+## Project-scoped artifact registry is the only baseline-reconstruction authority
+
+- **Status:** accepted for construction candidate `v0.1.128.2.3`.
+- Baseline recovery MUST resolve the tracked `.promptbranch-repo.json`, verify the configured repo binding, and read adopted/current from `project_registry_dir(project_id)`.
+- `profile_dir` is browser/session runtime state and MUST NOT be used as release-artifact authority.
+- Missing/invalid/ambiguous project authority fails closed; candidate bytes never substitute for accepted baseline authority.
+
+
+## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
+
+Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
+
+The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.

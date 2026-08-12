@@ -1378,3 +1378,54 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-552 | A fresh human can discover the canonical learning entry point from README/how-to documentation and follow beginner → operator → developer exercises without undocumented tribal knowledge | construction_proven | `docs/howto/00-learn-promptbranch.md` + curriculum/exercises | v0.1.128.2 |
 | DOD-553 | Exact final v0.1.128.2 ZIP is deterministic, hygiene-clean, passes every canonical construction group, and Artifact Guardian reports release-ready | construction_proven | exact ZIP + 17 canonical groups + deterministic rebuild + Guardian | v0.1.128.2 |
 | DOD-554 | The learning-completeness release closes only after one canonical normal lifecycle from accepted/current v0.1.128.1.1.1.1.1 reaches independently verified FINAL_VERIFIED/current and advances the active normal slice to v0.1.129 | live_pending | canonical lifecycle + post-adoption control projection | v0.1.128.2 |
+
+## v0.1.128.2.1 Release smoke timeout auto-recovery DoD
+
+| ID | Requirement | Status | Proof | Release |
+|---|---|---|---|---|
+| DOD-555 | Canonical release `ask_question` and `task_message_flow.ask` absorb supported transient service/assistant-response timeouts inside the original test/lifecycle invocation; no operator retry/fix command is part of the normal path | construction_proven | resilient release-smoke wrapper + integration regression | v0.1.128.2.1 |
+| DOD-556 | After a transient timeout, recovery observes the correlated conversation first and reuses an already-completed expected token without resubmitting; new-project task/message recovery can discover the correlated conversation from the unique prompt | construction_proven | pinned-backend and new-project discovery regressions | v0.1.128.2.1 |
+| DOD-557 | Recovery is bounded and auditable: default maximum three attempts, 90-second per-attempt budget, attempt/recovery evidence retained in `promptbranch.release_ask_recovery` | construction_proven | focused harness tests + canonical browser group | v0.1.128.2.1 |
+| DOD-558 | Authentication/challenge, 429/cooldown, permission, exact-route mismatch, and ambiguous submit-causality failures remain non-retryable and fail closed | construction_proven | rate-limit/route regressions + classifier contract | v0.1.128.2.1 |
+| DOD-559 | v0.1.128.2 learning/operator skill contents and portable bundle authority semantics remain unchanged while timeout recovery is release-test-specific | construction_proven | learning/tool-authoring suites + scope review | v0.1.128.2.1 |
+| DOD-560 | The exact v0.1.128.2.1 artifact closes only after deterministic construction/Guardian and one initial canonical repair lifecycle reaches independently verified FINAL_VERIFIED/current without operator retry commands, advancing next normal to v0.1.129 | live_pending | exact ZIP + canonical lifecycle + post-adoption control projection | v0.1.128.2.1 |
+
+## v0.1.128.2.2 Accepted-runtime baseline auto-reconciliation DoD
+
+| ID | Requirement | Status | Proof | Release |
+|---|---|---|---|---|
+| DOD-561 | `RUNTIME_PREPARED` automatically reconciles an absent, unhealthy, or wrong-version authoritative service from the exact repository-scoped adopted/current artifact before candidate mutation | construction_proven | release-state-machine reconciliation regressions | v0.1.128.2.2 |
+| DOD-562 | Reconciliation proves adopted kind, repo identity, baseline version, registry SHA, ZIP integrity, artifact SHA, and embedded VERSION before rebuilding port 8000; candidate bytes cannot be used as baseline authority | construction_proven | authority resolver + fail-closed tests | v0.1.128.2.2 |
+| DOD-563 | After reconstruction, Promptbranch verifies one healthy port-8000 container at the exact baseline and exact adopted artifact SHA before isolated candidate preparation continues | construction_proven | reconciliation exact-check contract | v0.1.128.2.2 |
+| DOD-564 | v0.1.128.2 learning/operator skills and v0.1.128.2.1 release-smoke timeout recovery remain unchanged while accepted-runtime reconciliation is added as operational resilience | construction_proven | learning/browser/release regression groups | v0.1.128.2.2 |
+| DOD-565 | The exact v0.1.128.2.2 artifact closes only after one initial canonical repair lifecycle reaches independently verified FINAL_VERIFIED/current without operator baseline-repair or timeout-retry commands and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption control projection | v0.1.128.2.2 |
+
+
+## v0.1.128.2.3 Project-scoped baseline registry authority DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-566 | Accepted-baseline recovery resolves `.promptbranch-repo.json`, proves repo/project binding, and reads adopted/current only from `project_registry_dir(project_id)`; browser/session `profile_dir` is never artifact authority | construction_proven | release-state-machine authority resolver + regression with absent profile registry | v0.1.128.2.3 |
+| DOD-567 | Recovery verifies configured repo root, adopted kind, repo identity, baseline version, registry SHA, ZIP integrity, artifact SHA, and embedded VERSION before any baseline runtime mutation; ambiguity remains fail-closed | construction_proven | project registry + artifact authority regressions | v0.1.128.2.3 |
+| DOD-568 | v0.1.128.2 learning/operator skills, v0.1.128.2.1 automatic smoke-timeout recovery, and v0.1.128.2.2 accepted-runtime reconstruction remain intact while registry namespace selection is corrected | construction_proven | canonical learning/browser/state-machine/release groups | v0.1.128.2.3 |
+| DOD-569 | The exact v0.1.128.2.3 artifact closes only after one initial canonical repair lifecycle reaches independently verified FINAL_VERIFIED/current without operator baseline-registry, runtime-repair, or timeout-retry commands and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.3 |
+
+
+## v0.1.128.2.4 Accepted-baseline exact-byte self-healing DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-570 | Accepted/current logical authority is exact repo + version + SHA from the canonical project registry; physical record path is not itself authority | construction_proven | baseline authority resolver + project-registry regressions | v0.1.128.2.4 |
+| DOD-571 | Missing/corrupt accepted object bytes are recovered only from bounded canonical/PB/local cache candidates whose ZIP integrity, exact registered SHA, and embedded VERSION all verify; wrong-SHA copies are ignored | construction_proven | missing-object recovery + wrong-SHA fail-closed regressions | v0.1.128.2.4 |
+| DOD-572 | Exact recovered bytes restore the canonical SHA-addressed project object; accepted immutable bytes are checked for integrity without retroactively applying newer candidate hygiene policy | construction_proven | canonical-object restoration + historical-integrity regression | v0.1.128.2.4 |
+| DOD-573 | The exact v0.1.128.2.4 artifact closes only after one initial canonical repair lifecycle reaches independently verified FINAL_VERIFIED/current with no operator baseline-byte, registry, runtime, or timeout repair commands and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.4 |
+
+
+## v0.1.128.2.5 Authoritative baseline auto-resolution DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-574 | Fresh canonical lifecycle resolves baseline from tracked repo identity plus project-scoped adopted/current authority; operators do not provide baseline bookkeeping | construction_proven | lifecycle launcher resolver + authoritative-current regression | v0.1.128.2.5 |
+| DOD-575 | Durable retries reuse the attempt-bound baseline even after adoption changes current; explicit baseline is assertion-only and mismatch fails closed | construction_proven | retry-bound and stale-assertion regressions | v0.1.128.2.5 |
+| DOD-576 | v0.1.128.2 learning/skills, smoke-timeout recovery, accepted-runtime reconstruction, project registry authority, and exact-byte recovery remain intact | construction_proven | canonical learning/browser/state-machine/artifact groups | v0.1.128.2.5 |
+| DOD-577 | Exact v0.1.128.2.5 closes after one canonical lifecycle with no baseline-version argument reaches FINAL_VERIFIED/current and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.5 |

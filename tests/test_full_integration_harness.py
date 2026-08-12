@@ -383,26 +383,38 @@ def test_run_integration_ask_question_uses_structured_result(monkeypatch: pytest
     assert ask_step["details"]["submit_evidence"]["submit_confirmed"] is True
 
 
-def test_run_integration_submitted_ask_timeout_preserves_evidence_and_never_resubmits(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_integration_submitted_ask_timeout_auto_recovers_inside_initial_command(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"result": 0}
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RECOVERY_POLL_ATTEMPTS", 1)
 
     class FakeService:
         async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
             calls["result"] += 1
+            if calls["result"] == 1:
+                return {
+                    "ok": False,
+                    "action": "ask",
+                    "status": "service_internal_deadline_timeout",
+                    "timeout_layer": "service",
+                    "partial_result": True,
+                    "conversation_url": None,
+                    "submit_evidence": {
+                        "submit_confirmed": True,
+                        "submit_confirmed_by": ["network_submit_flow"],
+                    },
+                    "ask_phase_timings": {"submit_confirmed": True},
+                    "service_timeout_seconds": 90.0,
+                    "service_internal_timeout_seconds": 82.0,
+                }
             return {
-                "ok": False,
+                "ok": True,
                 "action": "ask",
-                "status": "service_internal_deadline_timeout",
-                "timeout_layer": "service",
-                "partial_result": True,
+                "status": "completed",
+                "answer": "INTEGRATION_OK",
                 "conversation_url": "https://chatgpt.com/g/g-p-123/c/chat-1",
-                "submit_evidence": {
-                    "submit_confirmed": True,
-                    "submit_confirmed_by": ["backend_task_message"],
-                },
-                "ask_phase_timings": {"submit_confirmed": True},
-                "service_timeout_seconds": 300.0,
-                "service_internal_timeout_seconds": 292.0,
+                "submit_evidence": {"submit_confirmed": True},
             }
 
     monkeypatch.setattr("promptbranch_full_integration_test.build_service", lambda *args, **kwargs: FakeService())
@@ -416,13 +428,16 @@ def test_run_integration_submitted_ask_timeout_preserves_evidence_and_never_resu
 
     result = asyncio.run(run_integration(args))
 
-    assert result["ok"] is False
-    assert calls["result"] == 1
+    assert result["ok"] is True
+    assert calls["result"] == 2
     ask_step = next(step for step in result["steps"] if step["name"] == "ask_question")
-    assert ask_step["ok"] is False
-    assert ask_step["details"]["timeout_layer"] == "service"
-    assert ask_step["details"]["submit_evidence"]["submit_confirmed"] is True
-    assert ask_step["details"]["service_internal_timeout_seconds"] < ask_step["details"]["service_timeout_seconds"]
+    assert ask_step["ok"] is True
+    recovery = ask_step["details"]["release_ask_recovery"]
+    assert recovery["attempt_count"] == 2
+    assert recovery["recovery_used"] is True
+    assert recovery["attempts"][0]["status"] == "service_internal_deadline_timeout"
+    assert recovery["final_status"] == "completed"
+
 
 def test_source_add_timeout_failure_diagnostic_lists_sources() -> None:
     class FakeProjectService:
@@ -1167,3 +1182,255 @@ def test_deferred_step_preserves_structured_timeout_payload() -> None:
     assert result["status"] == "project_source_save_button_disabled"
     assert result["save_request_summary"]["started"] == 0
     assert steps[0].details["source_match_candidates"] == ["pasted.txt Document"]
+
+
+def test_release_smoke_ask_recovers_completed_backend_answer_without_resubmit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from promptbranch_full_integration_test import _run_resilient_release_smoke_ask
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RECOVERY_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    prompt = "Reply with exactly the single token INTEGRATION_OK and nothing else."
+    conversation_url = "https://chatgpt.com/g/g-p-demo/c/current"
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.ask_calls = 0
+            self.chat_calls = 0
+
+        async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+            self.chat_calls += 1
+            if self.chat_calls == 1:
+                return {
+                    "ok": True,
+                    "turn_count": 2,
+                    "turns": [
+                        {"index": 1, "role": "user", "text": "old"},
+                        {"index": 2, "role": "assistant", "text": "INTEGRATION_OK"},
+                    ],
+                }
+            return {
+                "ok": True,
+                "turn_count": 4,
+                "turns": [
+                    {"index": 1, "role": "user", "text": "old"},
+                    {"index": 2, "role": "assistant", "text": "INTEGRATION_OK"},
+                    {"index": 3, "role": "user", "text": prompt},
+                    {"index": 4, "role": "assistant", "text": "INTEGRATION_OK"},
+                ],
+            }
+
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            self.ask_calls += 1
+            assert kwargs["service_timeout_seconds"] > 0
+            return {
+                "ok": False,
+                "status": "service_internal_deadline_timeout",
+                "error_type": "ServiceInternalDeadlineTimeout",
+                "timeout_layer": "service",
+                "conversation_url": conversation_url,
+                "submit_evidence": {"submit_confirmed": True},
+            }
+
+    service = FakeService()
+    result = asyncio.run(_run_resilient_release_smoke_ask(
+        service,
+        prompt=prompt,
+        expected_token="INTEGRATION_OK",
+        conversation_url=conversation_url,
+        keep_open=False,
+    ))
+
+    assert result["ok"] is True
+    assert result["answer"] == "INTEGRATION_OK"
+    assert result["response_accepted_source"] == "release_smoke_backend_recovery"
+    assert result["conversation_url"] == conversation_url
+    assert service.ask_calls == 1
+    assert result["release_ask_recovery"]["final_status"] == "completed_via_observation"
+
+
+def test_release_smoke_ask_retries_transient_timeout_inside_same_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    from promptbranch_full_integration_test import _run_resilient_release_smoke_ask
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RECOVERY_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    prompt = "Reply with exactly the single token INTEGRATION_OK and nothing else."
+    conversation_url = "https://chatgpt.com/g/g-p-demo/c/current"
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.ask_calls: list[str | None] = []
+            self.chat_calls = 0
+
+        async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+            self.chat_calls += 1
+            turns = [
+                {"index": 1, "role": "user", "text": "old"},
+                {"index": 2, "role": "assistant", "text": "old-answer"},
+            ]
+            if self.chat_calls > 1:
+                turns.append({"index": 3, "role": "user", "text": prompt})
+            return {"ok": True, "turn_count": len(turns), "turns": turns}
+
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            self.ask_calls.append(kwargs.get("conversation_url"))
+            if len(self.ask_calls) == 1:
+                return {
+                    "ok": False,
+                    "status": "service_internal_deadline_timeout",
+                    "error_type": "ServiceInternalDeadlineTimeout",
+                    "timeout_layer": "service",
+                    "conversation_url": conversation_url,
+                    "submit_evidence": {"submit_confirmed": True},
+                }
+            return {
+                "ok": True,
+                "status": "completed",
+                "answer": "INTEGRATION_OK",
+                "conversation_url": conversation_url,
+            }
+
+    service = FakeService()
+    result = asyncio.run(_run_resilient_release_smoke_ask(
+        service,
+        prompt=prompt,
+        expected_token="INTEGRATION_OK",
+        conversation_url=conversation_url,
+        keep_open=False,
+    ))
+
+    assert result["ok"] is True
+    assert service.ask_calls == [conversation_url, conversation_url]
+    evidence = result["release_ask_recovery"]
+    assert evidence["attempt_count"] == 2
+    assert evidence["recovery_used"] is True
+    assert evidence["final_status"] == "completed"
+
+
+def test_release_smoke_ask_does_not_retry_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from promptbranch_full_integration_test import _run_resilient_release_smoke_ask
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    conversation_url = "https://chatgpt.com/g/g-p-demo/c/current"
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.ask_calls = 0
+
+        async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+            return {"ok": True, "turn_count": 0, "turns": []}
+
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            self.ask_calls += 1
+            return {
+                "ok": False,
+                "status": "rate_limited",
+                "error_type": "RateLimitDetectedError",
+                "error": "HTTP 429",
+                "rate_limit_telemetry": {"conversation_history_429_seen": True},
+                "conversation_url": conversation_url,
+            }
+
+    service = FakeService()
+    result = asyncio.run(_run_resilient_release_smoke_ask(
+        service,
+        prompt="smoke",
+        expected_token="INTEGRATION_OK",
+        conversation_url=conversation_url,
+        keep_open=False,
+    ))
+
+    assert result["ok"] is False
+    assert service.ask_calls == 1
+    assert result["release_ask_recovery"]["final_status"] == "non_retryable_failure"
+    assert result["release_ask_recovery"]["attempts"][0]["classification"] == "rate_limit_or_cooldown"
+
+
+def test_release_smoke_ask_recovers_new_project_conversation_without_duplicate_submit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from promptbranch_full_integration_test import _run_resilient_release_smoke_ask
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RECOVERY_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    prompt = "Promptbranch task/message live smoke unique-run. Reply with exactly the single token TASK_MESSAGE_OK and nothing else."
+    conversation_url = "https://chatgpt.com/g/g-p-demo/c/new-task"
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.ask_calls = 0
+
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            self.ask_calls += 1
+            return {
+                "ok": False,
+                "status": "service_internal_deadline_timeout",
+                "error_type": "ServiceInternalDeadlineTimeout",
+                "timeout_layer": "service",
+                "conversation_url": None,
+                "submit_evidence": {"submit_confirmed": True},
+            }
+
+        async def list_project_chats(self, *, keep_open: bool = False, include_history_fallback: bool = True) -> dict[str, Any]:
+            assert include_history_fallback is False
+            return {"ok": True, "chats": [{"conversation_url": conversation_url, "id": "new-task"}]}
+
+        async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+            return {
+                "ok": True,
+                "turn_count": 2,
+                "turns": [
+                    {"index": 1, "role": "user", "text": prompt},
+                    {"index": 2, "role": "assistant", "text": "TASK_MESSAGE_OK"},
+                ],
+            }
+
+    service = FakeService()
+    result = asyncio.run(_run_resilient_release_smoke_ask(
+        service,
+        prompt=prompt,
+        expected_token="TASK_MESSAGE_OK",
+        conversation_url=None,
+        keep_open=False,
+    ))
+
+    assert result["ok"] is True
+    assert result["conversation_url"] == conversation_url
+    assert result["answer"] == "TASK_MESSAGE_OK"
+    assert service.ask_calls == 1
+    assert result["release_ask_recovery"]["final_status"] == "completed_via_observation"
+
+
+def test_release_smoke_ask_rejects_pinned_route_mismatch_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from promptbranch_full_integration_test import _run_resilient_release_smoke_ask
+
+    monkeypatch.setattr("promptbranch_full_integration_test.RELEASE_ASK_RETRY_BACKOFF_SECONDS", 0.0)
+    expected_url = "https://chatgpt.com/g/g-p-demo/c/expected"
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.ask_calls = 0
+
+        async def get_chat(self, *, conversation_url: str, keep_open: bool = False) -> dict[str, Any]:
+            return {"ok": True, "turn_count": 0, "turns": []}
+
+        async def ask_question_result(self, **kwargs: Any) -> dict[str, Any]:
+            self.ask_calls += 1
+            return {
+                "ok": True,
+                "status": "completed",
+                "answer": "INTEGRATION_OK",
+                "conversation_url": "https://chatgpt.com/g/g-p-demo/c/wrong",
+            }
+
+    service = FakeService()
+    result = asyncio.run(_run_resilient_release_smoke_ask(
+        service,
+        prompt="smoke",
+        expected_token="INTEGRATION_OK",
+        conversation_url=expected_url,
+        keep_open=False,
+    ))
+
+    assert result["ok"] is False
+    assert result["status"] == "release_smoke_route_mismatch"
+    assert service.ask_calls == 1
+    assert result["release_ask_recovery"]["final_status"] == "non_retryable_failure"

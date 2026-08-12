@@ -1,6 +1,3 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
 # Migration to Project Control Surface
 
 ## v0.1.123.2.4 ask-release prompt migration
@@ -1621,3 +1618,27 @@ Carry forward `v0.1.128.1.1.1.1` unchanged. Add only task/message response-chain
 ## v0.1.128.2 learning and skills completeness migration
 
 No compatibility migration is introduced. `v0.1.128.2` starts from authoritative accepted/current `v0.1.128.1.1.1.1.1`. Existing PB skills remain canonical; the new `promptbranch-learning` bundle embeds their current tracked skill documents rather than creating aliases or compatibility copies in runtime registries. `promptbranch-learning` and `promptbranch-operator` are additive read-only skills. Portable export/verification is generalized to these bundles while retaining the existing `promptbranch-tool-authoring` contract. No browser profile, Project Source, artifact registry, release-attempt, application repository, deployment state, or accepted/current artifact is migrated by construction. After acceptance, `v0.1.129 — External application pilot bootstrap` becomes active and `v0.1.130` remains planned after it.
+
+
+## v0.1.128.2.1 release-smoke timeout recovery migration
+
+No operator data migration is required. The complete v0.1.128.2 learning/operator skill tree and portable bundle contracts are retained unchanged. The repair changes only canonical release-browser smoke orchestration: transient service/response timeout results are observed and, when necessary, retried inside the same initial test/lifecycle command. Correlated backend conversation inspection is attempted before resubmission so an already-completed answer is reused instead of duplicated. Authentication/challenge, 429/cooldown, route mismatch, permission, and submit-causality ambiguity remain non-retryable. Existing browser profiles, project sources, artifact registries, accepted/current state, and external application repositories require no conversion. After successful adoption of v0.1.128.2.1, `v0.1.129 — External application pilot bootstrap` becomes active and `v0.1.130` is planned after it.
+
+## v0.1.128.2.2 accepted-runtime baseline reconciliation migration
+
+No operator data migration is required. Existing accepted/current artifact registry state is the recovery authority. On release startup only, if the port-8000 runtime cannot prove the requested accepted baseline, Promptbranch may reconstruct that runtime from the exact adopted artifact after repo/version/SHA/ZIP/VERSION verification. No compatibility shim or legacy runtime path is introduced. Invalid or unavailable adopted authority remains fail-closed. After successful adoption of v0.1.128.2.2, `v0.1.129 — External application pilot bootstrap` becomes active and `v0.1.130` remains planned after it.
+
+
+## v0.1.128.2.3 project-scoped registry authority migration
+
+No operator data migration is required. This removes an incorrect internal lookup path: accepted-baseline reconstruction now uses the same tracked-repository → project-scoped artifact registry authority as `pb artifact current` and project-control validation. Browser/session profile state is not consulted for artifact authority. Existing project-scoped adopted records and immutable object bytes remain unchanged.
+
+
+## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
+
+Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
+
+The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.

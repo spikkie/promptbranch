@@ -8,6 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry
+from promptbranch_project import join_local_repo, load_repo_identity, project_registry_dir, write_repo_identity
+
 from promptbranch_release_state_machine import (
     FAILURE_STATES,
     LEGAL_TRANSITIONS,
@@ -19,6 +22,7 @@ from promptbranch_release_state_machine import (
     build_machine_from_args,
     canonical_state,
     sha256_file,
+    _accepted_runtime_exact_checks,
 )
 
 
@@ -995,6 +999,7 @@ class ScriptedProductionExecutor(SubprocessReleaseExecutor):
         self.accepted_snapshot_count = 0
         self.logged_calls: list[str] = []
         self.capture_calls: list[list[str]] = []
+        self.reconcile_calls = 0
 
     def _python(self, machine: ReleaseStateMachine) -> Path:
         return Path(sys.executable)
@@ -1041,7 +1046,7 @@ class ScriptedProductionExecutor(SubprocessReleaseExecutor):
             payload["health"] = {"ok": False, "version": BASELINE.removeprefix("v")}
             payload["health_error"] = "health check failed"
             return payload
-        if self.accepted_mode == "baseline-mismatch":
+        if self.accepted_mode in {"baseline-mismatch", "authority-invalid"}:
             payload = self._healthy_accepted_snapshot()
             payload["health"] = {"ok": True, "version": "0.1.125.3.4.1"}
             payload["image_labels"]["promptbranch.version"] = "0.1.125.3.4.1"
@@ -1062,6 +1067,29 @@ class ScriptedProductionExecutor(SubprocessReleaseExecutor):
         if self.accepted_mode == "image-drift-after-precondition" and self.accepted_snapshot_count >= 2:
             return self._healthy_accepted_snapshot(image_id="sha256:drifted-image", artifact_sha="drifted-artifact-sha")
         return self._healthy_accepted_snapshot()
+
+    def _reconcile_accepted_runtime_from_authoritative_baseline(self, machine, record, checkpoint, *, observed_runtime):
+        self.reconcile_calls += 1
+        if self.accepted_mode == "authority-invalid":
+            return {
+                "ok": False,
+                "status": "accepted_baseline_artifact_invalid",
+                "failure_code": "accepted_baseline_artifact_invalid",
+                "mutation_performed": False,
+                "observed_runtime": observed_runtime,
+            }
+        self.accepted_mode = "healthy"
+        reconciled = self._healthy_accepted_snapshot()
+        return {
+            "ok": True,
+            "status": "accepted_runtime_reconciled",
+            "failure_code": None,
+            "mutation_performed": True,
+            "reconciled_from_authoritative_current": True,
+            "observed_runtime": observed_runtime,
+            "reconciled_runtime": reconciled,
+            "checks": _accepted_runtime_exact_checks(reconciled, expected_version=BASELINE.removeprefix("v")),
+        }
 
     def _http_json(self, url: str, *, timeout: float = 5.0):
         if url.endswith(":8000/healthz"):
@@ -1144,6 +1172,160 @@ def test_safe_extract_preserves_runtime_script_execute_bits(tmp_path: Path) -> N
     assert os.access(destination / "docker" / "run-chatgpt-service-in-container.sh", os.X_OK)
 
 
+def _bind_test_project_authority(machine: ReleaseStateMachine, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ArtifactRegistry:
+    project_id = "g-p-0123456789abcdef0123456789abcdef"
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "project-state"))
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "project-config"))
+    write_repo_identity(
+        machine.config.repo_root,
+        project_id=project_id,
+        project_home_url=f"https://chatgpt.com/g/{project_id}-promptbranch3/project",
+        repo_id=REPO_ID,
+        artifact_pattern=f"{REPO_ID}_<version>.zip",
+        role="member",
+    )
+    identity = load_repo_identity(machine.config.repo_root)
+    assert identity is not None
+    join_local_repo(identity)
+    registry = ArtifactRegistry(project_registry_dir(identity.project_id))
+    assert registry.inspect()["ok"] is True
+    return registry
+
+
+def _register_adopted_baseline(registry: ArtifactRegistry, machine: ReleaseStateMachine, artifact: Path, *, sha256: str | None = None) -> None:
+    with zipfile.ZipFile(artifact) as archive:
+        file_count = len(archive.infolist())
+    registry.add(ArtifactRecord(
+        path=str(artifact),
+        filename=artifact.name,
+        kind="adopted_release",
+        version=BASELINE,
+        repo_path=str(machine.config.repo_root),
+        sha256=sha256 or sha256_file(artifact),
+        size_bytes=artifact.stat().st_size,
+        file_count=file_count,
+        created_at="2026-08-12T00:00:00Z",
+        repo_id=REPO_ID,
+    ))
+
+
+def test_authoritative_baseline_artifact_uses_project_scoped_registry_not_browser_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="candidate-registered", executor=executor)
+    registry = _bind_test_project_authority(machine, tmp_path, monkeypatch)
+    baseline_artifact = _candidate_zip(tmp_path, version=BASELINE)
+    _register_adopted_baseline(registry, machine, baseline_artifact)
+
+    # Deliberately leave the browser/session profile registry absent. The project-scoped
+    # registry is the only artifact authority and must still resolve successfully.
+    assert not ArtifactRegistry(machine.config.profile_dir).path.exists()
+
+    payload = executor._authoritative_baseline_artifact(machine)
+
+    assert payload["ok"] is True, payload
+    assert payload["registry_resolution"] == "tracked_repo_identity_project_registry"
+    assert payload["registry_file"] == str(registry.path)
+    assert payload["project_id"] == "g-p-0123456789abcdef0123456789abcdef"
+    assert payload["version"] == BASELINE
+    assert payload["artifact_sha256"] == sha256_file(baseline_artifact)
+    assert payload["checks"]["exact_accepted_bytes_verified"] is True
+
+
+def test_authoritative_baseline_artifact_rejects_project_registry_sha_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="candidate-registered", executor=executor)
+    registry = _bind_test_project_authority(machine, tmp_path, monkeypatch)
+    baseline_artifact = _candidate_zip(tmp_path, version=BASELINE)
+    _register_adopted_baseline(registry, machine, baseline_artifact)
+    raw = registry.load()
+    raw["artifacts"][0]["sha256"] = "0" * 64
+    registry.path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
+
+    payload = executor._authoritative_baseline_artifact(machine)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_baseline_artifact_bytes_unavailable"
+    assert payload["failed_checks"] == ["exact_accepted_bytes_not_found"]
+    assert payload["byte_candidate_attempts"]
+    assert not any(item.get("sha_exact") for item in payload["byte_candidate_attempts"])
+
+
+
+def test_authoritative_baseline_artifact_restores_missing_object_from_exact_repo_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="candidate-registered", executor=executor)
+    registry = _bind_test_project_authority(machine, tmp_path, monkeypatch)
+    baseline_artifact = _candidate_zip(tmp_path, version=BASELINE)
+    expected_sha = sha256_file(baseline_artifact)
+    _register_adopted_baseline(registry, machine, baseline_artifact)
+    current = registry.current(REPO_ID)
+    assert isinstance(current, dict)
+    canonical_object = Path(str(current["path"]))
+    recovery_copy = machine.config.repo_root / baseline_artifact.name
+    recovery_copy.write_bytes(baseline_artifact.read_bytes())
+    canonical_object.unlink()
+
+    payload = executor._authoritative_baseline_artifact(machine)
+
+    assert payload["ok"] is True, payload
+    assert payload["byte_resolution"] == "bounded_exact_sha_recovery"
+    assert payload["selected_recovery_path"] == str(recovery_copy)
+    assert payload["canonical_object_restore"]["status"] == "canonical_object_restored"
+    assert canonical_object.is_file()
+    assert sha256_file(canonical_object) == expected_sha
+
+
+def test_authoritative_baseline_artifact_ignores_wrong_sha_cache_and_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="candidate-registered", executor=executor)
+    registry = _bind_test_project_authority(machine, tmp_path, monkeypatch)
+    baseline_artifact = _candidate_zip(tmp_path, version=BASELINE)
+    _register_adopted_baseline(registry, machine, baseline_artifact)
+    current = registry.current(REPO_ID)
+    assert isinstance(current, dict)
+    Path(str(current["path"])).unlink()
+    wrong = machine.config.repo_root / baseline_artifact.name
+    wrong.write_bytes(b"not the accepted artifact")
+
+    payload = executor._authoritative_baseline_artifact(machine)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_baseline_artifact_bytes_unavailable"
+    assert payload["failed_checks"] == ["exact_accepted_bytes_not_found"]
+    wrong_attempt = next(item for item in payload["byte_candidate_attempts"] if item["path"] == str(wrong))
+    assert wrong_attempt["sha_exact"] is False
+
+
+def test_verify_accepted_baseline_bytes_does_not_reapply_candidate_hygiene_policy(tmp_path: Path) -> None:
+    # Historical accepted bytes are bound by immutable SHA/version and transport integrity.
+    # New-candidate policy evolution must not invalidate already accepted authority during recovery.
+    artifact = tmp_path / f"{REPO_ID}_{BASELINE}.zip"
+    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("VERSION", BASELINE + "\n")
+        archive.writestr("legacy/accepted.txt", "historical accepted content\n")
+    expected_sha = sha256_file(artifact)
+
+    payload = SubprocessReleaseExecutor._verify_accepted_baseline_bytes(artifact, expected_sha=expected_sha, expected_version=BASELINE)
+
+    assert payload["ok"] is True, payload
+    assert payload["sha_exact"] is True
+    assert payload["version_exact"] is True
+    assert payload["crc_clean"] is True
+
+def test_authoritative_baseline_artifact_fails_closed_when_project_registry_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="candidate-registered", executor=executor)
+    registry = _bind_test_project_authority(machine, tmp_path, monkeypatch)
+    registry.path.unlink()
+
+    payload = executor._authoritative_baseline_artifact(machine)
+
+    assert payload["ok"] is False
+    assert payload["status"] == "accepted_baseline_registry_unavailable"
+    assert payload["registry_file"] == str(registry.path)
+    assert payload["registry_status"] == "artifact_registry_missing"
+
+
 def test_production_runtime_uses_isolated_compose_image_port_and_preserves_accepted_runtime(tmp_path: Path) -> None:
     executor = ScriptedProductionExecutor()
     machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
@@ -1164,8 +1346,46 @@ def test_production_runtime_uses_isolated_compose_image_port_and_preserves_accep
     assert executor.logged_calls == ["install", "build", "start"]
 
 
-def test_runtime_prepare_blocks_when_accepted_runtime_is_absent_before_candidate_mutation(tmp_path: Path) -> None:
+def test_runtime_prepare_reconciles_absent_accepted_runtime_from_authoritative_baseline(tmp_path: Path) -> None:
     executor = ScriptedProductionExecutor(accepted_mode="absent")
+    machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
+
+    payload, code = machine.run()
+
+    assert code == 0, payload
+    assert payload["current_state"] == "RUNTIME_PREPARED"
+    assert executor.reconcile_calls == 1
+    checkpoint = json.loads((machine.attempt_dir / "runtime" / "runtime-checkpoint.json").read_text(encoding="utf-8"))
+    assert checkpoint["accepted_runtime_reconciliation"]["status"] == "accepted_runtime_reconciled"
+    assert checkpoint["accepted_runtime_before_checks"]["accepted_health_version_exact"] is True
+
+
+def test_runtime_prepare_reconciles_unhealthy_accepted_runtime_from_authoritative_baseline(tmp_path: Path) -> None:
+    executor = ScriptedProductionExecutor(accepted_mode="unhealthy")
+    machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
+
+    payload, code = machine.run()
+
+    assert code == 0, payload
+    assert executor.reconcile_calls == 1
+    runtime = _record(machine)["evidence"]["RUNTIME_PREPARED"]
+    assert runtime["checks"]["accepted_runtime_before_exact"] is True
+
+
+def test_runtime_prepare_reconciles_version_mismatch_from_authoritative_baseline(tmp_path: Path) -> None:
+    executor = ScriptedProductionExecutor(accepted_mode="baseline-mismatch")
+    machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
+
+    payload, code = machine.run()
+
+    assert code == 0, payload
+    assert executor.reconcile_calls == 1
+    runtime = _record(machine)["evidence"]["RUNTIME_PREPARED"]
+    assert runtime["accepted_runtime_before"]["health"]["version"] == BASELINE.removeprefix("v")
+
+
+def test_runtime_prepare_fails_closed_when_authoritative_baseline_cannot_be_proven(tmp_path: Path) -> None:
+    executor = ScriptedProductionExecutor(accepted_mode="authority-invalid")
     machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
 
     payload, code = machine.run()
@@ -1173,33 +1393,8 @@ def test_runtime_prepare_blocks_when_accepted_runtime_is_absent_before_candidate
     assert code == 1
     assert payload["current_state"] == "CANDIDATE_REGISTERED"
     assert payload["failure_state"] == "BLOCKED_RETRYABLE"
-    assert payload["failure"]["code"] == "accepted_runtime_unavailable"
-    assert executor.logged_calls == []
-    checkpoint = json.loads((machine.attempt_dir / "runtime" / "runtime-checkpoint.json").read_text(encoding="utf-8"))
-    assert checkpoint["accepted_runtime_before"]["present"] is False
-    assert checkpoint["accepted_runtime_before_checks"]["accepted_runtime_present"] is False
-    assert checkpoint["last_phase"] == "accepted_runtime_precondition"
-
-
-def test_runtime_prepare_blocks_when_accepted_runtime_is_unhealthy(tmp_path: Path) -> None:
-    executor = ScriptedProductionExecutor(accepted_mode="unhealthy")
-    machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
-
-    payload, code = machine.run()
-
-    assert code == 1
-    assert payload["failure"]["code"] == "accepted_runtime_unavailable"
-    assert executor.logged_calls == []
-
-
-def test_runtime_prepare_blocks_when_accepted_runtime_does_not_match_baseline(tmp_path: Path) -> None:
-    executor = ScriptedProductionExecutor(accepted_mode="baseline-mismatch")
-    machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
-
-    payload, code = machine.run()
-
-    assert code == 1
-    assert payload["failure"]["code"] == "accepted_runtime_baseline_mismatch"
+    assert payload["failure"]["code"] == "accepted_baseline_artifact_invalid"
+    assert executor.reconcile_calls == 1
     assert executor.logged_calls == []
 
 
@@ -1236,20 +1431,21 @@ def test_runtime_prepare_blocks_if_accepted_runtime_image_identity_drifts(tmp_pa
     assert checks["accepted_runtime_unchanged"] is False
 
 
-def test_runtime_prepare_retry_resnapshots_accepted_runtime_after_operator_recovery(tmp_path: Path) -> None:
+def test_runtime_prepare_auto_reconciliation_requires_no_operator_retry_and_is_idempotent(tmp_path: Path) -> None:
     executor = ScriptedProductionExecutor(accepted_mode="absent")
     machine = _machine(tmp_path, until="runtime-prepared", executor=executor)
 
     first, first_code = machine.run()
-    assert first_code == 1
-    assert first["failure"]["code"] == "accepted_runtime_unavailable"
+    assert first_code == 0, first
+    assert first["current_state"] == "RUNTIME_PREPARED"
+    assert executor.reconcile_calls == 1
+    assert executor.logged_calls == ["install", "build", "start"]
 
-    executor.accepted_mode = "healthy"
     second, second_code = machine.run()
 
     assert second_code == 0, second
     assert second["current_state"] == "RUNTIME_PREPARED"
-    assert executor.logged_calls == ["install", "build", "start"]
+    assert executor.reconcile_calls == 1
     runtime = _record(machine)["evidence"]["RUNTIME_PREPARED"]
     assert runtime["checks"]["accepted_runtime_before_exact"] is True
     assert runtime["checks"]["accepted_runtime_after_exact"] is True

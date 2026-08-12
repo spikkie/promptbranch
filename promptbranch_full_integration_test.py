@@ -41,6 +41,17 @@ SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS = float(os.getenv(
     os.getenv("CHATGPT_SOURCE_MUTATION_SERVICE_TIMEOUT_SECONDS", "900.0"),
 ))
 
+# Release/browser smoke asks are deliberately short deterministic probes.  A
+# single ChatGPT/browser service stall must not force the operator to rerun the
+# whole release lifecycle manually.  Keep retry ownership in this canonical
+# integration harness (not in the generic ask service), so retries are bounded,
+# route-aware, auditable, and limited to release-smoke semantics.
+RELEASE_ASK_MAX_ATTEMPTS = max(1, min(int(os.getenv("PROMPTBRANCH_RELEASE_ASK_MAX_ATTEMPTS", "3")), 5))
+RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS = max(30.0, min(float(os.getenv("PROMPTBRANCH_RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS", "90.0")), 300.0))
+RELEASE_ASK_RETRY_BACKOFF_SECONDS = max(0.0, min(float(os.getenv("PROMPTBRANCH_RELEASE_ASK_RETRY_BACKOFF_SECONDS", "3.0")), 30.0))
+RELEASE_ASK_RECOVERY_POLL_ATTEMPTS = max(1, min(int(os.getenv("PROMPTBRANCH_RELEASE_ASK_RECOVERY_POLL_ATTEMPTS", "2")), 5))
+RELEASE_ASK_RECOVERY_POLL_SECONDS = max(0.0, min(float(os.getenv("PROMPTBRANCH_RELEASE_ASK_RECOVERY_POLL_SECONDS", "2.0")), 15.0))
+
 CANONICAL_STEP_ORDER: tuple[str, ...] = (
     "mcp_smoke",
     "login_check",
@@ -760,6 +771,7 @@ class DockerServiceAdapter:
         expect_json: bool = False,
         keep_open: bool = False,
         retries: Optional[int] = None,
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
         return await asyncio.to_thread(
             self._ask_question_result_sync,
@@ -769,6 +781,7 @@ class DockerServiceAdapter:
             expect_json,
             keep_open,
             retries,
+            service_timeout_seconds,
         )
 
     def _ask_question_result_sync(
@@ -779,8 +792,13 @@ class DockerServiceAdapter:
         expect_json: bool,
         keep_open: bool,
         retries: Optional[int],
+        service_timeout_seconds: Optional[float] = None,
     ) -> dict[str, Any]:
-        service_timeout = self._ask_service_timeout_seconds()
+        service_timeout = (
+            max(1.0, float(service_timeout_seconds))
+            if service_timeout_seconds is not None
+            else self._ask_service_timeout_seconds()
+        )
         effective_project_url = self._project_url_for_conversation(conversation_url, self.project_url)
         with self._client() as client:
             try:
@@ -2172,6 +2190,478 @@ def _conversation_id_from_task_url(conversation_url: str) -> str:
     return str(conversation_url or "").rstrip("/").split("/c/", 1)[-1].split("/", 1)[0]
 
 
+def _normalise_release_smoke_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _release_ask_rate_limit_seen(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    telemetry = payload.get("rate_limit_telemetry")
+    if isinstance(telemetry, dict):
+        if any(
+            telemetry.get(key) is True
+            for key in (
+                "rate_limit_modal_detected",
+                "conversation_history_429_seen",
+                "backend_api_guardrail_seen",
+            )
+        ):
+            return True
+        if telemetry.get("service_rate_limit_events"):
+            return True
+        try:
+            if float(telemetry.get("cooldown_wait_seconds_total") or 0.0) > 0.0:
+                return True
+        except (TypeError, ValueError):
+            pass
+    text = " ".join(
+        str(payload.get(key) or "")
+        for key in ("status", "error_type", "error", "timeout_layer")
+    ).lower()
+    return any(token in text for token in ("rate_limit", "rate limited", "429", "cooldown"))
+
+
+def _release_ask_transient_failure(payload: Any) -> tuple[bool, str]:
+    if not isinstance(payload, dict):
+        return False, "non_dict_result"
+    if payload.get("ok") is True:
+        return False, "already_green"
+    if _release_ask_rate_limit_seen(payload):
+        return False, "rate_limit_or_cooldown"
+
+    text = " ".join(
+        str(payload.get(key) or "")
+        for key in ("status", "error_type", "error", "timeout_layer")
+    ).lower()
+    non_retryable_tokens = (
+        "auth_challenge",
+        "authentication",
+        "manual_login",
+        "route_mismatch",
+        "wrong_route",
+        "forbidden",
+        "permission",
+        "submit_causality_not_confirmed",
+        "prepare_token_set_not_consumed",
+        "without_message_commit",
+        "without_backend_commit",
+    )
+    if any(token in text for token in non_retryable_tokens):
+        return False, "non_retryable_authority_or_causality_failure"
+
+    transient_tokens = (
+        "service_internal_deadline_timeout",
+        "service_client_read_timeout",
+        "assistant_response_timeout",
+        "submit_confirmed_answer_timeout",
+        "response_timeout",
+        "browser_profile_busy",
+        "browser_context_unavailable",
+        "targetclosederror",
+        "target closed",
+        "temporarily_unavailable",
+        "temporary unavailable",
+    )
+    if any(token in text for token in transient_tokens):
+        return True, "bounded_transient_transport_or_response_failure"
+    return False, "unclassified_failure"
+
+
+def _release_ask_attempt_summary(
+    *,
+    attempt: int,
+    payload: dict[str, Any],
+    duration_seconds: float,
+    transient: bool,
+    classification: str,
+    requested_conversation_url: Optional[str],
+) -> dict[str, Any]:
+    submit_evidence = payload.get("submit_evidence") if isinstance(payload.get("submit_evidence"), dict) else {}
+    diagnostics = payload.get("response_chain_diagnostics") if isinstance(payload.get("response_chain_diagnostics"), dict) else {}
+    return {
+        "attempt": attempt,
+        "ok": payload.get("ok") is True,
+        "status": payload.get("status"),
+        "error_type": payload.get("error_type"),
+        "timeout_layer": payload.get("timeout_layer"),
+        "duration_seconds": round(duration_seconds, 3),
+        "transient": transient,
+        "classification": classification,
+        "requested_conversation_url": requested_conversation_url,
+        "returned_conversation_url": _extract_conversation_url_from_ask_result(payload),
+        "submit_confirmed": bool(
+            submit_evidence.get("submit_confirmed")
+            or payload.get("submit_causality_confirmed")
+        ),
+        "response_chain_terminal_status": diagnostics.get("terminal_status"),
+        "rate_limit_seen": _release_ask_rate_limit_seen(payload),
+    }
+
+
+def _release_ask_chat_match(
+    chat_payload: Any,
+    *,
+    prompt: str,
+    expected_token: str,
+    baseline_turn_count: Optional[int],
+) -> dict[str, Any]:
+    turns = chat_payload.get("turns") if isinstance(chat_payload, dict) and isinstance(chat_payload.get("turns"), list) else []
+    wanted_prompt = _normalise_release_smoke_text(prompt)
+    wanted_token = _normalise_release_smoke_text(expected_token).upper()
+    matched_user: Optional[dict[str, Any]] = None
+    for turn in turns:
+        if not isinstance(turn, dict) or str(turn.get("role") or "").lower() != "user":
+            continue
+        try:
+            turn_index = int(turn.get("index") or 0)
+        except (TypeError, ValueError):
+            turn_index = 0
+        if baseline_turn_count is not None and turn_index <= baseline_turn_count:
+            continue
+        if _normalise_release_smoke_text(turn.get("text")) == wanted_prompt:
+            matched_user = turn
+    if matched_user is None:
+        return {"status": "prompt_not_found", "prompt_found": False, "answer_found": False}
+
+    try:
+        matched_user_index = int(matched_user.get("index") or 0)
+    except (TypeError, ValueError):
+        matched_user_index = 0
+    assistant_candidates: list[dict[str, Any]] = []
+    for turn in turns:
+        if not isinstance(turn, dict) or str(turn.get("role") or "").lower() != "assistant":
+            continue
+        try:
+            turn_index = int(turn.get("index") or 0)
+        except (TypeError, ValueError):
+            turn_index = 0
+        if turn_index > matched_user_index:
+            assistant_candidates.append(turn)
+    if not assistant_candidates:
+        return {
+            "status": "prompt_found_answer_pending",
+            "prompt_found": True,
+            "answer_found": False,
+            "user_turn_index": matched_user_index,
+        }
+
+    answer_turn = assistant_candidates[0]
+    answer_text = _normalise_release_smoke_text(answer_turn.get("text"))
+    token_match = answer_text.upper() == wanted_token
+    return {
+        "status": "answer_token_matched" if token_match else "answer_present_unexpected",
+        "prompt_found": True,
+        "answer_found": True,
+        "answer_token_matched": token_match,
+        "answer_text": answer_text,
+        "user_turn_index": matched_user_index,
+        "assistant_turn_index": answer_turn.get("index"),
+        "assistant_turn_id": answer_turn.get("id"),
+    }
+
+
+async def _release_ask_get_chat_safely(service: Any, conversation_url: str) -> Optional[dict[str, Any]]:
+    if not conversation_url or "/c/" not in conversation_url:
+        return None
+    try:
+        result = await service.get_chat(conversation_url=conversation_url, keep_open=False)
+    except Exception:
+        return None
+    return result if isinstance(result, dict) and result.get("ok") is True else None
+
+
+async def _release_ask_discover_prompt_chat(
+    service: Any,
+    *,
+    prompt: str,
+    expected_token: str,
+) -> tuple[Optional[str], Optional[dict[str, Any]], Optional[dict[str, Any]]]:
+    try:
+        listing = await service.list_project_chats(keep_open=False, include_history_fallback=False)
+    except Exception:
+        return None, None, None
+    entries = _task_entries_from_list_payload(listing)
+    for item in entries[:6]:
+        conversation_url = str(item.get("conversation_url") or item.get("url") or "").strip()
+        if "/c/" not in conversation_url:
+            continue
+        chat = await _release_ask_get_chat_safely(service, conversation_url)
+        if chat is None:
+            continue
+        match = _release_ask_chat_match(
+            chat,
+            prompt=prompt,
+            expected_token=expected_token,
+            baseline_turn_count=None,
+        )
+        if match.get("prompt_found"):
+            return conversation_url, chat, match
+    return None, None, None
+
+
+async def _release_ask_observe_committed_result(
+    service: Any,
+    *,
+    prompt: str,
+    expected_token: str,
+    conversation_url: Optional[str],
+    baseline_turn_count: Optional[int],
+) -> dict[str, Any]:
+    target_url = conversation_url if conversation_url and "/c/" in conversation_url else None
+    observations: list[dict[str, Any]] = []
+    for poll in range(1, RELEASE_ASK_RECOVERY_POLL_ATTEMPTS + 1):
+        chat: Optional[dict[str, Any]] = None
+        match: Optional[dict[str, Any]] = None
+        if target_url:
+            chat = await _release_ask_get_chat_safely(service, target_url)
+            if chat is not None:
+                match = _release_ask_chat_match(
+                    chat,
+                    prompt=prompt,
+                    expected_token=expected_token,
+                    baseline_turn_count=baseline_turn_count,
+                )
+        else:
+            target_url, chat, match = await _release_ask_discover_prompt_chat(
+                service,
+                prompt=prompt,
+                expected_token=expected_token,
+            )
+        observation = {
+            "poll": poll,
+            "conversation_url": target_url,
+            "chat_turn_count": chat.get("turn_count") if isinstance(chat, dict) else None,
+            "match": match,
+        }
+        observations.append(observation)
+        if isinstance(match, dict) and match.get("answer_found"):
+            return {
+                "status": "answer_recovered" if match.get("answer_token_matched") else "unexpected_answer_recovered",
+                "conversation_url": target_url,
+                "match": match,
+                "observations": observations,
+            }
+        if poll < RELEASE_ASK_RECOVERY_POLL_ATTEMPTS and RELEASE_ASK_RECOVERY_POLL_SECONDS > 0:
+            await asyncio.sleep(RELEASE_ASK_RECOVERY_POLL_SECONDS)
+    return {
+        "status": "prompt_pending" if any((item.get("match") or {}).get("prompt_found") for item in observations) else "prompt_not_observed",
+        "conversation_url": target_url,
+        "match": next((item.get("match") for item in reversed(observations) if isinstance(item.get("match"), dict)), None),
+        "observations": observations,
+    }
+
+
+async def _run_resilient_release_smoke_ask(
+    service: Any,
+    *,
+    prompt: str,
+    expected_token: str,
+    conversation_url: Optional[str],
+    keep_open: bool,
+) -> dict[str, Any]:
+    """Run one release smoke ask with transparent, bounded transient recovery.
+
+    This wrapper is intentionally release-test-specific.  It never hides
+    authentication, rate-limit, route, or submit-causality failures.  On a
+    transport/response timeout it first observes the already-submitted turn via
+    the conversation backend.  Only if no completed answer can be recovered is
+    the deterministic smoke prompt resubmitted, and every attempt remains
+    auditable in the returned JSON.
+    """
+    pinned_conversation_url = conversation_url if conversation_url and "/c/" in conversation_url else None
+    baseline_turn_count: Optional[int] = None
+    if pinned_conversation_url:
+        baseline_chat = await _release_ask_get_chat_safely(service, pinned_conversation_url)
+        if baseline_chat is not None:
+            try:
+                baseline_turn_count = int(baseline_chat.get("turn_count"))
+            except (TypeError, ValueError):
+                baseline_turn_count = None
+
+    attempts: list[dict[str, Any]] = []
+    recoveries: list[dict[str, Any]] = []
+    retry_conversation_url = pinned_conversation_url
+
+    for attempt in range(1, RELEASE_ASK_MAX_ATTEMPTS + 1):
+        started = time.monotonic()
+        try:
+            result = await service.ask_question_result(
+                prompt=prompt,
+                conversation_url=retry_conversation_url,
+                expect_json=False,
+                keep_open=keep_open,
+                retries=0,
+                service_timeout_seconds=RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS,
+            )
+            if not isinstance(result, dict):
+                result = {
+                    "ok": False,
+                    "status": "release_smoke_invalid_ask_result",
+                    "error_type": "InvalidAskResult",
+                    "error": repr(result),
+                }
+        except Exception as exc:
+            result = _structured_step_exception_details(exc)
+
+        returned_url = _extract_conversation_url_from_ask_result(result)
+        if pinned_conversation_url and returned_url and returned_url.rstrip("/") != pinned_conversation_url.rstrip("/"):
+            result = {
+                **result,
+                "ok": False,
+                "status": "release_smoke_route_mismatch",
+                "error_type": "ReleaseSmokeRouteMismatch",
+                "error": "release smoke ask returned a different conversation than the exact pinned route",
+                "expected_conversation_url": pinned_conversation_url,
+                "actual_conversation_url": returned_url,
+            }
+
+        transient, classification = _release_ask_transient_failure(result)
+        attempts.append(_release_ask_attempt_summary(
+            attempt=attempt,
+            payload=result,
+            duration_seconds=time.monotonic() - started,
+            transient=transient,
+            classification=classification,
+            requested_conversation_url=retry_conversation_url,
+        ))
+
+        if result.get("ok") is True:
+            enriched = dict(result)
+            enriched["release_ask_recovery"] = {
+                "schema": "promptbranch.release_ask_recovery",
+                "schema_version": "1.0",
+                "policy": "bounded_transient_observe_then_retry",
+                "max_attempts": RELEASE_ASK_MAX_ATTEMPTS,
+                "attempt_timeout_seconds": RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS,
+                "attempt_count": len(attempts),
+                "recovery_used": len(attempts) > 1 or bool(recoveries),
+                "final_status": "completed",
+                "attempts": attempts,
+                "recoveries": recoveries,
+            }
+            return enriched
+
+        if not transient:
+            enriched = dict(result)
+            enriched["release_ask_recovery"] = {
+                "schema": "promptbranch.release_ask_recovery",
+                "schema_version": "1.0",
+                "policy": "bounded_transient_observe_then_retry",
+                "max_attempts": RELEASE_ASK_MAX_ATTEMPTS,
+                "attempt_timeout_seconds": RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS,
+                "attempt_count": len(attempts),
+                "recovery_used": bool(recoveries),
+                "final_status": "non_retryable_failure",
+                "attempts": attempts,
+                "recoveries": recoveries,
+            }
+            return enriched
+
+        recovery_target = returned_url or retry_conversation_url
+        recovery = await _release_ask_observe_committed_result(
+            service,
+            prompt=prompt,
+            expected_token=expected_token,
+            conversation_url=recovery_target,
+            baseline_turn_count=baseline_turn_count if pinned_conversation_url else None,
+        )
+        recovery["after_attempt"] = attempt
+        recoveries.append(recovery)
+        match = recovery.get("match") if isinstance(recovery.get("match"), dict) else {}
+        recovered_url = str(recovery.get("conversation_url") or "").strip() or None
+        if recovery.get("status") == "answer_recovered" and match.get("answer_token_matched"):
+            recovered_result = dict(result)
+            recovered_result.update({
+                "ok": True,
+                "status": "completed",
+                "error": None,
+                "error_type": None,
+                "timeout_layer": None,
+                "partial_result": False,
+                "answer": match.get("answer_text"),
+                "conversation_url": recovered_url or returned_url or retry_conversation_url,
+                "response_accepted_source": "release_smoke_backend_recovery",
+                "response_freshness_verified": True,
+            })
+            recovered_result["release_ask_recovery"] = {
+                "schema": "promptbranch.release_ask_recovery",
+                "schema_version": "1.0",
+                "policy": "bounded_transient_observe_then_retry",
+                "max_attempts": RELEASE_ASK_MAX_ATTEMPTS,
+                "attempt_timeout_seconds": RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS,
+                "attempt_count": len(attempts),
+                "recovery_used": True,
+                "final_status": "completed_via_observation",
+                "attempts": attempts,
+                "recoveries": recoveries,
+            }
+            return recovered_result
+        if recovery.get("status") == "unexpected_answer_recovered":
+            failed = dict(result)
+            failed.update({
+                "ok": False,
+                "status": "release_smoke_unexpected_answer_after_recovery",
+                "error_type": "ReleaseSmokeUnexpectedAnswer",
+                "error": f"recovered assistant answer did not equal expected token {expected_token!r}",
+                "conversation_url": recovered_url or returned_url or retry_conversation_url,
+                "answer": match.get("answer_text"),
+            })
+            failed["release_ask_recovery"] = {
+                "schema": "promptbranch.release_ask_recovery",
+                "schema_version": "1.0",
+                "policy": "bounded_transient_observe_then_retry",
+                "attempt_count": len(attempts),
+                "recovery_used": True,
+                "final_status": "unexpected_answer",
+                "attempts": attempts,
+                "recoveries": recoveries,
+            }
+            return failed
+
+        if recovered_url and "/c/" in recovered_url:
+            if pinned_conversation_url and recovered_url.rstrip("/") != pinned_conversation_url.rstrip("/"):
+                failed = dict(result)
+                failed.update({
+                    "ok": False,
+                    "status": "release_smoke_route_mismatch",
+                    "error_type": "ReleaseSmokeRouteMismatch",
+                    "error": "recovery discovered a different conversation than the exact pinned route",
+                    "expected_conversation_url": pinned_conversation_url,
+                    "actual_conversation_url": recovered_url,
+                })
+                failed["release_ask_recovery"] = {
+                    "schema": "promptbranch.release_ask_recovery",
+                    "schema_version": "1.0",
+                    "policy": "bounded_transient_observe_then_retry",
+                    "attempt_count": len(attempts),
+                    "recovery_used": True,
+                    "final_status": "route_mismatch",
+                    "attempts": attempts,
+                    "recoveries": recoveries,
+                }
+                return failed
+            retry_conversation_url = recovered_url
+
+        if attempt < RELEASE_ASK_MAX_ATTEMPTS and RELEASE_ASK_RETRY_BACKOFF_SECONDS > 0:
+            await asyncio.sleep(RELEASE_ASK_RETRY_BACKOFF_SECONDS * attempt)
+
+    final_result = dict(result)
+    final_result["release_ask_recovery"] = {
+        "schema": "promptbranch.release_ask_recovery",
+        "schema_version": "1.0",
+        "policy": "bounded_transient_observe_then_retry",
+        "max_attempts": RELEASE_ASK_MAX_ATTEMPTS,
+        "attempt_timeout_seconds": RELEASE_ASK_ATTEMPT_TIMEOUT_SECONDS,
+        "attempt_count": len(attempts),
+        "recovery_used": True,
+        "final_status": "transient_retries_exhausted",
+        "attempts": attempts,
+        "recoveries": recoveries,
+    }
+    return final_result
+
+
 def _task_entries_from_list_payload(payload: Any) -> list[dict[str, Any]]:
     if not isinstance(payload, dict):
         return []
@@ -2693,12 +3183,12 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             ask_result = await _run_step(
                 steps,
                 "ask_question",
-                project_service.ask_question_result(
+                _run_resilient_release_smoke_ask(
+                    project_service,
                     prompt=args.ask_prompt,
-                    conversation_url=getattr(args,"ask_conversation_url",None),
-                    expect_json=False,
+                    expected_token="INTEGRATION_OK",
+                    conversation_url=getattr(args, "ask_conversation_url", None),
                     keep_open=args.keep_open,
-                    retries=0,
                 ),
                 step_delay_seconds=args.step_delay_seconds,
             )
@@ -2721,11 +3211,12 @@ async def run_integration(args: argparse.Namespace) -> dict[str, Any]:
             task_ask = await _run_step(
                 steps,
                 "task_message_flow.ask",
-                project_service.ask_question_result(
+                _run_resilient_release_smoke_ask(
+                    project_service,
                     prompt=task_prompt,
-                    expect_json=False,
+                    expected_token="TASK_MESSAGE_OK",
+                    conversation_url=None,
                     keep_open=args.keep_open,
-                    retries=0,
                 ),
                 step_delay_seconds=args.step_delay_seconds,
             )

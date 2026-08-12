@@ -54,6 +54,97 @@ def authoritative_repo_id(repo: Path) -> str:
         raise RuntimeError(f"tracked repository identity has no repo_id: {identity_path}")
     return repo_id
 
+def _normalize_version(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text if text.startswith("v") else f"v{text}"
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    text = _normalize_version(value).removeprefix("v")
+    try:
+        return tuple(int(part) for part in text.split("."))
+    except ValueError as exc:
+        raise RuntimeError(f"invalid version text: {value}") from exc
+
+
+def resolve_lifecycle_baseline(
+    *,
+    repo: Path,
+    cli: Path,
+    repo_id: str,
+    target_version: str,
+    attempt_path: Path,
+    expected_baseline: str | None,
+) -> tuple[str, str]:
+    """Resolve one immutable baseline without requiring operator version bookkeeping.
+
+    Existing attempts retain their originally bound baseline even after adoption changes
+    project current. Fresh attempts resolve the authoritative project-scoped adopted
+    artifact through the candidate's canonical project/artifact modules. An explicitly
+    supplied --baseline-version is only an assertion and never overrides authority.
+    """
+    expected = _normalize_version(expected_baseline or "")
+    attempt = _read_json_if_present(attempt_path) if attempt_path.is_file() else None
+    if isinstance(attempt, dict):
+        bound = _normalize_version(str(attempt.get("baseline_version") or ""))
+        if bound:
+            if expected and expected != bound:
+                raise RuntimeError(
+                    f"baseline assertion mismatch for durable attempt: expected={expected} attempt={bound}"
+                )
+            return bound, "durable_attempt"
+
+    candidate_root = Path(__file__).resolve().parents[1]
+    candidate_root_text = str(candidate_root)
+    inserted = False
+    if candidate_root_text not in sys.path:
+        sys.path.insert(0, candidate_root_text)
+        inserted = True
+    try:
+        from promptbranch_artifacts import ArtifactRegistry
+        from promptbranch_project import load_repo_identity, project_registry_dir
+
+        identity = load_repo_identity(repo)
+        if identity is None:
+            raise RuntimeError(f"tracked repository identity could not be resolved from {repo}")
+        if identity.repo_id != repo_id:
+            raise RuntimeError(
+                f"tracked repository identity mismatch: launcher={repo_id} identity={identity.repo_id}"
+            )
+        registry = ArtifactRegistry(project_registry_dir(identity.project_id))
+        state = registry.inspect()
+        if state.get("ok") is not True:
+            raise RuntimeError(
+                f"authoritative project artifact registry unavailable: {state.get('status')}: {state.get('error')}"
+            )
+        record = registry.current(repo_id=repo_id)
+        if not isinstance(record, dict):
+            raise RuntimeError(f"authoritative adopted/current artifact not found for repo {repo_id}")
+        if str(record.get("kind") or "") != "adopted_release":
+            raise RuntimeError("authoritative current artifact is not kind=adopted_release")
+        baseline = _normalize_version(str(record.get("version") or ""))
+        sha = str(record.get("sha256") or "").strip().lower()
+        if not baseline or len(sha) != 64:
+            raise RuntimeError("authoritative adopted/current artifact lacks version/SHA authority")
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(candidate_root_text)
+            except ValueError:
+                pass
+
+    target = _normalize_version(target_version)
+    if _version_tuple(target) <= _version_tuple(baseline):
+        raise RuntimeError(f"target version must be newer than authoritative current: {target} <= {baseline}")
+    if expected and expected != baseline:
+        raise RuntimeError(
+            f"baseline assertion mismatch: expected={expected} authoritative_current={baseline}"
+        )
+    return baseline, "authoritative_project_current"
+
+
 def parse_json(stdout: str, *, label: str) -> dict[str, Any]:
     try:
         value = json.loads(stdout)
@@ -258,7 +349,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run and independently verify the canonical Promptbranch release lifecycle with one launcher Python.")
     parser.add_argument("--artifact", required=True)
     parser.add_argument("--version", required=True)
-    parser.add_argument("--baseline-version", required=True)
+    parser.add_argument("--baseline-version", help="Optional expected baseline assertion. When omitted, resolve authoritative adopted/current; durable retries reuse the attempt-bound baseline.")
     parser.add_argument("--repo-path", required=True)
     parser.add_argument("--profile-dir", required=True)
     parser.add_argument("--artifact-conversation-url", required=True)
@@ -284,7 +375,15 @@ def main() -> int:
     evidence_dir = Path(args.evidence_dir).expanduser().resolve() if args.evidence_dir else profile_dir / "release_lifecycle_proofs" / str(args.version) / digest[:16]
     evidence_dir.mkdir(parents=True, exist_ok=True)
     attempt_path = existing_attempt_path(profile_dir, repo_id, str(args.version), digest)
-    progress(f"lifecycle proof started version={args.version} baseline={args.baseline_version}")
+    baseline_version, baseline_resolution = resolve_lifecycle_baseline(
+        repo=repo,
+        cli=cli,
+        repo_id=repo_id,
+        target_version=str(args.version),
+        attempt_path=attempt_path,
+        expected_baseline=str(args.baseline_version or "").strip() or None,
+    )
+    progress(f"lifecycle proof started version={args.version} baseline={baseline_version} baseline_resolution={baseline_resolution}")
     progress(f"artifact_sha={digest} repo_id={repo_id} python={sys.executable}")
     progress(f"evidence_dir={evidence_dir}")
 
@@ -296,7 +395,7 @@ def main() -> int:
     common = [
         "--artifact", str(artifact),
         "--version", str(args.version),
-        "--baseline-version", str(args.baseline_version),
+        "--baseline-version", baseline_version,
         "--repo-path", str(repo),
         "--profile", str(args.profile),
         "--test-timeout", str(args.test_timeout),
@@ -421,7 +520,8 @@ def main() -> int:
         "repo_id": repo_id,
         "artifact": str(artifact),
         "version": str(args.version),
-        "baseline_version": str(args.baseline_version),
+        "baseline_version": baseline_version,
+        "baseline_resolution": baseline_resolution,
         "sha256": digest,
         "steps": steps,
         "final_current": {

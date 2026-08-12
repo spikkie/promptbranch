@@ -1,7 +1,35 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
 <!-- promptbranch-release-construction-baseline -->
+> Construction baseline: adopted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active repair is `v0.1.128.2.5 — Authoritative baseline auto-resolution repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.
+
+# Active release status — v0.1.128.2.5
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.128.2.5 | repair | authoritative baseline auto-resolution | construction candidate | lifecycle resolver regressions + preserved recovery/skills + canonical groups + deterministic ZIP/Guardian required | DOD-574–576 construction; DOD-577 live | — |
+| v0.1.128.2.4 | repair | accepted-baseline exact-byte self-healing | repair-required predecessor | live startup exposed stale operator baseline assertion despite authoritative current v0.1.128.2 | DOD-570–572 preserved; DOD-573 superseded | — |
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.zip` (`v0.1.128.2`).  
+Accepted SHA-256: `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`.  
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`.  
+Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.  
+Planned after that: `v0.1.130 — Controlled external application change execution`.
+
+---
+
+|---|---|---|---|---|---|
+| v0.1.128.2.4 | repair | self-heal exact accepted baseline bytes by immutable SHA and restore canonical object storage | construction candidate | exact-byte recovery regressions + preserved timeout/runtime/project-registry recovery + 17 canonical groups + deterministic ZIP/Guardian required | DOD-570–572 construction; DOD-573 live | — |
+| v0.1.128.2.3 | repair | project-scoped baseline registry authority | immutable repair-required predecessor | construction green; live startup reached accepted record then failed on physical accepted-byte validation | DOD-566–568 preserved; DOD-569 superseded by v0.1.128.2.4 closure | — |
+| v0.1.128.2.2 | repair | auto-reconcile accepted runtime from exact adopted artifact before candidate preparation | immutable repair-required predecessor | construction green; live startup exposed wrong registry namespace (`profile_dir` instead of project registry) | DOD-561–564 preserved; DOD-565 superseded by v0.1.128.2.3 closure | — |
+| v0.1.128.2.1 | repair | release smoke timeout auto-recovery; v0.1.128.2 learning/skills unchanged | immutable repair-required predecessor | construction green; live startup blocked by accepted-runtime baseline mismatch before candidate preparation | DOD-555–559 preserved; DOD-560 superseded by v0.1.128.2.2 closure | — |
+| v0.1.128.2 | normal | Promptbranch learning and skills completeness | immutable repair-required predecessor | learning/operator construction green; live adoption deferred through repair chain | DOD-547–553 preserved; DOD-554 superseded by repair-chain live closure | — |
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip` (`v0.1.128.1.1.1.1.1`).  
+Accepted SHA-256: `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`.  
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.4.zip`.  
+Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.  
+Planned after that: `v0.1.130 — Controlled external application change execution`.
+
+---
+
 > Construction baseline: adopted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active normal learning-completeness slice is `v0.1.128.2 — Promptbranch learning and skills completeness`; next planned slice after acceptance is `v0.1.129 — External application pilot bootstrap`.
 
 # Active release status — v0.1.128.2
@@ -986,3 +1014,8 @@ Accepted/current remains `v0.1.123.2.5`. The same-version replacement candidate 
 ## v0.1.128.1.1.1.1.1 diagnostic repair status
 
 `v0.1.128.1.1.1.1` live-proved the pinned `ask_question` fresh-chain repair by returning `INTEGRATION_OK`, then failed later at `task_message_flow.ask` with a service-internal deadline while starting a new chat from the generated Project page. `v0.1.128.1.1.1.1.1` preserves all response-selection behavior and prior projection repairs unchanged and adds bounded structured diagnostics for response-chain freshness, project-page to conversation URL transitions, assistant candidate hashes/count deltas, generation/idle state, completion blockers, and the final timeout snapshot. `v0.1.129 — External application pilot bootstrap` remains blocked until this repair family reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
+
+Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.

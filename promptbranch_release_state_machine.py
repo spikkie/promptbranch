@@ -19,6 +19,7 @@ from typing import Any, Callable, Protocol
 
 from promptbranch_python_authority import launcher_python_path
 from promptbranch_project_control import synchronize_project_control_after_adoption, validate_project_control_surface
+from promptbranch_project import configured_repos, load_repo_identity, project_registry_dir
 
 from promptbranch_source_fingerprint import SOURCE_PRESERVE_ROOTS, SOURCE_TRANSIENT_PARTS, source_fingerprint
 from promptbranch_release_eta import (
@@ -29,9 +30,11 @@ from promptbranch_release_eta import (
 )
 
 from promptbranch_artifacts import (
+    ArtifactRegistry,
     canonical_artifact_filename,
     infer_repo_id_from_artifact_filename,
     parse_canonical_artifact_filename,
+    sha256_file,
     valid_version_text,
     verify_zip_artifact,
 )
@@ -1128,6 +1131,427 @@ class SubprocessReleaseExecutor:
                 "command": command,
             }
 
+    @staticmethod
+    def _verify_accepted_baseline_bytes(path: Path, *, expected_sha: str, expected_version: str) -> dict[str, Any]:
+        """Verify immutable accepted bytes without re-applying newer candidate policy.
+
+        Accepted/current authority is the registry identity (repo, version, sha256).  Recovery only
+        needs transport integrity, safe ZIP structure, exact SHA, and exact embedded VERSION.  Newer
+        release hygiene/manifest policy applies to new candidates, not to an already accepted baseline.
+        """
+        candidate = Path(path).expanduser()
+        result: dict[str, Any] = {
+            "ok": False,
+            "path": str(candidate),
+            "exists": candidate.is_file(),
+            "sha256": None,
+            "embedded_version": "",
+            "zip_readable": False,
+            "crc_clean": False,
+            "safe_paths": False,
+            "wrapper_folder_absent": False,
+            "sha_exact": False,
+            "version_exact": False,
+            "entry_count": 0,
+            "error": None,
+        }
+        if not candidate.is_file():
+            result["error"] = "artifact_not_found"
+            return result
+        try:
+            observed_sha = sha256_file(candidate)
+            result["sha256"] = observed_sha
+            result["sha_exact"] = observed_sha == expected_sha
+            with zipfile.ZipFile(candidate) as archive:
+                names = archive.namelist()
+                result["entry_count"] = len(names)
+                bad = archive.testzip()
+                result["zip_readable"] = True
+                result["crc_clean"] = bad is None
+                unsafe = [name for name in names if name.startswith("/") or ".." in Path(name).parts]
+                result["safe_paths"] = not unsafe
+                top_levels = {name.split("/", 1)[0] for name in names if name and not name.endswith("/")}
+                wrapper_folder = None
+                if len(top_levels) == 1 and not any("/" not in name.rstrip("/") for name in names if name and not name.endswith("/")):
+                    wrapper_folder = next(iter(top_levels))
+                result["wrapper_folder_absent"] = wrapper_folder is None
+                try:
+                    embedded = archive.read("VERSION").decode("utf-8").strip()
+                except (KeyError, UnicodeDecodeError):
+                    embedded = ""
+                result["embedded_version"] = embedded
+                result["version_exact"] = embedded == expected_version
+                result["bad_entry"] = bad
+                result["unsafe_entries"] = unsafe
+                result["wrapper_folder"] = wrapper_folder
+        except (OSError, zipfile.BadZipFile) as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            return result
+        result["ok"] = all(
+            result[key]
+            for key in ("zip_readable", "crc_clean", "safe_paths", "wrapper_folder_absent", "sha_exact", "version_exact")
+        )
+        if not result["ok"] and not result.get("error"):
+            result["error"] = "accepted_baseline_integrity_check_failed"
+        return result
+
+    def _accepted_baseline_byte_candidates(
+        self,
+        machine: "ReleaseStateMachine",
+        registry: ArtifactRegistry,
+        record: dict[str, Any],
+        *,
+        expected_sha: str,
+    ) -> list[Path]:
+        filename = str(record.get("filename") or "").strip()
+        candidates: list[Path] = []
+
+        def add(path: Path | str | None) -> None:
+            if path in (None, ""):
+                return
+            candidate = Path(path).expanduser()
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+        add(record.get("path"))
+        try:
+            add(registry.object_path(expected_sha, filename))
+        except ValueError:
+            pass
+        add(registry.artifact_dir / filename)
+        add(machine.config.repo_root / filename)
+        add(machine.config.repo_root / ".pb_profile" / "artifacts" / filename)
+        add(machine.config.profile_dir / "artifacts" / filename)
+        add(Path.home() / "Downloads" / filename)
+
+        # Release attempts are a bounded PB-owned cache. Search only the exact baseline-version
+        # subtree and exact canonical filename; every candidate still has to match the immutable SHA.
+        attempt_root = machine.config.profile_dir / "release_attempts_v2" / machine.repo_id / machine.config.baseline_version
+        if attempt_root.is_dir():
+            try:
+                for candidate in sorted(attempt_root.glob(f"*/**/{filename}"))[:32]:
+                    add(candidate)
+            except OSError:
+                pass
+        return candidates
+
+    @staticmethod
+    def _restore_canonical_accepted_object(source: Path, destination: Path, *, expected_sha: str) -> dict[str, Any]:
+        destination = destination.expanduser()
+        if destination.is_file() and sha256_file(destination) == expected_sha:
+            return {"ok": True, "status": "canonical_object_already_exact", "path": str(destination), "mutation_performed": False}
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_suffix(destination.suffix + ".reconcile.tmp")
+        shutil.copy2(source, temporary)
+        copied_sha = sha256_file(temporary)
+        if copied_sha != expected_sha:
+            temporary.unlink(missing_ok=True)
+            return {
+                "ok": False,
+                "status": "canonical_object_restore_sha_mismatch",
+                "path": str(destination),
+                "observed_sha256": copied_sha,
+                "expected_sha256": expected_sha,
+                "mutation_performed": False,
+            }
+        temporary.replace(destination)
+        return {"ok": True, "status": "canonical_object_restored", "path": str(destination), "mutation_performed": True}
+
+    def _authoritative_baseline_artifact(self, machine: "ReleaseStateMachine") -> dict[str, Any]:
+        """Resolve exact adopted baseline authority and self-heal its physical byte location."""
+        expected_version = machine.config.baseline_version
+        try:
+            identity = load_repo_identity(machine.config.repo_root)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_identity_invalid",
+                "failure_code": "accepted_baseline_project_identity_invalid",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if identity is None:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_identity_missing",
+                "failure_code": "accepted_baseline_project_identity_missing",
+                "error": f".promptbranch-repo.json is required under {machine.config.repo_root}",
+            }
+        if identity.repo_id != machine.repo_id:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_repo_mismatch",
+                "failure_code": "accepted_baseline_project_repo_mismatch",
+                "error": f"tracked repo_id {identity.repo_id!r} does not match release repo_id {machine.repo_id!r}",
+                "project_id": identity.project_id,
+                "tracked_repo_id": identity.repo_id,
+            }
+        repos = configured_repos(identity.project_id)
+        configured = repos.get(identity.repo_id)
+        if not isinstance(configured, dict):
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_repo_not_configured",
+                "failure_code": "accepted_baseline_project_repo_not_configured",
+                "error": f"repo_id {identity.repo_id!r} is not configured for project {identity.project_id!r}",
+                "project_id": identity.project_id,
+            }
+        configured_root_raw = configured.get("repo_root")
+        try:
+            configured_root = Path(str(configured_root_raw)).expanduser().resolve() if configured_root_raw else None
+        except OSError as exc:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_repo_configuration_invalid",
+                "failure_code": "accepted_baseline_project_repo_configuration_invalid",
+                "error": f"configured repo_root is invalid: {exc}",
+                "project_id": identity.project_id,
+            }
+        if configured_root is None or configured_root != identity.repo_root.resolve():
+            return {
+                "ok": False,
+                "status": "accepted_baseline_project_repo_root_mismatch",
+                "failure_code": "accepted_baseline_project_repo_root_mismatch",
+                "error": f"tracked repo_root {identity.repo_root} does not match configured repo_root {configured_root_raw!r}",
+                "project_id": identity.project_id,
+            }
+        registry = ArtifactRegistry(project_registry_dir(identity.project_id))
+        registry_state = registry.inspect()
+        if not registry_state.get("ok"):
+            return {
+                "ok": False,
+                "status": "accepted_baseline_registry_unavailable",
+                "failure_code": "accepted_baseline_registry_unavailable",
+                "error": str(registry_state.get("error") or registry_state.get("status") or "project artifact registry unavailable"),
+                "project_id": identity.project_id,
+                "registry_file": str(registry.path),
+                "registry_status": registry_state.get("status"),
+            }
+        try:
+            record = registry.current(machine.repo_id)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_registry_unavailable",
+                "failure_code": "accepted_baseline_registry_unavailable",
+                "error": f"{type(exc).__name__}: {exc}",
+                "project_id": identity.project_id,
+                "registry_file": str(registry.path),
+            }
+        if not isinstance(record, dict):
+            return {
+                "ok": False,
+                "status": "accepted_baseline_registry_missing",
+                "failure_code": "accepted_baseline_registry_missing",
+                "error": "no adopted/current artifact exists for the repository",
+            }
+
+        expected_sha = str(record.get("sha256") or "").strip().lower()
+        filename = str(record.get("filename") or "").strip()
+        logical_checks: dict[str, bool] = {
+            "registry_kind_adopted_release": str(record.get("kind") or "") == "adopted_release",
+            "registry_repo_exact": str(record.get("repo_id") or "") == machine.repo_id,
+            "registry_version_exact": str(record.get("version") or "") == expected_version,
+            "registry_sha_present": bool(re.fullmatch(r"[0-9a-f]{64}", expected_sha)),
+            "registry_filename_canonical": parse_canonical_artifact_filename(filename) is not None,
+        }
+        if not all(logical_checks.values()):
+            return {
+                "ok": False,
+                "status": "accepted_baseline_artifact_authority_invalid",
+                "failure_code": "accepted_baseline_artifact_authority_invalid",
+                "record": record,
+                "project_id": identity.project_id,
+                "registry_file": str(registry.path),
+                "registry_resolution": "tracked_repo_identity_project_registry",
+                "checks": logical_checks,
+                "failed_checks": [key for key, value in logical_checks.items() if not value],
+                "mutation_performed": False,
+            }
+
+        byte_candidates = self._accepted_baseline_byte_candidates(machine, registry, record, expected_sha=expected_sha)
+        attempts: list[dict[str, Any]] = []
+        selected: Path | None = None
+        selected_verification: dict[str, Any] = {}
+        for candidate in byte_candidates:
+            verification = self._verify_accepted_baseline_bytes(candidate, expected_sha=expected_sha, expected_version=expected_version)
+            attempts.append(verification)
+            if verification.get("ok") is True:
+                selected = candidate
+                selected_verification = verification
+                break
+
+        if selected is None:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_artifact_bytes_unavailable",
+                "failure_code": "accepted_baseline_artifact_bytes_unavailable",
+                "record": record,
+                "project_id": identity.project_id,
+                "registry_file": str(registry.path),
+                "registry_resolution": "tracked_repo_identity_project_registry",
+                "artifact_sha256": expected_sha,
+                "version": expected_version,
+                "checks": logical_checks,
+                "failed_checks": ["exact_accepted_bytes_not_found"],
+                "byte_candidate_attempts": attempts,
+                "mutation_performed": False,
+            }
+
+        canonical_object = registry.object_path(expected_sha, filename)
+        restore = self._restore_canonical_accepted_object(selected, canonical_object, expected_sha=expected_sha)
+        if restore.get("ok") is not True:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_object_restore_failed",
+                "failure_code": "accepted_baseline_object_restore_failed",
+                "record": record,
+                "project_id": identity.project_id,
+                "registry_file": str(registry.path),
+                "artifact_sha256": expected_sha,
+                "version": expected_version,
+                "selected_recovery_path": str(selected),
+                "restore": restore,
+                "byte_candidate_attempts": attempts,
+            }
+
+        canonical_verification = self._verify_accepted_baseline_bytes(canonical_object, expected_sha=expected_sha, expected_version=expected_version)
+        ok = canonical_verification.get("ok") is True
+        return {
+            "ok": ok,
+            "status": "accepted_baseline_artifact_verified" if ok else "accepted_baseline_artifact_invalid",
+            "failure_code": None if ok else "accepted_baseline_artifact_invalid",
+            "record": record,
+            "project_id": identity.project_id,
+            "registry_file": str(registry.path),
+            "registry_resolution": "tracked_repo_identity_project_registry",
+            "artifact_path": str(canonical_object),
+            "recorded_artifact_path": str(record.get("path") or ""),
+            "artifact_sha256": expected_sha,
+            "version": expected_version,
+            "embedded_version": str(canonical_verification.get("embedded_version") or ""),
+            "verification": canonical_verification,
+            "checks": {**logical_checks, "exact_accepted_bytes_verified": ok},
+            "failed_checks": [] if ok else ["exact_accepted_bytes_verified"],
+            "byte_resolution": "registry_path" if selected == Path(str(record.get("path") or "")).expanduser() else "bounded_exact_sha_recovery",
+            "selected_recovery_path": str(selected),
+            "canonical_object_restore": restore,
+            "byte_candidate_attempts": attempts,
+            "mutation_performed": bool(restore.get("mutation_performed")),
+        }
+
+    def _reconcile_accepted_runtime_from_authoritative_baseline(
+        self,
+        machine: "ReleaseStateMachine",
+        record: dict[str, Any],
+        checkpoint: dict[str, Any],
+        *,
+        observed_runtime: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Restore port 8000 from the exact adopted artifact when runtime drift is recoverable.
+
+        This is operational resilience, not authority migration: the registry current record must
+        already prove the requested baseline version/SHA.  Ambiguous or invalid authority fails
+        closed and no candidate artifact is used to repair the baseline.
+        """
+        baseline = self._authoritative_baseline_artifact(machine)
+        if baseline.get("ok") is not True:
+            return {
+                "ok": False,
+                "status": str(baseline.get("status") or "accepted_baseline_reconcile_blocked"),
+                "failure_code": str(baseline.get("failure_code") or "accepted_baseline_reconcile_blocked"),
+                "error": "authoritative adopted baseline artifact could not be proven",
+                "authority": baseline,
+                "observed_runtime": observed_runtime,
+                "mutation_performed": False,
+            }
+
+        paths = self._runtime_paths(machine)
+        baseline_root = paths["root"] / "accepted-baseline-reconcile"
+        artifact_path = Path(str(baseline["artifact_path"]))
+        _safe_extract(artifact_path, baseline_root)
+        extracted_profile = baseline_root / ".pb_profile"
+        if extracted_profile.exists() or extracted_profile.is_symlink():
+            if extracted_profile.is_dir() and not extracted_profile.is_symlink():
+                shutil.rmtree(extracted_profile)
+            else:
+                extracted_profile.unlink()
+        source_fp = self._source_fingerprint(baseline_root)
+        baseline_package = machine.config.baseline_version.removeprefix("v")
+        image = f"promptbranch-service:{baseline_package}"
+        env = self._control_env(machine, record)
+        env.update(
+            {
+                "COMPOSE_PROJECT_NAME": "chatgpt_claudecode_workflow",
+                "PROMPTBRANCH_SERVICE_PORT": "8000",
+                "CHATGPT_SERVICE_BASE_URL": "http://127.0.0.1:8000",
+                "PROMPTBRANCH_SERVICE_IMAGE": image,
+                "PROMPTBRANCH_ALLOW_SERVICE_IMAGE_OVERRIDE": "1",
+                "PROMPTBRANCH_VERSION": baseline_package,
+                "PROMPTBRANCH_ARTIFACT_SHA256": str(baseline["artifact_sha256"]),
+                "PROMPTBRANCH_SOURCE_FINGERPRINT": source_fp,
+                "PROMPTBRANCH_RELEASE_ATTEMPT_ID": f"baseline-reconcile:{str(baseline['artifact_sha256'])[:16]}",
+                "PROMPTBRANCH_HOST_PROFILE_DIR": str(machine.config.profile_dir / "browser" / "default"),
+                "PROMPTBRANCH_HOST_STATE_PROFILE_DIR": str(machine.config.profile_dir),
+                "PROMPTBRANCH_HOST_DEBUG_ARTIFACT_DIR": str(machine.config.repo_root / "debug_artifacts"),
+                "PROMPTBRANCH_PROFILE_DIR": "/app/profile",
+                "PROMPTBRANCH_DOCKER_UID": str(os.getuid()),
+                "PROMPTBRANCH_DOCKER_GID": str(os.getgid()),
+                "BUILDKIT_PROGRESS": "plain",
+            }
+        )
+        compose_file = baseline_root / "docker-compose.chatgpt-service.yml"
+        compose = ["docker", "compose", "-p", "chatgpt_claudecode_workflow", "-f", str(compose_file)]
+        build_log = paths["logs"] / "accepted-baseline-reconcile-build.log"
+        start_log = paths["logs"] / "accepted-baseline-reconcile-start.log"
+        build = self._run_logged(
+            compose + ["build", "chatgpt-service"],
+            cwd=baseline_root,
+            env=env,
+            log_path=build_log,
+            timeout=1800,
+        )
+        if build.get("returncode") != 0:
+            return {
+                "ok": False,
+                "status": "accepted_baseline_reconcile_build_failed",
+                "failure_code": "accepted_baseline_reconcile_build_failed",
+                "error": "failed to rebuild the authoritative accepted baseline runtime",
+                "authority": baseline,
+                "observed_runtime": observed_runtime,
+                "build": build,
+                "mutation_performed": True,
+            }
+        start = self._run_logged(
+            compose + ["up", "-d", "--force-recreate", "--no-build", "chatgpt-service"],
+            cwd=baseline_root,
+            env=env,
+            log_path=start_log,
+            timeout=300,
+        )
+        health = self._wait_authoritative_health(baseline_package, timeout=120) if start.get("returncode") == 0 else {"ok": False, "health": {}, "attempts": []}
+        reconciled = self._snapshot_accepted_runtime(cwd=baseline_root, env=env)
+        checks = _accepted_runtime_exact_checks(reconciled, expected_version=baseline_package)
+        image_sha = str((reconciled.get("image_labels") or {}).get("promptbranch.artifact_sha256") or "").strip().lower()
+        checks["accepted_image_artifact_sha_exact"] = image_sha == str(baseline["artifact_sha256"]).lower()
+        ok = start.get("returncode") == 0 and health.get("ok") is True and all(checks.values())
+        result = {
+            "ok": ok,
+            "status": "accepted_runtime_reconciled" if ok else "accepted_runtime_reconcile_failed",
+            "failure_code": None if ok else "accepted_runtime_reconcile_failed",
+            "authority": baseline,
+            "observed_runtime": observed_runtime,
+            "reconciled_runtime": reconciled,
+            "checks": checks,
+            "build": build,
+            "start": start,
+            "health": health,
+            "mutation_performed": True,
+            "reconciled_from_authoritative_current": True,
+        }
+        checkpoint["accepted_runtime_reconciliation"] = result
+        self._save_runtime_checkpoint(machine, checkpoint)
+        return result
+
     def _snapshot_accepted_runtime(self, *, cwd: Path, env: dict[str, str]) -> dict[str, Any]:
         ps = self._run_capture(
             ["docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Image}}|{{.Ports}}"],
@@ -1359,32 +1783,36 @@ class SubprocessReleaseExecutor:
         checkpoint["accepted_runtime_before_checks"] = accepted_before_checks
         self._save_runtime_checkpoint(machine, checkpoint)
         if not all(accepted_before_checks.values()):
-            availability_checks = (
-                accepted_before_checks.get("docker_ps_ok"),
-                accepted_before_checks.get("exactly_one_authoritative_container"),
-                accepted_before_checks.get("accepted_runtime_present"),
-                accepted_before_checks.get("accepted_health_ok"),
-            )
-            failure_code = (
-                "accepted_runtime_unavailable"
-                if not all(availability_checks)
-                else "accepted_runtime_baseline_mismatch"
-            )
-            return self._runtime_failure_result(
+            reconciliation = self._reconcile_accepted_runtime_from_authoritative_baseline(
                 machine,
                 record,
                 checkpoint,
-                context,
-                phase="accepted_runtime_precondition",
-                code=failure_code,
-                message="accepted/current production runtime must be a single healthy exact-baseline service before candidate runtime preparation",
-                extra={
-                    "expected_baseline_version": baseline_package,
-                    "checks": accepted_before_checks,
-                    "accepted_runtime_before": accepted_before,
-                    "operator_recovery_required": True,
-                },
+                observed_runtime=accepted_before,
             )
+            checkpoint["accepted_runtime_reconciliation"] = reconciliation
+            if reconciliation.get("ok") is True:
+                accepted_before = reconciliation.get("reconciled_runtime") if isinstance(reconciliation.get("reconciled_runtime"), dict) else {}
+                accepted_before_checks = _accepted_runtime_exact_checks(accepted_before, expected_version=baseline_package)
+                checkpoint["accepted_runtime_before"] = accepted_before
+                checkpoint["accepted_runtime_before_checks"] = accepted_before_checks
+                self._save_runtime_checkpoint(machine, checkpoint)
+            else:
+                return self._runtime_failure_result(
+                    machine,
+                    record,
+                    checkpoint,
+                    context,
+                    phase="accepted_runtime_precondition",
+                    code=str(reconciliation.get("failure_code") or "accepted_runtime_reconcile_failed"),
+                    message="accepted/current production runtime drift could not be reconciled from the exact authoritative adopted baseline artifact",
+                    extra={
+                        "expected_baseline_version": baseline_package,
+                        "checks": accepted_before_checks,
+                        "accepted_runtime_before": accepted_before,
+                        "reconciliation": reconciliation,
+                        "operator_recovery_required": False,
+                    },
+                )
 
         control_env = self._control_env(machine, record)
         install_log = paths["logs"] / "runtime-install.log"

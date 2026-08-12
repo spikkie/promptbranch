@@ -1,7 +1,4 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
-> v0.1.128.2 authority: accepted/current is `v0.1.128.1.1.1.1.1`; active normal slice completes canonical Promptbranch learning/onboarding before external application bootstrap.
+> v0.1.128.2.5 authority: adopted/current is `v0.1.128.2` at SHA `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`; active repair removes operator-owned baseline bookkeeping from the canonical lifecycle launcher. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
 
 # Promptbranch status
 
@@ -11,9 +8,18 @@
 accepted_current_version: v0.1.128.2
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.zip
 accepted_current_sha256: 6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6
-active_candidate_version: v0.1.129
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
-active_candidate_base_version: v0.1.128.2
+active_candidate_version: v0.1.128.2.5
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
+active_candidate_base_version: v0.1.128.2.4
+next_normal_version: v0.1.129
+next_normal_slice: v0.1.129 — External application pilot bootstrap
+```text
+accepted_current_version: v0.1.128.2
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.zip
+accepted_current_sha256: 6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6
+active_candidate_version: v0.1.128.2.5
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
+active_candidate_base_version: v0.1.128.2.4
 next_normal_version: v0.1.129
 next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
@@ -1330,3 +1336,26 @@ Active candidate `chatgpt_claudecode_workflow-2_v0.1.128.2.zip` completes Prompt
 ## Next safe action
 
 Complete deterministic v0.1.128.2 construction validation, freeze the exact artifact, and run the canonical normal lifecycle. Only after FINAL_VERIFIED/current may `v0.1.129 — External application pilot bootstrap` begin.
+
+
+## v0.1.128.2.1 timeout-recovery status
+
+Active repair candidate `chatgpt_claudecode_workflow-2_v0.1.128.2.1.zip` preserves the complete v0.1.128.2 learning/skills release. Release smoke asks no longer require a second operator lifecycle invocation after supported transient service/assistant-response timeouts: the original canonical test command performs bounded observe-then-retry recovery internally and records every attempt. Recovery remains fail-closed for auth/challenge, 429/cooldown, exact-route mismatch, permission, and ambiguous submit-causality states. Construction proof, deterministic exact ZIP/Guardian, and one fresh live lifecycle are required before accepted/current may move. `v0.1.129` remains blocked until that live proof closes; `v0.1.130` remains planned after `.129`.
+
+## v0.1.128.2.2 accepted-runtime reconciliation status
+
+Active repair candidate `chatgpt_claudecode_workflow-2_v0.1.128.2.2.zip` removes the remaining manual prerequisite before `RUNTIME_PREPARED`: an absent, unhealthy, or wrong-version port-8000 service is reconstructed automatically from the exact adopted/current artifact in PB's registry. Candidate bytes are never used as baseline authority. Reconciliation proceeds only after repo/version/SHA/ZIP/VERSION proof and is independently health-checked before isolated candidate preparation. Authority ambiguity or invalid adopted bytes still fail closed. `v0.1.129` remains blocked until this exact repair reaches FINAL_VERIFIED/current.
+
+## v0.1.128.2.3 project-scoped baseline registry authority repair
+
+Live startup of `v0.1.128.2.2` reached baseline reconciliation but failed with `accepted_baseline_registry_unavailable`. The defect was internal namespace selection: recovery read `ArtifactRegistry(profile_dir)`, while canonical artifact current/project-control authority is `ArtifactRegistry(project_registry_dir(project_id))` resolved from the tracked `.promptbranch-repo.json`. This repair makes that same project-scoped authority path canonical for baseline reconstruction, verifies the configured repo root and repo identity, and never treats browser/session profile state as artifact authority. `v0.1.128.2.2` is retained as immutable repair-required evidence. `.129` remains blocked until this exact repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
+
+Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.
+
+
+## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
+
+Live v0.1.128.2.4 proved the project registry authoritative current is already v0.1.128.2. The canonical launcher had generated a stale explicit baseline assertion. Fresh lifecycle attempts now resolve adopted/current from the tracked project registry; durable retries reuse their attempt-bound baseline even after current advances. `--baseline-version` is optional assertion-only. No scope advance; v0.1.129 remains next normal.
