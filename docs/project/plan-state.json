@@ -1,15 +1,15 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.zip",
-  "accepted_current_version": "v0.1.128.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip",
-  "active_candidate_base_version": "v0.1.128.1",
-  "active_candidate_consolidates_runtime_version": "v0.1.128.1",
-  "active_candidate_documentation_checkpoint": "PB-LIFECYCLE-CONTROL-PROJECTION-2026-08-11.1",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip",
+  "accepted_current_version": "v0.1.128.1.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip",
+  "active_candidate_base_version": "v0.1.128.1.1",
+  "active_candidate_consolidates_runtime_version": "v0.1.128.1.1",
+  "active_candidate_documentation_checkpoint": "PB-FRESH-ASSISTANT-CHAIN-2026-08-12.1",
   "active_candidate_status": "repair_construction_in_progress",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip",
-  "active_candidate_version": "v0.1.128.1.1",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip",
+  "active_candidate_version": "v0.1.128.1.1.1.1.1",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.128.1.1 — Lifecycle resume, progress, diagnostics, and control-projection repair",
+  "active_slice": "v0.1.128.1.1.1.1.1 — Task/message response-chain diagnostic repair",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -1403,9 +1403,9 @@
   ],
   "last_completed_normal_slice": "v0.1.128 — PB environment authority cleanup, hardening and freeze",
   "last_completed_normal_slice_version": "v0.1.128",
-  "last_completed_repair": "v0.1.128.1 — Single authority for Promptbranch release artifacts",
-  "last_completed_repair_version": "v0.1.128.1",
-  "last_updated": "v0.1.127.2.1",
+  "last_completed_repair": "v0.1.128.1.1 — Lifecycle resume, progress, diagnostics, and control-projection repair",
+  "last_completed_repair_version": "v0.1.128.1.1",
+  "last_updated": "2026-08-12T10:25:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
   "next_normal_slice": "v0.1.129 — External application pilot bootstrap",
   "next_normal_version": "v0.1.129",
@@ -2853,37 +2853,6 @@
   },
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
-      "release_mode": "repair",
-      "scope": "FINAL_VERIFIED accepted/current baseline; exact candidate interpreter, tested image, artifact SHA, Git publication and Project Source alignment proven",
-      "slice": "v0.1.126.1.1.1.1.3 — Release validation Python authority propagation repair",
-      "status": "superseded",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.126.1.1.1.1.3.zip",
-      "version": "v0.1.126.1.1.1.1.3"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
-      "release_mode": "normal",
-      "scope": "portable deterministic tool-authoring guidance and export completed through the accepted v0.1.127.2.1 repair chain",
-      "slice": "v0.1.127 — Portable Promptbranch tool-authoring skill and export bundle",
-      "status": "completed_via_repair",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.zip",
-      "version": "v0.1.127"
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
-      "reason": "Consolidates the v0.1.127 repair chain; fixes venv launcher-path identity and carries all v0.1.127 DoD into one final closure candidate.",
-      "release_mode": "repair",
-      "scope": "FINAL_VERIFIED accepted/current baseline; exact launcher Python, conversation provenance, tested-image promotion, artifact SHA and fresh scoped current proven",
-      "slice": "v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair",
-      "status": "accepted_current",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
-      "version": "v0.1.127.2.1"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.zip",
       "release_mode": "normal",
       "scope": "FINAL_VERIFIED accepted/current PB environment cleanup baseline; canonical lifecycle and fresh current proven",
@@ -2898,7 +2867,7 @@
       "release_mode": "repair",
       "scope": "FINAL_VERIFIED/current artifact-authority repair; exact SHA/current/runtime convergence live-proven",
       "slice": "v0.1.128.1 — Single authority for Promptbranch release artifacts",
-      "status": "accepted_current",
+      "status": "superseded",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.zip",
       "version": "v0.1.128.1"
@@ -2908,10 +2877,42 @@
       "release_mode": "repair",
       "scope": "repair lifecycle-wrapper retry resume, live stderr progress/ETA, exact ask failure classification, and tracked control projection convergence",
       "slice": "v0.1.128.1.1 — Lifecycle resume, progress, diagnostics, and control-projection repair",
-      "status": "active",
+      "status": "accepted_current",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip",
       "version": "v0.1.128.1.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.zip",
+      "release_mode": "repair",
+      "scope": "projection-completeness construction proven; live TESTED_GREEN blocked by reproducible fresh-response continuity defect when final assistant text equals historical baseline under virtualized assistant-count rebase",
+      "slice": "v0.1.128.1.1.1 — Post-adoption control-projection completeness repair",
+      "status": "repair_required",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.zip",
+      "version": "v0.1.128.1.1.1",
+      "reason": "Live full and focused browser ask both submitted successfully and observed generation, but freshness was lost when the final deterministic INTEGRATION_OK matched the pre-submit baseline."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.zip",
+      "release_mode": "repair",
+      "scope": "fresh assistant-chain continuity live-proven for pinned ask; task/message new-project conversation path requires diagnostic-first follow-up",
+      "slice": "v0.1.128.1.1.1.1 — Fresh assistant-chain continuity repair",
+      "status": "repair_required",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.zip",
+      "version": "v0.1.128.1.1.1.1",
+      "reason": "Live full lifecycle proved pinned ask freshness repair, then task_message_flow.ask timed out from the new Project chat context before TESTED_GREEN; diagnostic state was insufficient to distinguish missing project URL transition from response-chain/completion state."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip",
+      "release_mode": "repair",
+      "scope": "preserve projection and fresh-chain fixes unchanged; add structured response-chain, project URL/conversation transition, completion-predicate, freshness-latch, and timeout diagnostics that survive service deadlines",
+      "slice": "v0.1.128.1.1.1.1.1 — Task/message response-chain diagnostic repair",
+      "status": "active",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip",
+      "version": "v0.1.128.1.1.1.1.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
@@ -2993,6 +2994,6 @@
     "first_external_application_read_only_version": "v0.1.129",
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "updated_for": "v0.1.128.1.1",
-  "accepted_current_sha256": "645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8"
+  "updated_for": "v0.1.128.1.1.1.1.1",
+  "accepted_current_sha256": "89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328"
 }

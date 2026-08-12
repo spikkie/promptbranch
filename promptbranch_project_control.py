@@ -10,6 +10,13 @@ from promptbranch_project import load_repo_identity, project_registry_dir
 
 VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)*$")
 PLAN_STATE_REL = Path("docs/project/plan-state.json")
+CONTROL_PROJECTION_PATHS = (
+    "docs/project/plan-state.json",
+    "docs/project/plan.md",
+    "docs/project/status.md",
+    "docs/project/release-status.md",
+    "docs/project/migration.md",
+)
 REQUIRED_DOCS = (
     Path("PROJECT_SETTINGS.md"),
     Path("AGENTS.md"),
@@ -189,6 +196,40 @@ def _replace_current_baseline_block(path: Path, lines: list[str]) -> bool:
     return True
 
 
+def _upsert_live_control_projection_block(
+    path: Path,
+    *,
+    version: str,
+    artifact_filename: str,
+    sha256: str,
+    next_normal_version: str,
+    next_normal_slice: str,
+    next_normal_artifact: str,
+    planned_after_version: str,
+    planned_after_slice: str,
+    planned_after_artifact: str,
+) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    marker = "<!-- promptbranch-live-control-projection -->"
+    block = (
+        f"{marker}\n"
+        f"> Live control projection after adoption: accepted/current `{version}` (`{artifact_filename}`), "
+        f"SHA-256 `{sha256}`. Active next normal slice is `{next_normal_slice}` with artifact "
+        f"`{next_normal_artifact}`. Planned after acceptance is `{planned_after_slice}` "
+        f"(`{planned_after_version}`) with artifact `{planned_after_artifact}`.\n\n"
+    )
+    if marker in text:
+        updated = re.sub(r"<!-- promptbranch-live-control-projection -->.*?\n\n", block, text, count=1, flags=re.S)
+    else:
+        updated = block + text
+    if updated == text:
+        return False
+    path.write_text(updated, encoding="utf-8")
+    return True
+
+
 def synchronize_project_control_after_adoption(
     repo_path: str | Path,
     *,
@@ -271,21 +312,28 @@ def synchronize_project_control_after_adoption(
         if _replace_current_baseline_block(root / rel, baseline_lines):
             changed_docs.append(str(rel))
 
-    release_status = root / "docs/project/release-status.md"
-    if release_status.is_file():
-        text = release_status.read_text(encoding="utf-8")
-        marker = "<!-- promptbranch-live-control-projection -->"
-        block = (
-            f"{marker}\n"
-            f"> Live control projection after adoption: accepted/current `{version}` (`{artifact_filename}`), "
-            f"SHA-256 `{sha256}`. Next normal slice remains `{next_normal_slice}` with artifact `{next_normal_artifact}`.\n\n"
-        )
-        if marker in text:
-            text = re.sub(r"<!-- promptbranch-live-control-projection -->.*?\n\n", block, text, count=1, flags=re.S)
-        else:
-            text = block + text
-        release_status.write_text(text, encoding="utf-8")
-        changed_docs.append("docs/project/release-status.md")
+    planned_after_version = str(planned_after.get("version") or "")
+    planned_after_slice = str(planned_after.get("slice") or "")
+    planned_after_artifact = str(planned_after.get("artifact") or planned_after.get("transport_artifact") or "")
+    for rel in (
+        Path("docs/project/plan.md"),
+        Path("docs/project/status.md"),
+        Path("docs/project/release-status.md"),
+        Path("docs/project/migration.md"),
+    ):
+        if _upsert_live_control_projection_block(
+            root / rel,
+            version=version,
+            artifact_filename=artifact_filename,
+            sha256=sha256,
+            next_normal_version=next_normal_version,
+            next_normal_slice=next_normal_slice,
+            next_normal_artifact=next_normal_artifact,
+            planned_after_version=planned_after_version,
+            planned_after_slice=planned_after_slice,
+            planned_after_artifact=planned_after_artifact,
+        ) and str(rel) not in changed_docs:
+            changed_docs.append(str(rel))
 
     return {
         "ok": True,

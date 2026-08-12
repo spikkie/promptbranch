@@ -510,6 +510,11 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_cli.py::test_release_lifecycle_plan_includes_scheduler_and_source_queue",
             "tests/test_promptbranch_cli.py::test_release_lifecycle_plan_blocks_when_artifact_current_is_stale",
             "tests/test_promptbranch_cli.py::test_src_list_browser_profile_busy_reports_wait_idle_guidance",
+            "tests/test_response_completion.py::test_fresh_assistant_chain_latch_preserves_baseline_identical_final_text_after_virtualized_rebase",
+            "tests/test_response_completion.py::test_baseline_identical_assistant_text_remains_stale_without_fresh_chain_causality",
+            "tests/test_response_completion.py::test_wait_and_get_response_completes_when_fresh_stream_finishes_as_baseline_text",
+            "tests/test_response_completion.py::test_response_chain_diagnostics_capture_project_to_conversation_transition",
+            "tests/test_promptbranch_container_api.py::test_ask_endpoint_internal_deadline_preserves_latest_submit_progress",
         ),
     },
     "release_lifecycle_plan": {

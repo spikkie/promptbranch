@@ -181,12 +181,10 @@ def resume_start_rank(attempt_path: Path) -> tuple[int, str | None]:
 
 
 
-CONTROL_PROJECTION_PATHS = (
-    "docs/project/plan-state.json",
-    "docs/project/plan.md",
-    "docs/project/status.md",
-    "docs/project/release-status.md",
-)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from promptbranch_project_control import CONTROL_PROJECTION_PATHS
 
 
 def _run_text(command: list[str], *, cwd: Path, evidence_dir: Path, label: str) -> subprocess.CompletedProcess[str]:

@@ -897,3 +897,255 @@ def test_reduced_visible_assistant_count_fails_closed_without_submit_or_running(
         text="different answer",
         observed_running_state=False,
     ) is False
+
+
+def test_fresh_assistant_chain_latch_preserves_baseline_identical_final_text_after_virtualized_rebase(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 8,
+        "assistant_text": "INTEGRATION_OK",
+        "submit_confirmed": True,
+    }
+
+    assert client._assistant_response_changed(
+        context,
+        count=7,
+        text="Thinking",
+        observed_running_state=True,
+    ) is True
+    assert context["post_submit_fresh_assistant_chain_established"] is True
+    assert context["post_submit_fresh_assistant_chain_visible_count"] == 7
+    assert context["post_submit_turn_evidence_mode"] == (
+        "virtualized_count_rebase_after_confirmed_submit_and_running"
+    )
+
+    assert client._assistant_response_changed(
+        context,
+        count=7,
+        text="INTEGRATION_OK",
+        observed_running_state=True,
+    ) is True
+    assert context["post_submit_turn_evidence_mode"] == "latched_fresh_assistant_chain"
+    assert context["post_submit_fresh_assistant_chain_latest_text_matches_baseline"] is True
+
+
+def test_baseline_identical_assistant_text_remains_stale_without_fresh_chain_causality(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 8,
+        "assistant_text": "INTEGRATION_OK",
+        "submit_confirmed": True,
+    }
+
+    assert client._assistant_response_changed(
+        context,
+        count=7,
+        text="INTEGRATION_OK",
+        observed_running_state=True,
+    ) is False
+    assert context.get("post_submit_fresh_assistant_chain_established") is not True
+
+    context["post_submit_fresh_assistant_chain_established"] = True
+    context["post_submit_fresh_assistant_chain_visible_count"] = 7
+    context["submit_confirmed"] = False
+    assert client._assistant_response_changed(
+        context,
+        count=7,
+        text="INTEGRATION_OK",
+        observed_running_state=True,
+    ) is False
+
+
+def test_wait_and_get_response_completes_when_fresh_stream_finishes_as_baseline_text(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+    context = {
+        "assistant_count": 8,
+        "assistant_text": "INTEGRATION_OK",
+        "submit_confirmed": True,
+        "require_observed_generation_then_idle": True,
+    }
+
+    class DummyPage:
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    responses = iter([
+        ('section[data-turn="assistant"]', 7, "Thinking", []),
+        ('section[data-turn="assistant"]', 7, "INTEGRATION_O_", []),
+        ('section[data-turn="assistant"]', 7, "INTEGRATION_OK", []),
+        ('section[data-turn="assistant"]', 7, "INTEGRATION_OK", []),
+    ])
+    submit_states = iter([
+        {
+            "selector": '#composer-submit-button[data-testid="stop-button"]',
+            "send_ready": False,
+            "idle_visible": False,
+            "visible_enabled_count": 1,
+            "aria_label": "Stop answering",
+            "data_testid": "stop-button",
+            "stop_visible": True,
+        },
+        {
+            "selector": '#composer-submit-button[data-testid="stop-button"]',
+            "send_ready": False,
+            "idle_visible": False,
+            "visible_enabled_count": 1,
+            "aria_label": "Stop answering",
+            "data_testid": "stop-button",
+            "stop_visible": True,
+        },
+        {
+            "selector": 'button[aria-label="Start Voice"]',
+            "send_ready": False,
+            "idle_visible": True,
+            "visible_enabled_count": 1,
+            "aria_label": "Start Voice",
+            "data_testid": "",
+            "stop_visible": False,
+        },
+        {
+            "selector": 'button[aria-label="Start Voice"]',
+            "send_ready": False,
+            "idle_visible": True,
+            "visible_enabled_count": 1,
+            "aria_label": "Start Voice",
+            "data_testid": "",
+            "stop_visible": False,
+        },
+    ])
+
+    async def fake_noop(*args, **kwargs) -> None:
+        return None
+
+    async def fake_extract(*args, **kwargs):
+        return next(responses)
+
+    async def fake_submit_state(*args, **kwargs):
+        return next(submit_states)
+
+    async def fake_thinking_state(*args, **kwargs):
+        return {"visible": False, "text": ""}
+
+    async def fake_url(*args, **kwargs):
+        return "https://chatgpt.com/g/g-p-test/c/fresh-chain"
+
+    monkeypatch.setattr(client, "_raise_fail_fast_midrun_challenge_if_configured", fake_noop)
+    monkeypatch.setattr(client, "_maybe_open_new_project_conversation", fake_noop)
+    monkeypatch.setattr(client, "_extract_last_text_from_selectors", fake_extract)
+    monkeypatch.setattr(client, "_probe_submit_button_state", fake_submit_state)
+    monkeypatch.setattr(client, "_probe_thinking_state", fake_thinking_state)
+    monkeypatch.setattr(client, "_safe_page_url", fake_url)
+
+    answer = asyncio.run(client._wait_and_get_response(DummyPage(), response_context=context))
+
+    assert answer == "INTEGRATION_OK"
+    assert context["post_submit_fresh_assistant_chain_established"] is True
+    assert context["post_submit_fresh_assistant_chain_visible_count"] == 7
+    assert context["post_submit_fresh_assistant_chain_latest_text_matches_baseline"] is True
+    diagnostics = context["response_chain_diagnostics"]
+    assert diagnostics["terminal_status"] == "completed"
+    assert diagnostics["fresh_chain_latched"] is True
+    assert diagnostics["candidate_equals_baseline"] is True
+    assert diagnostics["completion_ready"] is True
+
+
+def test_response_chain_diagnostics_capture_project_to_conversation_transition(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+
+    client = _make_client(tmp_path)
+    context = {
+        "url": "https://chatgpt.com/g/g-p-test/project",
+        "assistant_count": 0,
+        "assistant_text": "",
+        "submit_confirmed": True,
+        "require_observed_generation_then_idle": True,
+    }
+
+    class DummyPage:
+        def __init__(self) -> None:
+            self.url = "https://chatgpt.com/g/g-p-test/project"
+
+        async def wait_for_timeout(self, _ms: int) -> None:
+            return None
+
+    page = DummyPage()
+    responses = iter([
+        ('section[data-turn="assistant"]', 1, "Thinking", []),
+        ('section[data-turn="assistant"]', 1, "TASK_MESSAGE_OK", []),
+        ('section[data-turn="assistant"]', 1, "TASK_MESSAGE_OK", []),
+    ])
+    submit_states = iter([
+        {
+            "selector": '#composer-submit-button[data-testid="stop-button"]',
+            "send_ready": False,
+            "idle_visible": False,
+            "aria_label": "Stop answering",
+            "data_testid": "stop-button",
+            "stop_visible": True,
+        },
+        {
+            "selector": 'button[aria-label="Start Voice"]',
+            "send_ready": False,
+            "idle_visible": True,
+            "aria_label": "Start Voice",
+            "data_testid": "",
+            "stop_visible": False,
+        },
+        {
+            "selector": 'button[aria-label="Start Voice"]',
+            "send_ready": False,
+            "idle_visible": True,
+            "aria_label": "Start Voice",
+            "data_testid": "",
+            "stop_visible": False,
+        },
+    ])
+
+    async def fake_noop(*args, **kwargs) -> None:
+        return None
+
+    async def fake_maybe_open(page_obj, **kwargs):
+        if page_obj.url.endswith('/project'):
+            page_obj.url = "https://chatgpt.com/g/g-p-test/c/new-task-message"
+        return page_obj.url
+
+    async def fake_extract(*args, **kwargs):
+        return next(responses)
+
+    async def fake_submit_state(*args, **kwargs):
+        return next(submit_states)
+
+    async def fake_thinking_state(*args, **kwargs):
+        return {"visible": False, "text": ""}
+
+    async def fake_url(page_obj, *args, **kwargs):
+        return page_obj.url
+
+    monkeypatch.setattr(client, "_raise_fail_fast_midrun_challenge_if_configured", fake_noop)
+    monkeypatch.setattr(client, "_maybe_open_new_project_conversation", fake_maybe_open)
+    monkeypatch.setattr(client, "_extract_last_text_from_selectors", fake_extract)
+    monkeypatch.setattr(client, "_probe_submit_button_state", fake_submit_state)
+    monkeypatch.setattr(client, "_probe_thinking_state", fake_thinking_state)
+    monkeypatch.setattr(client, "_safe_page_url", fake_url)
+
+    answer = asyncio.run(client._wait_and_get_response(page, response_context=context))
+    diagnostics = context["response_chain_diagnostics"]
+
+    assert answer == "TASK_MESSAGE_OK"
+    assert diagnostics["operation_kind"] == "project_new_conversation"
+    assert diagnostics["baseline_conversation_id"] is None
+    assert diagnostics["current_conversation_id"] == "new-task-message"
+    assert diagnostics["fresh_chain_latched"] is True
+    assert diagnostics["terminal_status"] == "completed"
+    assert diagnostics["url_transitions"] == [
+        {
+            "attempt": 1,
+            "elapsed_s": diagnostics["url_transitions"][0]["elapsed_s"],
+            "old_url": "https://chatgpt.com/g/g-p-test/project",
+            "new_url": "https://chatgpt.com/g/g-p-test/c/new-task-message",
+            "old_conversation_id": None,
+            "new_conversation_id": "new-task-message",
+        }
+    ]

@@ -1,16 +1,16 @@
-> v0.1.128.1.1 authority: accepted/current is FINAL_VERIFIED `v0.1.128.1`; repair only lifecycle-wrapper resume/progress, ask failure classification, and tracked control-projection convergence. No external-application scope.
+> v0.1.128.1.1.1.1 authority: accepted/current is adopted `v0.1.128.1.1`; repair preserves post-adoption projection completeness and fixes fresh assistant-response continuity only. No external-application scope.
 
 # Promptbranch status
 
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.128.1
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.zip
-accepted_current_sha256: 645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8
-active_candidate_version: v0.1.128.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip
-active_candidate_base_version: v0.1.128.1
+accepted_current_version: v0.1.128.1.1
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip
+accepted_current_sha256: 89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328
+active_candidate_version: v0.1.128.1.1.1.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip
+active_candidate_base_version: v0.1.128.1.1
 next_normal_version: v0.1.129
 next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
@@ -1314,3 +1314,8 @@ The `v0.1.124` full candidate test failed only at `project_source_add_text`: Cha
 ## v0.1.126.1.1.1.1.3 repair status
 
 `v0.1.126.1.1.1.1.2` is retained as immutable failure evidence. Its live full candidate suite passed 53/53, including ask and task/message flows, but explicit publication failed before Git commit because `.promptbranch-release.json` omitted `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` from the sanitized environment allowlist. A direct proof with that variable supplied selected candidate pytest 9.0.2 and executed the deterministic release groups successfully. `v0.1.126.1.1.1.1.3` repairs only this authority propagation. Accepted/current remains `v0.1.125.3.4.2`; no adoption claim is made.
+
+
+## v0.1.128.1.1.1.1.1 diagnostic repair status
+
+`v0.1.128.1.1.1.1` live-proved the pinned `ask_question` fresh-chain repair by returning `INTEGRATION_OK`, then failed later at `task_message_flow.ask` with a service-internal deadline while starting a new chat from the generated Project page. `v0.1.128.1.1.1.1.1` preserves all response-selection behavior and prior projection repairs unchanged and adds bounded structured diagnostics for response-chain freshness, project-page to conversation URL transitions, assistant candidate hashes/count deltas, generation/idle state, completion blockers, and the final timeout snapshot. `v0.1.129 — External application pilot bootstrap` remains blocked until this repair family reaches FINAL_VERIFIED/current.

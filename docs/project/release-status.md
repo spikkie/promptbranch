@@ -1,13 +1,16 @@
-# Active release status — v0.1.128.1.1
+<!-- promptbranch-release-construction-baseline -->
+> Construction baseline: adopted/current `v0.1.128.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip`), SHA-256 `89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328`. Active bounded repair is `v0.1.128.1.1.1.1.1`; next normal slice remains `v0.1.129 — External application pilot bootstrap`.
+
+# Active release status — v0.1.128.1.1.1.1.1
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.128.1.1 | repair | lifecycle resume/progress/diagnostics/control projection | construction worktree; exact ZIP pending | focused tests pending | DOD-534–538 in progress | — |
-| v0.1.128.1 | repair | Single authority for Promptbranch release artifacts | accepted/current, FINAL_VERIFIED | live lifecycle + fresh current green | DOD-524–533 closed except wrapper retry-resume defect | `645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8` |
+| v0.1.128.1.1.1.1.1 | repair | task/message response-chain diagnostic capture; no response-selection change | deterministic construction candidate; live diagnostic proof pending | response/container diagnostic tests + canonical groups required; live task_message_flow evidence pending | diagnostic-only repair | — |
+| v0.1.128.1.1.1 | repair | post-adoption control-projection completeness | immutable repair-required predecessor | construction green; live full + focused ask reproduce response-continuity timeout | DOD-539–541 construction proven; DOD-542 superseded | — |
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.1.zip` (`v0.1.128.1`).
-Accepted SHA-256: `645bd8ce6ff388292cc29a5330786e6743bcb2ac04a419f24f274f376bf1ffa8`.
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip`.
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip` (`v0.1.128.1.1`).
+Accepted SHA-256: `89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328`.
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`.
 Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.
 
 ---
@@ -960,3 +963,8 @@ Accepted/current remains `v0.1.123.2.5`. The same-version replacement candidate 
 - Repair: forward `PROMPTBRANCH_RELEASE_VALIDATION_PYTHON` through sanitized release-contract execution and prove foreign PATH pytest cannot override it.
 - Predecessor live candidate test: 53/53 passed; publication stopped before Git commit.
 - Live state: not accepted/current; `FINAL_VERIFIED` still pending.
+
+
+## v0.1.128.1.1.1.1.1 diagnostic repair status
+
+`v0.1.128.1.1.1.1` live-proved the pinned `ask_question` fresh-chain repair by returning `INTEGRATION_OK`, then failed later at `task_message_flow.ask` with a service-internal deadline while starting a new chat from the generated Project page. `v0.1.128.1.1.1.1.1` preserves all response-selection behavior and prior projection repairs unchanged and adds bounded structured diagnostics for response-chain freshness, project-page to conversation URL transitions, assistant candidate hashes/count deltas, generation/idle state, completion blockers, and the final timeout snapshot. `v0.1.129 — External application pilot bootstrap` remains blocked until this repair family reaches FINAL_VERIFIED/current.

@@ -5537,6 +5537,8 @@ class ChatGPTBrowserClient:
             ))
             phase_timings["total_seconds"] = round(time.monotonic() - operation_started, 3)
             timeout_result["ask_phase_timings"] = phase_timings
+            timeout_result["response_chain_diagnostics"] = self._response_chain_progress_snapshot(response_context)
+            self._record_ask_progress(**timeout_result)
             return timeout_result
         except AuthChallengeRequiredError:
             raise
@@ -5601,6 +5603,7 @@ class ChatGPTBrowserClient:
             "conversation_url": conversation_url,
             "submit_evidence": submit_evidence,
             "ask_phase_timings": phase_timings,
+            "response_chain_diagnostics": self._response_chain_progress_snapshot(response_context),
             "status": "completed",
         }
         # Expose the same submit-causality fields on successful ask results that
@@ -29590,6 +29593,19 @@ class ChatGPTBrowserClient:
         return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
 
     @staticmethod
+    def _response_chain_progress_snapshot(response_context: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if not isinstance(response_context, dict):
+            return None
+        diagnostics = response_context.get("response_chain_diagnostics")
+        if not isinstance(diagnostics, dict):
+            return None
+        snapshot = dict(diagnostics)
+        transitions = diagnostics.get("url_transitions")
+        if isinstance(transitions, list):
+            snapshot["url_transitions"] = [dict(item) if isinstance(item, dict) else item for item in transitions[-12:]]
+        return snapshot
+
+    @staticmethod
     def _stable_payload_hash(value: Any) -> str:
         try:
             text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -31773,8 +31789,38 @@ class ChatGPTBrowserClient:
         if response_context is None:
             return True
         baseline_count = int(response_context.get("assistant_count") or 0)
+        baseline_text = str(response_context.get("assistant_text") or "").strip()
+
+        # Once a post-submit assistant chain has been causally established as
+        # fresh, preserve that freshness across subsequent streaming updates at
+        # the same visible assistant count.  The final generated text may be
+        # byte-for-byte identical to the pre-submit answer (for example repeated
+        # deterministic smoke prompts).  Requiring candidate != baseline_text on
+        # every poll loses the fresh chain exactly when generation completes.
+        # The latch is deliberately bounded: it can only be used after confirmed
+        # submit + observed generation, and only while the visible assistant count
+        # remains the count at which freshness was independently established.
+        fresh_chain_established = bool(
+            response_context.get("post_submit_fresh_assistant_chain_established")
+        )
+        fresh_chain_count = response_context.get("post_submit_fresh_assistant_chain_visible_count")
+        if (
+            fresh_chain_established
+            and response_context.get("submit_confirmed") is True
+            and observed_running_state
+            and isinstance(fresh_chain_count, int)
+            and count == fresh_chain_count
+        ):
+            response_context["post_submit_turn_evidence_mode"] = "latched_fresh_assistant_chain"
+            response_context["post_submit_fresh_assistant_chain_latest_text_matches_baseline"] = (
+                candidate == baseline_text
+            )
+            return True
+
         if count > baseline_count:
             response_context["post_submit_turn_evidence_mode"] = "assistant_count_advanced"
+            response_context["post_submit_fresh_assistant_chain_established"] = True
+            response_context["post_submit_fresh_assistant_chain_visible_count"] = count
             return True
 
         # ChatGPT can virtualize or recycle the newest assistant container.  In
@@ -31784,7 +31830,6 @@ class ChatGPTBrowserClient:
         # submit causality was already confirmed and a running state was observed.
         # The completion loop still requires the replacement to settle and the
         # browser/composer to become idle before it can be returned.
-        baseline_text = str(response_context.get("assistant_text") or "").strip()
         same_count_confirmed_replacement = bool(
             count == baseline_count
             and response_context.get("submit_confirmed") is True
@@ -31795,6 +31840,8 @@ class ChatGPTBrowserClient:
             response_context["post_submit_turn_evidence_mode"] = (
                 "same_count_replacement_after_confirmed_submit_and_running"
             )
+            response_context["post_submit_fresh_assistant_chain_established"] = True
+            response_context["post_submit_fresh_assistant_chain_visible_count"] = count
             return True
 
         # Conversation virtualization can also reduce the visible assistant count
@@ -31813,6 +31860,8 @@ class ChatGPTBrowserClient:
             )
             response_context["post_submit_visible_assistant_count"] = count
             response_context["post_submit_baseline_assistant_count"] = baseline_count
+            response_context["post_submit_fresh_assistant_chain_established"] = True
+            response_context["post_submit_fresh_assistant_chain_visible_count"] = count
             return True
 
         # Without both confirmed submit causality and an observed generation
@@ -31855,6 +31904,54 @@ class ChatGPTBrowserClient:
         observed_running_state = False
         observed_idle_after_running = False
         min_completion_delay_s = 1.0
+        last_chain_signature: Optional[tuple[Any, ...]] = None
+        baseline_url = str((response_context or {}).get("url") or "")
+        last_observed_url = baseline_url
+        last_latch_state = bool(
+            isinstance(response_context, dict)
+            and response_context.get("post_submit_fresh_assistant_chain_established")
+        )
+        response_chain: Optional[dict[str, Any]] = None
+        if isinstance(response_context, dict):
+            baseline_text = str(response_context.get("assistant_text") or "").strip()
+            response_chain = response_context.setdefault("response_chain_diagnostics", {})
+            response_chain.update({
+                "schema": "promptbranch.response_chain_diagnostics",
+                "schema_version": "1.0",
+                "operation_kind": (
+                    "project_new_conversation"
+                    if self._is_project_home_url(baseline_url)
+                    else "existing_conversation"
+                    if self._is_conversation_url(baseline_url)
+                    else "unknown"
+                ),
+                "wait_started_at_monotonic": round(wait_started_monotonic, 6),
+                "baseline_url": baseline_url,
+                "baseline_conversation_id": self._conversation_id_from_any_url(baseline_url),
+                "baseline_assistant_count": int(response_context.get("assistant_count") or 0),
+                "baseline_latest_text_hash": self._stable_text_hash(baseline_text),
+                "baseline_latest_text_length": len(baseline_text),
+                "submit_confirmed": response_context.get("submit_confirmed") is True,
+                "url_transitions": [],
+                "fresh_chain_latched": last_latch_state,
+                "fresh_chain_latch_reason": response_context.get("post_submit_turn_evidence_mode"),
+                "terminal_status": "waiting",
+            })
+            self._log(
+                "response-chain",
+                "wait-start",
+                operation_kind=response_chain.get("operation_kind"),
+                baseline_url=baseline_url,
+                baseline_conversation_id=response_chain.get("baseline_conversation_id"),
+                baseline_assistant_count=response_chain.get("baseline_assistant_count"),
+                baseline_latest_text_hash=response_chain.get("baseline_latest_text_hash"),
+                submit_confirmed=response_chain.get("submit_confirmed"),
+            )
+            self._record_ask_progress(
+                status="response_wait",
+                conversation_url=baseline_url or None,
+                response_chain_diagnostics=self._response_chain_progress_snapshot(response_context),
+            )
 
         while asyncio.get_running_loop().time() < deadline:
             attempt += 1
@@ -31889,6 +31986,23 @@ class ChatGPTBrowserClient:
             elif idle_now:
                 observed_idle_after_running = True
 
+            if response_chain is not None and current_url != last_observed_url:
+                transition = {
+                    "attempt": attempt,
+                    "elapsed_s": round(elapsed_s, 3),
+                    "old_url": last_observed_url,
+                    "new_url": current_url,
+                    "old_conversation_id": self._conversation_id_from_any_url(last_observed_url),
+                    "new_conversation_id": self._conversation_id_from_any_url(current_url),
+                }
+                transitions = response_chain.setdefault("url_transitions", [])
+                if isinstance(transitions, list):
+                    transitions.append(transition)
+                    if len(transitions) > 12:
+                        del transitions[:-12]
+                self._log("response-chain", "url-transition", **transition)
+                last_observed_url = current_url
+
             has_response = self._assistant_response_changed(
                 response_context,
                 count=assistant_count,
@@ -31896,6 +32010,44 @@ class ChatGPTBrowserClient:
                 observed_running_state=observed_running_state,
             )
             candidate_text = assistant_text.strip()
+            fresh_chain_latched = bool(
+                isinstance(response_context, dict)
+                and response_context.get("post_submit_fresh_assistant_chain_established")
+            )
+            fresh_chain_reason = (
+                response_context.get("post_submit_turn_evidence_mode")
+                if isinstance(response_context, dict)
+                else None
+            )
+            if fresh_chain_latched and not last_latch_state:
+                self._log(
+                    "response-chain",
+                    "freshness-latch",
+                    attempt=attempt,
+                    elapsed_s=round(elapsed_s, 3),
+                    latched=True,
+                    reason=fresh_chain_reason,
+                    assistant_count=assistant_count,
+                    text_hash=self._stable_text_hash(candidate_text),
+                    text_length=len(candidate_text),
+                    equals_baseline=bool(
+                        isinstance(response_context, dict)
+                        and candidate_text == str(response_context.get("assistant_text") or "").strip()
+                    ),
+                )
+            last_latch_state = fresh_chain_latched
+
+            completion_ready = False
+            completion_blockers: list[str] = []
+            strong_idle_completion = False
+            stable_completion = False
+            idle_label_visible = False
+            composer_signal_known = bool(submit_state.get("selector"))
+            composer_idle_visible = bool(submit_state.get("idle_visible") or submit_state.get("send_ready"))
+            fallback_stable_ready = False
+            generation_then_idle_ready = True
+            stable_elapsed_s = 0.0
+
             if has_response and candidate_text:
                 if first_response_seen_at is None:
                     first_response_seen_at = asyncio.get_running_loop().time()
@@ -31926,13 +32078,10 @@ class ChatGPTBrowserClient:
                         preview=self._preview_text(candidate_text, 160),
                     )
 
-                stable_elapsed_s = 0.0
                 if first_response_seen_at is not None:
                     stable_elapsed_s = asyncio.get_running_loop().time() - first_response_seen_at
                 text_length = len(candidate_text)
 
-                composer_signal_known = bool(submit_state.get("selector"))
-                composer_idle_visible = bool(submit_state.get("idle_visible") or submit_state.get("send_ready"))
                 fallback_stable_ready = bool(
                     not composer_signal_known
                     and (
@@ -31992,51 +32141,144 @@ class ChatGPTBrowserClient:
                     stable_elapsed_s=stable_elapsed_s,
                     strong_idle_completion=strong_idle_completion,
                 )
-                if stable_completion or strong_idle_completion:
-                    completion_reason = (
-                        "assistant_text_present_and_idle_voice_button_visible"
-                        if strong_idle_completion and not stable_completion
-                        else "assistant_text_stable_and_completion_predicates_ready"
-                    )
+
+            if response_chain is not None:
+                baseline_text = str((response_context or {}).get("assistant_text") or "").strip()
+                response_chain.update({
+                    "last_attempt": attempt,
+                    "elapsed_s": round(elapsed_s, 3),
+                    "current_url": current_url,
+                    "current_conversation_id": self._conversation_id_from_any_url(current_url),
+                    "assistant_selector": assistant_selector,
+                    "assistant_count": assistant_count,
+                    "assistant_count_delta": assistant_count - int((response_context or {}).get("assistant_count") or 0),
+                    "candidate_text_hash": self._stable_text_hash(candidate_text),
+                    "candidate_text_length": len(candidate_text),
+                    "candidate_text_preview": self._preview_text(candidate_text, 120),
+                    "candidate_equals_baseline": candidate_text == baseline_text if candidate_text else False,
+                    "has_response": has_response,
+                    "fresh_chain_latched": fresh_chain_latched,
+                    "fresh_chain_latch_reason": fresh_chain_reason,
+                    "fresh_chain_visible_count": (response_context or {}).get("post_submit_fresh_assistant_chain_visible_count"),
+                    "running_now": running_now,
+                    "idle_now": idle_now,
+                    "thinking_visible": bool(thinking_state.get("visible")),
+                    "thinking_text": thinking_state.get("text"),
+                    "stop_visible": bool(submit_state.get("stop_visible")),
+                    "composer_idle_visible": composer_idle_visible,
+                    "composer_signal_known": composer_signal_known,
+                    "observed_running_state": observed_running_state,
+                    "observed_idle_after_running": observed_idle_after_running,
+                    "stable_polls": stable_polls,
+                    "stable_required": stable_required,
+                    "stable_elapsed_s": round(stable_elapsed_s, 3),
+                    "completion_ready": completion_ready,
+                    "strong_idle_completion": strong_idle_completion,
+                    "stable_completion": stable_completion,
+                    "completion_blockers": list(completion_blockers),
+                    "terminal_status": "waiting",
+                })
+                chain_signature = (
+                    current_url,
+                    assistant_count,
+                    response_chain.get("candidate_text_hash"),
+                    has_response,
+                    fresh_chain_latched,
+                    running_now,
+                    idle_now,
+                    tuple(completion_blockers),
+                )
+                state_changed = chain_signature != last_chain_signature
+                if attempt <= 3 or attempt % 10 == 0 or state_changed:
                     self._log(
-                        "response",
-                        "assistant response stabilized",
-                        selector=assistant_selector,
+                        "response-chain",
+                        "poll",
                         attempt=attempt,
-                        elapsed_s=round(elapsed_s, 1),
+                        elapsed_s=round(elapsed_s, 3),
+                        current_url=current_url,
+                        current_conversation_id=response_chain.get("current_conversation_id"),
+                        assistant_count=assistant_count,
+                        assistant_count_delta=response_chain.get("assistant_count_delta"),
+                        text_hash=response_chain.get("candidate_text_hash"),
                         text_length=len(candidate_text),
-                        stable_polls=stable_polls,
-                        stable_elapsed_s=round(stable_elapsed_s, 1),
-                        completion_ready=completion_ready,
-                        completion_reason=completion_reason,
-                        completion_blockers=completion_blockers,
-                        strong_idle_completion=strong_idle_completion,
-                        idle_label_visible=idle_label_visible,
-                        submit_selector=submit_state.get("selector"),
-                        submit_aria_label=submit_state.get("aria_label"),
-                        submit_data_testid=submit_state.get("data_testid"),
-                        submit_idle_visible=submit_state.get("idle_visible"),
-                        submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
-                        composer_signal_known=composer_signal_known,
-                        fallback_stable_ready=fallback_stable_ready,
-                        thinking_visible=thinking_state.get("visible"),
-                        thinking_text=thinking_state.get("text"),
+                        equals_baseline=response_chain.get("candidate_equals_baseline"),
+                        has_response=has_response,
+                        fresh_chain_latched=fresh_chain_latched,
+                        fresh_chain_latch_reason=fresh_chain_reason,
+                        running_now=running_now,
+                        idle_now=idle_now,
+                        thinking_visible=response_chain.get("thinking_visible"),
+                        stop_visible=response_chain.get("stop_visible"),
+                        composer_idle_visible=composer_idle_visible,
                         observed_running_state=observed_running_state,
                         observed_idle_after_running=observed_idle_after_running,
-                        require_observed_generation_then_idle=require_observed_generation_then_idle,
-                        generation_then_idle_ready=generation_then_idle_ready,
-                        preview=self._preview_text(candidate_text, 160),
+                        stable_polls=stable_polls,
+                        completion_ready=completion_ready,
+                        completion_blockers=completion_blockers,
                     )
-                    if self.config.debug:
-                        await self._save_response_diagnostics(
-                            page,
-                            probes=probes,
-                            response_context=response_context,
-                            attempt=attempt,
-                            elapsed_s=elapsed_s,
-                            include_page_artifacts=False,
-                        )
-                    return candidate_text
+                    last_chain_signature = chain_signature
+                self._record_ask_progress(
+                    status="response_wait",
+                    conversation_url=current_url or None,
+                    response_chain_diagnostics=self._response_chain_progress_snapshot(response_context),
+                )
+
+            if has_response and candidate_text and (stable_completion or strong_idle_completion):
+                completion_reason = (
+                    "assistant_text_present_and_idle_voice_button_visible"
+                    if strong_idle_completion and not stable_completion
+                    else "assistant_text_stable_and_completion_predicates_ready"
+                )
+                self._log(
+                    "response",
+                    "assistant response stabilized",
+                    selector=assistant_selector,
+                    attempt=attempt,
+                    elapsed_s=round(elapsed_s, 1),
+                    text_length=len(candidate_text),
+                    stable_polls=stable_polls,
+                    stable_elapsed_s=round(stable_elapsed_s, 1),
+                    completion_ready=completion_ready,
+                    completion_reason=completion_reason,
+                    completion_blockers=completion_blockers,
+                    strong_idle_completion=strong_idle_completion,
+                    idle_label_visible=idle_label_visible,
+                    submit_selector=submit_state.get("selector"),
+                    submit_aria_label=submit_state.get("aria_label"),
+                    submit_data_testid=submit_state.get("data_testid"),
+                    submit_idle_visible=submit_state.get("idle_visible"),
+                    submit_visible_enabled_count=submit_state.get("visible_enabled_count"),
+                    composer_signal_known=composer_signal_known,
+                    fallback_stable_ready=fallback_stable_ready,
+                    thinking_visible=thinking_state.get("visible"),
+                    thinking_text=thinking_state.get("text"),
+                    observed_running_state=observed_running_state,
+                    observed_idle_after_running=observed_idle_after_running,
+                    generation_then_idle_ready=generation_then_idle_ready,
+                    preview=self._preview_text(candidate_text, 160),
+                )
+                if response_chain is not None:
+                    response_chain.update({
+                        "terminal_status": "completed",
+                        "completion_reason": completion_reason,
+                        "returned_text_hash": self._stable_text_hash(candidate_text),
+                        "returned_text_length": len(candidate_text),
+                    })
+                    self._record_ask_progress(
+                        status="response_completed",
+                        conversation_url=current_url or None,
+                        response_chain_diagnostics=self._response_chain_progress_snapshot(response_context),
+                    )
+                if self.config.debug:
+                    await self._save_response_diagnostics(
+                        page,
+                        probes=probes,
+                        response_context=response_context,
+                        attempt=attempt,
+                        elapsed_s=elapsed_s,
+                        include_page_artifacts=False,
+                    )
+                return candidate_text
 
             if attempt == 1 or attempt % 10 == 0 or probe_summary != last_probe_summary:
                 self._log(
@@ -32059,10 +32301,10 @@ class ChatGPTBrowserClient:
                     running_now=running_now,
                     observed_running_state=observed_running_state,
                     observed_idle_after_running=observed_idle_after_running,
-                    completion_ready=locals().get("completion_ready", False),
-                    completion_blockers=locals().get("completion_blockers", []),
-                    strong_idle_completion=locals().get("strong_idle_completion", False),
-                    idle_label_visible=locals().get("idle_label_visible", False),
+                    completion_ready=completion_ready,
+                    completion_blockers=completion_blockers,
+                    strong_idle_completion=strong_idle_completion,
+                    idle_label_visible=idle_label_visible,
                 )
                 last_probe_summary = probe_summary
 
@@ -32108,6 +32350,32 @@ class ChatGPTBrowserClient:
             ASSISTANT_MESSAGE_SELECTORS,
         )
         submit_state = await self._probe_submit_button_state(page)
+        current_url = await self._safe_page_url(page)
+        if response_chain is not None:
+            response_chain.update({
+                "terminal_status": "response_timeout",
+                "elapsed_s": round(elapsed_s, 3),
+                "current_url": current_url,
+                "current_conversation_id": self._conversation_id_from_any_url(current_url),
+                "assistant_selector": assistant_selector,
+                "assistant_count": assistant_count,
+                "candidate_text_hash": self._stable_text_hash(assistant_text),
+                "candidate_text_length": len(assistant_text.strip()),
+                "candidate_text_preview": self._preview_text(assistant_text, 120),
+                "stable_polls": stable_polls,
+                "observed_running_state": observed_running_state,
+                "observed_idle_after_running": observed_idle_after_running,
+                "stop_visible": bool(submit_state.get("stop_visible")),
+            })
+            self._log("response-chain", "timeout-summary", **{
+                key: value for key, value in response_chain.items()
+                if key not in {"url_transitions"}
+            })
+            self._record_ask_progress(
+                status="response_timeout",
+                conversation_url=current_url or None,
+                response_chain_diagnostics=self._response_chain_progress_snapshot(response_context),
+            )
         if self.config.debug:
             await self._save_response_diagnostics(
                 page,

@@ -237,6 +237,7 @@ class AskResponse(BaseModel):
     service_internal_timeout_seconds: Optional[float] = None
     progress_status: Optional[str] = None
     progress_updated_at_monotonic: Optional[float] = None
+    response_chain_diagnostics: Optional[dict] = None
     submit_method: Optional[str] = None
     prefer_button_submit: Optional[bool] = None
     submit_button_visible: Optional[bool] = None
@@ -972,6 +973,7 @@ async def ask(
                     "rate_limit_telemetry": progress.get("rate_limit_telemetry") if isinstance(progress.get("rate_limit_telemetry"), dict) else None,
                     "progress_status": progress.get("status"),
                     "progress_updated_at_monotonic": progress.get("updated_at_monotonic"),
+                    "response_chain_diagnostics": progress.get("response_chain_diagnostics") if isinstance(progress.get("response_chain_diagnostics"), dict) else None,
                 }
         else:
             result = await service.ask_question_result(**ask_kwargs)
@@ -996,6 +998,7 @@ async def ask(
             service_internal_timeout_seconds=result.get("service_internal_timeout_seconds") if isinstance(result, dict) else None,
             progress_status=result.get("progress_status") if isinstance(result, dict) else None,
             progress_updated_at_monotonic=result.get("progress_updated_at_monotonic") if isinstance(result, dict) else None,
+            response_chain_diagnostics=result.get("response_chain_diagnostics") if isinstance(result, dict) and isinstance(result.get("response_chain_diagnostics"), dict) else None,
             submit_method=result.get("submit_method") if isinstance(result, dict) else None,
             prefer_button_submit=result.get("prefer_button_submit") if isinstance(result, dict) else None,
             submit_button_visible=result.get("submit_button_visible") if isinstance(result, dict) else None,

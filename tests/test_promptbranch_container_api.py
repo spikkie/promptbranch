@@ -379,6 +379,14 @@ def test_ask_endpoint_internal_deadline_preserves_latest_submit_progress(monkeyp
         "submit_confirmed": True,
         "submit_visibility_classification": "backend_confirmed_but_user_turn_not_visible",
     }
+    preserved_response_chain = {
+        "schema": "promptbranch.response_chain_diagnostics",
+        "schema_version": "1.0",
+        "operation_kind": "project_new_conversation",
+        "current_url": "https://chatgpt.com/g/demo/project",
+        "fresh_chain_latched": False,
+        "terminal_status": "waiting",
+    }
 
     monkeypatch.setattr("promptbranch_container_api._service_for", lambda project_url: FakeService())
     monkeypatch.setattr(
@@ -388,6 +396,7 @@ def test_ask_endpoint_internal_deadline_preserves_latest_submit_progress(monkeyp
             "conversation_url": "https://chatgpt.com/g/demo/c/chat-1",
             "submit_evidence": preserved_submit,
             "ask_phase_timings": preserved_timings,
+            "response_chain_diagnostics": preserved_response_chain,
             "updated_at_monotonic": 123.0,
         },
     )
@@ -404,6 +413,7 @@ def test_ask_endpoint_internal_deadline_preserves_latest_submit_progress(monkeyp
     assert payload["submit_evidence"] == preserved_submit
     assert payload["ask_phase_timings"] == preserved_timings
     assert payload["progress_status"] == "submit_confirmed"
+    assert payload["response_chain_diagnostics"] == preserved_response_chain
 
 
 def test_container_service_does_not_clear_singleton_locks_by_default(monkeypatch, tmp_path) -> None:

@@ -1600,3 +1600,17 @@ After v0.1.128 acceptance, the next planned normal slice is `v0.1.129 — Extern
 ## v0.1.128.1.1 migration
 
 No compatibility migration is introduced. Existing retryable release attempts resume through the canonical next transition. Post-adoption project control state is rewritten as a derived projection of authoritative current. The next normal slice remains v0.1.129.
+
+## v0.1.128.1.1.1 migration
+
+No compatibility migration is introduced. Accepted/current remains `v0.1.128.1.1`. The repair only completes the derived post-adoption control projection: synchronization must update every document required by control-surface validation, and guarded Git publication uses that same canonical projection-path set. `v0.1.129` remains the next normal slice after acceptance.
+
+
+## v0.1.128.1.1.1.1 migration
+
+No compatibility migration is introduced. Accepted/current remains `v0.1.128.1.1`, and the immutable `v0.1.128.1.1.1` candidate remains repair-required evidence. `v0.1.128.1.1.1.1` carries its projection-completeness repair unchanged and replaces only the browser response-freshness decision: after confirmed submit plus observed generation independently establishes a fresh latest-assistant chain, same-visible-count streaming updates remain bound to that chain even if the completed text equals the pre-submit baseline. Without that causal latch, baseline-identical historical text remains stale and fails closed. `v0.1.129` remains the next normal slice after acceptance.
+
+
+## v0.1.128.1.1.1.1.1 diagnostic-only repair
+
+Carry forward `v0.1.128.1.1.1.1` unchanged. Add only task/message response-chain diagnostics that survive service deadlines. Do not weaken freshness, submit causality, completion predicates, artifact authority, or control-projection validation. The next normal release remains `v0.1.129`; planned-after remains `v0.1.130`.

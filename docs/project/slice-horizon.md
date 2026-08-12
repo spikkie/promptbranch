@@ -94,3 +94,17 @@ Promptbranch, `promptbranch-method`, and every application repository retain ind
 ## v0.1.128.1.1 repair horizon
 
 `v0.1.128.1.1 — Lifecycle resume, progress, diagnostics, and control-projection repair` is the active bounded repair on accepted/current `v0.1.128.1`. It fixes only wrapper retry-resume, live stderr progress/ETA, ask failure classification, and authoritative-current control projection. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance.
+
+## v0.1.128.1.1.1 repair horizon
+
+`v0.1.128.1.1.1 — Post-adoption control-projection completeness repair` is the active bounded repair on adopted/current `v0.1.128.1.1`. It fixes only projection completeness and the shared projection-file contract. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance; `v0.1.130 — Controlled external application change execution` remains planned after that.
+
+
+## v0.1.128.1.1.1.1 repair horizon
+
+`v0.1.128.1.1.1.1 — Fresh assistant-chain continuity repair` is the active bounded repair on adopted/current `v0.1.128.1.1`. It carries the construction-proven `.1.1.1` projection-completeness repair unchanged and fixes only response freshness continuity after a causally confirmed submit and observed generation. A freshly established assistant chain remains fresh across same-visible-count streaming updates even when its final deterministic text equals the historical baseline; stale baseline-identical text without the fresh-chain latch remains rejected. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance.
+
+
+## v0.1.128.1.1.1.1.1 repair horizon
+
+`v0.1.128.1.1.1.1.1 — Task/message response-chain diagnostic repair` is the active bounded repair on adopted/current `v0.1.128.1.1`. It carries the `.1.1.1` projection repair and `v0.1.128.1.1.1.1` fresh assistant-chain repair unchanged. The only new scope is structured diagnostic logging/state capture for the `task_message_flow.ask` new-Project-chat timeout, including URL/conversation transition, freshness latch, candidate identity, completion predicates, and terminal timeout state. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance.

@@ -1344,3 +1344,24 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-536 | Candidate ask failure classification distinguishes exact-route timeout/failure from true route mismatch | construction_proven | state-machine classification regressions | v0.1.128.1.1 |
 | DOD-537 | `ADOPTED_CURRENT` synchronizes tracked project control projection from authoritative adopted identity, and the one-command wrapper guarded-commits/pushes only known projection files with HEAD/upstream convergence | construction_proven | control synchronization + Git-backed publication regressions | v0.1.128.1.1 |
 | DOD-538 | `project validate-control-surface` fails closed when tracked accepted/current or an already-adopted active candidate disagrees with authoritative project artifact registry | construction_proven | authoritative-current drift regressions | v0.1.128.1.1 |
+
+
+## v0.1.128.1.1.1 projection-completeness repair DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-539 | Post-adoption synchronization generically projects accepted/current, next-normal, and planned-after-next values into every dynamic document required by `project validate-control-surface` | construction_proven | synchronization→validation regression reproducing the `.128.1.1` live failure | v0.1.128.1.1.1 |
+| DOD-540 | Synchronizer and guarded Git publication use one canonical `CONTROL_PROJECTION_PATHS` definition including `migration.md`; no independently maintained projection allowlist remains | construction_proven | canonical-path identity + Git guard regressions | v0.1.128.1.1.1 |
+| DOD-541 | Exact final v0.1.128.1.1.1 ZIP is deterministic, hygiene-clean, passes all canonical construction groups and Artifact Guardian | construction_proven | exact ZIP + 17 canonical groups + Guardian | v0.1.128.1.1.1 |
+| DOD-542 | Repair closes only when canonical lifecycle resumes from adopted/current `v0.1.128.1.1`, reaches independently verified `FINAL_VERIFIED`, publishes the complete control projection, and fresh scoped current remains exact | superseded_by_DOD_546 | live browser ask exposed fresh-response continuity defect before TESTED_GREEN | v0.1.128.1.1.1 |
+
+
+
+## v0.1.128.1.1.1.1 fresh assistant-chain continuity repair DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-543 | A post-submit assistant chain is latched as fresh only after confirmed submit, observed generation, and independent fresh-turn evidence such as count advance or baseline-different same/reduced-count replacement | construction_proven | response-freshness causal-latch regressions | v0.1.128.1.1.1.1 |
+| DOD-544 | Once latched, same-visible-count streaming updates remain fresh when the final text becomes byte-identical to the historical baseline; baseline-identical text without the latch still fails closed | construction_proven | exact reproduced `Thinking → partial → INTEGRATION_OK` regression plus stale negative case | v0.1.128.1.1.1.1 |
+| DOD-545 | The `.1.1.1` post-adoption projection-completeness repair remains unchanged and its synchronization→validation/canonical-projection regressions remain green in the exact new candidate | construction_proven | canonical project-control validation groups + exact ZIP proof | v0.1.128.1.1.1.1 |
+| DOD-546 | Repair closes only when the exact immutable candidate passes canonical construction validation/Guardian and one canonical live lifecycle reaches independently verified `FINAL_VERIFIED`, publishes the complete control projection, and fresh scoped current is exact | live_pending | exact ZIP + one-command canonical lifecycle proof | v0.1.128.1.1.1.1 |
