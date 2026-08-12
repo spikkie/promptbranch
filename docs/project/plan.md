@@ -1,3 +1,6 @@
+<!-- promptbranch-live-control-projection -->
+> Live control projection after adoption: accepted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
+
 > v0.1.128.1.1.1.1 authority: accepted/current is adopted `v0.1.128.1.1`; repair preserves post-adoption projection completeness and fixes fresh assistant-response continuity only. No external-application scope.
 
 # Promptbranch plan
@@ -5,12 +8,12 @@
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.128.1.1
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip
-accepted_current_sha256: 89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328
-active_candidate_version: v0.1.128.1.1.1.1.1
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip
-active_candidate_base_version: v0.1.128.1.1
+accepted_current_version: v0.1.128.1.1.1.1.1
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip
+accepted_current_sha256: dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd
+active_candidate_version: v0.1.129
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
+active_candidate_base_version: v0.1.128.1.1.1.1.1
 next_normal_version: v0.1.129
 next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
