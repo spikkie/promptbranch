@@ -25,7 +25,9 @@
         "promptbranch.skill.repo-inspection",
         "promptbranch.skill.final-mvp",
         "promptbranch.skill.application-architecture-proof",
-        "promptbranch.skill.tool-authoring"
+        "promptbranch.skill.tool-authoring",
+        "promptbranch.skill.learning",
+        "promptbranch.skill.operator"
       ],
       "tools": [
         "promptbranch.state.read",
@@ -123,6 +125,34 @@
         "filesystem.list"
       ],
       "validators": [
+        "promptbranch.validator.application-architecture"
+      ]
+    },
+    {
+      "id": "promptbranch.skill.learning",
+      "path": ".promptbranch/skills/promptbranch-learning/SKILL.md",
+      "name": "promptbranch-learning",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list"
+      ],
+      "validators": [
+        "promptbranch.validator.application-architecture"
+      ]
+    },
+    {
+      "id": "promptbranch.skill.operator",
+      "path": ".promptbranch/skills/promptbranch-operator/SKILL.md",
+      "name": "promptbranch-operator",
+      "tools": [
+        "filesystem.read",
+        "filesystem.list",
+        "git.status",
+        "git.diff.summary",
+        "artifact.registry.current"
+      ],
+      "validators": [
+        "promptbranch.validator.project-control",
         "promptbranch.validator.application-architecture"
       ]
     }

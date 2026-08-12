@@ -108,3 +108,7 @@ Promptbranch, `promptbranch-method`, and every application repository retain ind
 ## v0.1.128.1.1.1.1.1 repair horizon
 
 `v0.1.128.1.1.1.1.1 — Task/message response-chain diagnostic repair` is the active bounded repair on adopted/current `v0.1.128.1.1`. It carries the `.1.1.1` projection repair and `v0.1.128.1.1.1.1` fresh assistant-chain repair unchanged. The only new scope is structured diagnostic logging/state capture for the `task_message_flow.ask` new-Project-chat timeout, including URL/conversation transition, freshness latch, candidate identity, completion predicates, and terminal timeout state. `v0.1.129 — External application pilot bootstrap` remains planned after acceptance.
+
+## v0.1.128.2 — Promptbranch learning and skills completeness
+
+Active normal PB-environment slice. Completes canonical onboarding for humans, ChatGPT Projects, Claude/coding agents, generic coding agents, and PB-aware agents through deterministic read-only learning/operator bundles. After acceptance, `v0.1.129 — External application pilot bootstrap` becomes active. Repair horizon rule remains unchanged: repair releases must not advance scope.

@@ -1570,3 +1570,13 @@ For `v0.1.125.3.4.2`, candidate liveness is a pre-adoption invariant only. After
 ## ADR-PROJ-113 — Control state is a verified projection of adopted artifact authority
 
 For v0.1.128.1.1, the project-scoped immutable artifact registry/current object remains authoritative. Tracked `plan-state.json` and current-baseline documentation are synchronized only after exact `ADOPTED_CURRENT` convergence and are independently checked against the authoritative registry. Wrapper retry handling and progress reporting do not add lifecycle states.
+
+## ADR-PROJ-1282 — One canonical Promptbranch learning contract for humans and agents
+
+- **Status:** accepted for construction candidate `v0.1.128.2`.
+- **Baseline:** authoritative accepted/current is `v0.1.128.1.1.1.1.1`, exact SHA `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`.
+- **Decision:** Promptbranch has one canonical learning model. Humans, ChatGPT Projects, Claude/coding agents, generic coding agents, and PB-aware agents receive adapters into that same model; no audience gets a competing PB semantic or authority path.
+- **Skills:** add read-only `promptbranch-learning` and `promptbranch-operator`. Existing `promptbranch-tool-authoring`, `repo-inspection`, `promptbranch-final-mvp`, and `application-architecture-proof` remain related canonical skills and are embedded into the self-contained learning export.
+- **Portable learning:** deterministic learning/operator ZIPs use fixed entry ordering/timestamps/modes, digest-bound manifests, explicit audience/coverage metadata, and fail-closed authority fields. Bundle validity never grants execution, mutation, publication, acceptance, adoption, deployment, Git commit, or Git push authority.
+- **Curriculum:** beginner → authority → read-only inspection → operator → developer → exercises. A learner is operator-ready only after demonstrating the authority/current/artifact/conversation distinctions from evidence.
+- **Scope:** this is the final PB-environment onboarding completeness slice before `v0.1.129 — External application pilot bootstrap`; it does not start external application development.

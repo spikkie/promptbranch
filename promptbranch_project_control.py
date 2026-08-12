@@ -243,21 +243,36 @@ def synchronize_project_control_after_adoption(
         return {"ok": True, "status": "control_projection_not_applicable", "performed": False, "reason": "plan_state_missing"}
     state = load_plan_state(root)
     repo_id = str(state.get("repo_id") or "").strip()
-    next_normal_version = str(state.get("next_normal_version") or "").strip()
-    next_normal_slice = str(state.get("next_normal_slice") or "").strip()
-    next_normal_artifact = str(state.get("next_normal_artifact") or (f"{repo_id}_{next_normal_version}.zip" if repo_id and next_normal_version else ""))
+    previous_release_mode = str(state.get("release_mode") or "").strip()
     previous_active_slice = str(state.get("active_slice") or "").strip()
+    configured_next_normal_version = str(state.get("next_normal_version") or "").strip()
+    configured_next_normal_slice = str(state.get("next_normal_slice") or "").strip()
+    configured_next_normal_artifact = str(state.get("next_normal_artifact") or (f"{repo_id}_{configured_next_normal_version}.zip" if repo_id and configured_next_normal_version else ""))
 
     horizon = state.get("rolling_slice_horizon") if isinstance(state.get("rolling_slice_horizon"), list) else []
     target_item = next((item for item in horizon if isinstance(item, dict) and item.get("version") == version), None)
-    next_item = next((item for item in horizon if isinstance(item, dict) and item.get("version") == next_normal_version), None)
     if target_item is None:
         return {"ok": False, "status": "control_projection_target_missing", "performed": False, "error": f"rolling horizon has no target release {version}"}
-    if next_item is None:
-        return {"ok": False, "status": "control_projection_next_normal_missing", "performed": False, "error": f"rolling horizon has no next normal release {next_normal_version}"}
 
-    next_index = horizon.index(next_item)
-    planned_after = next((item for item in horizon[next_index + 1:] if isinstance(item, dict) and str(item.get("version") or "")), None)
+    # Repair releases already point next_normal_* at the normal slice to promote.
+    # For a normal release, next_normal_* describes the release being adopted, so
+    # promotion must use next_planned_*_after_acceptance instead.
+    adopting_active_normal = previous_release_mode == "normal" and version == configured_next_normal_version
+    if adopting_active_normal:
+        promote_version = str(state.get("next_planned_version_after_acceptance") or "").strip()
+        promote_slice = str(state.get("next_planned_slice_after_acceptance") or "").strip()
+        promote_artifact = str(state.get("next_planned_artifact_after_acceptance") or (f"{repo_id}_{promote_version}.zip" if repo_id and promote_version else ""))
+    else:
+        promote_version = configured_next_normal_version
+        promote_slice = configured_next_normal_slice
+        promote_artifact = configured_next_normal_artifact
+
+    promote_item = next((item for item in horizon if isinstance(item, dict) and item.get("version") == promote_version), None)
+    if promote_item is None:
+        return {"ok": False, "status": "control_projection_next_normal_missing", "performed": False, "error": f"rolling horizon has no next normal release {promote_version}"}
+
+    promote_index = horizon.index(promote_item)
+    planned_after = next((item for item in horizon[promote_index + 1:] if isinstance(item, dict) and str(item.get("version") or "")), None)
     if planned_after is None:
         return {"ok": False, "status": "control_projection_future_slice_missing", "performed": False, "error": "rolling horizon has no slice after next normal"}
 
@@ -267,7 +282,7 @@ def synchronize_project_control_after_adoption(
         item_version = str(item.get("version") or "")
         if item_version == version:
             item["status"] = "accepted_current"
-        elif item_version == next_normal_version:
+        elif item_version == promote_version:
             item["status"] = "active"
             item["release_mode"] = "normal"
         elif item is planned_after:
@@ -275,37 +290,46 @@ def synchronize_project_control_after_adoption(
         elif item.get("status") in {"accepted_current", "active", "planned_after_acceptance"}:
             item["status"] = "superseded" if item.get("status") == "accepted_current" else "planned"
 
-    state.update({
+    updates = {
         "accepted_current_version": version,
         "accepted_current_artifact": artifact_filename,
         "accepted_current_sha256": sha256,
-        "last_completed_repair_version": version,
-        "last_completed_repair": previous_active_slice or version,
-        "active_candidate_version": next_normal_version,
-        "active_candidate_artifact": next_normal_artifact,
-        "active_candidate_transport_artifact": next_normal_artifact,
+        "active_candidate_version": promote_version,
+        "active_candidate_artifact": promote_artifact,
+        "active_candidate_transport_artifact": promote_artifact,
         "active_candidate_base_version": version,
         "active_candidate_status": "planned",
-        "active_slice": next_normal_slice,
+        "active_slice": promote_slice,
         "release_mode": "normal",
         "scope_advance_allowed": True,
+        "next_normal_version": promote_version,
+        "next_normal_slice": promote_slice,
+        "next_normal_artifact": promote_artifact,
         "next_planned_version_after_acceptance": str(planned_after.get("version") or ""),
         "next_planned_slice_after_acceptance": str(planned_after.get("slice") or ""),
         "next_planned_artifact_after_acceptance": str(planned_after.get("artifact") or planned_after.get("transport_artifact") or ""),
+        "current_candidate": promote_artifact,
         "updated_for": version,
         "rolling_slice_horizon": horizon,
-    })
+    }
+    if previous_release_mode == "repair":
+        updates["last_completed_repair_version"] = version
+        updates["last_completed_repair"] = previous_active_slice or version
+    else:
+        updates["last_completed_normal_slice_version"] = version
+        updates["last_completed_normal_slice"] = previous_active_slice or version
+    state.update(updates)
     state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     baseline_lines = [
         f"accepted_current_version: {version}",
         f"accepted_current_artifact: {artifact_filename}",
         f"accepted_current_sha256: {sha256}",
-        f"active_candidate_version: {next_normal_version}",
-        f"active_candidate_artifact: {next_normal_artifact}",
+        f"active_candidate_version: {promote_version}",
+        f"active_candidate_artifact: {promote_artifact}",
         f"active_candidate_base_version: {version}",
-        f"next_normal_version: {next_normal_version}",
-        f"next_normal_slice: {next_normal_slice}",
+        f"next_normal_version: {promote_version}",
+        f"next_normal_slice: {promote_slice}",
     ]
     changed_docs: list[str] = []
     for rel in (Path("docs/project/plan.md"), Path("docs/project/status.md")):
@@ -326,26 +350,31 @@ def synchronize_project_control_after_adoption(
             version=version,
             artifact_filename=artifact_filename,
             sha256=sha256,
-            next_normal_version=next_normal_version,
-            next_normal_slice=next_normal_slice,
-            next_normal_artifact=next_normal_artifact,
+            next_normal_version=promote_version,
+            next_normal_slice=promote_slice,
+            next_normal_artifact=promote_artifact,
             planned_after_version=planned_after_version,
             planned_after_slice=planned_after_slice,
             planned_after_artifact=planned_after_artifact,
-        ) and str(rel) not in changed_docs:
-            changed_docs.append(str(rel))
+        ):
+            if str(rel) not in changed_docs:
+                changed_docs.append(str(rel))
 
     return {
         "ok": True,
         "status": "control_projection_synchronized",
         "performed": True,
-        "accepted_current_version": version,
-        "accepted_current_artifact": artifact_filename,
-        "accepted_current_sha256": sha256,
-        "active_candidate_version": next_normal_version,
-        "next_planned_version_after_acceptance": state.get("next_planned_version_after_acceptance"),
+        "repo_path": str(root),
+        "version": version,
+        "artifact_filename": artifact_filename,
+        "sha256": sha256,
+        "next_normal_version": promote_version,
+        "next_normal_slice": promote_slice,
+        "planned_after_version": planned_after_version,
+        "planned_after_slice": planned_after_slice,
         "changed_files": [str(PLAN_STATE_REL), *changed_docs],
     }
+
 
 def build_project_next_slice_payload(repo_path: str | Path = ".") -> dict[str, Any]:
     root = Path(repo_path).expanduser().resolve()

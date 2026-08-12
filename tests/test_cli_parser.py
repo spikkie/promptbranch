@@ -1439,3 +1439,11 @@ def test_parser_accepts_tool_authoring_export_and_verify_bundle() -> None:
     assert spec_args.skill_command == "tool-spec-validate"
     source_args = parser.parse_args(["skill", "authoring-validate", "--path", ".", "--json"])
     assert source_args.skill_command == "authoring-validate"
+    learning_args = parser.parse_args(["skill", "learning-validate", "--path", ".", "--json"])
+    assert learning_args.skill_command == "learning-validate"
+    operator_args = parser.parse_args(["skill", "operator-validate", "--path", ".", "--json"])
+    assert operator_args.skill_command == "operator-validate"
+    learning_export_args = parser.parse_args(["skill", "export", "promptbranch-learning", "--path", ".", "--json"])
+    assert learning_export_args.skill == "promptbranch-learning"
+    operator_export_args = parser.parse_args(["skill", "export", "promptbranch-operator", "--path", ".", "--json"])
+    assert operator_export_args.skill == "promptbranch-operator"

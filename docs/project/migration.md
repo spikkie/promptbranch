@@ -1,6 +1,3 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
 # Migration to Project Control Surface
 
 ## v0.1.123.2.4 ask-release prompt migration
@@ -1617,3 +1614,7 @@ No compatibility migration is introduced. Accepted/current remains `v0.1.128.1.1
 ## v0.1.128.1.1.1.1.1 diagnostic-only repair
 
 Carry forward `v0.1.128.1.1.1.1` unchanged. Add only task/message response-chain diagnostics that survive service deadlines. Do not weaken freshness, submit causality, completion predicates, artifact authority, or control-projection validation. The next normal release remains `v0.1.129`; planned-after remains `v0.1.130`.
+
+## v0.1.128.2 learning and skills completeness migration
+
+No compatibility migration is introduced. `v0.1.128.2` starts from authoritative accepted/current `v0.1.128.1.1.1.1.1`. Existing PB skills remain canonical; the new `promptbranch-learning` bundle embeds their current tracked skill documents rather than creating aliases or compatibility copies in runtime registries. `promptbranch-learning` and `promptbranch-operator` are additive read-only skills. Portable export/verification is generalized to these bundles while retaining the existing `promptbranch-tool-authoring` contract. No browser profile, Project Source, artifact registry, release-attempt, application repository, deployment state, or accepted/current artifact is migrated by construction. After acceptance, `v0.1.129 — External application pilot bootstrap` becomes active and `v0.1.130` remains planned after it.

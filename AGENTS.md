@@ -119,3 +119,7 @@ Use `pb application architecture template` as a deterministic plan; repository w
 - Resume rollback only for repositories still proven at the exact target identity and follow reverse dependency order.
 - Do not invent an operator resolution for `missing_current` or `ambiguous_current`; report the blocker and require explicit external repair followed by a fresh reconciliation.
 - Preserve the original event chain and append resume history; never discard or silently rewrite prior checkpoint evidence.
+
+## Promptbranch learning/onboarding
+
+When the task is to learn Promptbranch itself, start with `.promptbranch/skills/promptbranch-learning/SKILL.md` and its canonical learning path before reconstructing behavior from historical release notes. Use `.promptbranch/skills/promptbranch-operator/SKILL.md` for operator reasoning and `.promptbranch/skills/promptbranch-tool-authoring/SKILL.md` for deterministic tool design. Learning and skill validation do not grant mutation authority.

@@ -1,7 +1,19 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
 <!-- promptbranch-release-construction-baseline -->
+> Construction baseline: adopted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active normal learning-completeness slice is `v0.1.128.2 — Promptbranch learning and skills completeness`; next planned slice after acceptance is `v0.1.129 — External application pilot bootstrap`.
+
+# Active release status — v0.1.128.2
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.128.2 | normal | Promptbranch learning and skills completeness | construction candidate | learning/operator focused tests + 17 canonical groups + deterministic ZIP/Guardian required | DOD-547–552 construction proven; DOD-553–554 pending | — |
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip` (`v0.1.128.1.1.1.1.1`).  
+Accepted SHA-256: `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`.  
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.zip`.  
+Next planned slice after acceptance: `v0.1.129 — External application pilot bootstrap`.
+
+---
+
 > Construction baseline: adopted/current `v0.1.128.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.zip`), SHA-256 `89fe16e498b3035f94db5375c7ef9ee924a9d82d15ce5790ef765658e0db6328`. Active bounded repair is `v0.1.128.1.1.1.1.1`; next normal slice remains `v0.1.129 — External application pilot bootstrap`.
 
 # Active release status — v0.1.128.1.1.1.1.1

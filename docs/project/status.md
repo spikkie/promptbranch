@@ -1,7 +1,4 @@
-<!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.1.1.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`), SHA-256 `dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
-
-> v0.1.128.1.1.1.1 authority: accepted/current is adopted `v0.1.128.1.1`; repair preserves post-adoption projection completeness and fixes fresh assistant-response continuity only. No external-application scope.
+> v0.1.128.2 authority: accepted/current is `v0.1.128.1.1.1.1.1`; active normal slice completes canonical Promptbranch learning/onboarding before external application bootstrap.
 
 # Promptbranch status
 
@@ -11,11 +8,11 @@
 accepted_current_version: v0.1.128.1.1.1.1.1
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip
 accepted_current_sha256: dd9ed8949990b1b143e7930a2357adbebaccb935744a5bc30342942dbccdcdbd
-active_candidate_version: v0.1.129
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
+active_candidate_version: v0.1.128.2
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.zip
 active_candidate_base_version: v0.1.128.1.1.1.1.1
-next_normal_version: v0.1.129
-next_normal_slice: v0.1.129 — External application pilot bootstrap
+next_normal_version: v0.1.128.2
+next_normal_slice: v0.1.128.2 — Promptbranch learning and skills completeness
 ```
 
 accepted/current artifact: chatgpt_claudecode_workflow-2_v0.1.128.zip
@@ -1322,3 +1319,11 @@ The `v0.1.124` full candidate test failed only at `project_source_add_text`: Cha
 ## v0.1.128.1.1.1.1.1 diagnostic repair status
 
 `v0.1.128.1.1.1.1` live-proved the pinned `ask_question` fresh-chain repair by returning `INTEGRATION_OK`, then failed later at `task_message_flow.ask` with a service-internal deadline while starting a new chat from the generated Project page. `v0.1.128.1.1.1.1.1` preserves all response-selection behavior and prior projection repairs unchanged and adds bounded structured diagnostics for response-chain freshness, project-page to conversation URL transitions, assistant candidate hashes/count deltas, generation/idle state, completion blockers, and the final timeout snapshot. `v0.1.129 — External application pilot bootstrap` remains blocked until this repair family reaches FINAL_VERIFIED/current.
+
+## v0.1.128.2 learning-completeness status
+
+Active candidate `chatgpt_claudecode_workflow-2_v0.1.128.2.zip` completes Promptbranch onboarding before external application development. Accepted/current baseline is `chatgpt_claudecode_workflow-2_v0.1.128.1.1.1.1.1.zip`. Focused learning/operator validation is green; canonical construction proof and exact ZIP/Guardian remain required before live lifecycle validation.
+
+## Next safe action
+
+Complete deterministic v0.1.128.2 construction validation, freeze the exact artifact, and run the canonical normal lifecycle. Only after FINAL_VERIFIED/current may `v0.1.129 — External application pilot bootstrap` begin.

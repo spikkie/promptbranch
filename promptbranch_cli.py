@@ -97,6 +97,13 @@ from promptbranch_tool_authoring import (
     validate_tool_spec_file,
     verify_tool_authoring_bundle,
 )
+from promptbranch_learning import (
+    LearningBundleError,
+    export_learning_bundle,
+    validate_learning_source,
+    validate_operator_source,
+    verify_learning_bundle,
+)
 from promptbranch_operational_evidence import (
     OperationalEvidenceError,
     build_operational_lifecycle_evidence,
@@ -27157,28 +27164,43 @@ async def cmd_skill(backend: CommandBackend, args: argparse.Namespace) -> int:
         payload = validate_tool_authoring_source(args.path)
     elif args.skill_command == "tool-spec-validate":
         payload = validate_tool_spec_file(args.spec)
+    elif args.skill_command == "learning-validate":
+        payload = validate_learning_source(args.path)
+    elif args.skill_command == "operator-validate":
+        payload = validate_operator_source(args.path)
     elif args.skill_command == "export":
-        if args.skill != "promptbranch-tool-authoring":
-            payload = {
-                "ok": False,
-                "action": "tool_authoring_export_bundle",
-                "status": "unsupported_skill",
-                "skill": args.skill,
-                "errors": ["only promptbranch-tool-authoring has a canonical portable export bundle"],
-            }
-        else:
-            try:
+        try:
+            if args.skill == "promptbranch-tool-authoring":
                 payload = export_tool_authoring_bundle(args.path, args.output, force=bool(args.force))
-            except ToolAuthoringError as exc:
+            elif args.skill in {"promptbranch-learning", "promptbranch-operator"}:
+                payload = export_learning_bundle(args.skill, args.path, args.output, force=bool(args.force))
+            else:
                 payload = {
                     "ok": False,
-                    "action": "tool_authoring_export_bundle",
-                    "status": "export_failed",
+                    "action": "skill_export_bundle",
+                    "status": "unsupported_skill",
                     "skill": args.skill,
-                    "errors": [str(exc)],
+                    "errors": ["portable export is supported for promptbranch-learning, promptbranch-operator, and promptbranch-tool-authoring"],
                 }
+        except (ToolAuthoringError, LearningBundleError) as exc:
+            payload = {
+                "ok": False,
+                "action": "skill_export_bundle",
+                "status": "export_failed",
+                "skill": args.skill,
+                "errors": [str(exc)],
+            }
     elif args.skill_command == "verify-bundle":
-        payload = verify_tool_authoring_bundle(args.bundle)
+        try:
+            with zipfile.ZipFile(Path(args.bundle).expanduser().resolve(), "r") as archive:
+                names = archive.namelist()
+        except (OSError, zipfile.BadZipFile):
+            payload = verify_learning_bundle(args.bundle)
+        else:
+            if any(name.startswith("promptbranch-tool-authoring/") for name in names):
+                payload = verify_tool_authoring_bundle(args.bundle)
+            else:
+                payload = verify_learning_bundle(args.bundle)
     else:
         raise RuntimeError(f"Unknown skill command: {args.skill_command}")
 
@@ -28456,15 +28478,23 @@ def make_parser() -> argparse.ArgumentParser:
     skill_tool_spec_validate_parser.add_argument("spec", help="Path to a promptbranch.tool.authoring JSON specification.")
     skill_tool_spec_validate_parser.add_argument("--json", action="store_true")
 
-    skill_export_parser = skill_subparsers.add_parser("export", help="Export the canonical portable promptbranch-tool-authoring bundle as a deterministic ZIP.")
-    skill_export_parser.add_argument("skill", help="Skill to export. v0.1.127 supports promptbranch-tool-authoring.")
+    skill_learning_validate_parser = skill_subparsers.add_parser("learning-validate", help="Validate the tracked promptbranch-learning curriculum and audience coverage without mutation.")
+    skill_learning_validate_parser.add_argument("--path", default=".", help="Repository root containing the tracked Promptbranch learning skill and materials.")
+    skill_learning_validate_parser.add_argument("--json", action="store_true")
+
+    skill_operator_validate_parser = skill_subparsers.add_parser("operator-validate", help="Validate the tracked read-only promptbranch-operator learning/runbook contract.")
+    skill_operator_validate_parser.add_argument("--path", default=".", help="Repository root containing the tracked Promptbranch operator skill and materials.")
+    skill_operator_validate_parser.add_argument("--json", action="store_true")
+
+    skill_export_parser = skill_subparsers.add_parser("export", help="Export a canonical portable Promptbranch skill bundle as a deterministic ZIP.")
+    skill_export_parser.add_argument("skill", help="Skill to export: promptbranch-learning, promptbranch-operator, or promptbranch-tool-authoring.")
     skill_export_parser.add_argument("--path", default=".", help="Repository root containing the tracked skill sources.")
-    skill_export_parser.add_argument("--output", help="Output ZIP path. Defaults to promptbranch-tool-authoring_<VERSION>.zip in the current directory.")
+    skill_export_parser.add_argument("--output", help="Output ZIP path. Defaults to <skill>_<VERSION>.zip in the current directory.")
     skill_export_parser.add_argument("--force", action="store_true", help="Replace an existing output ZIP at the exact requested path.")
     skill_export_parser.add_argument("--json", action="store_true")
 
-    skill_verify_bundle_parser = skill_subparsers.add_parser("verify-bundle", help="Verify a portable promptbranch-tool-authoring export ZIP and its fail-closed authority manifest.")
-    skill_verify_bundle_parser.add_argument("bundle", help="Portable promptbranch-tool-authoring ZIP to verify.")
+    skill_verify_bundle_parser = skill_subparsers.add_parser("verify-bundle", help="Verify a portable Promptbranch learning/operator/tool-authoring ZIP and its fail-closed authority manifest.")
+    skill_verify_bundle_parser.add_argument("bundle", help="Portable Promptbranch skill ZIP to verify.")
     skill_verify_bundle_parser.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")

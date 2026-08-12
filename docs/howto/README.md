@@ -1,3 +1,4 @@
+- [Learn Promptbranch](00-learn-promptbranch.md) — canonical human/agent onboarding and portable learning bundles.
 # How-to manuals
 
 These manuals break the project into focused tasks instead of one long README.

@@ -1,3 +1,6 @@
+
+> **New to Promptbranch?** Start with [`docs/howto/00-learn-promptbranch.md`](docs/howto/00-learn-promptbranch.md) or export the canonical `promptbranch-learning` skill bundle for ChatGPT, Claude/coding agents, or another PB-aware agent.
+
 > **v0.1.128 construction candidate:** bounded PB-environment authority cleanup from accepted/current `v0.1.127.2.1` (`33bbf8ca2dc458ee6c6fa9ea816cc4ca8aa9cc91b7711b9c83dc3764426f5d75`). It removes execution-critical dual-authority/legacy mutation paths without expanding release machinery. External application development remains deferred until one clean canonical v0.1.128 lifecycle is FINAL_VERIFIED.
 
 > **v0.1.127.1.1.1.1 repair candidate:** fixes the acceptance-path provenance predicate that blocked `artifact accept-candidate --adopt-if-green` after valid live `TESTED_GREEN`; the complete conversation URL/ID is preserved, accepted/current remains `.1.3`, and `v0.1.127.1.1.1` remains immutable failure evidence.

@@ -179,7 +179,7 @@ def test_promptbranch_runtime_passes_structural_and_registry_validation() -> Non
     assert registry["registry"]["reference_resolution"] == "complete"
     assert registry["registry"]["authority_resolution"] == "bounded"
     assert registry["registry"]["counts"] == {
-        "agents": 1, "skills": 4, "tools": 10, "validators": 4,
+        "agents": 1, "skills": 6, "tools": 10, "validators": 4,
         "state_contracts": 5, "evidence_contracts": 3, "controllers": 4,
     }
     assert registry["safety"]["commands_executed"] is False
