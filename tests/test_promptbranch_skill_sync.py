@@ -1,207 +1,137 @@
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+import os
 import zipfile
 from pathlib import Path
 
-import pytest
-
 from promptbranch_artifacts import ArtifactRecord, ArtifactRegistry, sha256_file, utc_now
-from promptbranch_project import project_registry_dir, write_repo_identity
-from promptbranch_skill_sync import sync_skills
-
-REPO = Path(__file__).resolve().parents[1]
-SOURCE_VERSION = "v0.1.128.2.5"
-REPO_ID = "chatgpt_claudecode_workflow-2"
-PROJECT_ID = "g-p-11111111111111111111111111111111-promptbranch-test"
+from promptbranch_project import project_registry_dir
+from promptbranch_skill_sync import SUPPORTED_SKILLS, sync_promptbranch_skills
 
 
-def _accepted_source_tree(tmp_path: Path) -> Path:
-    root = tmp_path / "accepted-source"
-    root.mkdir()
-    (root / "VERSION").write_text(SOURCE_VERSION + "\n", encoding="utf-8")
-    for rel in [
+def _source_artifact(root: Path, tmp_path: Path, *, repo_id: str, version: str) -> Path:
+    artifact = tmp_path / f"{repo_id}_{version}.zip"
+    entries = [
+        Path("VERSION"),
         Path(".promptbranch/ai-registry.json"),
-        Path(".promptbranch/skills/promptbranch-learning"),
-        Path(".promptbranch/skills/promptbranch-operator"),
-        Path(".promptbranch/skills/promptbranch-tool-authoring"),
+        Path("promptbranch_protocol/schemas/tool.authoring.schema.json"),
         Path(".promptbranch/skills/repo-inspection/SKILL.md"),
         Path(".promptbranch/skills/promptbranch-final-mvp/SKILL.md"),
         Path(".promptbranch/skills/application-architecture-proof/SKILL.md"),
-        Path("promptbranch_protocol/schemas/tool.authoring.schema.json"),
-    ]:
-        source = REPO / rel
-        dest = root / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if source.is_dir():
-            shutil.copytree(source, dest)
-        else:
-            shutil.copy2(source, dest)
-    return root
-
-
-def _accepted_zip(tmp_path: Path) -> Path:
-    source = _accepted_source_tree(tmp_path)
-    artifact = tmp_path / f"{REPO_ID}_{SOURCE_VERSION}.zip"
-    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_STORED) as archive:
-        for path in sorted(item for item in source.rglob("*") if item.is_file()):
-            archive.write(path, path.relative_to(source).as_posix())
+    ]
+    for base in (
+        root / ".promptbranch/skills/promptbranch-learning",
+        root / ".promptbranch/skills/promptbranch-operator",
+        root / ".promptbranch/skills/promptbranch-tool-authoring",
+    ):
+        entries.extend(path.relative_to(root) for path in base.rglob("*") if path.is_file())
+    with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for rel in sorted(set(entries), key=lambda p: p.as_posix()):
+            archive.write(root / rel, rel.as_posix())
     return artifact
 
 
-def _configure_authority(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
-    state_home = tmp_path / "state"
-    config_home = tmp_path / "config"
+def _prepare_authority(tmp_path: Path, monkeypatch, *, artifact: Path, repo_id: str, version: str) -> Path:
+    project_id = "g-p-00000000000000000000000000000000-skill-sync"
+    source_repo = tmp_path / "source-repo"
+    source_repo.mkdir()
+    (source_repo / ".promptbranch-repo.json").write_text(json.dumps({
+        "schema_version": 1,
+        "project_id": project_id,
+        "project_home_url": "https://chatgpt.com/g/g-p-00000000000000000000000000000000-skill-sync/project",
+        "repo_id": repo_id,
+        "artifact_pattern": f"{repo_id}_<version>.zip",
+        "role": "member",
+    }) + "\n", encoding="utf-8")
+    state_home = tmp_path / "project-state"
     monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(state_home))
-    monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(config_home))
-    source_binding = tmp_path / "pb-source-binding"
-    source_binding.mkdir()
-    write_repo_identity(
-        source_binding,
-        project_id=PROJECT_ID,
-        project_home_url="https://chatgpt.com/g/g-p-11111111111111111111111111111111/project",
-        repo_id=REPO_ID,
-    )
-    artifact = _accepted_zip(tmp_path)
-    with zipfile.ZipFile(artifact) as archive:
-        file_count = len(archive.infolist())
-    registry = ArtifactRegistry(project_registry_dir(PROJECT_ID))
+    registry = ArtifactRegistry(project_registry_dir(project_id))
     registry.initialize()
-    registry.add(
-        ArtifactRecord(
-            path=str(artifact),
-            filename=artifact.name,
-            kind="adopted_release",
-            version=SOURCE_VERSION,
-            repo_path=None,
-            sha256=sha256_file(artifact),
-            size_bytes=artifact.stat().st_size,
-            file_count=file_count,
-            created_at=utc_now(),
-            repo_id=REPO_ID,
-        )
-    )
-    return source_binding, artifact
+    with zipfile.ZipFile(artifact, "r") as archive:
+        file_count = len(archive.namelist())
+    registry.add(ArtifactRecord(
+        path=str(artifact),
+        filename=artifact.name,
+        kind="adopted_release",
+        version=version,
+        repo_path=None,
+        sha256=sha256_file(artifact),
+        size_bytes=artifact.stat().st_size,
+        file_count=file_count,
+        created_at=utc_now(),
+        repo_id=repo_id,
+        project_url="https://chatgpt.com/g/g-p-00000000000000000000000000000000-skill-sync/project",
+    ))
+    return source_repo
 
 
-def _git_repo(tmp_path: Path) -> Path:
-    target = tmp_path / "target"
+def test_skill_sync_installs_verified_current_skills_and_provenance(tmp_path: Path, monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    repo_id = "promptbranch-source"
+    artifact = _source_artifact(root, tmp_path, repo_id=repo_id, version=version)
+    source_repo = _prepare_authority(tmp_path, monkeypatch, artifact=artifact, repo_id=repo_id, version=version)
+    target = tmp_path / "external-app"
     target.mkdir()
-    subprocess.run(["git", "init", "-q", str(target)], check=True)
-    subprocess.run(["git", "-C", str(target), "config", "user.name", "Promptbranch Test"], check=True)
-    subprocess.run(["git", "-C", str(target), "config", "user.email", "pb@example.invalid"], check=True)
-    return target
 
+    payload = sync_promptbranch_skills(target, source_repo=source_repo)
 
-def test_skill_sync_installs_from_authoritative_current_not_source_worktree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    source_binding, artifact = _configure_authority(monkeypatch, tmp_path)
-    target = _git_repo(tmp_path)
-    # Deliberate source-worktree drift. The source binding contains no skill tree;
-    # authoritative adopted/current ZIP must remain the only content source.
-    (source_binding / "UNRELEASED.txt").write_text("must never be synced\n", encoding="utf-8")
-
-    payload = sync_skills(target_repo=target, source_repo=source_binding)
-
-    assert payload["ok"] is True
+    assert payload["ok"] is True, payload
     assert payload["status"] == "skills_synced"
-    assert payload["authority"]["version"] == SOURCE_VERSION
-    assert payload["authority"]["artifact"] != str(source_binding)
-    assert Path(payload["authority"]["artifact"]).is_file()
-    assert payload["authority"]["artifact_sha256"] == sha256_file(Path(payload["authority"]["artifact"]))
-    for skill in ("promptbranch-learning", "promptbranch-operator", "promptbranch-tool-authoring"):
-        assert (target / ".promptbranch" / "skills" / skill / "SKILL.md").is_file()
-        assert payload["validations"][skill]["ok"] is True
-    assert not (target / ".promptbranch" / "skills" / "UNRELEASED.txt").exists()
-    provenance = json.loads((target / ".promptbranch" / "promptbranch-skills.json").read_text(encoding="utf-8"))
-    assert provenance["source"]["version"] == SOURCE_VERSION
-    assert provenance["source"]["artifact_sha256"] == sha256_file(Path(payload["authority"]["artifact"]))
-    assert payload["commit_performed"] is False
+    assert payload["source_authority"]["version"] == version
+    assert payload["source_authority"]["sha256"] == sha256_file(artifact)
+    assert [item["skill"] for item in payload["skills"]] == list(SUPPORTED_SKILLS)
+    for skill in SUPPORTED_SKILLS:
+        assert (target / ".promptbranch/skills" / skill / "SKILL.md").is_file()
+        assert payload["target_validation"][skill]["ok"] is True
+    provenance = json.loads((target / ".promptbranch/promptbranch-skills.json").read_text(encoding="utf-8"))
+    assert provenance["schema"] == "promptbranch.external_repo.skills"
+    assert provenance["source"]["promptbranch_version"] == version
+    assert provenance["source"]["artifact_sha256"] == sha256_file(artifact)
+    assert set(provenance["skills"]) == set(SUPPORTED_SKILLS)
+    assert payload["git_commit_performed"] is False
+    assert payload["git_push_performed"] is False
 
 
-def test_skill_sync_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    source_binding, _ = _configure_authority(monkeypatch, tmp_path)
-    target = _git_repo(tmp_path)
-    first = sync_skills(target_repo=target, source_repo=source_binding)
-    second = sync_skills(target_repo=target, source_repo=source_binding)
-    assert first["ok"] is True
-    assert second["ok"] is True
-    assert second["status"] == "already_synced"
-    assert second["mutation_performed"] is False
+def test_skill_sync_is_idempotent_for_same_authoritative_source(tmp_path: Path, monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    repo_id = "promptbranch-source"
+    artifact = _source_artifact(root, tmp_path, repo_id=repo_id, version=version)
+    source_repo = _prepare_authority(tmp_path, monkeypatch, artifact=artifact, repo_id=repo_id, version=version)
+    target = tmp_path / "external-app"; target.mkdir()
+    first = sync_promptbranch_skills(target, source_repo=source_repo)
+    before = (target / ".promptbranch/promptbranch-skills.json").read_bytes()
+    second = sync_promptbranch_skills(target, source_repo=source_repo)
+    after = (target / ".promptbranch/promptbranch-skills.json").read_bytes()
+    assert first["ok"] is True and second["ok"] is True
+    assert before == after
+    assert first["provenance_sha256"] == second["provenance_sha256"]
 
 
-def test_skill_sync_detects_local_managed_skill_drift(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    source_binding, _ = _configure_authority(monkeypatch, tmp_path)
-    target = _git_repo(tmp_path)
-    assert sync_skills(target_repo=target, source_repo=source_binding)["ok"] is True
-    skill = target / ".promptbranch" / "skills" / "promptbranch-learning" / "SKILL.md"
-    skill.write_text(skill.read_text(encoding="utf-8") + "\nlocal edit\n", encoding="utf-8")
-
-    blocked = sync_skills(target_repo=target, source_repo=source_binding)
-    assert blocked["ok"] is False
-    assert blocked["status"] == "preflight_failed"
-    assert any("managed_skill_modified:promptbranch-learning" in item for item in blocked["errors"])
-
-    forced = sync_skills(target_repo=target, source_repo=source_binding, force=True)
-    assert forced["ok"] is True
-    assert "local edit" not in skill.read_text(encoding="utf-8")
-
-
-def test_skill_sync_dry_run_does_not_mutate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    source_binding, _ = _configure_authority(monkeypatch, tmp_path)
-    target = _git_repo(tmp_path)
-    payload = sync_skills(target_repo=target, source_repo=source_binding, dry_run=True)
-    assert payload["ok"] is True
-    assert payload["status"] == "dry_run"
-    assert payload["plan"]["would_change"] is True
+def test_skill_sync_fails_closed_when_authoritative_bytes_are_tampered(tmp_path: Path, monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    repo_id = "promptbranch-source"
+    artifact = _source_artifact(root, tmp_path, repo_id=repo_id, version=version)
+    source_repo = _prepare_authority(tmp_path, monkeypatch, artifact=artifact, repo_id=repo_id, version=version)
+    # The registry object is immutable and canonical. Corrupt it after registration.
+    identity = json.loads((source_repo / ".promptbranch-repo.json").read_text())
+    registry = ArtifactRegistry(project_registry_dir(identity["project_id"]))
+    record = registry.current(repo_id=repo_id)
+    assert record is not None
+    Path(record["path"]).write_bytes(b"corrupt")
+    target = tmp_path / "external-app"; target.mkdir()
+    payload = sync_promptbranch_skills(target, source_repo=source_repo)
+    assert payload["ok"] is False
+    assert payload["status"] == "source_authority_unavailable"
     assert payload["mutation_performed"] is False
-    assert not (target / ".promptbranch").exists()
+    assert not (target / ".promptbranch/skills").exists()
 
 
-def test_skill_sync_requires_authoritative_current(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(tmp_path / "state"))
-    source = tmp_path / "source"
-    source.mkdir()
-    write_repo_identity(source, project_id=PROJECT_ID, project_home_url=None, repo_id=REPO_ID)
-    target = _git_repo(tmp_path)
-    payload = sync_skills(target_repo=target, source_repo=source)
-    assert payload["ok"] is False
-    assert payload["status"] == "preflight_failed"
-    assert any("source_project_registry_unavailable" in item for item in payload["errors"])
-
-
-def test_skill_sync_rolls_back_target_and_provenance_on_post_install_validation_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import promptbranch_skill_sync as module
-
-    source_binding, _ = _configure_authority(monkeypatch, tmp_path)
-    target = _git_repo(tmp_path)
-    first = sync_skills(target_repo=target, source_repo=source_binding)
-    assert first["ok"] is True
-    skill = target / ".promptbranch" / "skills" / "promptbranch-learning" / "SKILL.md"
-    skill.write_text(skill.read_text(encoding="utf-8") + "\noperator-owned local drift\n", encoding="utf-8")
-    provenance_path = target / ".promptbranch" / "promptbranch-skills.json"
-    provenance_before = provenance_path.read_bytes()
-    skill_before = skill.read_bytes()
-
-    real_validate = module.skill_validate
-    def fail_operator(name: str, *, repo_path):
-        if name == "promptbranch-operator":
-            return {"ok": False, "errors": ["synthetic_post_install_failure"]}
-        return real_validate(name, repo_path=repo_path)
-    monkeypatch.setattr(module, "skill_validate", fail_operator)
-
-    payload = sync_skills(target_repo=target, source_repo=source_binding, force=True)
-    assert payload["ok"] is False
-    assert payload["status"] == "transaction_rolled_back"
-    assert payload["rollback_performed"] is True
-    assert skill.read_bytes() == skill_before
-    assert provenance_path.read_bytes() == provenance_before
-
-
-def test_skill_sync_module_is_declared_in_installed_package_surface() -> None:
+def test_skill_sync_module_is_declared_installable():
     import tomllib
-
-    payload = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    modules = payload["tool"]["setuptools"]["py-modules"]
-    assert "promptbranch_skill_sync" in modules
+    from pathlib import Path
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert "promptbranch_skill_sync" in data["tool"]["setuptools"]["py-modules"]

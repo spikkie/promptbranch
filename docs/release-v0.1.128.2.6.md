@@ -1,35 +1,26 @@
-# v0.1.128.2.6 — External-repository skill sync installation repair
+# v0.1.128.2.6 — External-repository skill sync and publication-resume repair
 
-## Purpose
+Baseline authority: `v0.1.128.2.5`, SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`.
 
-Make introducing or updating Promptbranch skills in an external application repository a first-class deterministic Promptbranch operation.
+## Scope
 
-## Canonical command
+1. Add `pb skill sync` for external repositories.
+2. Resolve skill source from the exact adopted/current Promptbranch artifact via tracked Project/repository identity.
+3. Export and verify canonical portable bundles from accepted bytes before installation.
+4. Stage and rollback-safe replace target `.promptbranch/skills/<skill>` directories.
+5. Write deterministic `.promptbranch/promptbranch-skills.json` provenance and validate installed skills.
+6. Report target Git status/diff without committing or pushing.
+7. Convert publication subprocess timeout into structured retryable evidence and retry one bounded publication timeout inside the same canonical lifecycle wrapper invocation.
 
-```sh
-pb skill sync \
-  --path "$HOME/git/chatgpt_claudecode_workflow-2" \
-  --target "$HOME/git/my_vault" \
-  promptbranch-learning \
-  promptbranch-operator \
-  promptbranch-tool-authoring \
-  --json
-```
+## Non-goals
 
-Skill names are optional; omitting them selects all three portable PB skills.
+- No external-application implementation scope.
+- No implicit Git commit/push in target repositories.
+- No skill-derived mutation/release/adoption authority.
+- No compatibility shim for superseded Promptbranch skill mechanisms.
 
-## Authority and safety contract
+Next normal remains `v0.1.129 — External application pilot bootstrap`.
 
-- `--path` identifies the Promptbranch control-plane repository only so its tracked `.promptbranch-repo.json` can resolve Project/repository authority.
-- Skill content comes exclusively from the exact project-scoped `adopted/current` artifact and registered SHA-256, never from the mutable source worktree.
-- Each portable bundle is exported from that exact artifact and verified before target mutation.
-- The target must be a Git repository root.
-- Existing unmanaged same-name skill directories fail closed unless `--force` is explicit.
-- Existing managed skill trees are digest-bound by `.promptbranch/promptbranch-skills.json`; local drift fails closed unless `--force` is explicit.
-- Target updates are staged on the same filesystem, directory replacements are atomic, and any post-install validation failure rolls the requested skills and provenance back.
-- `--dry-run` resolves authority and proves bundles without mutating the target.
-- The command validates each installed skill and reports target Git status. It never commits or pushes the target repository.
+## Construction status
 
-## Preserved behavior
-
-All v0.1.128.2 learning/operator/tool-authoring contracts and v0.1.128.2.1–.5 lifecycle resilience remain unchanged. `v0.1.129 — External application pilot bootstrap` remains the next normal slice.
+All 17 canonical release-validation groups pass. DOD-578 through DOD-581 are construction-proven. DOD-582 remains live-pending until the exact frozen artifact reaches FINAL_VERIFIED/current.

@@ -348,3 +348,36 @@ def test_publish_control_projection_fails_closed_on_unexpected_dirty_path(tmp_pa
     assert payload["ok"] is False
     assert payload["status"] == "unexpected_post_adoption_worktree_changes"
     assert "UNEXPECTED.txt" in payload["unexpected_paths"]
+
+
+def test_run_json_retries_structured_publication_timeout_inside_same_wrapper_call(tmp_path: Path) -> None:
+    module = _load_release_lifecycle_proof_module()
+    child = tmp_path / "child.py"
+    counter = tmp_path / "counter.txt"
+    child.write_text(textwrap.dedent(f'''\
+        import json, sys
+        from pathlib import Path
+        counter = Path({str(counter)!r})
+        n = int(counter.read_text()) + 1 if counter.exists() else 1
+        counter.write_text(str(n))
+        if n == 1:
+            print(json.dumps({{
+                "ok": False,
+                "status": "blocked_retryable",
+                "failure_state": "BLOCKED_RETRYABLE",
+                "failure": {{"code": "git_commit_publication_timeout", "message": "transient publication timeout"}},
+            }}))
+            raise SystemExit(1)
+        print(json.dumps({{"ok": True, "status": "target_state_reached", "current_state": "TESTED_GREEN"}}))
+    '''), encoding="utf-8")
+    evidence = tmp_path / "evidence"; evidence.mkdir()
+    payload = module.run_json(
+        [sys.executable, str(child)],
+        cwd=tmp_path,
+        evidence_dir=evidence,
+        label="tested-green.run",
+    )
+    assert payload["ok"] is True
+    assert counter.read_text() == "2"
+    assert (evidence / "tested-green.run.attempt1.stdout.json").is_file()
+    assert (evidence / "tested-green.run.attempt1.stderr.txt").is_file()

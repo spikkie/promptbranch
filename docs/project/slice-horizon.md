@@ -146,7 +146,31 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
 
-## v0.1.128.2.6 — External-repository skill sync installation repair
+## v0.1.128.2.6 — External-repository skill sync and publication-resume repair
 
-Status: active repair. Scope: authoritative adopted/current skill source resolution; deterministic export/verify; target Git-repo preflight; staged all-or-rollback replacement; provenance; drift protection; dry-run; target validation; Git change report; no commit/push. Next normal: `v0.1.129`.
+**Mode:** repair. **System:** Promptbranch environment. **Status:** historical failed candidate; immutable SHA-bound attempt preserved.
+
+Scope: first-class external-repository skill synchronization from exact adopted/current Promptbranch bytes, deterministic provenance and rollback-safe target replacement, plus structured bounded recovery for publication subprocess timeouts. This repair must not advance external-application scope. `v0.1.129 — External application pilot bootstrap` remains next normal; `v0.1.130 — Controlled external application change execution` remains planned after normal acceptance.
+
+
+## v0.1.128.2.6.1 — Immutable successor for external-repository skill sync and publication-resume repair
+
+**Mode:** repair. **System:** Promptbranch environment. **Status:** active construction candidate.
+
+Carries the construction-proven `pb skill sync` and structured publication-timeout recovery from finalized `v0.1.128.2.6` source input while preserving historical `v0.1.128.2.6` / `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` as immutable failed-attempt evidence. The only new authority change is release identity/control projection. No external-application scope advances. `v0.1.129` remains next normal after acceptance.
+
+
+## v0.1.128.2.6.1.1 — Packaging/import-surface corrective for skill sync
+
+**Mode:** repair. **System:** Promptbranch environment. **Status:** active construction candidate.
+
+Repairs the distributed `v0.1.128.2.6.1` install failure by declaring `promptbranch_skill_sync` in setuptools `py-modules` and by passing the exact release ZIP into canonical candidate testing with `--package-zip`, so package-import metadata is validated before acceptance. Historical `.2.6` and `.2.6.1` remain failed evidence. `v0.1.129` remains next normal after acceptance.
+
+## v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective
+
+- accepted/current baseline remains `v0.1.128.2.5` / SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`
+- `v0.1.128.2.6.1.1` / `f23253e9…001553` is immutable failed evidence at independently verified `RUNTIME_PREPARED`; do not rerun or rebind it
+- active repair derives portable-skill and current control-surface release expectations from root `VERSION`
+- exact final ZIP must pass `application_architecture_structural` from a clean extraction before broader live lifecycle
+- no external-application scope advance; `v0.1.129` remains next normal after acceptance
 

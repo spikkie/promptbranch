@@ -1,3 +1,10 @@
+## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
+
+Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance.
+
+## v0.1.128.2.6.1.1 packaging/import-surface corrective
+
+Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 # Durable decisions
 
 ## ADR-PROJ-12324 — Artifact execution precedes release-candidate envelope success
@@ -1613,9 +1620,15 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
 
-## ADR-PROJ-119 — Install external-repository PB skills only from authoritative adopted/current artifact
+## v0.1.128.2.6 — External-repository skill sync and publication-resume repair
 
-**Decision:** `pb skill sync` resolves the source PB repository's tracked Project identity and project-scoped adopted/current artifact, exports portable skills from those immutable bytes, verifies bundles before mutation, manages target trees transactionally, writes exact provenance, and never commits/pushes the target. The live PB worktree is not skill-content authority.
+- **Decision:** external repositories consume Promptbranch skills through one canonical `pb skill sync` operation sourced from the exact adopted/current Promptbranch artifact, not from ambient or in-development worktree content.
+- The command performs export → bundle verification → staging → atomic replace/rollback → deterministic provenance → target validation → Git diff/status reporting.
+- The sync operation itself never grants Git commit/push, release, acceptance, adoption, or deployment authority.
+- Publication subprocess timeouts are structured retryable failures and the lifecycle wrapper performs one bounded same-transition retry; unknown/non-transient publication failures remain fail-closed.
+- Accepted/current baseline is `v0.1.128.2.5`; this repair does not advance scope. Next normal remains `v0.1.129`; planned-after-normal remains `v0.1.130`.
 
-**Reason:** external repositories such as `my_vault` must learn the accepted PB contract without receiving unreleased worktree semantics or silently losing local edits. This repair does not advance scope; `v0.1.129` remains next normal and `v0.1.130` remains planned after acceptance.
 
+## v0.1.128.2.6.1 — Immutable successor after artifact identity conflict
+
+Decision: preserve historical `v0.1.128.2.6` attempt `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` unchanged and issue the finalized repair as `v0.1.128.2.6.1`. Promptbranch's `(repo_id, target_version) -> one immutable artifact SHA-256` invariant is authoritative once a release attempt binds the version. The finalized input bytes at SHA-256 `a7af8a5e61ff7ec41e8cc51d8931b1abf251e42652bfbdea819d792fa419afce` therefore may be used only as construction input; changing VERSION/control projection creates new `v0.1.128.2.6.1` bytes and a new SHA. Deleting or rewriting the historical attempt to reuse `v0.1.128.2.6` is forbidden. Accepted/current remains `v0.1.128.2.5` until canonical live adoption evidence proves otherwise.

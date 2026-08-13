@@ -1875,7 +1875,7 @@ def test_v01261_retry_reuses_verified_green_candidate_test_after_publication_blo
     machine = _machine(tmp_path, until="tested-green", adopt=False, executor=executor, commit=True)
     first, first_code = machine.run()
     assert first_code == 1
-    assert first["failure"]["code"] == "optional_publication_failed"
+    assert first["failure"]["code"] == "simulated_publication_failure"
     assert executor.calls.count("run_tests") == 1
     second, second_code = machine.run()
     assert second_code == 0, second
@@ -2153,3 +2153,51 @@ def test_candidate_ask_failure_classification_separates_route_timeout_and_failur
     )
     assert bad_route["ok"] is False
     assert _candidate_ask_failure_code(report, bad_route) == "candidate_test_ask_route_mismatch"
+
+
+def test_publication_command_timeout_is_structured_and_does_not_escape_without_json(tmp_path: Path, monkeypatch) -> None:
+    import subprocess as _subprocess
+    import promptbranch_release_state_machine as rsm
+
+    class FakeConfig:
+        repo_root = tmp_path
+        profile_dir = tmp_path / "profile"
+        test_timeout = 3600.0
+
+    class FakeMachine:
+        config = FakeConfig()
+        attempt_dir = tmp_path / "attempt"
+        def clock(self): return "2026-08-12T20:00:00Z"
+        def _refresh_release_eta(self, record, **kwargs): return None
+        def save(self, record): return None
+        def _record_release_eta_observation(self, **kwargs): return None
+
+    def raise_timeout(*args, **kwargs):
+        raise _subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 1), output="partial", stderr="still running")
+
+    monkeypatch.setattr(rsm.subprocess, "run", raise_timeout)
+    executor = rsm.SubprocessReleaseExecutor()
+    machine = FakeMachine()
+    record = {"attempt_id": "demo", "artifact": {"object_path": str(tmp_path / "artifact.zip")}}
+    result = executor._run_publication_command(
+        machine,
+        record,
+        kind="GIT_COMMIT",
+        command=["fake", "commit"],
+        actions=("release_pipeline_apply",),
+        timeout=12.0,
+        require_status=True,
+    )
+    assert result["ok"] is False
+    assert result["timed_out"] is True
+    assert result["returncode"] == 124
+    assert result["failure_code"] == "git_commit_publication_timeout"
+    assert Path(result["stdout_path"]).read_text() == "partial"
+    assert "timed out after 12.0s" in Path(result["stderr_path"]).read_text()
+
+
+def test_candidate_test_command_passes_exact_release_zip_to_package_validation():
+    from pathlib import Path
+    source = Path("promptbranch_release_state_machine.py").read_text(encoding="utf-8")
+    assert '"--package-zip",' in source
+    assert 'str(machine.config.artifact),' in source

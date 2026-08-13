@@ -41,19 +41,3 @@ The bundle is deterministic and digest-bound. Verification rejects missing/extra
 ## Important boundary
 
 Learning does not grant execution authority. A valid skill, a valid learning bundle, or a correct explanation of PB does not authorize repository/browser/Project Source mutation, publication, acceptance, adoption, deployment, Git commit or Git push.
-
-## Sync the accepted PB skills into another repository
-
-Do not teach an application repository from an in-development Promptbranch worktree. Use the first-class sync command, which resolves the source PB repository's authoritative adopted/current artifact and installs only verified portable skill content:
-
-```sh
-pb skill sync \
-  --path "$HOME/git/chatgpt_claudecode_workflow-2" \
-  --target "$HOME/git/my_vault" \
-  promptbranch-learning \
-  promptbranch-operator \
-  promptbranch-tool-authoring \
-  --json
-```
-
-The target receives `.promptbranch/skills/<skill>/` plus `.promptbranch/promptbranch-skills.json` provenance. Re-running the command is idempotent. Use `--dry-run` for a non-mutating plan. Managed or unmanaged target drift is not silently overwritten; explicit `--force` is required. The command reports target Git status and deliberately performs no Git commit or push.

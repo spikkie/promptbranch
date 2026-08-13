@@ -193,33 +193,64 @@ def run_json(
 ) -> dict[str, Any]:
     stdout_path = evidence_dir / f"{label}.stdout.json"
     stderr_path = evidence_dir / f"{label}.stderr.txt"
-    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
-        process = subprocess.Popen(
-            command,
-            cwd=str(cwd),
-            text=True,
-            stdout=stdout_handle,
-            stderr=stderr_handle,
-        )
-        last_snapshot: str | None = None
-        while process.poll() is None:
-            if attempt_path is not None:
-                snapshot = _progress_snapshot(attempt_path)
-                if snapshot and snapshot != last_snapshot:
-                    progress(f"{label}: {snapshot}")
-                    last_snapshot = snapshot
-            time.sleep(max(0.2, poll_seconds))
-        returncode = int(process.returncode or 0)
-    stdout = stdout_path.read_text(encoding="utf-8")
-    stderr = stderr_path.read_text(encoding="utf-8")
-    payload = parse_json(stdout, label=label)
-    payload["_wrapper_returncode"] = returncode
-    if returncode != 0 or payload.get("ok") is not True:
+    publication_retry_codes = {
+        "git_commit_publication_timeout",
+        "git_push_publication_timeout",
+        "project_source_upload_publication_timeout",
+    }
+    for wrapper_attempt in (1, 2):
+        with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
+            process = subprocess.Popen(
+                command,
+                cwd=str(cwd),
+                text=True,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+            )
+            last_snapshot: str | None = None
+            while process.poll() is None:
+                if attempt_path is not None:
+                    snapshot = _progress_snapshot(attempt_path)
+                    if snapshot and snapshot != last_snapshot:
+                        progress(f"{label}: {snapshot}")
+                        last_snapshot = snapshot
+                time.sleep(max(0.2, poll_seconds))
+            returncode = int(process.returncode or 0)
+        stdout = stdout_path.read_text(encoding="utf-8")
+        stderr = stderr_path.read_text(encoding="utf-8")
+        try:
+            payload = parse_json(stdout, label=label)
+        except RuntimeError as exc:
+            attempt = _read_json_if_present(attempt_path) if attempt_path is not None else None
+            payload = {
+                "ok": False,
+                "status": "release_child_json_missing",
+                "failure": {
+                    "code": "release_child_json_missing",
+                    "message": str(exc),
+                    "details": {
+                        "returncode": returncode,
+                        "stdout_path": str(stdout_path),
+                        "stderr_path": str(stderr_path),
+                        "stderr_tail": stderr[-4000:],
+                        "attempt_state": attempt.get("state") if isinstance(attempt, dict) else None,
+                        "active_subphase": ((attempt.get("publication_timing") or {}).get("active_subphase") if isinstance(attempt, dict) else None),
+                    },
+                },
+            }
+        payload["_wrapper_returncode"] = returncode
+        if returncode == 0 and payload.get("ok") is True:
+            return payload
         failure = payload.get("failure") if isinstance(payload.get("failure"), dict) else {}
         code = str(failure.get("code") or payload.get("failure_code") or payload.get("status") or "unknown")
+        if wrapper_attempt == 1 and code in publication_retry_codes:
+            stdout_path.replace(evidence_dir / f"{label}.attempt1.stdout.json")
+            stderr_path.replace(evidence_dir / f"{label}.attempt1.stderr.txt")
+            progress(f"{label}: transient publication timeout code={code}; retrying the same release transition automatically")
+            continue
         progress(f"{label}: FAILED code={code} returncode={returncode}; evidence={evidence_dir}")
         raise RuntimeError(f"{label} failed: {code}; see {evidence_dir}")
-    return payload
+    raise RuntimeError(f"{label} failed after publication retry; see {evidence_dir}")
 
 
 def state_rank(value: str | None) -> int:

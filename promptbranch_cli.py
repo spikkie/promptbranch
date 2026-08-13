@@ -104,7 +104,7 @@ from promptbranch_learning import (
     validate_operator_source,
     verify_learning_bundle,
 )
-from promptbranch_skill_sync import sync_skills
+from promptbranch_skill_sync import sync_promptbranch_skills
 from promptbranch_operational_evidence import (
     OperationalEvidenceError,
     build_operational_lifecycle_evidence,
@@ -27191,6 +27191,12 @@ async def cmd_skill(backend: CommandBackend, args: argparse.Namespace) -> int:
                 "skill": args.skill,
                 "errors": [str(exc)],
             }
+    elif args.skill_command == "sync":
+        payload = sync_promptbranch_skills(
+            args.target,
+            source_repo=args.source_repo,
+            skills=args.skills or None,
+        )
     elif args.skill_command == "verify-bundle":
         try:
             with zipfile.ZipFile(Path(args.bundle).expanduser().resolve(), "r") as archive:
@@ -27202,14 +27208,6 @@ async def cmd_skill(backend: CommandBackend, args: argparse.Namespace) -> int:
                 payload = verify_tool_authoring_bundle(args.bundle)
             else:
                 payload = verify_learning_bundle(args.bundle)
-    elif args.skill_command == "sync":
-        payload = sync_skills(
-            target_repo=args.target,
-            source_repo=args.path,
-            skills=list(args.skills or []),
-            force=bool(args.force),
-            dry_run=bool(args.dry_run),
-        )
     else:
         raise RuntimeError(f"Unknown skill command: {args.skill_command}")
 
@@ -28502,17 +28500,15 @@ def make_parser() -> argparse.ArgumentParser:
     skill_export_parser.add_argument("--force", action="store_true", help="Replace an existing output ZIP at the exact requested path.")
     skill_export_parser.add_argument("--json", action="store_true")
 
+    skill_sync_parser = skill_subparsers.add_parser("sync", help="Sync canonical Promptbranch skills from the exact adopted/current PB artifact into an external repository.")
+    skill_sync_parser.add_argument("skills", nargs="*", help="Skills to sync. Defaults to promptbranch-learning, promptbranch-operator, and promptbranch-tool-authoring.")
+    skill_sync_parser.add_argument("--target", required=True, help="External repository that receives .promptbranch/skills and deterministic provenance.")
+    skill_sync_parser.add_argument("--source-repo", default=".", help="Promptbranch source repository used only to resolve tracked Project identity and authoritative adopted/current artifact.")
+    skill_sync_parser.add_argument("--json", action="store_true")
+
     skill_verify_bundle_parser = skill_subparsers.add_parser("verify-bundle", help="Verify a portable Promptbranch learning/operator/tool-authoring ZIP and its fail-closed authority manifest.")
     skill_verify_bundle_parser.add_argument("bundle", help="Portable Promptbranch skill ZIP to verify.")
     skill_verify_bundle_parser.add_argument("--json", action="store_true")
-
-    skill_sync_parser = skill_subparsers.add_parser("sync", help="Install or update portable Promptbranch skills in an external Git repository from the exact authoritative adopted/current PB artifact.")
-    skill_sync_parser.add_argument("skills", nargs="*", help="Skills to sync. Defaults to promptbranch-learning, promptbranch-operator, and promptbranch-tool-authoring.")
-    skill_sync_parser.add_argument("--target", required=True, help="External Git repository root that receives .promptbranch/skills and pinned provenance.")
-    skill_sync_parser.add_argument("--path", default=".", help="Promptbranch source repository used only to resolve tracked project identity and authoritative adopted/current artifact.")
-    skill_sync_parser.add_argument("--force", action="store_true", help="Replace unmanaged or locally modified managed skill directories. Without this flag such drift fails closed.")
-    skill_sync_parser.add_argument("--dry-run", action="store_true", help="Resolve, export, verify, and plan the sync without mutating the target repository.")
-    skill_sync_parser.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="MCP tool surface helpers.")
     mcp_subparsers = mcp.add_subparsers(dest="mcp_command", required=True)

@@ -1,15 +1,15 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip",
   "accepted_current_version": "v0.1.128.2.5",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
   "active_candidate_base_version": "v0.1.128.2.5",
   "active_candidate_consolidates_runtime_version": "v0.1.128.2.5",
-  "active_candidate_documentation_checkpoint": "PB-SKILL-SYNC-2026-08-12.1",
-  "active_candidate_status": "construction_candidate",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
-  "active_candidate_version": "v0.1.128.2.6",
+  "active_candidate_documentation_checkpoint": "PB-SKILL-SYNC-VERSION-AUTH-2026-08-13.1",
+  "active_candidate_status": "active",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+  "active_candidate_version": "v0.1.128.2.6.1.1.1",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.128.2.6 — External-repository skill sync installation repair",
+  "active_slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -807,9 +807,49 @@
       "type": "repair",
       "validation": "bounded release-smoke timeout recovery + exact-route/rate-limit fail-closed tests + 17 canonical groups + deterministic exact ZIP/Guardian + live lifecycle required",
       "version": "v0.1.128.2.1"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+      "baseline": "v0.1.128.2.5",
+      "slice": "v0.1.128.2.6 — External-repository skill sync and publication-resume repair",
+      "status": "repair_required",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+      "type": "repair",
+      "version": "v0.1.128.2.6",
+      "validation": "Historical live attempt immutably bound to SHA 4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026; reached runtime/test evidence but did not close publication. Finalized replacement bytes were correctly rejected by artifact_identity_conflict. Superseded by v0.1.128.2.6.1."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.zip",
+      "baseline": "v0.1.128.2.5",
+      "slice": "v0.1.128.2.6.1 — Immutable successor for external-repository skill sync and publication-resume repair",
+      "status": "candidate_construction_green",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.zip",
+      "type": "repair",
+      "version": "v0.1.128.2.6.1",
+      "validation": "134 focused tests + verified pytest 9.0.2 runner + all 17 canonical constituent validation groups + deterministic byte-identical rebuild + canonical Artifact Guardian green; fresh live FINAL_VERIFIED/current required."
+    },
+    {
+      "version": "v0.1.128.2.6.1.1",
+      "status": "repair_required",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip",
+      "baseline": "v0.1.128.2.5",
+      "slice": "v0.1.128.2.6.1.1 — Packaging/import-surface corrective for skill sync",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip",
+      "type": "repair",
+      "validation": "Live SHA-bound attempt f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553 reached independently verified RUNTIME_PREPARED and passed exact package metadata/import smoke, then TESTED_GREEN blocked deterministically: application_architecture_structural had four stale v0.1.128.2.6.1 test assertions. Superseded by v0.1.128.2.6.1.1.1."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+      "baseline": "v0.1.128.2.5",
+      "slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
+      "status": "candidate_construction_green",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+      "type": "repair",
+      "version": "v0.1.128.2.6.1.1.1",
+      "validation": "Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group. Deterministic final rebuild and Artifact Guardian remain required before handoff."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1424,9 +1464,9 @@
   ],
   "last_completed_normal_slice": "v0.1.128.2 — Promptbranch learning and skills completeness",
   "last_completed_normal_slice_version": "v0.1.128.2",
-  "last_completed_repair": "v0.1.128.2.5 — Authoritative baseline auto-resolution repair",
+  "last_completed_repair": "v0.1.128.2.6 — External-repository skill sync and publication-resume repair",
   "last_completed_repair_version": "v0.1.128.2.5",
-  "last_updated": "2026-08-12T10:25:00+02:00",
+  "last_updated": "2026-08-13T12:22:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
   "next_normal_slice": "v0.1.129 — External application pilot bootstrap",
   "next_normal_version": "v0.1.129",
@@ -2818,6 +2858,14 @@
       "slice": "v0.1.127.2.1 — Consolidated v0.1.127 closure and single-Python lifecycle repair",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.127.2.1.zip",
       "version": "v0.1.127.2.1"
+    },
+    {
+      "version": "v0.1.128.2.6.1.1.1",
+      "base_version": "v0.1.128.2.5",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+      "slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
+      "status": "construction_candidate",
+      "reason": "Supersedes immutable v0.1.128.2.6.1.1 attempt after live TESTED_GREEN exposed four stale release-version assertions in the application architecture structural group."
     }
   ],
   "repair_must_not_advance_scope": true,
@@ -2874,39 +2922,6 @@
   },
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.1.zip",
-      "release_mode": "repair",
-      "scope": "release smoke timeout recovery construction proven; live startup exposed missing accepted-runtime baseline auto-reconciliation before candidate preparation",
-      "slice": "v0.1.128.2.1 — Release smoke timeout auto-recovery repair",
-      "status": "repair_required",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.1.zip",
-      "version": "v0.1.128.2.1",
-      "reason": "Live initial lifecycle stopped at RUNTIME_PREPARED because port 8000 did not exactly match the adopted baseline; the lifecycle required manual runtime repair instead of reconstructing the immutable accepted baseline itself."
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.2.zip",
-      "release_mode": "repair",
-      "scope": "preserve v0.1.128.2 learning/skills and v0.1.128.2.1 release-smoke recovery; automatically reconcile missing/unhealthy/mismatched port-8000 runtime from the exact adopted registry artifact before candidate preparation, with authority ambiguity fail-closed",
-      "slice": "v0.1.128.2.2 — Accepted-runtime baseline auto-reconciliation repair",
-      "status": "repair_required",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.2.zip",
-      "version": "v0.1.128.2.2",
-      "reason": "Live initial lifecycle proved baseline reconciliation entered, but the recovery path read ArtifactRegistry(profile_dir) instead of the canonical project-scoped registry resolved from .promptbranch-repo.json; accepted_baseline_registry_unavailable was therefore a namespace bug, not missing adopted authority."
-    },
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.3.zip",
-      "release_mode": "repair",
-      "scope": "project-scoped registry authority proven; live baseline reconstruction blocked by brittle accepted-byte location validation",
-      "slice": "v0.1.128.2.3 — Project-scoped baseline registry authority repair",
-      "status": "repair_required",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.3.zip",
-      "version": "v0.1.128.2.3",
-      "reason": "Live initial lifecycle resolved the correct project-scoped adopted/current record but failed accepted_baseline_artifact_invalid because recovery treated the registry record path as the sole physical byte location instead of self-healing exact accepted bytes by immutable SHA."
-    },
-    {
       "version": "v0.1.128.2.4",
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.4.zip",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.4.zip",
@@ -2920,7 +2935,7 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip",
       "release_mode": "repair",
-      "scope": "canonical lifecycle launcher resolves authoritative adopted/current baseline automatically for fresh attempts and reuses attempt-bound baseline on retries; optional baseline flag is assertion-only",
+      "scope": "FINAL_VERIFIED/current authoritative baseline; includes complete Promptbranch learning/skills and canonical single-command release resilience through v0.1.128.2.5",
       "slice": "v0.1.128.2.5 — Authoritative baseline auto-resolution repair",
       "status": "accepted_current",
       "system": "promptbranch_environment",
@@ -2930,12 +2945,45 @@
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
       "release_mode": "repair",
-      "scope": "first-class pb skill sync installs/updates accepted-current portable PB skills into an external Git repository using authoritative artifact resolution, deterministic bundle verification, staged replacement with rollback, pinned provenance, drift protection, target validation, and Git change reporting without commit/push",
-      "slice": "v0.1.128.2.6 — External-repository skill sync installation repair",
-      "status": "active",
+      "scope": "install/sync canonical Promptbranch skills into an external repository from exact adopted/current PB bytes with deterministic provenance, atomic rollback, target validation, no implicit Git publication; recover publication subprocess timeouts inside the same lifecycle wrapper; historical immutable SHA 4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026, superseded by v0.1.128.2.6.1",
+      "slice": "v0.1.128.2.6 — External-repository skill sync and publication-resume repair",
+      "status": "repair_required",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
       "version": "v0.1.128.2.6"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.zip",
+      "release_mode": "repair",
+      "scope": "immutable successor carrying exact adopted-byte skill sync and structured publication-timeout recovery; release identity/control projection repair only",
+      "slice": "v0.1.128.2.6.1 — Immutable successor for external-repository skill sync and publication-resume repair",
+      "status": "repair_required",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.zip",
+      "version": "v0.1.128.2.6.1",
+      "reason": "Distributed candidate omitted promptbranch_skill_sync from setuptools py-modules; pipx-installed CLI failed with ModuleNotFoundError before lifecycle binding."
+    },
+    {
+      "version": "v0.1.128.2.6.1.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip",
+      "release_mode": "repair",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.128.2.6.1.1 — Packaging/import-surface corrective for skill sync",
+      "status": "repair_required",
+      "scope": "declare promptbranch_skill_sync as installable and require exact release ZIP package metadata validation during canonical candidate test",
+      "reason": "Live exact candidate passed package installation/import checks and independently verified RUNTIME_PREPARED, then failed deterministic application_architecture_structural because four portable-skill tests pinned v0.1.128.2.6.1 instead of VERSION authority."
+    },
+    {
+      "version": "v0.1.128.2.6.1.1.1",
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+      "release_mode": "repair",
+      "system": "promptbranch_environment",
+      "slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
+      "status": "active",
+      "scope": "remove mutable release-version literals from portable-skill/current control-surface tests; require exact final ZIP structural validation before broader lifecycle",
+      "validation": "Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group."
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
@@ -3017,7 +3065,7 @@
     "first_external_application_read_only_version": "v0.1.129",
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "updated_for": "v0.1.128.2.6",
+  "updated_for": "v0.1.128.2.6.1.1.1",
   "accepted_current_sha256": "07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58",
   "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip"
 }

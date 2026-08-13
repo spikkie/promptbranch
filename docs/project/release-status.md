@@ -1,20 +1,28 @@
+## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
+
+Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance. Active repair artifact: `chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip`.
+
+Construction proof: Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group.
+
+## v0.1.128.2.6.1.1 packaging/import-surface corrective
+
+Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open. Active artifact: `chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip`.
 <!-- promptbranch-live-control-projection -->
 > Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
 <!-- promptbranch-release-construction-baseline -->
-> Construction baseline: adopted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active repair is `v0.1.128.2.6 — External-repository skill sync installation repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.
+> Construction baseline: adopted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active repair is `v0.1.128.2.5 — Authoritative baseline auto-resolution repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.
 
-# Active release status — v0.1.128.2.6
+# Active release status — v0.1.128.2.5
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
-| v0.1.128.2.6 | repair | external-repository skill sync installation | construction candidate | skill-sync authority/idempotency/drift/dry-run/rollback + preserved learning/release gates + deterministic ZIP/Guardian required | DOD-578–581 construction; DOD-582 live | — |
 | v0.1.128.2.5 | repair | authoritative baseline auto-resolution | construction candidate | lifecycle resolver regressions + preserved recovery/skills + canonical groups + deterministic ZIP/Guardian required | DOD-574–576 construction; DOD-577 live | — |
 | v0.1.128.2.4 | repair | accepted-baseline exact-byte self-healing | repair-required predecessor | live startup exposed stale operator baseline assertion despite authoritative current v0.1.128.2 | DOD-570–572 preserved; DOD-573 superseded | — |
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip` (`v0.1.128.2.5`).  
-Accepted SHA-256: `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`.  
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip`.  
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.zip` (`v0.1.128.2`).  
+Accepted SHA-256: `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`.  
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`.  
 Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.  
 Planned after that: `v0.1.130 — Controlled external application change execution`.
 
@@ -1023,3 +1031,17 @@ Accepted/current remains `v0.1.123.2.5`. The same-version replacement candidate 
 ## v0.1.128.2.4 — Accepted-baseline exact-byte self-healing repair
 
 Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `accepted_baseline_artifact_invalid`. `v0.1.128.2.4` keeps `(repo_id, version, sha256)` as immutable accepted authority while making physical byte location recoverable: recorded path, canonical SHA object, PB artifact caches, exact repo-local copy, and operator Downloads are bounded candidate locations; every copy must match the registered SHA, safe ZIP integrity, and embedded baseline VERSION before use. An exact recovered copy restores canonical object storage. Wrong-SHA or unavailable bytes fail closed. Accepted baselines are verified for immutable integrity rather than re-judged by newer candidate hygiene policy. Accepted/current remains `v0.1.128.1.1.1.1.1`; next normal remains `v0.1.129`; `.129` is blocked until this repair reaches FINAL_VERIFIED/current.
+
+## Historical failed candidate — v0.1.128.2.6
+
+Accepted/current baseline is `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Candidate `v0.1.128.2.6` is historical failed evidence and remains immutably bound to SHA-256 `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026`; it must not be rebound to different bytes. Its construction-proven external-repository `pb skill sync` and bounded structured publication-timeout retry are carried forward by `v0.1.128.2.6.1`. Next normal remains `v0.1.129 — External application pilot bootstrap`; `v0.1.130 — Controlled external application change execution` follows after normal acceptance.
+
+Construction state: all 17 canonical release-validation groups pass. DOD-578 through DOD-581 are construction-proven; DOD-582 remains live-pending until the exact frozen ZIP reaches FINAL_VERIFIED/current.
+
+
+## Active repair — v0.1.128.2.6.1
+
+Accepted/current baseline remains `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip` (`v0.1.128.2.5`) at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active candidate is `chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.zip`. This is the immutable successor to historical `v0.1.128.2.6` after Promptbranch correctly rejected finalized replacement bytes with `artifact_identity_conflict` because `v0.1.128.2.6` was already bound to SHA-256 `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026`. Product behavior remains the construction-proven external-repository `pb skill sync` plus structured bounded publication-timeout recovery from the finalized source tree; this repair changes release identity/control projection, not normal product scope. Live `FINAL_VERIFIED` plus fresh scoped current alignment remain pending. Next normal remains `v0.1.129`.
+
+
+Construction proof is green for `v0.1.128.2.6.1`: 134 focused tests passed; the release-validation runner authority is `/opt/pyvenv/bin/python3` with pytest 9.0.2 in this construction environment; all 17 canonical constituent validation groups passed; deterministic release builds were byte-identical; and the canonical-name Artifact Guardian check passed. The aggregate parent process exceeded the artifact sandbox single-call lifetime, so constituent-group evidence is retained explicitly rather than claiming one uninterrupted aggregate invocation. Live lifecycle/adoption/current proof remains pending.

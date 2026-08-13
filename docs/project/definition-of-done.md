@@ -1,3 +1,10 @@
+## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
+
+Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance.
+
+## v0.1.128.2.6.1.1 packaging/import-surface corrective
+
+Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 # Definition of Done
 
 ## MVP DoD
@@ -1430,13 +1437,24 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-576 | v0.1.128.2 learning/skills, smoke-timeout recovery, accepted-runtime reconstruction, project registry authority, and exact-byte recovery remain intact | construction_proven | canonical learning/browser/state-machine/artifact groups | v0.1.128.2.5 |
 | DOD-577 | Exact v0.1.128.2.5 closes after one canonical lifecycle with no baseline-version argument reaches FINAL_VERIFIED/current and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.5 |
 
-## v0.1.128.2.6 External-repository skill sync DoD
+## v0.1.128.2.6 External-repository skill sync and publication-resume DoD
 
-| ID | DoD item | Status | Evidence | Last release |
-|---|---|---:|---|---|
-| DOD-578 | `pb skill sync` resolves skill content from exact authoritative adopted/current PB artifact rather than source worktree state | construction_proven | `tests/test_promptbranch_skill_sync.py` authoritative-current/worktree-drift regression | v0.1.128.2.6 |
-| DOD-579 | Sync verifies portable bundles, stages target mutation, atomically replaces managed trees with rollback, and writes exact source/bundle/tree provenance | construction_proven | skill-sync transaction/provenance tests | v0.1.128.2.6 |
-| DOD-580 | Repeated sync is idempotent; managed/unmanaged drift fails closed unless explicit `--force`; `--dry-run` performs no target mutation | construction_proven | idempotency/drift/dry-run regressions | v0.1.128.2.6 |
-| DOD-581 | Synced target skills validate through PB generic skill validation; sync reports Git changes and performs no target commit/push | construction_proven | target validation + CLI/parser/canonical release groups | v0.1.128.2.6 |
-| DOD-582 | Exact v0.1.128.2.6 reaches FINAL_VERIFIED/current in one canonical repair lifecycle and advances active normal back to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.6 |
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-578 | `pb skill sync` resolves Promptbranch source authority only from the source repo's tracked Project identity plus exact adopted/current artifact; an in-development PB worktree is never the skill source of truth | construction_proven | source-authority and SHA/version regressions | v0.1.128.2.6 |
+| DOD-579 | Sync exports and verifies portable learning/operator/tool-authoring bundles from exact accepted bytes, stages them, atomically replaces requested external-repo skills with rollback, writes deterministic provenance, and validates the target | construction_proven | skill-sync functional/idempotency/rollback tests | v0.1.128.2.6 |
+| DOD-580 | Skill sync never implicitly commits or pushes the target repository and reports the resulting `.promptbranch` Git diff/status for operator review | construction_proven | skill-sync Git-safety regression | v0.1.128.2.6 |
+| DOD-581 | Publication subprocess timeout emits structured retryable evidence rather than empty stdout/parser crash; the canonical lifecycle wrapper retries a bounded publication timeout inside the same invocation | construction_proven | publication-timeout + wrapper retry regressions | v0.1.128.2.6 |
+| DOD-582 | Exact v0.1.128.2.6 closes only after canonical full/live lifecycle reaches FINAL_VERIFIED/current and preserves v0.1.129 as the next normal slice | superseded_by_DOD-583 | historical v0.1.128.2.6 is already SHA-bound to 4ac66b37cba7b367... and finalized replacement bytes correctly fail artifact_identity_conflict | v0.1.128.2.6 |
+
+
+## v0.1.128.2.6.1 Immutable successor DoD
+
+| ID | Requirement | Status | Evidence | Version |
+|---|---|---|---|---|
+| DOD-583 | Preserve historical `v0.1.128.2.6` / `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` attempt unchanged; exact `v0.1.128.2.6.1` bytes must have a distinct deterministic SHA and carry the construction-proven DOD-578 through DOD-581 behavior without normal-scope advancement | construction_proven | 134 focused tests; verified pytest 9.0.2 runner; all 17 canonical constituent validation groups green; byte-identical rebuild; canonical Artifact Guardian pass | v0.1.128.2.6.1 |
+| DOD-584 | Exact `v0.1.128.2.6.1` closes only after canonical full/live lifecycle reaches `FINAL_VERIFIED`, independent `release verify --all-states` succeeds, and fresh scoped `pb artifact current --repo chatgpt_claudecode_workflow-2 --json` aligns runtime/state/source/registry | live_pending | canonical lifecycle + post-adoption current proof | v0.1.128.2.6.1 |
+| DOD-585 | Installed-package metadata/import proof must validate the exact candidate ZIP, including `promptbranch_skill_sync`, before acceptance | live_proven_predecessor | exact `v0.1.128.2.6.1.1` candidate package metadata/import smoke passed before later structural failure | v0.1.128.2.6.1.1 |
+| DOD-586 | Portable-skill and current control-surface tests derive mutable release identity from root `VERSION`, and the exact final successor ZIP is validated against every nodeid in the application architecture structural group from a clean extraction | construction_proven | Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group. | v0.1.128.2.6.1.1.1 |
+| DOD-587 | Exact `v0.1.128.2.6.1.1.1` closes only after canonical lifecycle reaches `FINAL_VERIFIED`, independent all-state verification is green, and fresh scoped artifact-current alignment succeeds | live_pending | canonical lifecycle + post-adoption current proof | v0.1.128.2.6.1.1.1 |
 

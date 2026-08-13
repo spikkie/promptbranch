@@ -1,7 +1,16 @@
+## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
+
+Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance.
+
+Construction proof: Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group.
+
+## v0.1.128.2.6.1.1 packaging/import-surface corrective
+
+Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 <!-- promptbranch-live-control-projection -->
 > Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
-> v0.1.128.2.6 authority: adopted/current is `v0.1.128.2.5` at SHA `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`; active repair adds deterministic external-repository Promptbranch skill installation/update from authoritative adopted/current bytes. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
+> v0.1.128.2.5 authority: adopted/current is `v0.1.128.2` at SHA `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`; active repair removes operator-owned baseline bookkeeping from the canonical lifecycle launcher. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
 
 # Promptbranch status
 
@@ -11,9 +20,18 @@
 accepted_current_version: v0.1.128.2.5
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
 accepted_current_sha256: 07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58
-active_candidate_version: v0.1.128.2.6
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip
+active_candidate_version: v0.1.128.2.6.1.1.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip
 active_candidate_base_version: v0.1.128.2.5
+next_normal_version: v0.1.129
+next_normal_slice: v0.1.129 — External application pilot bootstrap
+```text
+accepted_current_version: v0.1.128.2
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.zip
+accepted_current_sha256: 6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6
+active_candidate_version: v0.1.128.2.5
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
+active_candidate_base_version: v0.1.128.2.4
 next_normal_version: v0.1.129
 next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
@@ -1354,7 +1372,11 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 
 Live v0.1.128.2.4 proved the project registry authoritative current is already v0.1.128.2. The canonical launcher had generated a stale explicit baseline assertion. Fresh lifecycle attempts now resolve adopted/current from the tracked project registry; durable retries reuse their attempt-bound baseline even after current advances. `--baseline-version` is optional assertion-only. No scope advance; v0.1.129 remains next normal.
 
-## v0.1.128.2.6 construction status
 
-Accepted/current remains `v0.1.128.2.5` at SHA `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active repair is `chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip`. The new `pb skill sync` path is construction-gated for authoritative source resolution, deterministic bundle verification, idempotency, drift protection, target validation, provenance, and rollback. Next normal remains `v0.1.129 — External application pilot bootstrap`; planned after acceptance remains `v0.1.130`.
+## Active repair slice — v0.1.128.2.6.1
 
+- Accepted/current baseline remains `v0.1.128.2.5` / `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`.
+- Historical `v0.1.128.2.6` remains immutably bound to SHA-256 `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` and is retained as failed release-attempt evidence.
+- `v0.1.128.2.6.1` carries the construction-proven `pb skill sync` and structured publication-resume behavior from the finalized `v0.1.128.2.6` source tree, but uses a new version identity because the prior target version is already SHA-bound.
+- No external-application scope advances; `v0.1.129 — External application pilot bootstrap` remains next normal after acceptance.
+- Live closure requires exact `v0.1.128.2.6.1` artifact construction proof followed by canonical `FINAL_VERIFIED`, independent all-state verification, and fresh scoped artifact-current alignment.

@@ -9,6 +9,7 @@ import promptbranch_tool_authoring as tool_authoring
 from promptbranch_mcp import skill_validate
 
 ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def _example() -> dict:
@@ -27,7 +28,7 @@ def test_tracked_tool_authoring_skill_is_valid_and_read_only() -> None:
 def test_tool_authoring_source_contract_is_valid() -> None:
     payload = tool_authoring.validate_tool_authoring_source(ROOT)
     assert payload["ok"] is True, payload
-    assert payload["version"] == "v0.1.128.2.6"
+    assert payload["version"] == EXPECTED_VERSION
     assert payload["execution_authority_granted"] is False
     assert payload["mutation_authority_granted"] is False
     assert payload["release_authority_granted"] is False
@@ -81,7 +82,7 @@ def test_portable_bundle_contains_project_source_agent_adapter_and_no_authority(
     payload = tool_authoring.export_tool_authoring_bundle(ROOT, target)
     assert payload["verification"]["ok"] is True
     manifest = payload["verification"]["manifest"]
-    assert manifest["source_version"] == "v0.1.128.2.6"
+    assert manifest["source_version"] == EXPECTED_VERSION
     assert manifest["failure_semantics"] == "fail_closed"
     assert manifest["authority"] == {
         "tool_authoring_only": True,

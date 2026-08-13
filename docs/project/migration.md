@@ -1,3 +1,10 @@
+## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
+
+Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance.
+
+## v0.1.128.2.6.1.1 packaging/import-surface corrective
+
+Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 <!-- promptbranch-live-control-projection -->
 > Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
@@ -1646,7 +1653,11 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
 
-## v0.1.128.2.6 external-repository skill sync migration
+## v0.1.128.2.6 — External-repository skill sync and publication-resume repair
 
-No existing external repository is mutated automatically. Repositories that previously received PB skills by manual unzip/copy can adopt the canonical `pb skill sync --target <repo>` path. If same-name skill directories exist without `.promptbranch/promptbranch-skills.json`, sync fails closed unless the operator explicitly uses `--force`. Next normal remains `v0.1.129`; planned after acceptance remains `v0.1.130`.
+External repositories should stop using manual unzip/copy procedures for Promptbranch learning/operator/tool-authoring skills once this repair is accepted. The canonical migration target is `pb skill sync --target <external-repo> ...`, sourcing only exact adopted/current PB bytes and writing `.promptbranch/promptbranch-skills.json` provenance. No automatic Git commit or push is performed. The release wrapper also replaces unstructured publication timeout crashes with bounded same-invocation retry. Next normal remains `v0.1.129`; `v0.1.130` follows after normal acceptance.
 
+
+## v0.1.128.2.6.1 — Immutable successor migration
+
+No repository-data or runtime-state migration is required. Preserve the historical `v0.1.128.2.6` release-attempt directory and its SHA-256 `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` as immutable evidence. Do not rebind or delete it. Build `v0.1.128.2.6.1` from the finalized `v0.1.128.2.6` source input, then let the canonical lifecycle create a distinct SHA-bound attempt for `v0.1.128.2.6.1`. External repositories continue to migrate to `pb skill sync --target <external-repo> ...` only after this successor is accepted/current. `v0.1.129` remains blocked until this repair reaches `FINAL_VERIFIED` and fresh current-state alignment.

@@ -2268,6 +2268,8 @@ class SubprocessReleaseExecutor:
             "--fail-fast",
             "--ask-conversation-url",
             baseline_origin_url,
+            "--package-zip",
+            str(machine.config.artifact),
             "--json",
         ]
         started = utc_now()
@@ -2908,19 +2910,43 @@ class SubprocessReleaseExecutor:
         logs = machine.attempt_dir / "runtime" / "logs"; logs.mkdir(parents=True, exist_ok=True)
         started = machine.clock()
         self._set_publication_subphase(machine, record, kind, started)
-        completed = subprocess.run(command, cwd=str(machine.config.repo_root), env=self._control_env(machine, record), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, check=False)
         stdout_path = logs / f"publication-{kind.lower()}.stdout.log"; stderr_path = logs / f"publication-{kind.lower()}.stderr.log"
-        stdout_path.write_text(completed.stdout or "", encoding="utf-8"); stderr_path.write_text(completed.stderr or "", encoding="utf-8")
-        selection = _select_action_document(completed.stdout or "", actions=actions, result_name=kind.lower(), require_status=require_status) if actions else {"ok": True, "result": None, "document_count": len(_parse_json_documents(completed.stdout or "")), "match_count": 0, "errors": []}
+        timed_out = False
+        timeout_error: str | None = None
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(machine.config.repo_root),
+                env=self._control_env(machine, record),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=False,
+            )
+            stdout = completed.stdout or ""
+            stderr = completed.stderr or ""
+            returncode = int(completed.returncode)
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            timeout_error = f"publication command timed out after {timeout:.1f}s"
+            stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+            stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+            stderr = (stderr + ("\n" if stderr else "") + timeout_error).strip()
+            returncode = 124
+        stdout_path.write_text(stdout, encoding="utf-8"); stderr_path.write_text(stderr, encoding="utf-8")
+        selection = _select_action_document(stdout, actions=actions, result_name=kind.lower(), require_status=require_status) if actions and not timed_out else ({"ok": False, "result": None, "document_count": len(_parse_json_documents(stdout)), "match_count": 0, "errors": [timeout_error or "publication_timeout"]} if actions else {"ok": not timed_out, "result": None, "document_count": len(_parse_json_documents(stdout)), "match_count": 0, "errors": [timeout_error] if timeout_error else []})
         payload = selection.get("result") if isinstance(selection.get("result"), dict) else {}
-        ok = completed.returncode == 0 and (selection.get("ok") is True if actions else True) and (payload.get("ok") is True if actions else True)
+        ok = (not timed_out) and returncode == 0 and (selection.get("ok") is True if actions else True) and (payload.get("ok") is True if actions else True)
+        failure_code = f"{kind.lower()}_publication_timeout" if timed_out else None
         result = {
-            "kind": kind, "ok": ok, "command": command, "returncode": completed.returncode, "result": payload, "selection": selection,
+            "kind": kind, "ok": ok, "command": command, "returncode": returncode, "result": payload, "selection": selection,
             "stdout_path": str(stdout_path), "stderr_path": str(stderr_path),
             "stdout_sha256": sha256_file(stdout_path), "stderr_sha256": sha256_file(stderr_path),
-            "stdout_tail": (completed.stdout or "")[-4000:], "stderr_tail": (completed.stderr or "")[-4000:],
+            "stdout_tail": stdout[-4000:], "stderr_tail": stderr[-4000:],
+            "timed_out": timed_out, "timeout_seconds": timeout, "failure_code": failure_code,
         }
-        self._finish_publication_subphase(machine, record, kind, started, "passed" if ok else "failed", {"returncode": completed.returncode, "stdout_sha256": result["stdout_sha256"], "stderr_sha256": result["stderr_sha256"]})
+        self._finish_publication_subphase(machine, record, kind, started, "passed" if ok else "failed", {"returncode": returncode, "timed_out": timed_out, "timeout_seconds": timeout, "stdout_sha256": result["stdout_sha256"], "stderr_sha256": result["stderr_sha256"]})
         return result
 
     def _list_project_sources(self, machine: "ReleaseStateMachine", record: dict[str, Any]) -> dict[str, Any]:
@@ -2959,7 +2985,7 @@ class SubprocessReleaseExecutor:
             mutations.append("worktree_materialize")
 
             command = [str(candidate_python), str(extracted / "promptbranch_cli.py"), "release", "pipeline", "apply", "--repo-path", str(machine.config.repo_root), "--confirm-version", machine.config.version, "--stage-all", "--commit", "--json"]
-            git_result = self._run_publication_command(machine, record, kind="GIT_COMMIT", command=command, actions=("release_pipeline_apply",), timeout=1800, require_status=True)
+            git_result = self._run_publication_command(machine, record, kind="GIT_COMMIT", command=command, actions=("release_pipeline_apply",), timeout=max(3600.0, float(machine.config.test_timeout) + 900.0), require_status=True)
             payload = git_result.get("result") if isinstance(git_result.get("result"), dict) else {}
             runtime_fingerprint = self._runtime_source_fingerprint(machine, record)
             if runtime_fingerprint.get("ok") is not True:
@@ -2987,7 +3013,7 @@ class SubprocessReleaseExecutor:
             git_result["ok"] = git_result.get("ok") is True and all(guards.values())
             results.append({"kind": "git_commit", **git_result})
             if git_result.get("ok") is not True:
-                return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": "git_commit_publication_failed"}
+                return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": git_result.get("failure_code") or "git_commit_publication_failed"}
             mutations.append("commit")
 
             if machine.config.push:
@@ -3000,7 +3026,7 @@ class SubprocessReleaseExecutor:
                 push_result["ok"] = push_result.get("ok") is True and all(push_result["guards"].values())
                 results.append({"kind": "git_push", **push_result})
                 if push_result.get("ok") is not True:
-                    return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": "git_push_publication_failed"}
+                    return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": push_result.get("failure_code") or "git_push_publication_failed"}
                 mutations.append("push")
 
         if machine.config.upload_project_source:
@@ -3024,7 +3050,7 @@ class SubprocessReleaseExecutor:
                 upload["status"] = "uploaded_and_reconciled" if upload["ok"] else "project_source_publication_unverified"
                 results.append({"kind": "project_source", **upload})
                 if upload.get("ok") is not True:
-                    return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": "project_source_publication_failed"}
+                    return {"ok": False, "status": "failed", "requested": requested, "results": results, "mutations_performed": mutations, "failure_code": upload.get("failure_code") or "project_source_publication_failed"}
                 mutations.append("upload_project_source")
 
         return {"ok": True, "status": "completed", "requested": requested, "results": results, "mutations_performed": mutations}
@@ -3873,7 +3899,7 @@ class ReleaseStateMachine:
                 "ok": False,
                 "status": "optional_publication_failed",
                 "publication": publication,
-                "failure_code": "optional_publication_failed",
+                "failure_code": publication.get("failure_code") or "optional_publication_failed",
                 "error": "explicitly requested publication action failed",
             }
         success = {
