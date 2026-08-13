@@ -2,18 +2,19 @@
 > Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
 <!-- promptbranch-release-construction-baseline -->
-> Construction baseline: adopted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active repair is `v0.1.128.2.5 — Authoritative baseline auto-resolution repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.
+> Construction baseline: adopted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active repair is `v0.1.128.2.6 — External-repository skill sync installation repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.
 
-# Active release status — v0.1.128.2.5
+# Active release status — v0.1.128.2.6
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
 |---|---|---|---|---|---|---|
+| v0.1.128.2.6 | repair | external-repository skill sync installation | construction candidate | skill-sync authority/idempotency/drift/dry-run/rollback + preserved learning/release gates + deterministic ZIP/Guardian required | DOD-578–581 construction; DOD-582 live | — |
 | v0.1.128.2.5 | repair | authoritative baseline auto-resolution | construction candidate | lifecycle resolver regressions + preserved recovery/skills + canonical groups + deterministic ZIP/Guardian required | DOD-574–576 construction; DOD-577 live | — |
 | v0.1.128.2.4 | repair | accepted-baseline exact-byte self-healing | repair-required predecessor | live startup exposed stale operator baseline assertion despite authoritative current v0.1.128.2 | DOD-570–572 preserved; DOD-573 superseded | — |
 
-Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.zip` (`v0.1.128.2`).  
-Accepted SHA-256: `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`.  
-Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`.  
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip` (`v0.1.128.2.5`).  
+Accepted SHA-256: `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`.  
+Active repair candidate: `chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip`.  
 Next normal slice after repair: `v0.1.129 — External application pilot bootstrap`.  
 Planned after that: `v0.1.130 — Controlled external application change execution`.
 

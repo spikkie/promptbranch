@@ -1645,3 +1645,8 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 ## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
+
+## v0.1.128.2.6 external-repository skill sync migration
+
+No existing external repository is mutated automatically. Repositories that previously received PB skills by manual unzip/copy can adopt the canonical `pb skill sync --target <repo>` path. If same-name skill directories exist without `.promptbranch/promptbranch-skills.json`, sync fails closed unless the operator explicitly uses `--force`. Next normal remains `v0.1.129`; planned after acceptance remains `v0.1.130`.
+

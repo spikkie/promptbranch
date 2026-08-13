@@ -1429,3 +1429,14 @@ DOD-193: default `--run-all-tests` performs deterministic product release valida
 | DOD-575 | Durable retries reuse the attempt-bound baseline even after adoption changes current; explicit baseline is assertion-only and mismatch fails closed | construction_proven | retry-bound and stale-assertion regressions | v0.1.128.2.5 |
 | DOD-576 | v0.1.128.2 learning/skills, smoke-timeout recovery, accepted-runtime reconstruction, project registry authority, and exact-byte recovery remain intact | construction_proven | canonical learning/browser/state-machine/artifact groups | v0.1.128.2.5 |
 | DOD-577 | Exact v0.1.128.2.5 closes after one canonical lifecycle with no baseline-version argument reaches FINAL_VERIFIED/current and advances next normal to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.5 |
+
+## v0.1.128.2.6 External-repository skill sync DoD
+
+| ID | DoD item | Status | Evidence | Last release |
+|---|---|---:|---|---|
+| DOD-578 | `pb skill sync` resolves skill content from exact authoritative adopted/current PB artifact rather than source worktree state | construction_proven | `tests/test_promptbranch_skill_sync.py` authoritative-current/worktree-drift regression | v0.1.128.2.6 |
+| DOD-579 | Sync verifies portable bundles, stages target mutation, atomically replaces managed trees with rollback, and writes exact source/bundle/tree provenance | construction_proven | skill-sync transaction/provenance tests | v0.1.128.2.6 |
+| DOD-580 | Repeated sync is idempotent; managed/unmanaged drift fails closed unless explicit `--force`; `--dry-run` performs no target mutation | construction_proven | idempotency/drift/dry-run regressions | v0.1.128.2.6 |
+| DOD-581 | Synced target skills validate through PB generic skill validation; sync reports Git changes and performs no target commit/push | construction_proven | target validation + CLI/parser/canonical release groups | v0.1.128.2.6 |
+| DOD-582 | Exact v0.1.128.2.6 reaches FINAL_VERIFIED/current in one canonical repair lifecycle and advances active normal back to v0.1.129 | live_pending | exact ZIP + live canonical lifecycle + post-adoption projection | v0.1.128.2.6 |
+

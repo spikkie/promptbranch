@@ -1447,3 +1447,11 @@ def test_parser_accepts_tool_authoring_export_and_verify_bundle() -> None:
     assert learning_export_args.skill == "promptbranch-learning"
     operator_export_args = parser.parse_args(["skill", "export", "promptbranch-operator", "--path", ".", "--json"])
     assert operator_export_args.skill == "promptbranch-operator"
+    sync_args = parser.parse_args([
+        "skill", "sync", "--target", "/tmp/my_vault", "--path", ".",
+        "promptbranch-learning", "promptbranch-operator", "promptbranch-tool-authoring", "--dry-run", "--json",
+    ])
+    assert sync_args.skill_command == "sync"
+    assert sync_args.target == "/tmp/my_vault"
+    assert sync_args.skills == ["promptbranch-learning", "promptbranch-operator", "promptbranch-tool-authoring"]
+    assert sync_args.dry_run is True

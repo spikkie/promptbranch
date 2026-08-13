@@ -426,6 +426,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_application_migration.py",
             "tests/test_promptbranch_tool_authoring.py",
             "tests/test_promptbranch_learning.py",
+            "tests/test_promptbranch_skill_sync.py",
         ),
     },
     "application_architecture_registry": {

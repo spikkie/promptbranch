@@ -145,3 +145,8 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 ## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
+
+## v0.1.128.2.6 — External-repository skill sync installation repair
+
+Status: active repair. Scope: authoritative adopted/current skill source resolution; deterministic export/verify; target Git-repo preflight; staged all-or-rollback replacement; provenance; drift protection; dry-run; target validation; Git change report; no commit/push. Next normal: `v0.1.129`.
+

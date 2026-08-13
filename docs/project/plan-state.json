@@ -1,15 +1,15 @@
 {
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip",
   "accepted_current_version": "v0.1.128.2.5",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
   "active_candidate_base_version": "v0.1.128.2.5",
-  "active_candidate_consolidates_runtime_version": "v0.1.128.2",
-  "active_candidate_documentation_checkpoint": "PB-RELEASE-AUTO-BASELINE-2026-08-12.1",
-  "active_candidate_status": "planned",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-  "active_candidate_version": "v0.1.129",
+  "active_candidate_consolidates_runtime_version": "v0.1.128.2.5",
+  "active_candidate_documentation_checkpoint": "PB-SKILL-SYNC-2026-08-12.1",
+  "active_candidate_status": "construction_candidate",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+  "active_candidate_version": "v0.1.128.2.6",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.129 — External application pilot bootstrap",
+  "active_slice": "v0.1.128.2.6 — External-repository skill sync installation repair",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -809,7 +809,7 @@
       "version": "v0.1.128.2.1"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1430,9 +1430,9 @@
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
   "next_normal_slice": "v0.1.129 — External application pilot bootstrap",
   "next_normal_version": "v0.1.129",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
-  "next_planned_slice_after_acceptance": "v0.1.130 — Controlled external application change execution",
-  "next_planned_version_after_acceptance": "v0.1.130",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "next_planned_slice_after_acceptance": "v0.1.129 — External application pilot bootstrap",
+  "next_planned_version_after_acceptance": "v0.1.129",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -2315,7 +2315,7 @@
       "version": "v0.1.126.1.1.1.1.2"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -2874,16 +2874,6 @@
   },
   "rolling_slice_horizon": [
     {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.zip",
-      "release_mode": "normal",
-      "scope": "FINAL_VERIFIED/current Promptbranch learning and skills completeness baseline; authoritative adopted SHA 6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6",
-      "slice": "v0.1.128.2 — Promptbranch learning and skills completeness",
-      "status": "superseded",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.zip",
-      "version": "v0.1.128.2"
-    },
-    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.1.zip",
       "release_mode": "repair",
       "scope": "release smoke timeout recovery construction proven; live startup exposed missing accepted-runtime baseline auto-reconciliation before candidate preparation",
@@ -2938,11 +2928,21 @@
       "version": "v0.1.128.2.5"
     },
     {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+      "release_mode": "repair",
+      "scope": "first-class pb skill sync installs/updates accepted-current portable PB skills into an external Git repository using authoritative artifact resolution, deterministic bundle verification, staged replacement with rollback, pinned provenance, drift protection, target validation, and Git change reporting without commit/push",
+      "slice": "v0.1.128.2.6 — External-repository skill sync installation repair",
+      "status": "active",
+      "system": "promptbranch_environment",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip",
+      "version": "v0.1.128.2.6"
+    },
+    {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
       "release_mode": "normal",
       "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan",
       "slice": "v0.1.129 — External application pilot bootstrap",
-      "status": "active",
+      "status": "planned_after_acceptance",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
       "version": "v0.1.129"
@@ -2952,7 +2952,7 @@
       "release_mode": "normal",
       "scope": "human-authorized bounded edits, snapshot and rollback evidence",
       "slice": "v0.1.130 — Controlled external application change execution",
-      "status": "planned_after_acceptance",
+      "status": "planned",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
       "version": "v0.1.130"
@@ -3000,7 +3000,7 @@
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -3017,7 +3017,7 @@
     "first_external_application_read_only_version": "v0.1.129",
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "updated_for": "v0.1.128.2.5",
+  "updated_for": "v0.1.128.2.6",
   "accepted_current_sha256": "07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58",
-  "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.4.zip"
+  "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip"
 }

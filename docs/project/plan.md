@@ -1,7 +1,7 @@
 <!-- promptbranch-live-control-projection -->
 > Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
-> v0.1.128.2.5 authority: adopted/current is `v0.1.128.2` at SHA `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`; active repair removes operator-owned baseline bookkeeping from the canonical lifecycle launcher. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
+> v0.1.128.2.6 authority: adopted/current is `v0.1.128.2.5` at SHA `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`; active repair adds deterministic external-repository Promptbranch skill installation/update from authoritative adopted/current bytes. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
 
 # Promptbranch plan
 
@@ -11,18 +11,9 @@
 accepted_current_version: v0.1.128.2.5
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
 accepted_current_sha256: 07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58
-active_candidate_version: v0.1.129
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
+active_candidate_version: v0.1.128.2.6
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.6.zip
 active_candidate_base_version: v0.1.128.2.5
-next_normal_version: v0.1.129
-next_normal_slice: v0.1.129 — External application pilot bootstrap
-```text
-accepted_current_version: v0.1.128.2
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.zip
-accepted_current_sha256: 6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6
-active_candidate_version: v0.1.128.2.5
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip
-active_candidate_base_version: v0.1.128.2.4
 next_normal_version: v0.1.129
 next_normal_slice: v0.1.129 — External application pilot bootstrap
 ```
@@ -2458,3 +2449,12 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 ## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
 
 Live v0.1.128.2.4 proved the project registry authoritative current is already v0.1.128.2. The canonical launcher had generated a stale explicit baseline assertion. Fresh lifecycle attempts now resolve adopted/current from the tracked project registry; durable retries reuse their attempt-bound baseline even after current advances. `--baseline-version` is optional assertion-only. No scope advance; v0.1.129 remains next normal.
+
+## v0.1.128.2.6 — External-repository skill sync installation repair
+
+- Add `pb skill sync` as the canonical install/update path for portable PB skills in external Git repositories.
+- Resolve source content from the exact authoritative `adopted/current` PB artifact, never from an in-development PB worktree.
+- Export and verify deterministic bundles, stage installation, replace managed skill trees transactionally with rollback, and write `.promptbranch/promptbranch-skills.json` provenance.
+- Fail closed on unmanaged same-name skills or modified managed trees unless `--force` is explicit; support `--dry-run`; validate installed skills and report Git changes without commit/push.
+- Preserve `v0.1.129 — External application pilot bootstrap` as the next normal slice.
+

@@ -1612,3 +1612,10 @@ Live `v0.1.128.2.3` resolved the canonical project-scoped registry but failed `a
 ## v0.1.128.2.5 — Authoritative baseline auto-resolution repair
 
 The live v0.1.128.2.4 failure proved authoritative adopted/current is v0.1.128.2 while the launcher command still asserted the older v0.1.128.1.1.1.1.1 baseline. Fresh lifecycle attempts now resolve the project-scoped adopted/current baseline automatically; retries keep their durable attempt-bound baseline. An explicit baseline flag is assertion-only and fails closed on mismatch. This repair does not advance scope; v0.1.129 remains next normal.
+
+## ADR-PROJ-119 — Install external-repository PB skills only from authoritative adopted/current artifact
+
+**Decision:** `pb skill sync` resolves the source PB repository's tracked Project identity and project-scoped adopted/current artifact, exports portable skills from those immutable bytes, verifies bundles before mutation, manages target trees transactionally, writes exact provenance, and never commits/pushes the target. The live PB worktree is not skill-content authority.
+
+**Reason:** external repositories such as `my_vault` must learn the accepted PB contract without receiving unreleased worktree semantics or silently losing local edits. This repair does not advance scope; `v0.1.129` remains next normal and `v0.1.130` remains planned after acceptance.
+
