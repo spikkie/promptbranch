@@ -1,15 +1,15 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip",
-  "accepted_current_version": "v0.1.128.2.5",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
-  "active_candidate_base_version": "v0.1.128.2.5",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+  "accepted_current_version": "v0.1.128.2.6.1.1.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "active_candidate_base_version": "v0.1.128.2.6.1.1.1",
   "active_candidate_consolidates_runtime_version": "v0.1.128.2.5",
   "active_candidate_documentation_checkpoint": "PB-SKILL-SYNC-VERSION-AUTH-2026-08-13.1",
-  "active_candidate_status": "active",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
-  "active_candidate_version": "v0.1.128.2.6.1.1.1",
+  "active_candidate_status": "planned",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "active_candidate_version": "v0.1.129",
   "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
+  "active_slice": "v0.1.129 — External application pilot bootstrap",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -849,7 +849,7 @@
       "validation": "Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group. Deterministic final rebuild and Artifact Guardian remain required before handoff."
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1464,15 +1464,15 @@
   ],
   "last_completed_normal_slice": "v0.1.128.2 — Promptbranch learning and skills completeness",
   "last_completed_normal_slice_version": "v0.1.128.2",
-  "last_completed_repair": "v0.1.128.2.6 — External-repository skill sync and publication-resume repair",
-  "last_completed_repair_version": "v0.1.128.2.5",
+  "last_completed_repair": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
+  "last_completed_repair_version": "v0.1.128.2.6.1.1.1",
   "last_updated": "2026-08-13T12:22:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
   "next_normal_slice": "v0.1.129 — External application pilot bootstrap",
   "next_normal_version": "v0.1.129",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-  "next_planned_slice_after_acceptance": "v0.1.129 — External application pilot bootstrap",
-  "next_planned_version_after_acceptance": "v0.1.129",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "next_planned_slice_after_acceptance": "v0.1.130 — Controlled external application change execution",
+  "next_planned_version_after_acceptance": "v0.1.130",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -2355,7 +2355,7 @@
       "version": "v0.1.126.1.1.1.1.2"
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -2937,7 +2937,7 @@
       "release_mode": "repair",
       "scope": "FINAL_VERIFIED/current authoritative baseline; includes complete Promptbranch learning/skills and canonical single-command release resilience through v0.1.128.2.5",
       "slice": "v0.1.128.2.5 — Authoritative baseline auto-resolution repair",
-      "status": "accepted_current",
+      "status": "superseded",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip",
       "version": "v0.1.128.2.5"
@@ -2981,7 +2981,7 @@
       "release_mode": "repair",
       "system": "promptbranch_environment",
       "slice": "v0.1.128.2.6.1.1.1 — VERSION-derived structural-contract corrective",
-      "status": "active",
+      "status": "accepted_current",
       "scope": "remove mutable release-version literals from portable-skill/current control-surface tests; require exact final ZIP structural validation before broader lifecycle",
       "validation": "Exact clean-extraction structural coverage is 62/62 nodeids green (29 application architecture, 14 migration, 8 tool-authoring, 7 learning, 4 skill-sync) using pytest 9.0.2 with ambient plugin autoload disabled. The artifact container could not retain the one-process aggregate long enough for a summary, so canonical host lifecycle must still rerun the normal single structural group."
     },
@@ -2990,7 +2990,7 @@
       "release_mode": "normal",
       "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan",
       "slice": "v0.1.129 — External application pilot bootstrap",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
       "version": "v0.1.129"
@@ -3000,7 +3000,7 @@
       "release_mode": "normal",
       "scope": "human-authorized bounded edits, snapshot and rollback evidence",
       "slice": "v0.1.130 — Controlled external application change execution",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
       "version": "v0.1.130"
@@ -3048,7 +3048,7 @@
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -3066,6 +3066,6 @@
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
   "updated_for": "v0.1.128.2.6.1.1.1",
-  "accepted_current_sha256": "07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58",
+  "accepted_current_sha256": "90c36f8065d0d343f7a7d6f8e6a11577f8e02ba683d24a026ccb48a755fc5926",
   "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip"
 }
