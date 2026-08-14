@@ -2,16 +2,16 @@
   "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
   "accepted_current_sha256": "8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019",
   "accepted_current_version": "v0.1.128.2.7",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-  "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+  "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
   "active_candidate_base_version": "v0.1.128.2.7",
-  "active_candidate_consolidates_runtime_version": "v0.1.128.2.6.1.1.1",
-  "active_candidate_documentation_checkpoint": "PB-LEGACY-RELEASE-CONTROL-REMOVAL-2026-08-13.1",
-  "active_candidate_status": "planned",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-  "active_candidate_version": "v0.1.129",
-  "active_mvp": "PB environment/control-plane final proof; external application-development MVP follows",
-  "active_slice": "v0.1.129 — External application pilot bootstrap",
+  "active_candidate_consolidates_runtime_version": "v0.1.128.2.7",
+  "active_candidate_documentation_checkpoint": "PB-EXTERNAL-APPLICATION-PILOT-BOOTSTRAP-2026-08-14.1",
+  "active_candidate_status": "construction_candidate",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+  "active_candidate_version": "v0.1.129.1",
+  "active_mvp": "External application-development MVP — read-only pilot bootstrap",
+  "active_slice": "v0.1.129.1 — release-source version scan isolation corrective",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -891,9 +891,27 @@
       "type": "repair",
       "validation": "Construction in progress: deterministic offline wheel-build authority corrective.",
       "version": "v0.1.128.2.7"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+      "base_version": "v0.1.128.2.7",
+      "slice": "v0.1.129 — External application pilot bootstrap",
+      "status": "repair_required",
+      "reason": "First normal external-application slice after Promptbranch control-plane hardening: establish a separate-repository pilot contract and read-only plan before any application mutation authority is introduced.",
+      "validation": "Canonical lifecycle passed candidate testing and worktree materialization, then pre-commit version_surface failed because the version hard-code scan traversed operator .pb_profile runtime history.",
+      "version": "v0.1.129"
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+      "base_version": "v0.1.128.2.7",
+      "slice": "v0.1.129.1 — release-source version scan isolation corrective",
+      "status": "construction_candidate",
+      "reason": "Repair only: bind current-version hard-code validation to the canonical immutable release-source iterator so operator runtime history under .pb_profile cannot contaminate pre-commit validation.",
+      "validation": "Focused construction and canonical lifecycle validation required before acceptance.",
+      "version": "v0.1.129.1"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1511,9 +1529,9 @@
   "last_completed_repair": "v0.1.128.2.7 — deterministic offline wheel-build authority corrective",
   "last_completed_repair_version": "v0.1.128.2.7",
   "last_updated": "2026-08-13T12:22:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-  "next_normal_slice": "v0.1.129 — External application pilot bootstrap",
-  "next_normal_version": "v0.1.129",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "next_normal_slice": "v0.1.130 — Controlled external application change execution",
+  "next_normal_version": "v0.1.130",
   "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
   "next_planned_slice_after_acceptance": "v0.1.130 — Controlled external application change execution",
   "next_planned_version_after_acceptance": "v0.1.130",
@@ -2399,7 +2417,7 @@
       "version": "v0.1.126.1.1.1.1.2"
     }
   ],
-  "release_mode": "normal",
+  "release_mode": "repair",
   "repair_history": [
     {
       "kind": "repair",
@@ -2979,11 +2997,11 @@
     "docs/backlog/PBAI-001-full-ai-application-architecture.md"
   ],
   "required_files": [
-    "docs/release-v0.1.128.2.6.1.1.2.1.1.md"
+    "docs/release-v0.1.129.md"
   ],
   "roadmap_milestones": {
     "control_plane_hardened": {
-      "status": "planned",
+      "status": "complete",
       "target_version": "v0.1.128"
     },
     "control_plane_proof": {
@@ -3004,17 +3022,6 @@
     }
   },
   "rolling_slice_horizon": [
-    {
-      "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.zip",
-      "reason": "Distributed candidate failed pre-lifecycle regression: mutable current version was still duplicated outside VERSION and simulated post-adoption validation leaked into live authoritative current.",
-      "release_mode": "repair",
-      "scope": "delete the obsolete shell release engine; migrate current candidate-test, integrated MVP proof, installer bootstrap, Artifact Guardian, impact map, behavioral owner, and release validation contracts to one canonical Python lifecycle; do not preserve flag compatibility aliases",
-      "slice": "v0.1.128.2.6.1.1.2 — Legacy release-control removal",
-      "status": "repair_required",
-      "system": "promptbranch_environment",
-      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.zip",
-      "version": "v0.1.128.2.6.1.1.2"
-    },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.1.zip",
       "reason": "Distributed candidate static authority tests leaked host runtime artifact registry state; include_runtime=False was nondeterministic and the runtime-missing test did not isolate PROMPTBRANCH_PROJECT_STATE_HOME.",
@@ -3071,18 +3078,29 @@
       "status": "accepted_current",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
-      "validation": "Construction candidate; deterministic source, exact-ZIP, Docker-capable host, and canonical lifecycle validation remain required before acceptance.",
+      "validation": "Host exact-final-ZIP Docker gate passed; canonical lifecycle reached FINAL_VERIFIED/current; tracked control projection converged with authoritative current.",
       "version": "v0.1.128.2.7"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
       "release_mode": "normal",
-      "scope": "separate repo, target, architecture, DoD, tests and read-only execution plan",
+      "scope": "separate external repository binding, product target, application architecture, Definition of Done, deterministic test contract, and a strictly read-only bootstrap execution plan; no target mutation or deployment",
       "slice": "v0.1.129 — External application pilot bootstrap",
-      "status": "active",
+      "status": "repair_required",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.zip",
-      "version": "v0.1.129"
+      "version": "v0.1.129",
+      "validation": "Canonical lifecycle candidate test passed; pre-commit version_surface failed on host .pb_profile runtime-history leakage."
+    },
+    {
+      "artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+      "release_mode": "repair",
+      "scope": "preserve the complete v0.1.129 external-application pilot bootstrap and repair only version-surface source selection by reusing the canonical immutable release-source iterator; no external application mutation authority",
+      "slice": "v0.1.129.1 — release-source version scan isolation corrective",
+      "status": "active",
+      "system": "external_application",
+      "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+      "version": "v0.1.129.1"
     },
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
@@ -3137,7 +3155,7 @@
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": true,
+  "scope_advance_allowed": false,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
@@ -3154,5 +3172,5 @@
     "first_external_application_read_only_version": "v0.1.129",
     "promptbranch_environment": "System A: control plane, workflow, evidence, safety, PB artifact lifecycle"
   },
-  "updated_for": "v0.1.128.2.7"
+  "updated_for": "v0.1.129.1"
 }

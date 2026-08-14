@@ -1,3 +1,18 @@
+# v0.1.129 — External application pilot bootstrap
+
+Status: construction candidate; not accepted/current. Baseline: `v0.1.128.2.7` / `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`.
+
+## v0.1.129 External application pilot bootstrap DoD
+
+| ID | Requirement | Status | Evidence | Release |
+|---|---|---|---|---|
+| DOD-588 | A tracked `promptbranch.application.pilot` contract names the first external application repository identity, vertical slice, visible output, target, architecture, DoD, tests, and bootstrap surfaces | construction_proven | `examples/application-pilot/k8s-game-mvp.pilot.json`, schema, focused tests | v0.1.129 |
+| DOD-589 | Pilot planning requires a repository distinct from the Promptbranch control repository and an existing repository marker; the planner runs no Git command and never initializes a repository | construction_proven | `promptbranch_application_pilot.py`, separate-repo and missing-marker regressions | v0.1.129 |
+| DOD-590 | The pilot proposes application-owned `VERSION`, PBAI declaration/registry, target, architecture, DoD, and deterministic application-test paths before any mutation | construction_proven | pilot definition + plan payload regressions | v0.1.129 |
+| DOD-591 | The bootstrap execution plan is exactly one read-only iteration, executes no commands, and terminates at `stop_before_mutation`; Git/Project Source/artifact/deployment/acceptance mutations remain false | construction_proven | planner safety payload + no-mutation snapshot regression | v0.1.129 |
+| DOD-592 | `pb application pilot validate` and `pb application pilot plan` return structured JSON and fail closed for same-repo, missing-repository-marker, shell-command, or mutation-authority violations | construction_proven | CLI and semantic validation regressions | v0.1.129 |
+| DOD-593 | Exact `v0.1.129` closes only after deterministic artifact validation, exact-final-ZIP Docker proof, canonical normal lifecycle to FINAL_VERIFIED/current, and control projection advancement to `v0.1.130` | live_pending | exact ZIP + Docker-capable host + canonical lifecycle + post-adoption projection | v0.1.129 |
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.

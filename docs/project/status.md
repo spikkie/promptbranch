@@ -1,3 +1,19 @@
+# v0.1.129 — External application pilot bootstrap
+
+Status: construction candidate; not accepted/current.
+
+Accepted/current baseline: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`), SHA-256 `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`.
+
+Active candidate: `v0.1.129` (`chatgpt_claudecode_workflow-2_v0.1.129.zip`).
+
+The Promptbranch control-plane hardening line is closed by the accepted/current baseline. This candidate begins System B in read-only mode. The tracked `k8s-game-mvp` pilot contract defines a separate repository, product target, application architecture, Definition of Done, deterministic tests, and a one-iteration plan that terminates at `stop_before_mutation`.
+
+No external application files are created or changed by this slice. The planner requires an already-established repository marker and explicitly reports `git_commands_executed=false`.
+
+## Next safe action
+
+Complete deterministic construction validation for `chatgpt_claudecode_workflow-2_v0.1.129.zip`. After exact artifact/Docker proof, run the canonical normal lifecycle. Do not begin controlled application mutation until this candidate is accepted/current; the next planned slice is `v0.1.130 — Controlled external application change execution`.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.
@@ -36,11 +52,11 @@ Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…
 accepted_current_version: v0.1.128.2.7
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip
 accepted_current_sha256: 8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019
-active_candidate_version: v0.1.129
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
+active_candidate_version: v0.1.129.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.1.zip
 active_candidate_base_version: v0.1.128.2.7
-next_normal_version: v0.1.129
-next_normal_slice: v0.1.129 — External application pilot bootstrap
+next_normal_version: v0.1.130
+next_normal_slice: v0.1.130 — Controlled external application change execution
 ```
 
 ## Current interpretation
@@ -1383,3 +1399,7 @@ Live v0.1.128.2.4 proved the project registry authoritative current is already v
 - `v0.1.128.2.6.1` carries the construction-proven `pb skill sync` and structured publication-resume behavior from the finalized `v0.1.128.2.6` source tree, but uses a new version identity because the prior target version is already SHA-bound.
 - No external-application scope advances; `v0.1.129 — External application pilot bootstrap` remains next normal after acceptance.
 - Live closure requires exact `v0.1.128.2.6.1` artifact construction proof followed by canonical `FINAL_VERIFIED`, independent all-state verification, and fresh scoped artifact-current alignment.
+
+## v0.1.129.1 repair status
+
+`v0.1.129` passed RUNTIME_PREPARED and the full candidate test, then the publication pre-commit validation failed in `version_surface`. The current-version hard-code test recursively scanned operator runtime history under `.pb_profile/release_attempts_v2/.../runtime/extracted` and therefore treated historical candidate source as current release source. `v0.1.129.1` preserves the complete read-only external-application pilot bootstrap and repairs only that source-selection defect by reusing the canonical immutable release-source iterator. Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`. Next normal after repair acceptance is `v0.1.130 — Controlled external application change execution`.

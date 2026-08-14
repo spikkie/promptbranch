@@ -5,6 +5,7 @@ import re
 import tomllib
 
 import promptbranch_version
+from promptbranch_source_fingerprint import iter_release_source_files
 
 ROOT = Path(__file__).resolve().parents[1]
 REPAIR_VERSION_LITERAL_RE = re.compile(r"v?0\.1\.103\.10\.\d+")
@@ -49,13 +50,11 @@ def test_pyproject_version_is_derived_from_version_authority() -> None:
     assert re.search(r'^\s*PACKAGE_VERSION\s*=\s*["\'][^"\']+["\']', source, re.MULTILINE) is None
 
 
-def test_current_release_version_is_not_hard_coded_in_executable_or_packaging_sources() -> None:
-    current = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+def _current_release_version_offenders(root: Path) -> list[str]:
+    current = (root / "VERSION").read_text(encoding="utf-8").strip()
     normalized = current.removeprefix("v")
     offenders: list[str] = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
-            continue
+    for path in iter_release_source_files(root):
         version_sensitive_name = (
             path.suffix in {".py", ".toml", ".sh", ".yml", ".yaml"}
             or path.name in {"Dockerfile", "Containerfile", "Makefile"}
@@ -66,11 +65,33 @@ def test_current_release_version_is_not_hard_coded_in_executable_or_packaging_so
             continue
         source = path.read_text(encoding="utf-8", errors="replace")
         if current in source or normalized in source:
-            offenders.append(path.relative_to(ROOT).as_posix())
-    release_contract = (ROOT / ".promptbranch-release.json").read_text(encoding="utf-8")
-    if current in release_contract or normalized in release_contract:
-        offenders.append(".promptbranch-release.json")
-    assert offenders == []
+            offenders.append(path.relative_to(root).as_posix())
+    release_contract = root / ".promptbranch-release.json"
+    if release_contract.is_file():
+        source = release_contract.read_text(encoding="utf-8", errors="replace")
+        if current in source or normalized in source:
+            offenders.append(".promptbranch-release.json")
+    return offenders
+
+
+def test_current_release_version_is_not_hard_coded_in_executable_or_packaging_sources() -> None:
+    assert _current_release_version_offenders(ROOT) == []
+
+
+def test_current_release_version_scan_ignores_operator_runtime_history(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "VERSION").write_text("v9.8.7\n", encoding="utf-8")
+    (root / ".promptbranch-release.json").write_text("{}\n", encoding="utf-8")
+    historical = root / ".pb_profile" / "release_attempts_v2" / "old" / "runtime" / "extracted"
+    historical.mkdir(parents=True)
+    (historical / "legacy.py").write_text('PACKAGE_VERSION = "9.8.7"\n', encoding="utf-8")
+    (root / "canonical.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert _current_release_version_offenders(root) == []
+
+    (root / "canonical.py").write_text('PACKAGE_VERSION = "9.8.7"\n', encoding="utf-8")
+    assert _current_release_version_offenders(root) == ["canonical.py"]
 
 
 def test_version_surface_tests_do_not_pin_stale_repair_candidate_literals() -> None:

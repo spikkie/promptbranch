@@ -131,3 +131,10 @@ When the task is to learn Promptbranch itself, start with `.promptbranch/skills/
 
 - Never invoke Git commands from a directory that is not an actual Git worktree. Exact ZIP extractions and temporary Docker build contexts are non-Git by design; guard or disable VCS probing instead of tolerating `fatal: not a git repository` noise.
 - For wheel validation, use the canonical Promptbranch wheel-build helper; do not add raw `pip wheel` subprocesses to tests or release scripts. The helper must preflight the declared PEP 517 backend and operate offline.
+
+## External application pilot boundary
+
+- The first external application pilot must use a repository distinct from the Promptbranch control-plane repository.
+- Read-only pilot planning may inspect an already-established repository marker but must not run Git commands, initialize repositories, write application files, mutate Project Sources, adopt application artifacts, or deploy.
+- Application target, architecture, tests, artifact, acceptance, and deployment authority remain separate from Promptbranch's own release authority.
+- Any later application mutation requires explicit operator authority plus a pre-change snapshot and rollback contract.

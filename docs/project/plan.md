@@ -1,3 +1,22 @@
+# v0.1.129 — External application pilot bootstrap
+
+Status: construction candidate; not accepted/current.
+
+Accepted/current baseline: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`), SHA-256 `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`.
+
+Active candidate: `v0.1.129` (`chatgpt_claudecode_workflow-2_v0.1.129.zip`).
+
+## Current candidate scope
+
+- bind the first external application pilot to an already-established repository distinct from Promptbranch;
+- track the `k8s-game-mvp` target, architecture, Definition of Done, and deterministic application-test contract;
+- provide `pb application pilot validate` and `pb application pilot plan`;
+- emit a strictly read-only bootstrap plan and stop before any application mutation;
+- run no Git command from the planner and perform no Git, Project Source, artifact, acceptance, or deployment mutation;
+- require human acceptance and a rollback contract before later mutation authority.
+
+Rolling horizon authority remains `docs/project/plan-state.json`. After acceptance, `v0.1.130 — Controlled external application change execution` becomes the next normal slice.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.
@@ -36,11 +55,11 @@ Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…
 accepted_current_version: v0.1.128.2.7
 accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip
 accepted_current_sha256: 8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019
-active_candidate_version: v0.1.129
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.zip
+active_candidate_version: v0.1.129.1
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.129.1.zip
 active_candidate_base_version: v0.1.128.2.7
-next_normal_version: v0.1.129
-next_normal_slice: v0.1.129 — External application pilot bootstrap
+next_normal_version: v0.1.130
+next_normal_slice: v0.1.130 — Controlled external application change execution
 ```
 
 ## Active repair slice — v0.1.128.1
@@ -2483,3 +2502,7 @@ Live v0.1.128.2.4 proved the project registry authoritative current is already v
 - `v0.1.128.2.6.1` carries the construction-proven `pb skill sync` and structured publication-resume behavior from the finalized `v0.1.128.2.6` source tree, but uses a new version identity because the prior target version is already SHA-bound.
 - No external-application scope advances; `v0.1.129 — External application pilot bootstrap` remains next normal after acceptance.
 - Live closure requires exact `v0.1.128.2.6.1` artifact construction proof followed by canonical `FINAL_VERIFIED`, independent all-state verification, and fresh scoped artifact-current alignment.
+
+## v0.1.129.1 bounded repair plan
+
+Preserve all `v0.1.129 — External application pilot bootstrap` behavior. Replace the duplicate recursive current-version scan with `promptbranch_source_fingerprint.iter_release_source_files()`, which excludes `.pb_profile`, VCS state, caches, build output, logs, ZIPs, and other non-release state. Add a regression proving historical `.pb_profile` source cannot become an offender while an actual release-source file still fails closed. No application mutation, deployment, adoption, or scope advancement is added. After acceptance, proceed to `v0.1.130 — Controlled external application change execution`.

@@ -1,0 +1,59 @@
+{
+  "schema": "promptbranch.application.pilot",
+  "schema_version": "1.0",
+  "pilot": {
+    "id": "k8s-game-mvp",
+    "application_repo_id": "k8s-game-mvp",
+    "vertical_slice": "static-browser-game-bootstrap",
+    "visible_output": "A deterministic static HTML/CSS/JS browser page representing the first Kubernetes-game vertical slice."
+  },
+  "target": {
+    "goal": "Bootstrap a separate, deterministic static browser application that can later be changed under explicit human authority without coupling its product lifecycle to Promptbranch's own release lifecycle.",
+    "path": "docs/target.md"
+  },
+  "architecture": {
+    "declaration_path": ".promptbranch-ai.json",
+    "documentation_path": "docs/architecture.md"
+  },
+  "definition_of_done": {
+    "path": "docs/definition-of-done.md",
+    "requirements": [
+      "The application lives in a repository distinct from the Promptbranch control-plane repository.",
+      "The first vertical slice has a deterministic visible browser output.",
+      "Application architecture and authority boundaries are explicit.",
+      "Application-specific tests are deterministic and declared before mutation.",
+      "Mutation, Git publication, Project Source mutation, artifact acceptance, and deployment remain disabled in the bootstrap slice.",
+      "A rollback contract is required before any later repository mutation."
+    ]
+  },
+  "tests": {
+    "path": "tests/test_static_game.py",
+    "commands": [
+      ["python", "-m", "pytest", "-q", "tests/test_static_game.py"]
+    ]
+  },
+  "authority": {
+    "mutation_allowed": false,
+    "git_mutation_allowed": false,
+    "project_source_mutation_allowed": false,
+    "deployment_allowed": false,
+    "acceptance_requires_human": true,
+    "rollback_contract_required_before_mutation": true
+  },
+  "bootstrap": {
+    "required_repo_marker": ".git",
+    "proposed_paths": [
+      "VERSION",
+      ".promptbranch-ai.json",
+      ".promptbranch/ai-registry.json",
+      "docs/target.md",
+      "docs/architecture.md",
+      "docs/definition-of-done.md",
+      "tests/test_static_game.py"
+    ]
+  },
+  "execution_plan": {
+    "mode": "read_only",
+    "max_iterations": 1
+  }
+}

@@ -198,3 +198,15 @@ Host exact-ZIP Docker and RUNTIME_PREPARED proof succeeded; the second candidate
 ## v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Active bounded repair. Uses one canonical offline wheel-build helper, preflights the backend declared by `pyproject.toml`, invokes the backend `build_wheel` hook without package-index access, and forbids raw `pip wheel` calls in release-validation tests. Accepted/current remains unchanged; `v0.1.129` remains blocked until acceptance.
+
+## v0.1.129 — External application pilot bootstrap
+
+**Mode:** normal. **System:** external application. **Status:** active construction candidate.
+
+Scope: bind an already-established separate application repository; define the first pilot target, PBAI architecture, Definition of Done, deterministic tests, and a one-iteration read-only execution plan. No target repository mutation, Git command, Project Source mutation, artifact acceptance, or deployment occurs.
+
+After acceptance, `v0.1.130 — Controlled external application change execution` becomes active.
+
+## v0.1.129.1 repair horizon
+
+`v0.1.129` is retained as repair-required evidence after its pre-commit `version_surface` host-state leak. `v0.1.129.1 — release-source version scan isolation corrective` is the active repair and does not advance scope. After acceptance, `v0.1.130 — Controlled external application change execution` becomes the next normal slice.

@@ -120,3 +120,10 @@ Mutation through `pb release set resume` requires exact confirmation of the rele
 
 - Never invoke Git commands from a directory that is not an actual Git worktree. Exact ZIP extractions and temporary Docker build contexts are non-Git by design; guard or disable VCS probing instead of tolerating `fatal: not a git repository` noise.
 - Wheel construction used by release validation must go through the canonical Promptbranch wheel-build helper: read the PEP 517 backend from pyproject.toml, preflight it explicitly, build offline without package-index access, and never invoke raw `pip wheel` from release-validation tests.
+
+## External application pilot boundary
+
+- The first external application pilot must use a repository distinct from the Promptbranch control-plane repository.
+- Read-only pilot planning may inspect an already-established repository marker but must not run Git commands, initialize repositories, write application files, mutate Project Sources, adopt application artifacts, or deploy.
+- Application target, architecture, tests, artifact, acceptance, and deployment authority remain separate from Promptbranch's own release authority.
+- Any later application mutation requires explicit operator authority plus a pre-change snapshot and rollback contract.

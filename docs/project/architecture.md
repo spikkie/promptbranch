@@ -1,3 +1,9 @@
+# v0.1.129 external application pilot architecture boundary
+
+The active architecture introduces no second Promptbranch control plane. `promptbranch_application_pilot` is a read-only bridge from System A to a separate System B repository. System A may validate and plan; System B retains independent product target, version, architecture, tests, artifact, acceptance, and later deployment authority.
+
+Fixed pilot invariant: the target repository must differ from the Promptbranch repository, and the bootstrap planner may not run Git or mutate either repository. The application PBAI-001 declaration is proposed as an application-owned file, not inherited from Promptbranch. Controlled mutation begins only after explicit later authority and rollback evidence.
+
 # Project Architecture Principles
 
 ## Purpose

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.application.pilot.schema.json",
+  "title": "Promptbranch external application pilot bootstrap",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "pilot", "target", "architecture", "definition_of_done", "tests", "authority", "bootstrap", "execution_plan"],
+  "properties": {
+    "schema": {"const": "promptbranch.application.pilot"},
+    "schema_version": {"const": "1.0"},
+    "pilot": {"type": "object"},
+    "target": {"type": "object"},
+    "architecture": {"type": "object"},
+    "definition_of_done": {"type": "object"},
+    "tests": {"type": "object"},
+    "authority": {"type": "object"},
+    "bootstrap": {"type": "object"},
+    "execution_plan": {"type": "object"}
+  }
+}

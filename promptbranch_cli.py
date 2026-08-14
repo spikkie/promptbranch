@@ -90,6 +90,12 @@ from promptbranch_application_migration import (
     write_application_template,
     write_migration_report,
 )
+from promptbranch_application_pilot import (
+    ApplicationPilotError,
+    DEFAULT_CONFIG as DEFAULT_APPLICATION_PILOT_CONFIG,
+    build_application_pilot_plan,
+    build_application_pilot_validation,
+)
 from promptbranch_tool_authoring import (
     ToolAuthoringError,
     export_tool_authoring_bundle,
@@ -20675,6 +20681,42 @@ async def cmd_release_doctor(backend: Any, args: argparse.Namespace) -> int:
 
 async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
     del backend
+    if args.application_command == "pilot":
+        control_repo = Path(getattr(args, "control_repo_path", ".") or ".").expanduser().resolve()
+        config = str(getattr(args, "config", DEFAULT_APPLICATION_PILOT_CONFIG) or DEFAULT_APPLICATION_PILOT_CONFIG)
+        try:
+            if args.application_pilot_command == "validate":
+                payload = build_application_pilot_validation(control_repo, config)
+            elif args.application_pilot_command == "plan":
+                payload = build_application_pilot_plan(control_repo, args.target_repo, config)
+            else:
+                raise RuntimeError(f"Unknown application pilot command: {args.application_pilot_command}")
+        except ApplicationPilotError as exc:
+            payload = {
+                "ok": False,
+                "action": f"application_pilot_{args.application_pilot_command}",
+                "status": "pilot_bootstrap_blocked",
+                "control_repo": str(control_repo),
+                "target_repo": str(Path(args.target_repo).expanduser().resolve()) if getattr(args, "target_repo", None) else None,
+                "errors": [str(exc)],
+                "safety": {
+                    "read_only": True,
+                    "target_repo_mutated": False,
+                    "git_commands_executed": False,
+                    "project_source_mutated": False,
+                    "deployment_performed": False,
+                    "artifact_adopted": False,
+                },
+            }
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"status={payload.get('status')}")
+            if payload.get("errors"):
+                for error in payload["errors"]:
+                    print(f"error={error}", file=sys.stderr)
+        return 0 if payload.get("ok") else 1
+
     if args.application_command != "architecture":
         raise RuntimeError(f"Unknown application command: {args.application_command}")
     repo = Path(".").resolve()
@@ -28086,8 +28128,19 @@ def make_parser() -> argparse.ArgumentParser:
     release_adopt.add_argument("--json", action="store_true")
 
 
-    application = subparsers.add_parser("application", help="AI application declaration and proof-level validation commands.")
+    application = subparsers.add_parser("application", help="AI application declaration, pilot-bootstrap, and proof-level validation commands.")
     application_subparsers = application.add_subparsers(dest="application_command", required=True)
+    application_pilot = application_subparsers.add_parser("pilot", help="Validate or plan the first external-application pilot bootstrap without mutation.")
+    application_pilot_subparsers = application_pilot.add_subparsers(dest="application_pilot_command", required=True)
+    application_pilot_validate = application_pilot_subparsers.add_parser("validate", help="Validate the tracked external-application pilot definition without touching the target repository.")
+    application_pilot_validate.add_argument("--control-repo-path", default=".", help="Promptbranch control-plane repository root. Defaults to current directory.")
+    application_pilot_validate.add_argument("--config", default=DEFAULT_APPLICATION_PILOT_CONFIG, help="Tracked pilot definition relative to the control repository.")
+    application_pilot_validate.add_argument("--json", action="store_true")
+    application_pilot_plan = application_pilot_subparsers.add_parser("plan", help="Inspect a separate established target repository and emit a read-only bootstrap plan. No Git commands or target mutations are performed.")
+    application_pilot_plan.add_argument("--control-repo-path", default=".", help="Promptbranch control-plane repository root. Defaults to current directory.")
+    application_pilot_plan.add_argument("--target-repo", required=True, help="Existing external application repository. It must be distinct from Promptbranch and already contain its repository marker.")
+    application_pilot_plan.add_argument("--config", default=DEFAULT_APPLICATION_PILOT_CONFIG, help="Tracked pilot definition relative to the control repository.")
+    application_pilot_plan.add_argument("--json", action="store_true")
     application_architecture = application_subparsers.add_parser("architecture", help="Plan or validate the tracked PBAI-001 application architecture declaration.")
     application_architecture_subparsers = application_architecture.add_subparsers(dest="application_architecture_command", required=True)
     application_architecture_plan = application_architecture_subparsers.add_parser("plan", help="Read and plan registry validation without executing commands or mutating state.")

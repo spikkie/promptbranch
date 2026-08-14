@@ -1,3 +1,7 @@
+# v0.1.129 external application-development MVP bootstrap
+
+The active normal slice begins the external application-development MVP without granting mutation authority. The first pilot is `k8s-game-mvp` in a repository separate from Promptbranch. This slice establishes only the target, architecture, Definition of Done, deterministic test declaration, and read-only execution plan. Application mutation remains forbidden until the controlled-change slice.
+
 ## Active closure repair — v0.1.127.2.1
 
 Consolidated v0.1.127 closure from accepted/current `v0.1.126.1.1.1.1.3`: portable tool authoring, immutable conversation provenance, exact executed ask routing, acceptance provenance, and one exact launcher-Python authority are carried into one canonical candidate. No external-application scope advances; v0.1.127 closes only at live `FINAL_VERIFIED` plus scoped current alignment.

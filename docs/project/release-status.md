@@ -1,3 +1,16 @@
+# Active release status — v0.1.129
+
+| Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
+|---|---|---|---|---|---|---|
+| v0.1.129 | normal | external application pilot bootstrap | construction candidate | pilot contract + structural/application + canonical release groups + deterministic ZIP/Guardian + live lifecycle required | DOD-588–592 construction; DOD-593 live | — |
+| v0.1.128.2.7 | repair | deterministic offline wheel-build authority corrective | accepted/current, FINAL_VERIFIED | exact-final-ZIP Docker + canonical lifecycle + control projection converged | PB environment hardening closed | `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019` |
+
+Current accepted baseline: `chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip` (`v0.1.128.2.7`).  
+Accepted SHA-256: `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`.  
+Active normal candidate: `chatgpt_claudecode_workflow-2_v0.1.129.zip`.  
+Next normal slice: `v0.1.129 — External application pilot bootstrap`.  
+Next planned slice after acceptance: `v0.1.130 — Controlled external application change execution`.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.
@@ -1061,3 +1074,7 @@ Accepted/current baseline remains `chatgpt_claudecode_workflow-2_v0.1.128.2.5.zi
 
 
 Construction proof is green for `v0.1.128.2.6.1`: 134 focused tests passed; the release-validation runner authority is `/opt/pyvenv/bin/python3` with pytest 9.0.2 in this construction environment; all 17 canonical constituent validation groups passed; deterministic release builds were byte-identical; and the canonical-name Artifact Guardian check passed. The aggregate parent process exceeded the artifact sandbox single-call lifetime, so constituent-group evidence is retained explicitly rather than claiming one uninterrupted aggregate invocation. Live lifecycle/adoption/current proof remains pending.
+
+## v0.1.129.1 — release-source version scan isolation corrective
+
+Accepted/current remains `chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`. `chatgpt_claudecode_workflow-2_v0.1.129.zip` is immutable repair-required evidence: candidate testing passed, but publication pre-commit `version_surface` failed because the current-version scan traversed `.pb_profile` runtime-history source. Active repair artifact is `chatgpt_claudecode_workflow-2_v0.1.129.1.zip`. Scope remains the read-only external-application pilot bootstrap; `v0.1.130 — Controlled external application change execution` is the next normal slice after acceptance.

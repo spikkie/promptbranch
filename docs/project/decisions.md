@@ -1657,3 +1657,19 @@ Decision: preserve historical `v0.1.128.2.6` attempt `4ac66b37cba7b3676d487f082e
 
 Release-validation code must not construct wheels through ad-hoc `pip wheel` subprocesses. The canonical wheel-build helper reads and preflights `[build-system]` from `pyproject.toml`, invokes the declared backend's `build_wheel` hook in the authoritative Promptbranch interpreter, disables package-index access, emits Promptbranch-specific failure status when the backend is unavailable, and is the only wheel-construction path used by VERSION propagation tests.
 
+
+## ADR-PROJ-129 — External application pilot begins read-only in a separate repository
+
+- **Status:** accepted for candidate implementation.
+- **Baseline:** `v0.1.128.2.7` is authoritative current before construction.
+- **Decision:** the first System B pilot is the existing `k8s-game-mvp` acceptance scenario, represented as a small deterministic static-browser vertical slice.
+- **Decision:** the pilot repository is explicitly supplied by the operator and must already be an established repository distinct from Promptbranch. Promptbranch does not create it or run Git commands to infer it.
+- **Decision:** this slice owns only validation and a read-only bootstrap plan. The plan proposes target, architecture, DoD, and tests, then stops before mutation.
+- **Authority:** application mutation, Git publication, Project Source mutation, application artifact adoption, deployment, and automatic acceptance are forbidden. Human acceptance and a rollback contract are prerequisites for later mutation.
+- **Next:** `v0.1.130 — Controlled external application change execution` may add bounded, explicitly authorized application changes with snapshot/rollback evidence; it may not reuse Promptbranch's own artifact authority as application authority.
+
+## ADR-PROJ-129-1 — Current-version scanning uses canonical release-source authority
+
+- **Decision:** current-version hard-code validation must enumerate files through `promptbranch_source_fingerprint.iter_release_source_files()` instead of recursively scanning the operator worktree.
+- **Reason:** `.pb_profile` contains runtime/extracted historical release source and is explicitly outside immutable release-source authority. Treating it as source makes validation depend on operator history.
+- **Consequence:** real release-source hard-codes still fail closed; runtime/VCS/cache/build history cannot create false offenders. The repair does not advance external-application scope. Next normal remains `v0.1.130`.

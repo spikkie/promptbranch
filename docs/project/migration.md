@@ -1,3 +1,11 @@
+# v0.1.129 external-application pilot bootstrap migration
+
+No Promptbranch user-state, browser-profile, artifact-registry, Project Source, or accepted-runtime migration is required. Accepted/current remains `v0.1.128.2.7` / `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019` during construction.
+
+The new pilot contract is proposal-only. Existing external repositories are not modified, initialized, joined, committed, or pushed. An operator may point `pb application pilot plan` at an already-established separate repository; the command only inspects the repository marker and proposed application-owned paths.
+
+The later `v0.1.130` slice is responsible for any explicitly authorized application repository mutation and must supply snapshot/rollback evidence before writing.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.
@@ -1677,3 +1685,7 @@ External repositories should stop using manual unzip/copy procedures for Promptb
 ## v0.1.128.2.6.1 — Immutable successor migration
 
 No repository-data or runtime-state migration is required. Preserve the historical `v0.1.128.2.6` release-attempt directory and its SHA-256 `4ac66b37cba7b3676d487f082e9fe64239fd97b71f53b10f66b28b67fe1cf026` as immutable evidence. Do not rebind or delete it. Build `v0.1.128.2.6.1` from the finalized `v0.1.128.2.6` source input, then let the canonical lifecycle create a distinct SHA-bound attempt for `v0.1.128.2.6.1`. External repositories continue to migrate to `pb skill sync --target <external-repo> ...` only after this successor is accepted/current. `v0.1.129` remains blocked until this repair reaches `FINAL_VERIFIED` and fresh current-state alignment.
+
+## v0.1.129.1 release-source scan isolation migration
+
+No operator-state migration is required and `.pb_profile` must not be deleted to make validation pass. Existing release-attempt history remains immutable evidence. The repair changes only source enumeration for the current-version hard-code invariant and preserves all `v0.1.129` pilot behavior. After successful repair acceptance, the next normal slice is `v0.1.130 — Controlled external application change execution`.
