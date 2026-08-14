@@ -60,7 +60,7 @@ Construction proof: Exact clean-extraction structural coverage is 62/62 nodeids 
 
 Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 <!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`), SHA-256 `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
+> Live control projection after adoption: accepted/current `v0.1.130` (`chatgpt_claudecode_workflow-2_v0.1.130.zip`), SHA-256 `347098567709cdf44ddeab938bef90b24fb59d0ba8d3662f934a771edce7da1c`. Active next normal slice is `v0.1.131 — Application test, diagnosis, and bounded correction loop` with artifact `chatgpt_claudecode_workflow-2_v0.1.131.zip`. Planned after acceptance is `v0.1.132 — External application candidate and acceptance lifecycle` (`v0.1.132`) with artifact `chatgpt_claudecode_workflow-2_v0.1.132.zip`.
 
 > v0.1.128.2.5 authority: adopted/current is `v0.1.128.2` at SHA `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`; active repair removes operator-owned baseline bookkeeping from the canonical lifecycle launcher. Next normal remains `v0.1.129`; planned after that is `v0.1.130`.
 
@@ -69,16 +69,14 @@ Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…
 ## Current baseline
 
 ```text
-accepted_current_version: v0.1.129.1
-accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.129.1.zip
-accepted_current_sha256: 3edecfc3c052ea2895d45cdbc63a3aabf7693be229b32a41404026a73c4f3c68
-active_candidate_version: v0.1.130
-active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.130.zip
-active_candidate_base_version: v0.1.129.1
-next_normal_version: v0.1.130
-next_normal_slice: v0.1.130 — Controlled external application change execution
-next_planned_version_after_acceptance: v0.1.131
-next_planned_slice_after_acceptance: v0.1.131 — Application test, diagnosis, and bounded correction loop
+accepted_current_version: v0.1.130
+accepted_current_artifact: chatgpt_claudecode_workflow-2_v0.1.130.zip
+accepted_current_sha256: 347098567709cdf44ddeab938bef90b24fb59d0ba8d3662f934a771edce7da1c
+active_candidate_version: v0.1.131
+active_candidate_artifact: chatgpt_claudecode_workflow-2_v0.1.131.zip
+active_candidate_base_version: v0.1.130
+next_normal_version: v0.1.131
+next_normal_slice: v0.1.131 — Application test, diagnosis, and bounded correction loop
 ```
 
 ## Current interpretation

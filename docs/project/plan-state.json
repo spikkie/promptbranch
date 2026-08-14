@@ -1,17 +1,17 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
-  "accepted_current_sha256": "3edecfc3c052ea2895d45cdbc63a3aabf7693be229b32a41404026a73c4f3c68",
-  "accepted_current_version": "v0.1.129.1",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "accepted_current_sha256": "347098567709cdf44ddeab938bef90b24fb59d0ba8d3662f934a771edce7da1c",
+  "accepted_current_version": "v0.1.130",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
   "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
-  "active_candidate_base_version": "v0.1.129.1",
+  "active_candidate_base_version": "v0.1.130",
   "active_candidate_consolidates_runtime_version": "v0.1.129.1",
   "active_candidate_documentation_checkpoint": "PB-EXTERNAL-APPLICATION-CONTROLLED-CHANGE-2026-08-14",
-  "active_candidate_status": "construction_candidate",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
-  "active_candidate_version": "v0.1.130",
+  "active_candidate_status": "planned",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+  "active_candidate_version": "v0.1.131",
   "active_mvp": "External application-development MVP — controlled human-authorized change execution",
-  "active_slice": "v0.1.130 — Controlled external application change execution",
+  "active_slice": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -918,7 +918,7 @@
       "version": "v0.1.130"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1531,17 +1531,17 @@
       "version": "v0.1.126.1.1.1"
     }
   ],
-  "last_completed_normal_slice": "v0.1.129 — External application pilot bootstrap (completed by accepted repair v0.1.129.1)",
-  "last_completed_normal_slice_version": "v0.1.129",
+  "last_completed_normal_slice": "v0.1.130 — Controlled external application change execution",
+  "last_completed_normal_slice_version": "v0.1.130",
   "last_completed_repair": "v0.1.129.1 — release-source version scan isolation corrective",
   "last_completed_repair_version": "v0.1.129.1",
   "last_updated": "2026-08-14T16:10:00+02:00",
-  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
-  "next_normal_slice": "v0.1.130 — Controlled external application change execution",
-  "next_normal_version": "v0.1.130",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
-  "next_planned_slice_after_acceptance": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
-  "next_planned_version_after_acceptance": "v0.1.131",
+  "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+  "next_normal_slice": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
+  "next_normal_version": "v0.1.131",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
+  "next_planned_slice_after_acceptance": "v0.1.132 — External application candidate and acceptance lifecycle",
+  "next_planned_version_after_acceptance": "v0.1.132",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -3082,7 +3082,7 @@
       "release_mode": "repair",
       "scope": "replace raw wheel construction in VERSION authority validation with one canonical offline helper; explicitly preflight the pyproject build backend and requirements; use the declared backend build_wheel hook with no package-index dependency; fail with Promptbranch-specific backend status; forbid raw pip-wheel invocations in release-validation tests",
       "slice": "v0.1.128.2.7 — deterministic offline wheel-build authority corrective",
-      "status": "accepted_current",
+      "status": "superseded",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
       "validation": "Host exact-final-ZIP Docker gate passed; canonical lifecycle reached FINAL_VERIFIED/current; tracked control projection converged with authoritative current.",
@@ -3104,7 +3104,7 @@
       "release_mode": "repair",
       "scope": "preserve the complete v0.1.129 external-application pilot bootstrap and repair only version-surface source selection by reusing the canonical immutable release-source iterator; no external application mutation authority",
       "slice": "v0.1.129.1 — release-source version scan isolation corrective",
-      "status": "accepted_current",
+      "status": "superseded",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
       "version": "v0.1.129.1"
@@ -3114,7 +3114,7 @@
       "release_mode": "normal",
       "scope": "human-authorized bounded file writes in a separate application repository, exact pre-state snapshots, after-hash verification, automatic rollback on partial failure, and explicit rollback that refuses post-apply drift; no Git, Project Source, deployment, artifact adoption, or application-test execution",
       "slice": "v0.1.130 — Controlled external application change execution",
-      "status": "active",
+      "status": "accepted_current",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
       "version": "v0.1.130"
@@ -3124,7 +3124,7 @@
       "release_mode": "normal",
       "scope": "app tests, result classification, smallest correction, bounded retest",
       "slice": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
       "version": "v0.1.131"
@@ -3134,7 +3134,7 @@
       "release_mode": "normal",
       "scope": "app artifact verification, candidate registry, release tests and explicit app acceptance",
       "slice": "v0.1.132 — External application candidate and acceptance lifecycle",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.132.zip",
       "version": "v0.1.132"
