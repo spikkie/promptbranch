@@ -1,0 +1,98 @@
+{
+  "schema": "promptbranch.application.change",
+  "schema_version": "1.0",
+  "change": {
+    "id": "k8s-game-mvp-bootstrap-contracts",
+    "pilot_id": "k8s-game-mvp",
+    "application_repo_id": "k8s-game-mvp",
+    "summary": "Materialize the read-only v0.1.129 bootstrap proposal as bounded application-repository contract files under explicit human authority."
+  },
+  "target": {
+    "required_repo_marker": ".git"
+  },
+  "authorization": {
+    "mode": "explicit_cli_exact_change_id",
+    "execute_flag_required": true,
+    "exact_change_id_required": true
+  },
+  "operations": [
+    {
+      "id": "bootstrap-01",
+      "action": "write_file",
+      "path": "VERSION",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "v0.0.1\n"
+    },
+    {
+      "id": "bootstrap-02",
+      "action": "write_file",
+      "path": ".promptbranch-ai.json",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "{\n  \"schema\": \"promptbranch.application.declaration\",\n  \"schema_version\": \"1.0\",\n  \"application_id\": \"k8s-game-mvp\",\n  \"application_kind\": \"runtime_application\",\n  \"runtime_provider\": \"static-browser\",\n  \"version_path\": \"VERSION\"\n}\n"
+    },
+    {
+      "id": "bootstrap-03",
+      "action": "write_file",
+      "path": ".promptbranch/ai-registry.json",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "{\n  \"schema\": \"promptbranch.ai.registry\",\n  \"schema_version\": \"1.0\",\n  \"application_id\": \"k8s-game-mvp\",\n  \"authority\": {\n    \"control_plane\": \"promptbranch\",\n    \"application_repository\": \"k8s-game-mvp\"\n  }\n}\n"
+    },
+    {
+      "id": "bootstrap-04",
+      "action": "write_file",
+      "path": "docs/target.md",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "# k8s-game-mvp target\n\nBuild a deterministic static browser game vertical slice in a repository separate from Promptbranch. The first visible product output will be an `index.html` page with Kubernetes-game identity and a stable game root.\n"
+    },
+    {
+      "id": "bootstrap-05",
+      "action": "write_file",
+      "path": "docs/architecture.md",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "# k8s-game-mvp architecture\n\nThe application is a static browser runtime. Product files belong to this repository. Promptbranch is an external control plane and does not own application runtime state. Git publication, deployment, and application acceptance require later explicit lifecycle authority.\n"
+    },
+    {
+      "id": "bootstrap-06",
+      "action": "write_file",
+      "path": "docs/definition-of-done.md",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "# Definition of Done\n\n- The application repository is distinct from Promptbranch.\n- `VERSION` is the application version authority.\n- `index.html` exists and exposes a deterministic Kubernetes-game root.\n- Application tests are deterministic and repository-local.\n- Git publication and deployment are not implicit side effects of file mutation.\n- Every controlled mutation has exact before/after and rollback evidence.\n"
+    },
+    {
+      "id": "bootstrap-07",
+      "action": "write_file",
+      "path": "tests/test_static_game.py",
+      "precondition": {
+        "state": "absent"
+      },
+      "content": "from pathlib import Path\n\nROOT = Path(__file__).resolve().parents[1]\n\n\ndef test_static_game_entrypoint_exists() -> None:\n    page = ROOT / \"index.html\"\n    assert page.is_file()\n    text = page.read_text(encoding=\"utf-8\")\n    assert 'id=\"k8s-game\"' in text\n    assert \"Kubernetes\" in text\n"
+    }
+  ],
+  "rollback": {
+    "required": true,
+    "method": "restore_exact_pre_state_bytes",
+    "evidence_location": "control_repo_operator_state",
+    "reject_post_apply_drift": true
+  },
+  "authority": {
+    "target_file_mutation_allowed": true,
+    "git_commands_allowed": false,
+    "git_publication_allowed": false,
+    "project_source_mutation_allowed": false,
+    "deployment_allowed": false,
+    "artifact_adoption_allowed": false,
+    "application_test_execution_allowed": false
+  }
+}

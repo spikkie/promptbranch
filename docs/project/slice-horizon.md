@@ -1,3 +1,11 @@
+## Active normal candidate — v0.1.130
+
+- accepted/current baseline: `chatgpt_claudecode_workflow-2_v0.1.129.1.zip` (`v0.1.129.1`)
+- active artifact: `chatgpt_claudecode_workflow-2_v0.1.130.zip`
+- active slice: `v0.1.130 — Controlled external application change execution`
+- next planned after acceptance: `v0.1.131 — Application test, diagnosis, and bounded correction loop`
+- mutation requires exact human authorization plus snapshot/rollback proof; Git, Project Source, deployment, adoption, and application tests remain outside this slice.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.

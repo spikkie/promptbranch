@@ -1,3 +1,11 @@
+# v0.1.130 controlled external application change execution
+
+- accepted/current baseline: `v0.1.129.1` / `chatgpt_claudecode_workflow-2_v0.1.129.1.zip`
+- active candidate: `v0.1.130` / `chatgpt_claudecode_workflow-2_v0.1.130.zip`
+- next normal slice: `v0.1.130 — Controlled external application change execution`
+- planned after acceptance: `v0.1.131 — Application test, diagnosis, and bounded correction loop`
+- release authority: normal candidate; controlled application file mutation only after explicit human authorization; no Git publication, Project Source mutation, deployment, application artifact adoption, or application-test execution.
+
 # Active release status — v0.1.129
 
 | Version | Type | Slice | ZIP status | Validation | DoD movement | Accepted checksum |
@@ -37,7 +45,7 @@ Construction proof: Exact clean-extraction structural coverage is 62/62 nodeids 
 
 Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open. Active artifact: `chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.zip`.
 <!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.129.1` (`chatgpt_claudecode_workflow-2_v0.1.129.1.zip`), SHA-256 `3edecfc3c052ea2895d45cdbc63a3aabf7693be229b32a41404026a73c4f3c68`. Active next normal slice is `v0.1.130 — Controlled external application change execution` with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`. Planned after acceptance is `v0.1.131 — Application test, diagnosis, and bounded correction loop` (`v0.1.131`) with artifact `chatgpt_claudecode_workflow-2_v0.1.131.zip`.
+> Live control projection after adoption: accepted/current `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`), SHA-256 `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
 <!-- promptbranch-release-construction-baseline -->
 > Construction baseline: adopted/current `v0.1.128.2` (`chatgpt_claudecode_workflow-2_v0.1.128.2.zip`), SHA-256 `6c5270cdfae93810e35e5c54eea031cb35fc074cdf0c852f9db3f692896ed9b6`. Active repair is `v0.1.128.2.5 — Authoritative baseline auto-resolution repair`. Next normal is `v0.1.129`; planned after it is `v0.1.130`.

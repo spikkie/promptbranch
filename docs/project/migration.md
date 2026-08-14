@@ -1,3 +1,7 @@
+## v0.1.130 — controlled external application change execution
+
+`v0.1.129.1` is the accepted/current read-only pilot baseline. `v0.1.130` adds explicit human-authorized application-repository file mutation with exact before snapshots, after-hash verification, automatic rollback on partial failure, and drift-safe explicit rollback. It does not execute Git, publish Project Sources, deploy, adopt application artifacts, or execute the application tests. Those test/diagnosis/correction capabilities begin in `v0.1.131`.
+
 # v0.1.129 external-application pilot bootstrap migration
 
 No Promptbranch user-state, browser-profile, artifact-registry, Project Source, or accepted-runtime migration is required. Accepted/current remains `v0.1.128.2.7` / `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019` during construction.
@@ -30,7 +34,7 @@ Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee
 
 Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 <!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.129.1` (`chatgpt_claudecode_workflow-2_v0.1.129.1.zip`), SHA-256 `3edecfc3c052ea2895d45cdbc63a3aabf7693be229b32a41404026a73c4f3c68`. Active next normal slice is `v0.1.130 — Controlled external application change execution` with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`. Planned after acceptance is `v0.1.131 — Application test, diagnosis, and bounded correction loop` (`v0.1.131`) with artifact `chatgpt_claudecode_workflow-2_v0.1.131.zip`.
+> Live control projection after adoption: accepted/current `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`), SHA-256 `8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
 # Migration to Project Control Surface
 

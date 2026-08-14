@@ -96,6 +96,13 @@ from promptbranch_application_pilot import (
     build_application_pilot_plan,
     build_application_pilot_validation,
 )
+from promptbranch_application_change import (
+    ApplicationChangeError,
+    DEFAULT_CONFIG as DEFAULT_APPLICATION_CHANGE_CONFIG,
+    build_application_change_plan,
+    execute_application_change,
+    rollback_application_change,
+)
 from promptbranch_tool_authoring import (
     ToolAuthoringError,
     export_tool_authoring_bundle,
@@ -20717,6 +20724,56 @@ async def cmd_application(backend: Any, args: argparse.Namespace) -> int:
                     print(f"error={error}", file=sys.stderr)
         return 0 if payload.get("ok") else 1
 
+    if args.application_command == "change":
+        control_repo = Path(getattr(args, "control_repo_path", ".") or ".").expanduser().resolve()
+        config = str(getattr(args, "config", DEFAULT_APPLICATION_CHANGE_CONFIG) or DEFAULT_APPLICATION_CHANGE_CONFIG)
+        target_repo = Path(args.target_repo).expanduser().resolve()
+        try:
+            if args.application_change_command == "plan":
+                payload = build_application_change_plan(control_repo, target_repo, config)
+            elif args.application_change_command == "apply":
+                payload = execute_application_change(
+                    control_repo,
+                    target_repo,
+                    config=config,
+                    execute=bool(getattr(args, "execute", False)),
+                    authorized_change_id=getattr(args, "authorize_change", None),
+                )
+            elif args.application_change_command == "rollback":
+                payload = rollback_application_change(
+                    target_repo,
+                    args.evidence,
+                    execute=bool(getattr(args, "execute", False)),
+                    authorized_change_id=getattr(args, "authorize_change", None),
+                )
+            else:
+                raise RuntimeError(f"Unknown application change command: {args.application_change_command}")
+        except ApplicationChangeError as exc:
+            payload = {
+                "ok": False,
+                "action": f"application_change_{args.application_change_command}",
+                "status": "controlled_change_blocked",
+                "control_repo": str(control_repo),
+                "target_repo": str(target_repo),
+                "errors": [str(exc)],
+                "safety": {
+                    "git_commands_executed": False,
+                    "git_publication_performed": False,
+                    "project_source_mutated": False,
+                    "deployment_performed": False,
+                    "artifact_adopted": False,
+                    "application_tests_executed": False,
+                },
+            }
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"status={payload.get('status')}")
+            if payload.get("errors"):
+                for error in payload["errors"]:
+                    print(f"error={error}", file=sys.stderr)
+        return 0 if payload.get("ok") else 1
+
     if args.application_command != "architecture":
         raise RuntimeError(f"Unknown application command: {args.application_command}")
     repo = Path(".").resolve()
@@ -28141,6 +28198,29 @@ def make_parser() -> argparse.ArgumentParser:
     application_pilot_plan.add_argument("--target-repo", required=True, help="Existing external application repository. It must be distinct from Promptbranch and already contain its repository marker.")
     application_pilot_plan.add_argument("--config", default=DEFAULT_APPLICATION_PILOT_CONFIG, help="Tracked pilot definition relative to the control repository.")
     application_pilot_plan.add_argument("--json", action="store_true")
+
+    application_change = application_subparsers.add_parser("change", help="Plan, explicitly apply, or explicitly roll back a bounded external-application file change.")
+    application_change_subparsers = application_change.add_subparsers(dest="application_change_command", required=True)
+    application_change_plan = application_change_subparsers.add_parser("plan", help="Verify target binding and exact file preconditions without mutation.")
+    application_change_plan.add_argument("--control-repo-path", default=".")
+    application_change_plan.add_argument("--target-repo", required=True)
+    application_change_plan.add_argument("--config", default=DEFAULT_APPLICATION_CHANGE_CONFIG)
+    application_change_plan.add_argument("--json", action="store_true")
+    application_change_apply = application_change_subparsers.add_parser("apply", help="Apply only the declared file writes after explicit operator authorization; snapshots and exact rollback evidence are mandatory.")
+    application_change_apply.add_argument("--control-repo-path", default=".")
+    application_change_apply.add_argument("--target-repo", required=True)
+    application_change_apply.add_argument("--config", default=DEFAULT_APPLICATION_CHANGE_CONFIG)
+    application_change_apply.add_argument("--execute", action="store_true", help="Required explicit mutation opt-in.")
+    application_change_apply.add_argument("--authorize-change", help="Required exact tracked change id confirming human authorization.")
+    application_change_apply.add_argument("--json", action="store_true")
+    application_change_rollback = application_change_subparsers.add_parser("rollback", help="Restore exact pre-change bytes from retained evidence; refuses rollback over post-apply drift.")
+    application_change_rollback.add_argument("--control-repo-path", default=".")
+    application_change_rollback.add_argument("--target-repo", required=True)
+    application_change_rollback.add_argument("--evidence", required=True)
+    application_change_rollback.add_argument("--execute", action="store_true", help="Required explicit rollback opt-in.")
+    application_change_rollback.add_argument("--authorize-change", help="Required exact change id confirming human rollback authorization.")
+    application_change_rollback.add_argument("--json", action="store_true")
+
     application_architecture = application_subparsers.add_parser("architecture", help="Plan or validate the tracked PBAI-001 application architecture declaration.")
     application_architecture_subparsers = application_architecture.add_subparsers(dest="application_architecture_command", required=True)
     application_architecture_plan = application_architecture_subparsers.add_parser("plan", help="Read and plan registry validation without executing commands or mutating state.")

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promptbranch.application.change.schema.json",
+  "title": "Promptbranch controlled external application change",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "change", "target", "authorization", "operations", "rollback", "authority"],
+  "properties": {
+    "schema": {"const": "promptbranch.application.change"},
+    "schema_version": {"const": "1.0"},
+    "change": {"type": "object"},
+    "target": {"type": "object"},
+    "authorization": {"type": "object"},
+    "operations": {"type": "array", "minItems": 1, "maxItems": 32},
+    "rollback": {"type": "object"},
+    "authority": {"type": "object"}
+  }
+}

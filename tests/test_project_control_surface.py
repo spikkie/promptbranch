@@ -233,7 +233,7 @@ def test_architecture_and_slice_horizon_are_documented() -> None:
     assert "controlled problem-solving loop" in architecture
     assert "Fixed architecture invariants" in architecture
     assert "Repair releases must not advance scope" in architecture
-    for version in ["v0.1.125.3.3", "v0.1.125.3.4.1", "v0.1.125.3.4.2", "v0.1.126", "v0.1.127", "v0.1.128", "v0.1.128.1", CURRENT_VERSION, "v0.1.130", "v0.1.131", "v0.1.132", "v0.1.133", "v0.1.134"]:
+    for version in ["v0.1.125.3.3", "v0.1.125.3.4.1", "v0.1.125.3.4.2", "v0.1.126", "v0.1.127", "v0.1.128", "v0.1.128.1", CURRENT_VERSION, "v0.1.131", "v0.1.132", "v0.1.133", "v0.1.134"]:
         assert version in horizon
     assert "Repair horizon rule" in horizon
 
@@ -567,4 +567,4 @@ def test_post_adoption_projection_is_complete_and_immediately_valid(tmp_path: Pa
         text = (repo / rel).read_text(encoding="utf-8")
         assert CURRENT_VERSION in text
         assert CURRENT_VERSION in text
-        assert "v0.1.130" in text
+        assert NEXT_PLANNED_VERSION in text

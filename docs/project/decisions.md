@@ -1,3 +1,7 @@
+## ADR-PROJ-130 — External application mutation requires explicit change identity and exact rollback evidence
+
+For `v0.1.130`, application-repository mutation is authorized only when the operator supplies both `--execute` and the exact tracked change id. Every touched file has a precondition, an exact before snapshot, a verified after SHA-256, and rollback evidence stored outside the target application source tree. Git commands, publication, Project Source mutation, deployment, artifact adoption, and application-test execution remain forbidden. `v0.1.131` owns test, diagnosis, and bounded correction behavior.
+
 # v0.1.128.2.7 — deterministic offline wheel-build authority corrective
 
 Status: construction candidate; not accepted/current.
