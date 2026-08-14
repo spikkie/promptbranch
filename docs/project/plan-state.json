@@ -1,17 +1,17 @@
 {
-  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
-  "accepted_current_sha256": "8f9876af32953e52b4154209804fd2bb5ae8c756139c9188e61c3c9144502019",
-  "accepted_current_version": "v0.1.128.2.7",
-  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+  "accepted_current_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+  "accepted_current_sha256": "3edecfc3c052ea2895d45cdbc63a3aabf7693be229b32a41404026a73c4f3c68",
+  "accepted_current_version": "v0.1.129.1",
+  "active_candidate_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
   "active_candidate_base_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
-  "active_candidate_base_version": "v0.1.128.2.7",
+  "active_candidate_base_version": "v0.1.129.1",
   "active_candidate_consolidates_runtime_version": "v0.1.128.2.7",
   "active_candidate_documentation_checkpoint": "PB-EXTERNAL-APPLICATION-PILOT-BOOTSTRAP-2026-08-14.1",
-  "active_candidate_status": "construction_candidate",
-  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
-  "active_candidate_version": "v0.1.129.1",
+  "active_candidate_status": "planned",
+  "active_candidate_transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
+  "active_candidate_version": "v0.1.130",
   "active_mvp": "External application-development MVP — read-only pilot bootstrap",
-  "active_slice": "v0.1.129.1 — release-source version scan isolation corrective",
+  "active_slice": "v0.1.130 — Controlled external application change execution",
   "architecture_goal": "controlled problem-solving loop with strict separation between the Promptbranch control plane and external application authority",
   "architecture_invariants": [
     "artifact-first baseline continuity",
@@ -911,7 +911,7 @@
       "version": "v0.1.129.1"
     }
   ],
-  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
+  "current_candidate": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
   "history": [
     {
       "artifact": "chatgpt_claudecode_workflow-2_v0.1.103.10.48.zip",
@@ -1526,15 +1526,15 @@
   ],
   "last_completed_normal_slice": "v0.1.128.2 — Promptbranch learning and skills completeness",
   "last_completed_normal_slice_version": "v0.1.128.2",
-  "last_completed_repair": "v0.1.128.2.7 — deterministic offline wheel-build authority corrective",
-  "last_completed_repair_version": "v0.1.128.2.7",
+  "last_completed_repair": "v0.1.129.1 — release-source version scan isolation corrective",
+  "last_completed_repair_version": "v0.1.129.1",
   "last_updated": "2026-08-13T12:22:00+02:00",
   "next_normal_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
   "next_normal_slice": "v0.1.130 — Controlled external application change execution",
   "next_normal_version": "v0.1.130",
-  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
-  "next_planned_slice_after_acceptance": "v0.1.130 — Controlled external application change execution",
-  "next_planned_version_after_acceptance": "v0.1.130",
+  "next_planned_artifact_after_acceptance": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
+  "next_planned_slice_after_acceptance": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
+  "next_planned_version_after_acceptance": "v0.1.131",
   "out_of_scope": [
     "remote ChatGPT Project Settings mutation",
     "automatic authority drift repair",
@@ -2417,7 +2417,7 @@
       "version": "v0.1.126.1.1.1.1.2"
     }
   ],
-  "release_mode": "repair",
+  "release_mode": "normal",
   "repair_history": [
     {
       "kind": "repair",
@@ -3075,7 +3075,7 @@
       "release_mode": "repair",
       "scope": "replace raw wheel construction in VERSION authority validation with one canonical offline helper; explicitly preflight the pyproject build backend and requirements; use the declared backend build_wheel hook with no package-index dependency; fail with Promptbranch-specific backend status; forbid raw pip-wheel invocations in release-validation tests",
       "slice": "v0.1.128.2.7 — deterministic offline wheel-build authority corrective",
-      "status": "accepted_current",
+      "status": "superseded",
       "system": "promptbranch_environment",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip",
       "validation": "Host exact-final-ZIP Docker gate passed; canonical lifecycle reached FINAL_VERIFIED/current; tracked control projection converged with authoritative current.",
@@ -3097,7 +3097,7 @@
       "release_mode": "repair",
       "scope": "preserve the complete v0.1.129 external-application pilot bootstrap and repair only version-surface source selection by reusing the canonical immutable release-source iterator; no external application mutation authority",
       "slice": "v0.1.129.1 — release-source version scan isolation corrective",
-      "status": "active",
+      "status": "accepted_current",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.129.1.zip",
       "version": "v0.1.129.1"
@@ -3107,7 +3107,7 @@
       "release_mode": "normal",
       "scope": "human-authorized bounded edits, snapshot and rollback evidence",
       "slice": "v0.1.130 — Controlled external application change execution",
-      "status": "planned_after_acceptance",
+      "status": "active",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.130.zip",
       "version": "v0.1.130"
@@ -3117,7 +3117,7 @@
       "release_mode": "normal",
       "scope": "app tests, result classification, smallest correction, bounded retest",
       "slice": "v0.1.131 — Application test, diagnosis, and bounded correction loop",
-      "status": "planned",
+      "status": "planned_after_acceptance",
       "system": "external_application",
       "transport_artifact": "chatgpt_claudecode_workflow-2_v0.1.131.zip",
       "version": "v0.1.131"
@@ -3155,7 +3155,7 @@
   ],
   "schema": "promptbranch.project.plan_state",
   "schema_version": "1.0",
-  "scope_advance_allowed": false,
+  "scope_advance_allowed": true,
   "slice_derivation_inputs": [
     "main product goal",
     "current MVP stage",
