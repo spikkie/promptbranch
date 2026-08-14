@@ -65,12 +65,9 @@ def _prepare_repo(tmp_path: Path) -> tuple[Path, Path]:
     profile = repo / ".pb_profile"
     (repo / "scripts").mkdir(parents=True)
     profile.mkdir(parents=True)
-    release = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    release.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    release.chmod(0o755)
-    finalizer = repo / "scripts" / "finalize-mvp-proof-cycle.sh"
-    finalizer.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    finalizer.chmod(0o755)
+    lifecycle = repo / "scripts" / "run-release-lifecycle-proof.py"
+    lifecycle.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    lifecycle.chmod(0o755)
     return repo, profile
 
 
@@ -119,26 +116,33 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
                 "migration_performed": True,
                 "download": {"filename": ARTIFACT, "sha256": CANDIDATE_SHA},
             }
-        elif command[0].endswith("chatgpt_claudecode_workflow_release_control.sh"):
-            for name, payload in [
-                (f"pb_test.all.{TARGET_VERSION}.summary.json", {"tested": 10, "succeeded": 10, "failed": 0, "skipped": 0, "final_verdict": "GO"}),
-                (f"pb_test.visual_artifact_roundtrip.{TARGET_VERSION}.log", {"ok": True, "status": "smoke_zip_verified"}),
-                (f"pb_artifact_adopt.{TARGET_VERSION}.json", {"ok": True, "status": "adopted"}),
-                (f"pb_artifact_current.{TARGET_VERSION}.json", {"ok": True}),
-            ]:
-                (release_dir / name).write_text(json.dumps(payload), encoding="utf-8")
-            payload = None
-        else:
-            proof = {
+        elif any(str(part).endswith("run-release-lifecycle-proof.py") for part in command):
+            payload = {
                 "ok": True,
-                "status": "mvp_proof_cycle_passed",
-                "cycle": 1,
+                "status": "final_verified_and_current",
                 "version": TARGET_VERSION,
-                "baseline_version": BASELINE_VERSION,
-                "next_version": NEXT_VERSION,
+                "sha256": CANDIDATE_SHA,
+                "final_current": {
+                    "version": TARGET_VERSION,
+                    "sha256": CANDIDATE_SHA,
+                    "kind": "adopted_release",
+                },
             }
-            (release_dir / f"mvp-proof-cycle-1.{TARGET_VERSION}.json").write_text(json.dumps(proof), encoding="utf-8")
-            payload = None
+        elif "--print-request-json" in command:
+            payload = {
+                "ok": True,
+                "request": {
+                    "baseline": {"version": TARGET_VERSION},
+                    "target": {"version": NEXT_VERSION},
+                },
+            }
+        elif "--parse-reply" in command:
+            payload = {
+                "ok": True,
+                "selected_protocol_reply": {"conversation_url": PINNED_CONVERSATION},
+            }
+        else:
+            raise AssertionError(f"unexpected command: {command}")
         if stdout_path is not None:
             Path(stdout_path).parent.mkdir(parents=True, exist_ok=True)
             Path(stdout_path).write_text(json.dumps(payload or {}), encoding="utf-8")
@@ -164,8 +168,8 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
     assert result["consecutive_proof_count"] == "1/2"
     assert result["accepted_current_version"] == TARGET_VERSION
 
-    assert len(commands) == 4
-    ask_command, intake_command, release_command, finalizer_command = commands
+    assert len(commands) == 5
+    ask_command, intake_command, release_command, request_command, continuation_command = commands
     assert "ask-release" in ask_command
     assert "--target-version" in ask_command
     assert TARGET_VERSION in ask_command
@@ -179,10 +183,14 @@ def test_integrated_mvp_ask_runs_exact_correlated_lifecycle(monkeypatch, tmp_pat
     assert "--task" in intake_command
     assert intake_command[intake_command.index("--task") + 1] == PINNED_CONVERSATION
     assert "--latest" not in intake_command
-    assert "--adopt-after-validation" in release_command
-    assert "--cycle" in finalizer_command
-    assert finalizer_command[finalizer_command.index("--cycle") + 1] == "1"
-    assert finalizer_command[finalizer_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
+    assert any(str(part).endswith("run-release-lifecycle-proof.py") for part in release_command)
+    assert release_command[release_command.index("--artifact") + 1] == str((repo / ARTIFACT).resolve())
+    assert release_command[release_command.index("--version") + 1] == TARGET_VERSION
+    assert release_command[release_command.index("--profile") + 1] == "full"
+    assert "--print-request-json" in request_command
+    assert "--parse-reply" in continuation_command
+    assert request_command[request_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
+    assert continuation_command[continuation_command.index("--conversation-url") + 1] == PINNED_CONVERSATION
 
 
 def test_integrated_mvp_ask_stops_before_intake_when_candidate_ask_is_wrong(monkeypatch, tmp_path, capsys) -> None:
@@ -237,14 +245,20 @@ def test_integrated_cycle_2_returns_final_mvp_status(monkeypatch, tmp_path, caps
         elif "intake" in command:
             (repo / artifact).write_bytes(candidate_bytes)
             payload = {"ok": True, "status": "migrated_candidate", "download_performed": True, "verification_performed": True, "migration_performed": True, "download": {"sha256": candidate_sha}}
-        elif command[0].endswith("chatgpt_claudecode_workflow_release_control.sh"):
-            for name in [f"pb_test.all.{target}.summary.json", f"pb_test.visual_artifact_roundtrip.{target}.log", f"pb_artifact_adopt.{target}.json", f"pb_artifact_current.{target}.json"]:
-                (release_dir / name).write_text("{}", encoding="utf-8")
-            payload = None
+        elif any(str(part).endswith("run-release-lifecycle-proof.py") for part in command):
+            payload = {
+                "ok": True,
+                "status": "final_verified_and_current",
+                "version": target,
+                "sha256": candidate_sha,
+                "final_current": {"version": target, "sha256": candidate_sha, "kind": "adopted_release"},
+            }
+        elif "--print-request-json" in command:
+            payload = {"ok": True, "request": {"baseline": {"version": target}, "target": {"version": cli._release_expected_next_normal_version(target)}}}
+        elif "--parse-reply" in command:
+            payload = {"ok": True, "selected_protocol_reply": {"conversation_url": PINNED_CONVERSATION}}
         else:
-            proof = {"ok": True, "status": "mvp_proof_cycle_passed", "cycle": 2, "version": target}
-            (release_dir / f"mvp-proof-cycle-2.{target}.json").write_text(json.dumps(proof), encoding="utf-8")
-            payload = None
+            raise AssertionError(f"unexpected command: {command}")
         return {"ok": True, "returncode": 0, "parsed_json": payload, "stdout": json.dumps(payload or {}), "stderr": "", "command": command, "status": "passed", "duration_seconds": 0.01, "timeout_seconds": timeout_seconds, "stdout_path": str(stdout_path) if stdout_path else None, "stderr_path": str(stderr_path) if stderr_path else None}
 
     monkeypatch.setattr(cli, "_run_mvp_lifecycle_command", fake_run)
@@ -329,7 +343,7 @@ def test_lifecycle_command_keeps_full_output_on_disk_but_returns_bounded_tails(t
     assert stdout_path.stat().st_size > 12000
     assert stderr_path.stat().st_size > 12000
 
-    public = cli._mvp_stage_record("strict_release_control", result)
+    public = cli._mvp_stage_record("canonical_release_lifecycle", result)
     assert "parsed_json" not in public
     assert len(public["stdout_tail"]) <= 4000
     assert public["stdout_path"] == str(stdout_path)

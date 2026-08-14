@@ -4355,58 +4355,6 @@ def _report_artifact_current_matches_candidate(
     return False, best_checks
 
 
-def _release_control_command_for_candidate(
-    repo_root: Path,
-    *,
-    version: str,
-    release_log_keep: int,
-    skip_docker_logs: bool = True,
-    prune_release_logs: bool = True,
-) -> list[str]:
-    script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
-    command = [str(script), "--version", version, "--tests-only", "--adopt-if-green"]
-    if skip_docker_logs:
-        command.append("--skip-docker-logs")
-    if prune_release_logs:
-        command.append("--prune-release-logs")
-    command.extend(["--release-log-keep", str(int(release_log_keep))])
-    return command
-
-
-def _run_release_control_candidate_acceptance(command: list[str], *, repo_root: Path, timeout_seconds: float) -> dict[str, Any]:
-    started_at = utc_now()
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(repo_root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=max(1.0, float(timeout_seconds)),
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "ok": False,
-            "status": "candidate_acceptance_timeout",
-            "command": command,
-            "started_at": started_at,
-            "timeout_seconds": timeout_seconds,
-            "stdout_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
-            "stderr_tail": (exc.stderr or "")[-4000:] if isinstance(exc.stderr, str) else "",
-        }
-    return {
-        "ok": completed.returncode == 0,
-        "status": "candidate_acceptance_command_ok" if completed.returncode == 0 else "candidate_acceptance_command_failed",
-        "command": command,
-        "returncode": completed.returncode,
-        "started_at": started_at,
-        "finished_at": utc_now(),
-        "stdout_tail": (completed.stdout or "")[-4000:],
-        "stderr_tail": (completed.stderr or "")[-4000:],
-    }
-
-
 def _promptbranch_command_path() -> str:
     """Return the exact active Promptbranch CLI path without PATH fallback."""
 
@@ -4421,52 +4369,30 @@ def _candidate_test_command_for_profile(
     *,
     version: str,
     profile: str,
-    release_log_keep: int,
-    skip_docker_logs: bool = True,
-    prune_release_logs: bool = True,
+    artifact_path: Path,
+    profile_dir: Path,
 ) -> list[str]:
-    """Build a bounded candidate-test command for a migrated candidate.
+    """Build the canonical bounded candidate-test command.
 
-    The smoke profile is the MVP loop default and deliberately avoids the
-    historically expensive release-control/full-suite path.  The full profile
-    remains available as the explicit adoption-grade gate and intentionally
-    omits --adopt-if-green so candidate-test never advances current state.
+    Both profiles delegate directly to Promptbranch's Python test surface.  The
+    full profile binds package/import validation to the exact candidate ZIP and
+    never routes through a second release controller.
     """
 
     normalized_profile = (profile or "smoke").strip().lower()
+    cli = _promptbranch_command_path()
+    base = [sys.executable, cli, "--profile-dir", str(profile_dir)]
     if normalized_profile == "smoke":
-        return [sys.executable, _promptbranch_command_path(), "test", "smoke", "--json", "--path", str(repo_root), "--substep-timeout-seconds", "120"]
-    if normalized_profile != "full":
-        raise ValueError(f"unsupported candidate-test profile: {profile}")
-
-    script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
-    command = [str(script), "--version", version, "--tests-only"]
-    if skip_docker_logs:
-        command.append("--skip-docker-logs")
-    if prune_release_logs:
-        command.append("--prune-release-logs")
-    command.extend(["--release-log-keep", str(int(release_log_keep))])
-    return command
-
-
-def _release_control_test_command_for_candidate(
-    repo_root: Path,
-    *,
-    version: str,
-    release_log_keep: int,
-    skip_docker_logs: bool = True,
-    prune_release_logs: bool = True,
-) -> list[str]:
-    """Backward-compatible full-profile command builder."""
-
-    return _candidate_test_command_for_profile(
-        repo_root,
-        version=version,
-        profile="full",
-        release_log_keep=release_log_keep,
-        skip_docker_logs=skip_docker_logs,
-        prune_release_logs=prune_release_logs,
-    )
+        return base + [
+            "test", "smoke", "--json", "--path", str(repo_root),
+            "--substep-timeout-seconds", "120",
+        ]
+    if normalized_profile == "full":
+        return base + [
+            "test", "full", "--path", str(repo_root),
+            "--package-zip", str(artifact_path), "--json",
+        ]
+    raise ValueError(f"unsupported candidate-test profile: {profile}")
 
 
 def _candidate_test_logs_dir(profile_dir: str | Path) -> Path:
@@ -4481,7 +4407,7 @@ def _tail_text_file(path: Path, limit: int = 4000) -> str:
     return data[-max(0, int(limit)) :]
 
 
-def _run_release_control_candidate_test(
+def _run_candidate_test_subprocess(
     command: list[str],
     *,
     repo_root: Path,
@@ -9570,7 +9496,7 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "download_performed": False,
         "verification_performed": False,
         "migration_performed": False,
-        "release_control_performed": False,
+        "canonical_lifecycle_performed": False,
         "adoption_performed": False,
         "continuation_ask_performed": False,
         "proof_written": False,
@@ -9720,78 +9646,147 @@ async def cmd_ask_mvp_proof_lifecycle(backend: Any, args: argparse.Namespace) ->
         "artifact_intake": str(intake_path),
     })
 
-    release_script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
-    if not release_script.is_file():
-        return fail("mvp_release_control_missing", f"release-control script not found: {release_script}", code=2)
-    release_control_log = release_log_dir / f"release_control.{target_version}.full.all-all.adopt.log"
+    lifecycle_script = repo_root / "scripts" / "run-release-lifecycle-proof.py"
+    if not lifecycle_script.is_file():
+        return fail("mvp_canonical_lifecycle_missing", f"canonical lifecycle wrapper not found: {lifecycle_script}", code=2)
+    lifecycle_log = release_log_dir / f"release-lifecycle.{target_version}.log"
     release_command = [
-        str(release_script),
+        sys.executable,
+        str(lifecycle_script),
+        "--cli", _promptbranch_command_path(),
+        "--artifact", str(candidate_path),
         "--version", target_version,
-        "--install-from-zip", str(candidate_path),
-        "--run-all-tests",
-        "--run-external-live-tests",
-        "--require-chatgpt-live-validation",
-        "--adopt-after-validation",
-        "--skip-docker-logs",
-        "--prune-release-logs",
-        "--release-log-keep", "12",
+        "--release-type", release_type,
+        "--repo-path", str(repo_root),
+        "--profile-dir", str(profile_root),
+        "--profile", "full",
+        "--test-timeout", "3600",
+        "--artifact-conversation-url", explicit_conversation_url,
+        "--json",
     ]
     release_step = _run_mvp_lifecycle_command(
         release_command,
         cwd=repo_root,
         timeout_seconds=release_timeout,
-        stdout_path=release_control_log,
-        stderr_path=release_log_dir / f"release_control.{target_version}.stderr.log",
+        stdout_path=lifecycle_log,
+        stderr_path=release_log_dir / f"release-lifecycle.{target_version}.stderr.log",
     )
-    base["stages"].append(_mvp_stage_record("strict_release_control", release_step))
-    base["release_control_performed"] = True
-    if not release_step.get("ok"):
-        return fail("mvp_release_control_failed", "strict release validation/adoption returned nonzero", stage=base["stages"][-1])
-
-    required_release_evidence = [
-        release_log_dir / f"pb_test.all.{target_version}.summary.json",
-        release_log_dir / f"pb_test.visual_artifact_roundtrip.{target_version}.log",
-        release_log_dir / f"pb_artifact_adopt.{target_version}.json",
-        release_log_dir / f"pb_artifact_current.{target_version}.json",
-    ]
-    missing = [str(path) for path in required_release_evidence if not path.is_file()]
-    if missing:
-        return fail("mvp_release_evidence_missing", f"strict release returned zero but required proof evidence is missing: {missing}", stage=base["stages"][-1])
+    base["stages"].append(_mvp_stage_record("canonical_release_lifecycle", release_step))
+    base["canonical_lifecycle_performed"] = True
+    lifecycle = release_step.get("parsed_json") if isinstance(release_step.get("parsed_json"), dict) else {}
+    final_current = lifecycle.get("final_current") if isinstance(lifecycle.get("final_current"), dict) else {}
+    lifecycle_identity_ok = bool(
+        release_step.get("ok")
+        and lifecycle.get("ok") is True
+        and lifecycle.get("status") == "final_verified_and_current"
+        and lifecycle.get("version") == target_version
+        and str(lifecycle.get("sha256") or "").lower() == candidate_sha256
+        and final_current.get("version") == target_version
+        and str(final_current.get("sha256") or "").lower() == candidate_sha256
+        and final_current.get("kind") == "adopted_release"
+    )
+    if not lifecycle_identity_ok:
+        return fail("mvp_canonical_lifecycle_failed", "canonical lifecycle did not reach FINAL_VERIFIED/current with the exact candidate identity", stage=base["stages"][-1])
     base["adoption_performed"] = True
 
-    finalizer = repo_root / "scripts" / "finalize-mvp-proof-cycle.sh"
-    finalizer_command = [
-        str(finalizer),
-        "--cycle", str(cycle),
-        "--version", target_version,
-        "--baseline-version", baseline_version,
-        "--next-version", str(next_version),
-        "--repo-id", repo_id,
-        "--artifact-intake", str(intake_path),
-        "--artifact-path", str(candidate_path),
-        "--release-log-dir", str(release_log_dir),
-        "--pb-python", sys.executable,
-        "--pb-cli", _promptbranch_command_path(),
+    continuation_prompt = (
+        f"Continue MVP proof cycle {cycle} from accepted {target_version} toward {next_version}. "
+        "Return a valid Promptbranch reply envelope with status no_artifact and result_type no_change; "
+        "no artifact is required for this continuation proof."
+    )
+    continuation_request_path = release_log_dir / f"mvp-proof-cycle-{cycle}.continuation-request.{target_version}.json"
+    continuation_run_path = release_log_dir / f"mvp-proof-cycle-{cycle}.continuation-run.{target_version}.json"
+    request_command = cli_prefix + [
+        "ask", continuation_prompt,
+        "--protocol",
+        "--from-current-baseline",
+        "--target-version", str(next_version),
         "--conversation-url", explicit_conversation_url,
+        "--intent-kind", "mvp_proof_continuation",
+        "--print-request-json",
+        "--json",
     ]
-    finalizer_step = _run_mvp_lifecycle_command(
-        finalizer_command,
+    request_step = _run_mvp_lifecycle_command(
+        request_command,
         cwd=repo_root,
         timeout_seconds=step_timeout,
-        stdout_path=release_log_dir / f"mvp-proof-finalizer.{target_version}.log",
-        stderr_path=release_log_dir / f"mvp-proof-finalizer.{target_version}.stderr.log",
+        stdout_path=continuation_request_path,
+        stderr_path=release_log_dir / f"mvp-proof-cycle-{cycle}.continuation-request.{target_version}.stderr.log",
     )
-    base["stages"].append(_mvp_stage_record("proof_finalizer", finalizer_step))
+    base["stages"].append(_mvp_stage_record("continuation_request", request_step))
+    if not request_step.get("ok"):
+        return fail("mvp_continuation_request_failed", "post-adoption continuation request envelope could not be produced", stage=base["stages"][-1])
+
+    run_command = cli_prefix + [
+        "ask", continuation_prompt,
+        "--protocol",
+        "--from-current-baseline",
+        "--target-version", str(next_version),
+        "--conversation-url", explicit_conversation_url,
+        "--intent-kind", "mvp_proof_continuation",
+        "--parse-reply",
+        "--json",
+    ]
+    continuation_step = _run_mvp_lifecycle_command(
+        run_command,
+        cwd=repo_root,
+        timeout_seconds=step_timeout,
+        stdout_path=continuation_run_path,
+        stderr_path=release_log_dir / f"mvp-proof-cycle-{cycle}.continuation-run.{target_version}.stderr.log",
+    )
+    base["stages"].append(_mvp_stage_record("continuation_ask", continuation_step))
+    request_payload = request_step.get("parsed_json") if isinstance(request_step.get("parsed_json"), dict) else {}
+    continuation_payload = continuation_step.get("parsed_json") if isinstance(continuation_step.get("parsed_json"), dict) else {}
+    request_envelope = request_payload.get("request") if isinstance(request_payload.get("request"), dict) else request_payload
+    selected_reply = continuation_payload.get("selected_protocol_reply") if isinstance(continuation_payload.get("selected_protocol_reply"), dict) else {}
+    observed_url = str(selected_reply.get("conversation_url") or continuation_payload.get("conversation_url") or "")
+    request_baseline = ((request_envelope.get("baseline") or {}).get("version") if isinstance(request_envelope.get("baseline"), dict) else None)
+    request_target = ((request_envelope.get("target") or {}).get("version") if isinstance(request_envelope.get("target"), dict) else None)
+    continuation_ok = bool(
+        continuation_step.get("ok")
+        and continuation_payload.get("ok") is True
+        and conversation_id_from_url(observed_url) == conversation_id
+        and request_baseline == target_version
+        and request_target == next_version
+    )
+    if not continuation_ok:
+        return fail("mvp_proof_finalization_failed", "post-adoption continuation did not remain on the explicit conversation or exact accepted/next version chain", stage=base["stages"][-1])
+
     proof_path = release_log_dir / f"mvp-proof-cycle-{cycle}.{target_version}.json"
-    proof: dict[str, Any] = {}
-    if proof_path.is_file():
-        try:
-            loaded = json.loads(proof_path.read_text(encoding="utf-8"))
-            proof = loaded if isinstance(loaded, dict) else {}
-        except json.JSONDecodeError:
-            proof = {}
-    if not (finalizer_step.get("ok") and proof.get("ok") is True and proof.get("status") == "mvp_proof_cycle_passed"):
-        return fail("mvp_proof_finalization_failed", "post-adoption continuation or final fail-closed proof verification did not pass", stage=base["stages"][-1])
+    proof = {
+        "schema": "promptbranch.mvp.proof_cycle",
+        "schema_version": "2.0",
+        "ok": True,
+        "status": "mvp_proof_cycle_passed",
+        "cycle": cycle,
+        "version": target_version,
+        "baseline_version": baseline_version,
+        "next_version": next_version,
+        "repo_id": repo_id,
+        "artifact": artifact_name,
+        "artifact_sha256": candidate_sha256,
+        "canonical_release_lifecycle": {
+            "status": lifecycle.get("status"),
+            "version": lifecycle.get("version"),
+            "sha256": lifecycle.get("sha256"),
+            "final_current": final_current,
+        },
+        "continuation": {
+            "conversation_url": observed_url,
+            "conversation_id": conversation_id_from_url(observed_url),
+            "baseline_version": request_baseline,
+            "target_version": request_target,
+        },
+        "checks": {
+            "canonical_lifecycle_final_verified_and_current": lifecycle_identity_ok,
+            "continuation_conversation_exact": conversation_id_from_url(observed_url) == conversation_id,
+            "continuation_uses_adopted_baseline": request_baseline == target_version,
+            "continuation_targets_next_normal": request_target == next_version,
+        },
+    }
+    digest_payload = json.dumps(proof, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    proof["proof_sha256"] = hashlib.sha256(digest_payload).hexdigest()
+    proof_path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     status = "mvp_verified" if cycle == 2 else "mvp_proof_cycle_passed"
     payload = {
@@ -15352,7 +15347,7 @@ def _release_threshold_handoff_payload(
         operator_action = "fix_blockers_before_threshold_handoff"
     elif full_test_recommended_now:
         status = "full_test_adoption_checkpoint_required"
-        operator_action = "run_full_release_control_for_current_candidate"
+        operator_action = "run_canonical_release_lifecycle_for_current_candidate"
     elif next_release_reaches_threshold:
         status = "next_release_reaches_threshold"
         operator_action = "build_threshold_candidate_then_full_test"
@@ -16224,16 +16219,13 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
         selected_filename = Path(selected_artifact).name if selected_artifact else "<candidate>.zip"
         selected_download_path = f"~/Downloads/{selected_filename}" if selected_filename != "<candidate>.zip" else "~/Downloads/<candidate>.zip"
         full_test_command = (
-            "./chatgpt_claudecode_workflow_release_control.sh "
-            f"--version {selected_version or '<candidate-version>'} "
-            f"--install-from-zip {selected_download_path} "
-            "--skip-source-add --run-tests --prune-release-logs --release-log-keep 12"
+            "$PB_PYTHON <bootstrap-dir>/scripts/run-release-lifecycle-proof.py "
+            "--cli <bootstrap-dir>/promptbranch_cli.py "
+            f"--artifact {selected_download_path} --version {selected_version or '<candidate-version>'} "
+            "--release-type <normal|repair> --repo-path . --profile-dir .pb_profile --profile full "
+            "--test-timeout 3600 --artifact-conversation-url <candidate-conversation-url> --json"
         )
-        adopt_current_command = (
-            "./chatgpt_claudecode_workflow_release_control.sh "
-            f"--version {selected_version or '<candidate-version>'} "
-            "--skip-tests --adopt-current --skip-docker-logs --prune-release-logs --release-log-keep 12"
-        )
+        adopt_current_command = "pb artifact current --json"
         if full_test_recommended_now:
             threshold_notice = {
                 "active": True,
@@ -16243,7 +16235,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "versions_until_expected_threshold": 0,
                 "calculation_rule": "current_candidate_reached_or_exceeded_threshold",
                 "message": "The focused development line has reached the full-test/adoption checkpoint threshold now.",
-                "recommended_operator_plan": "Run full release-control for the current candidate and adopt it only if the full test is green before adding more scope.",
+                "recommended_operator_plan": "Run the canonical release lifecycle for the current candidate; it may adopt only after TESTED_GREEN and exact identity verification.",
             }
         else:
             threshold_notice = {
@@ -16264,7 +16256,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                     )
                 ),
                 "recommended_operator_plan": (
-                    "Plan to run full release-control and adoption around the expected threshold version before adding more scope."
+                    "Plan to run the canonical release lifecycle around the expected threshold version before adding more scope."
                     if pre_threshold_planning_notice_active
                     else "Continue focused development checks unless checkpoint starts recommending full test/adoption."
                 ),
@@ -16307,7 +16299,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             {
                 "step": "next_release_adoption_planning",
                 "command_kind": "operator-plan",
-                "command": "plan full release-control/adoption checkpoint around the threshold version",
+                "command": "plan canonical release lifecycle checkpoint around the threshold version",
                 "required": next_release_reaches_full_test_threshold,
                 "read_only": True,
                 "purpose": "Make the pre-threshold adoption checkpoint explicit before the configured drift threshold is reached.",
@@ -16316,13 +16308,13 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "active": bool(threshold_notice.get("active")),
             },
             {
-                "step": "full_release_control",
-                "command_kind": "full-release-control",
+                "step": "canonical_release_lifecycle",
+                "command_kind": "canonical-release-lifecycle",
                 "command": full_test_command,
                 "required": full_test_recommended_now,
                 "read_only": False,
                 "would_mutate_when_executed": True,
-                "purpose": "Run the full release-control validation for the current threshold candidate before adopting it.",
+                "purpose": "Run the canonical release lifecycle for the current threshold candidate.",
                 "active": full_test_recommended_now,
             },
             {
@@ -16332,7 +16324,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
                 "required": full_test_recommended_now,
                 "read_only": False,
                 "would_mutate_when_executed": True,
-                "purpose": "Adopt the current candidate only after the full release-control run is green and the installed runtime still matches this version.",
+                "purpose": "Verify authoritative current after the canonical lifecycle reaches ADOPTED_CURRENT and FINAL_VERIFIED.",
                 "active": full_test_recommended_now,
             },
         ]
@@ -16509,7 +16501,7 @@ def _release_status_guide_payload(backend: Any, args: argparse.Namespace) -> dic
             "next_development_status_guide_after_build": commands["next_development_status_guide"],
             "next_development_checkpoint_after_build": commands["next_development_checkpoint"],
             "focused_smoke": commands["smoke"],
-            "full_release_control": locals().get("full_test_command"),
+            "canonical_release_lifecycle": locals().get("full_test_command"),
             "adopt_current_after_green_full_test": locals().get("adopt_current_command"),
         },
         "recommended_sequence": recommended_sequence,
@@ -16810,18 +16802,13 @@ def _release_checkpoint_payload(backend: Any, args: argparse.Namespace) -> dict[
     full_test_command = None
     if candidate_filename and artifact_version:
         full_test_command = (
-            "./chatgpt_claudecode_workflow_release_control.sh "
-            f"--version {artifact_version} "
-            f"--install-from-zip ~/Downloads/{candidate_filename} "
-            "--skip-source-add --run-tests --prune-release-logs --release-log-keep 12"
+            "$PB_PYTHON <bootstrap-dir>/scripts/run-release-lifecycle-proof.py "
+            "--cli <bootstrap-dir>/promptbranch_cli.py "
+            f"--artifact ~/Downloads/{candidate_filename} --version {artifact_version} "
+            "--release-type <normal|repair> --repo-path . --profile-dir .pb_profile --profile full "
+            "--test-timeout 3600 --artifact-conversation-url <candidate-conversation-url> --json"
         )
-    adopt_current_command = None
-    if artifact_version:
-        adopt_current_command = (
-            "./chatgpt_claudecode_workflow_release_control.sh "
-            f"--version {artifact_version} "
-            "--skip-tests --adopt-current --skip-docker-logs --prune-release-logs --release-log-keep 12"
-        )
+    adopt_current_command = "pb artifact current --json" if artifact_version else None
     focused_development_dod = _release_focused_development_dod_payload(
         accepted_version=(dev_status.get("accepted_baseline") or {}).get("source_version") if isinstance(dev_status.get("accepted_baseline"), dict) else None,
         candidate_version=artifact_version or dev_head_version,
@@ -20004,7 +19991,7 @@ def _release_full_test_evidence_summary(
             "status": "full_test_green_inferred_from_release_log",
             "evidence_found": True,
             "full_test_green": True,
-            "source_kind": "release_control_log_inference",
+            "source_kind": "historical_release_log_inference",
             "evidence_path": inferred_green.get("path"),
             "latest_post_release_validation": post_validation,
             "release_log_roots": [str(path) for path in release_log_roots],
@@ -20038,7 +20025,7 @@ def _release_full_test_evidence_summary(
             "This command is read-only and does not run tests.",
             "Operator-reported full-test success is not machine-verifiable unless a release log or structured summary is present.",
         ],
-        "operator_instruction": "Run release-control with --run-tests, or preserve/upload the generated full-test log, to create machine-readable evidence.",
+        "operator_instruction": "Run the canonical release lifecycle, or preserve its structured candidate-test evidence, to create machine-readable evidence.",
     }
 
 
@@ -20089,7 +20076,13 @@ def _release_evidence_status_payload(backend: Any, args: argparse.Namespace) -> 
     artifact_suffix = str(artifact_cfg.get("suffix") or ".zip")
     evidence_artifact_name = f"{artifact_prefix}{evidence_version or '<version>'}{artifact_suffix}"
     recommended_commands = {
-        "full_release_control": f"./chatgpt_claudecode_workflow_release_control.sh --version {evidence_version or '<version>'} --install-from-zip ~/Downloads/{evidence_artifact_name} --skip-source-add --run-tests --prune-release-logs --release-log-keep 12",
+        "canonical_release_lifecycle": (
+            f"$PB_PYTHON <bootstrap-dir>/scripts/run-release-lifecycle-proof.py "
+            f"--cli <bootstrap-dir>/promptbranch_cli.py --artifact ~/Downloads/{evidence_artifact_name} "
+            f"--version {evidence_version or '<version>'} --release-type <normal|repair> --repo-path . "
+            f"--profile-dir .pb_profile --profile full --test-timeout 3600 "
+            "--artifact-conversation-url <candidate-conversation-url> --json"
+        ),
         "baseline_status": f"pb release baseline-status --version {accepted_version or evidence_version or '<accepted-version>'} --json",
         "artifact_current": "pb artifact current --json",
     }
@@ -21783,36 +21776,27 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
     if zip_version != candidate_version:
         return emit({**payload, "ok": False, "status": "candidate_version_mismatch", "zip": zip_check, "zip_version": zip_version, "error": "candidate ZIP VERSION does not match candidate version"}, 1)
 
-    release_control_script = repo_root / "chatgpt_claudecode_workflow_release_control.sh"
-    if not release_control_script.is_file():
-        return emit({**payload, "ok": False, "status": "release_control_missing", "zip": zip_check, "error": f"release-control script not found: {release_control_script}"}, 1)
-    if not os.access(release_control_script, os.X_OK):
-        return emit({**payload, "ok": False, "status": "release_control_not_executable", "zip": zip_check, "error": f"release-control script is not executable: {release_control_script}"}, 1)
-
     test_profile = str(getattr(args, "profile", "smoke") or "smoke").strip().lower()
     try:
         command = _candidate_test_command_for_profile(
             repo_root,
             version=candidate_version,
             profile=test_profile,
-            release_log_keep=int(getattr(args, "release_log_keep", 12) or 12),
-            skip_docker_logs=bool(getattr(args, "skip_docker_logs", True)),
-            prune_release_logs=bool(getattr(args, "prune_release_logs", True)),
+            artifact_path=candidate_path,
+            profile_dir=profile_root,
         )
     except ValueError as exc:
         return emit({**payload, "ok": False, "status": "candidate_test_profile_invalid", "test_profile": test_profile, "error": str(exc)}, 1)
 
-    allowed_script = str((repo_root / "chatgpt_claudecode_workflow_release_control.sh").resolve())
     allowed_promptbranch = str(Path(_promptbranch_command_path()).resolve()) if Path(_promptbranch_command_path()).exists() else _promptbranch_command_path()
-    command_kind = "release_control_full" if command and str(Path(command[0]).resolve()) == allowed_script else "promptbranch_smoke" if len(command) >= 4 and command[0] == sys.executable and command[2:5] == ["test", "smoke", "--json"] else "unknown"
-    if command_kind == "promptbranch_smoke":
-        try:
-            if str(Path(command[1]).resolve()) != allowed_promptbranch:
-                command_kind = "unknown"
-        except Exception:
+    command_kind = "promptbranch_full" if "full" in command and "--package-zip" in command else "promptbranch_smoke" if "smoke" in command else "unknown"
+    try:
+        if command[0] != sys.executable or str(Path(command[1]).resolve()) != allowed_promptbranch:
             command_kind = "unknown"
+    except Exception:
+        command_kind = "unknown"
     if command_kind == "unknown":
-        return emit({**payload, "ok": False, "status": "candidate_test_delegate_command_rejected", "test_profile": test_profile, "delegated_command": command, "error": "candidate-test may only delegate to pb test smoke --json or the repo-local release-control tests-only command"}, 1)
+        return emit({**payload, "ok": False, "status": "candidate_test_delegate_command_rejected", "test_profile": test_profile, "delegated_command": command, "error": "candidate-test may only delegate to the exact active Promptbranch Python CLI test surface"}, 1)
 
     preflight = {
         **payload,
@@ -21847,7 +21831,7 @@ async def cmd_artifact_candidate_test(backend: Any, args: argparse.Namespace) ->
     timestamp = utc_now().replace(":", "").replace("-", "")
     stdout_log_path = log_dir / f"candidate_test.{timestamp}.stdout.log"
     stderr_log_path = log_dir / f"candidate_test.{timestamp}.stderr.log"
-    test_result = _run_release_control_candidate_test(
+    test_result = _run_candidate_test_subprocess(
         command,
         repo_root=repo_root,
         timeout_seconds=timeout_seconds,
@@ -23692,7 +23676,7 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         "project_source_mutation": "not_requested",
         "download_performed": False,
         "migration_performed": False,
-        "release_control_performed": False,
+        "canonical_lifecycle_performed": False,
         "adoption_performed": False,
         "artifact_registry_updated": False,
         "state_artifact_updated": False,
@@ -23803,13 +23787,10 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
             "zip_version_matches_candidate": zip_version == candidate_version,
             "source_verified": source_verified,
             "project_source_mutated": False,
-            "release_control_performed": False,
+            "canonical_lifecycle_performed": False,
         },
         "operator_instruction": "Candidate acceptance preflight verified from existing candidate-test record. Re-run with --adopt-if-green to adopt the candidate locally.",
     }
-
-    if getattr(args, "run_release_control", False):
-        return emit({**preflight, "ok": False, "status": "candidate_acceptance_runner_not_allowed", "error": "v0.0.226 accept-candidate consumes an existing candidate-test result; it does not run release-control again"}, 2)
 
     if not getattr(args, "adopt_if_green", False):
         return emit(preflight, 0)
@@ -23899,7 +23880,7 @@ async def cmd_artifact_accept_candidate(backend: Any, args: argparse.Namespace) 
         "state_source_updated": True,
         "project_source_mutated": False,
         "project_source_mutation": "not_requested",
-        "release_control_performed": False,
+        "canonical_lifecycle_performed": False,
         "adoption_performed": True,
         "mutating_actions_executed": True,
         "mutated_local_state_only": True,
@@ -28245,14 +28226,10 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_candidate_test = artifact_subparsers.add_parser("candidate-test", help="Run the migrated candidate test gate without adoption or state advancement.")
     artifact_candidate_test.add_argument("artifact", nargs="?", help="Candidate ZIP filename. Optional when --version selects exactly one candidate.")
     artifact_candidate_test.add_argument("--version", help="Candidate version such as v0.0.226. Used to select the candidate registry entry.")
-    artifact_candidate_test.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP and release-control script. Defaults to current directory.")
+    artifact_candidate_test.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP. Defaults to current directory.")
     artifact_candidate_test.add_argument("--preflight-only", action="store_true", help="Verify candidate registry, ZIP presence, SHA, VERSION, and delegated test command without running tests.")
-    artifact_candidate_test.add_argument("--profile", choices=["smoke", "full"], default="smoke", help="Candidate-test profile. Default smoke runs `pb test smoke --json`; full runs release-control tests-only and is the explicit adoption-grade gate.")
+    artifact_candidate_test.add_argument("--profile", choices=["smoke", "full"], default="smoke", help="Candidate-test profile. Both profiles run the canonical Promptbranch Python test surface; full additionally binds validation to the exact candidate ZIP.")
     artifact_candidate_test.add_argument("--test-timeout", type=float, default=540.0, help="Timeout in seconds for delegated candidate-test execution. Defaults to 540 so candidate-test fails closed before common outer shell timeouts.")
-    artifact_candidate_test.add_argument("--release-log-keep", type=int, default=12, help="Release log directories to keep when pruning. Defaults to 12.")
-    artifact_candidate_test.add_argument("--skip-docker-logs", action="store_true", default=True, help="Skip docker log capture in release-control. Default: true.")
-    artifact_candidate_test.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Do not pass --prune-release-logs to release-control.")
-    artifact_candidate_test.set_defaults(prune_release_logs=True)
     artifact_candidate_test.add_argument("--json", action="store_true")
 
     artifact_candidate_status = artifact_subparsers.add_parser("candidate-status", help="Report migrated candidate lifecycle status without download, test, adoption, or state mutation.")
@@ -28297,14 +28274,7 @@ def make_parser() -> argparse.ArgumentParser:
     artifact_accept_candidate.add_argument("--version", help="Candidate version such as v0.0.221. Used to select the candidate registry entry.")
     artifact_accept_candidate.add_argument("--repo-path", default=".", help="Repository root containing the migrated candidate ZIP. Defaults to current directory.")
     artifact_accept_candidate.add_argument("--from-project-source", action="store_true", help="Optionally require exactly one matching Project Source before local candidate adoption; no upload is performed.")
-    artifact_accept_candidate.add_argument("--run-release-control", action="store_true", help="Deprecated for v0.0.226; accept-candidate consumes an existing candidate-test result and rejects this flag.")
-    artifact_accept_candidate.add_argument("--profile", choices=["smoke", "full"], default="full", help="Deprecated compatibility option; accept-candidate consumes an existing candidate-test result and does not run this profile.")
     artifact_accept_candidate.add_argument("--adopt-if-green", action="store_true", help="Adopt locally only if an existing candidate-test record is green and candidate ZIP verification passes.")
-    artifact_accept_candidate.add_argument("--test-timeout", type=float, default=3600.0, help="Deprecated compatibility option; accept-candidate does not run tests in this release.")
-    artifact_accept_candidate.add_argument("--release-log-keep", type=int, default=12, help="Deprecated compatibility option; accept-candidate does not create release-control logs in this release.")
-    artifact_accept_candidate.add_argument("--skip-docker-logs", action="store_true", default=True, help="Deprecated compatibility option; accept-candidate does not capture docker logs in this release.")
-    artifact_accept_candidate.add_argument("--no-prune-release-logs", dest="prune_release_logs", action="store_false", help="Deprecated compatibility option; accept-candidate does not prune release logs in this release.")
-    artifact_accept_candidate.set_defaults(prune_release_logs=True)
     artifact_accept_candidate.add_argument("--keep-open", action="store_true")
     artifact_accept_candidate.add_argument("--json", action="store_true")
 

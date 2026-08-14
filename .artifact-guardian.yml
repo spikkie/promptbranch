@@ -19,7 +19,6 @@ required_entries:
   - "promptbranch_cli.py"
   - "promptbranch_artifacts.py"
   - "promptbranch_artifact_guardian.py"
-  - "chatgpt_claudecode_workflow_release_control.sh"
   - "scripts/post-release-validation.sh"
   - "scripts/rollback-release-artifact.py"
   - "docs/project/README.md"
@@ -74,7 +73,6 @@ forbidden_entries:
   - ".env"
 
 executable_entries:
-  - "chatgpt_claudecode_workflow_release_control.sh"
   - "scripts/post-release-validation.sh"
   - "scripts/rollback-release-artifact.py"
 

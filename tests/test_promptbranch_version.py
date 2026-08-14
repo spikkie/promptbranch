@@ -17,15 +17,18 @@ def _version_from_version_file() -> str:
     return raw[1:]
 
 
-def _version_from_pyproject() -> str:
+def _pyproject_dynamic_version_attr() -> str:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return data["project"]["version"]
+    project = data["project"]
+    assert "version" not in project
+    assert "version" in project["dynamic"]
+    return data["tool"]["setuptools"]["dynamic"]["version"]["attr"]
 
 
 def test_version_tag_does_not_double_prefix_current_release() -> None:
     expected = _version_from_version_file()
 
-    assert _version_from_pyproject() == expected
+    assert _pyproject_dynamic_version_attr() == "promptbranch_version.PACKAGE_VERSION"
     assert promptbranch_version.PACKAGE_VERSION == expected
     assert promptbranch_version.VERSION_TAG == f"v{expected}"
     assert not promptbranch_version.VERSION_TAG.startswith("vv")
@@ -38,8 +41,36 @@ def test_version_tag_normalizes_prefixed_inputs_without_double_v() -> None:
     assert promptbranch_version.normalize_version("vv0.1.75") == "0.1.75"
 
 
-def test_pyproject_version_matches_package_version() -> None:
-    assert _version_from_pyproject() == promptbranch_version.PACKAGE_VERSION
+def test_pyproject_version_is_derived_from_version_authority() -> None:
+    assert _pyproject_dynamic_version_attr() == "promptbranch_version.PACKAGE_VERSION"
+    source = (ROOT / "promptbranch_version.py").read_text(encoding="utf-8")
+    assert 'Path(__file__).resolve().with_name("VERSION")' in source
+    assert 'PACKAGE_VERSION = _version_from_authority()' in source
+    assert re.search(r'^\s*PACKAGE_VERSION\s*=\s*["\'][^"\']+["\']', source, re.MULTILINE) is None
+
+
+def test_current_release_version_is_not_hard_coded_in_executable_or_packaging_sources() -> None:
+    current = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    normalized = current.removeprefix("v")
+    offenders: list[str] = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        version_sensitive_name = (
+            path.suffix in {".py", ".toml", ".sh", ".yml", ".yaml"}
+            or path.name in {"Dockerfile", "Containerfile", "Makefile"}
+            or path.name.startswith("Dockerfile.")
+            or path.name.startswith("Containerfile.")
+        )
+        if path.name == "VERSION" or not version_sensitive_name:
+            continue
+        source = path.read_text(encoding="utf-8", errors="replace")
+        if current in source or normalized in source:
+            offenders.append(path.relative_to(ROOT).as_posix())
+    release_contract = (ROOT / ".promptbranch-release.json").read_text(encoding="utf-8")
+    if current in release_contract or normalized in release_contract:
+        offenders.append(".promptbranch-release.json")
+    assert offenders == []
 
 
 def test_version_surface_tests_do_not_pin_stale_repair_candidate_literals() -> None:
@@ -85,3 +116,28 @@ def test_candidate_pytest_runner_is_exact_and_consistent() -> None:
     assert project_dependencies.get("pytest") == "9.0.2"
     assert requirements_dependencies.get("pytest") == "9.0.2"
     assert requirements_dependencies.get("pytest-asyncio") == "1.3.0"
+
+
+def test_dockerfile_uses_version_authority_contract_not_source_regexes() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "python3 -m promptbranch_docker_build_contract" in dockerfile
+    assert "version_py_match" not in dockerfile
+    assert "pyproject_match" not in dockerfile
+    assert r"PACKAGE_VERSION\s*=" not in dockerfile
+
+
+def test_docker_build_contract_supports_python310_tomli_fallback() -> None:
+    source = (ROOT / "promptbranch_docker_build_contract.py").read_text(encoding="utf-8")
+    requirements = {
+        line.strip().split("==", 1)[0].lower()
+        for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert "except ModuleNotFoundError" in source
+    assert "import tomli as tomllib" in source
+    assert "tomli" in requirements
+
+
+def test_docker_build_contract_is_declared_installable() -> None:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "promptbranch_docker_build_contract" in data["tool"]["setuptools"]["py-modules"]

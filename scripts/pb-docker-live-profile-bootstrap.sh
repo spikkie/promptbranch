@@ -17,8 +17,8 @@ usage() {
   cat <<'HELP'
 Usage: pb-docker-live-profile-bootstrap.sh [options]
 
-Bootstrap the exact Docker-visible live profiles used by release-control
---run-all-tests. This avoids trusting copied browser profiles.
+Bootstrap the exact Docker-visible live profiles used by canonical Promptbranch
+full/live validation. This avoids trusting copied browser profiles.
 
 Default profiles:
   seed: ./.pb_profile_local_debug
@@ -105,7 +105,7 @@ slot_profile_dir=${slot_profile_dir}
 fresh=${fresh}
 url=${url:-<bootstrap-default>}
 
-This opens Docker-launched Chrome for the exact profiles used by --run-all-tests.
+This opens Docker-launched Chrome for the shared profile used by canonical Promptbranch live validation.
 No profile copying is performed.
 MSG
 
@@ -124,5 +124,5 @@ cat <<MSG
 Next validation command:
   PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SEED_DIR="${seed_profile_dir}" \\
   PROMPTBRANCH_RUN_ALL_LIVE_PROFILE_SLOT_DIR="${slot_profile_dir}" \\
-  ./chatgpt_claudecode_workflow_release_control.sh --run-all-tests ...
+  $PB_PYTHON <bootstrap-dir>/scripts/run-release-lifecycle-proof.py --cli <bootstrap-dir>/promptbranch_cli.py --artifact <candidate.zip> --version <version> --release-type <normal|repair> --repo-path . --profile-dir .pb_profile --profile full --test-timeout 3600 --artifact-conversation-url <candidate-conversation-url> --json
 MSG

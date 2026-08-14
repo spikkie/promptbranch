@@ -26,11 +26,14 @@ Before proposing or changing work, read these authorities in order of purpose, n
 ## Release work
 
 - Read the release version from `VERSION`; do not duplicate it in agent instructions.
+- Treat `VERSION` as the sole mutable current-version authority: never hard-code the current release number in executable code, tests, packaging metadata, release contracts, or generated commands; derive it from `VERSION`.
+- Docker/build validation must consume the canonical VERSION-derived resolver; never scrape source text for a typed `PACKAGE_VERSION` or static `project.version`.
+- Before broader live lifecycle work, an exact final release ZIP must pass an actual Docker image build and exact version/SHA/source-fingerprint/attempt-label inspection; lack of Docker means this artifact-stage gate is still open.
 - Read accepted/current and active-slice state from `docs/project/plan-state.json`.
 - Use the canonical artifact filename derived from repository release configuration.
 - Keep repair releases scope-neutral unless an explicit normal-slice decision authorizes scope advancement.
 - Run focused deterministic tests before broad live validation.
-- Require both full direct and full localhost release evidence according to release-control policy.
+- Require canonical full release evidence through the exact SHA-bound Python lifecycle and its independently verified state transitions.
 - Never claim adoption from packaging, upload, or test success alone. Adoption requires the guarded adoption result and exact identity verification.
 
 ## Editing discipline
@@ -123,3 +126,8 @@ Use `pb application architecture template` as a deterministic plan; repository w
 ## Promptbranch learning/onboarding
 
 When the task is to learn Promptbranch itself, start with `.promptbranch/skills/promptbranch-learning/SKILL.md` and its canonical learning path before reconstructing behavior from historical release notes. Use `.promptbranch/skills/promptbranch-operator/SKILL.md` for operator reasoning and `.promptbranch/skills/promptbranch-tool-authoring/SKILL.md` for deterministic tool design. Learning and skill validation do not grant mutation authority.
+
+## Non-Git release contexts
+
+- Never invoke Git commands from a directory that is not an actual Git worktree. Exact ZIP extractions and temporary Docker build contexts are non-Git by design; guard or disable VCS probing instead of tolerating `fatal: not a git repository` noise.
+- For wheel validation, use the canonical Promptbranch wheel-build helper; do not add raw `pip wheel` subprocesses to tests or release scripts. The helper must preflight the declared PEP 517 backend and operate offline.

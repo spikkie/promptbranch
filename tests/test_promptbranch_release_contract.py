@@ -49,10 +49,17 @@ def test_tracked_contract_uses_sole_version_authority_for_release_identity():
     data=json.loads((ROOT/'.promptbranch-release.json').read_text(encoding='utf-8'))
     version=(ROOT/'VERSION').read_text(encoding='utf-8').strip()
     artifact=f"chatgpt_claudecode_workflow-2_{version}.zip"
-    assert data['artifact']['path']==artifact
-    for steps in data['operations'].values():
+    assert data['version_authority']=={'path':'VERSION','format':'plain'}
+    assert data['artifact']['path']=='chatgpt_claudecode_workflow-2_{version}.zip'
+    serialized=json.dumps(data)
+    assert version not in serialized
+    resolved=load_contract(ROOT)
+    assert resolved['artifact']['path']==artifact
+    for steps in resolved['operations'].values():
         for step in steps:
             for arg in step['argv']:
+                assert '{version}' not in arg
+                assert '{artifact}' not in arg
                 if isinstance(arg,str) and arg.endswith('.zip'):
                     assert arg==artifact
                 if isinstance(arg,str) and arg.startswith('v0.'):
@@ -74,6 +81,7 @@ def test_release_engine_enforces_launcher_python_with_poisoned_path(tmp_path: Pa
     }]
     (tmp_path/'.promptbranch-release.json').write_text(json.dumps(data), encoding='utf-8')
     (tmp_path/'.promptbranch-repo.json').write_text('{}\n', encoding='utf-8')
+    (tmp_path/'VERSION').write_text((ROOT/'VERSION').read_text(encoding='utf-8'), encoding='utf-8')
     (tmp_path/'.pb_profile').mkdir()
     contract=load_contract(tmp_path)
     poisoned_path='/foreign/pytest-8/bin:/usr/bin'
@@ -108,11 +116,12 @@ def test_release_engine_routes_pb_contract_step_through_same_python(tmp_path: Pa
     }]
     (tmp_path/'.promptbranch-release.json').write_text(json.dumps(data), encoding='utf-8')
     (tmp_path/'.promptbranch-repo.json').write_text('{}\n', encoding='utf-8')
+    (tmp_path/'VERSION').write_text((ROOT/'VERSION').read_text(encoding='utf-8'), encoding='utf-8')
     (tmp_path/'.pb_profile').mkdir()
     (tmp_path/'promptbranch_cli.py').write_text('print("ok")\n', encoding='utf-8')
-    artifact=tmp_path/data['artifact']['path']
-    artifact.write_bytes(b'not-a-zip')
     contract=load_contract(tmp_path)
+    artifact=tmp_path/contract['artifact']['path']
+    artifact.write_bytes(b'not-a-zip')
     observed={}
     class Result:
         returncode=0

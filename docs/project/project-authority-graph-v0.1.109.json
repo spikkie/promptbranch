@@ -9,7 +9,7 @@
   "domains": [
     {
       "domain": "release.version",
-      "description": "Canonical package and release version.",
+      "description": "Canonical package and release version; VERSION is the sole mutable version authority.",
       "authority": {
         "kind": "repository_file",
         "path": "VERSION",
@@ -18,16 +18,16 @@
       "projections": [
         {
           "path": "pyproject.toml",
-          "type": "toml_project_version",
-          "expected_from": "authority_text",
-          "normalizer": "strip_v"
+          "type": "toml_dynamic_version_attr",
+          "expected_from": "literal",
+          "expected": "promptbranch_version.PACKAGE_VERSION"
         },
         {
           "path": "promptbranch_version.py",
-          "type": "python_constant",
-          "constant": "PACKAGE_VERSION",
+          "type": "python_version_file_authority",
           "expected_from": "authority_text",
-          "normalizer": "strip_v"
+          "normalizer": "strip_v",
+          "authority_file": "VERSION"
         }
       ],
       "conflict_policy": "fail_closed",

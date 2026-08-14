@@ -1,3 +1,19 @@
+# v0.1.128.2.7 — deterministic offline wheel-build authority corrective
+
+Status: construction candidate; not accepted/current.
+
+Accepted/current baseline: `v0.1.128.2.6.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip`), SHA-256 `90c36f8065d0d343f7a7d6f8e6a11577f8e02ba683d24a026ccb48a755fc5926`.
+
+Active candidate: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`).
+
+Immutable predecessor `v0.1.128.2.6.1.1.2.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.1.1.zip`) passed exact SHA and authority/control gates but failed live `RUNTIME_PREPARED` deterministically while building the candidate Docker image because its Dockerfile still parsed hard-coded version literals from `promptbranch_version.py` and `pyproject.toml`.
+
+Immutable predecessor `v0.1.128.2.6.1.1.2.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.1.1.1.zip`) is repair-required: its host exact-final-ZIP Docker gate exposed two remaining build-boundary defects—Python 3.10 lacks stdlib `tomllib`, and extracted release contexts must not trigger Git/VCS probing.
+
+This repair keeps `VERSION` as the sole mutable version authority, adds a Python 3.10 `tomli` fallback to the Docker build contract, disables Buildx Git info/labels/dirty probing for extracted release builds, and requires regression proof that the exact-ZIP Docker gate itself never invokes Git from a non-Git directory.
+
+`v0.1.129 — External application pilot bootstrap` remains blocked until this repair is accepted/current.
+
 ## v0.1.128.2.6.1.1.1 VERSION-derived structural-contract corrective
 
 Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Immutable `v0.1.128.2.6.1.1` at SHA-256 `f23253e99d985906e7a24b61594efb6d3d39a011f2acda78e2c4bc7a49001553` reached independently verified `RUNTIME_PREPARED`; its exact package metadata/import smoke passed, then `TESTED_GREEN` failed deterministically in `validation.application_architecture_structural` because four portable-skill tests pinned `v0.1.128.2.6.1` instead of deriving the current release from `VERSION`. This repair removes those duplicate mutable version authorities and applies the same `VERSION` derivation to current project-control assertions. External-application scope remains blocked; `v0.1.129` is still next normal after acceptance.
@@ -6,7 +22,7 @@ Accepted/current remains `v0.1.128.2.5` at SHA-256 `07c6e41d29e932e99d8eda20eeee
 
 Active repair from accepted/current `v0.1.128.2.5`. `v0.1.128.2.6` (`4ac66b37…`) and distributed `v0.1.128.2.6.1` are preserved as historical failed candidates. This corrective declares `promptbranch_skill_sync` in setuptools package metadata and binds canonical candidate testing to the exact release ZIP through `--package-zip`, closing the source-tree-masking validation gap. Live lifecycle/adoption remains open.
 <!-- promptbranch-live-control-projection -->
-> Live control projection after adoption: accepted/current `v0.1.128.2.6.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip`), SHA-256 `90c36f8065d0d343f7a7d6f8e6a11577f8e02ba683d24a026ccb48a755fc5926`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
+> Live control projection after adoption: accepted/current `v0.1.128.2.5` (`chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip`), SHA-256 `07c6e41d29e932e99d8eda20eeee35de92acdd567df6e529b51aee252fb70d58`. Active next normal slice is `v0.1.129 — External application pilot bootstrap` with artifact `chatgpt_claudecode_workflow-2_v0.1.129.zip`. Planned after acceptance is `v0.1.130 — Controlled external application change execution` (`v0.1.130`) with artifact `chatgpt_claudecode_workflow-2_v0.1.130.zip`.
 
 # Migration to Project Control Surface
 
@@ -939,7 +955,7 @@ Repair candidate `chatgpt_claudecode_workflow-2_v0.1.103.10.56.zip` wires `relea
 
 ## v0.1.103.10.59
 
-Active candidate: v0.1.103.10.59
+Active candidate: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`).
 
 Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.59.zip
 
@@ -951,7 +967,7 @@ Scope: release-live-continuous starts the initial auth/warmup check from the tru
 
 ## v0.1.103.10.61
 
-Active candidate: v0.1.103.10.61
+Active candidate: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`).
 
 Artifact: chatgpt_claudecode_workflow-2_v0.1.103.10.61.zip
 

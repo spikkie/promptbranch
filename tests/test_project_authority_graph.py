@@ -96,11 +96,12 @@ def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     pyproject = repo / "pyproject.toml"
     original = pyproject.read_text(encoding="utf-8")
-    current_version = tomllib.loads(original)["project"]["version"]
-    version_line = f'version = "{current_version}"'
-    assert version_line in original, "test precondition failed: pyproject version line was not found"
-    mutated = original.replace(version_line, 'version = "9.9.9"', 1)
-    assert mutated != original, "test precondition failed: pyproject version was not mutated"
+    data = tomllib.loads(original)
+    assert "version" not in data["project"]
+    dynamic_line = 'version = {attr = "promptbranch_version.PACKAGE_VERSION"}'
+    assert dynamic_line in original, "test precondition failed: dynamic version authority was not found"
+    mutated = original.replace(dynamic_line, 'version = {attr = "promptbranch_version.NOT_AUTHORITY"}', 1)
+    assert mutated != original, "test precondition failed: dynamic version authority was not mutated"
     pyproject.write_text(mutated, encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
@@ -112,7 +113,9 @@ def test_version_projection_drift_is_detected(tmp_path: Path) -> None:
 def test_plan_state_markdown_projection_drift_is_detected(tmp_path: Path) -> None:
     repo = _copy_authority_repo(tmp_path)
     status = repo / "docs/project/status.md"
-    status.write_text(status.read_text().replace("chatgpt_claudecode_workflow-2_v0.1.128.2.5.zip", "drifted.zip"), encoding="utf-8")
+    plan_state = json.loads((repo / "docs/project/plan-state.json").read_text(encoding="utf-8"))
+    accepted_artifact = str(plan_state["accepted_current_artifact"])
+    status.write_text(status.read_text().replace(accepted_artifact, "drifted.zip"), encoding="utf-8")
 
     payload = validate_project_authority_graph(repo)
     assert payload["ok"] is False
@@ -156,8 +159,10 @@ def test_authority_validation_performs_zero_file_mutation(tmp_path: Path) -> Non
     assert after == before
 
 
-def test_runtime_validation_fails_when_runtime_authorities_are_absent(tmp_path: Path) -> None:
+def test_runtime_validation_fails_when_runtime_authorities_are_absent(tmp_path: Path, monkeypatch) -> None:
     repo = _copy_authority_repo(tmp_path)
+    isolated_state_home = tmp_path / "project-state"
+    monkeypatch.setenv("PROMPTBRANCH_PROJECT_STATE_HOME", str(isolated_state_home))
     payload = validate_project_authority_graph(repo, include_runtime=True)
     assert payload["ok"] is False
     assert payload["status"] == "authority_missing"

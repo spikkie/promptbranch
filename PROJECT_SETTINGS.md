@@ -21,6 +21,10 @@ The repository identifier is read from `docs/project/plan-state.json`. The inten
 
 Stable policy belongs here. Mutable release state belongs in `VERSION`, `docs/project/plan-state.json`, release configuration, or the project artifact registry as declared by the authority graph. `.promptbranch-repo.json` owns stable intended Project binding only and must never contain local paths, credentials, current artifact records, or upload evidence.
 
+`VERSION` is the sole mutable package/release-version authority. Executable code, tests, packaging metadata, release contracts, generated commands, and agent instructions must derive the current release version from `VERSION`; they must never pin a typed current-release version literal. Installed distribution metadata may carry the value only as a build projection that was derived from `VERSION`. Historical versions may appear only as explicit historical/fixture evidence and must never act as current-version authority.
+
+Docker and container-build validation are projections of the same authority. They must resolve `VERSION` through the shared version contract and must not parse Python/TOML source text looking for a typed current version. A release artifact is not construction-complete until the exact final ZIP has passed a real Docker image build with exact version, artifact SHA-256, source-fingerprint, and attempt-identity labels; environments without Docker may prepare the artifact but cannot claim that gate green.
+
 ## Mutation boundaries
 
 Read-only authority validation may read repository files, runtime identity files, registries, and external observation descriptors. It must not:
@@ -111,3 +115,8 @@ Mutation through `pb release set resume` requires exact confirmation of the rele
 ## v0.1.121.1 backend guardrail classification repair policy
 
 `backend_api_guardrail_seen=true` is generic telemetry and is not sufficient to prove a backend HTTP 403 challenge. Release-control auth bootstrap may classify `browser_backend_403_guardrail` only from explicit structured evidence whose event kind is `backend_api_guardrail` and whose numeric status is exactly `403`, or from an already terminal explicit 403 challenge status. HTTP 429 remains rate-limit telemetry. This repair is scope-neutral and preserves all `v0.1.121` release-set recovery authority and constraints.
+
+## Non-Git release contexts
+
+- Never invoke Git commands from a directory that is not an actual Git worktree. Exact ZIP extractions and temporary Docker build contexts are non-Git by design; guard or disable VCS probing instead of tolerating `fatal: not a git repository` noise.
+- Wheel construction used by release validation must go through the canonical Promptbranch wheel-build helper: read the PEP 517 backend from pyproject.toml, preflight it explicitly, build offline without package-index access, and never invoke raw `pip wheel` from release-validation tests.

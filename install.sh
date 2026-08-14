@@ -1,116 +1,137 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 usage() {
-  cat <<'USAGE'
-Usage: ./install.sh <version> [zip-path]
+  cat <<'EOF'
+Usage:
+  ./install.sh --version VERSION --artifact ZIP \
+    --artifact-conversation-url URL [--release-type normal|repair]
 
-Strict all-all Promptbranch release gate for a new ZIP release.
+Thin bootstrap for the canonical Promptbranch release lifecycle.
 
-Arguments:
-  version   Canonical v-prefixed version, for example v0.1.103.10.69
-  zip-path  Optional candidate transport ZIP path. Its basename may be unique
-            and must not define the canonical Project Source identity.
-            Defaults to:
-            $HOME/Downloads/chatgpt_claudecode_workflow-2_<version>.zip
-
-Default mode installs the candidate ZIP, runs product validation, runs explicit
-external ChatGPT live validation, requires live validation to pass, adopts only
-if all validation is GO, then prints exact scoped artifact-current evidence.
-USAGE
+This script contains no independent release policy. It verifies the transport
+ZIP, extracts the candidate launcher, then delegates the complete lifecycle to
+scripts/run-release-lifecycle-proof.py using the exact Promptbranch pipx Python.
+EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+version=""
+artifact=""
+artifact_conversation_url=""
+release_type="repair"
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --version)
+      version="${2:-}"
+      shift 2
+      ;;
+    --artifact)
+      artifact="${2:-}"
+      shift 2
+      ;;
+    --artifact-conversation-url)
+      artifact_conversation_url="${2:-}"
+      shift 2
+      ;;
+    --release-type)
+      release_type="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown option: $1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [ -z "$version" ] || [ -z "$artifact" ] || [ -z "$artifact_conversation_url" ]; then
+  echo "ERROR: --version, --artifact and --artifact-conversation-url are required" >&2
   usage >&2
   exit 64
 fi
 
-ver="$1"
-shift
-zip=""
-for arg in "$@"; do
-  case "$arg" in
-    --*) echo "ERROR: unsupported install option: $arg" >&2; exit 64 ;;
-    *)
-      if [[ -n "$zip" ]]; then
-        echo "ERROR: multiple ZIP paths supplied" >&2
-        exit 64
-      fi
-      zip="$arg"
-      ;;
-  esac
-done
-case "${ver}" in
-  v[0-9]*.[0-9]*.[0-9]*) ;;
+case "$release_type" in
+  normal|repair) ;;
   *)
-    echo "ERROR: version must be canonical and v-prefixed, got: ${ver}" >&2
+    echo "ERROR: --release-type must be normal or repair" >&2
     exit 64
     ;;
 esac
 
-zip="${zip:-$HOME/Downloads/chatgpt_claudecode_workflow-2_${ver}.zip}"
-
 PB_PYTHON="${PB_PYTHON:-$HOME/.local/share/pipx/venvs/promptbranch/bin/python}"
-[[ "$PB_PYTHON" == /* && -x "$PB_PYTHON" ]] || { echo "ERROR: PB_PYTHON must be an absolute executable path: $PB_PYTHON" >&2; exit 64; }
+if [ "${PB_PYTHON#/}" = "$PB_PYTHON" ] || [ ! -x "$PB_PYTHON" ]; then
+  echo "ERROR: PB_PYTHON must be an absolute executable path: $PB_PYTHON" >&2
+  exit 64
+fi
 
-if [[ ! -f "${zip}" ]]; then
-  echo "ERROR: candidate ZIP not found: ${zip}" >&2
+artifact="$(realpath -e "$artifact" 2>/dev/null)"
+if [ -z "$artifact" ] || [ ! -f "$artifact" ]; then
+  echo "ERROR: candidate ZIP not found" >&2
   exit 66
 fi
 
-# Validate the transport artifact before delegating to any script contained in
-# it. The transport basename is intentionally non-canonical; internal VERSION,
-# CRC integrity and the release-control entrypoint are authoritative.
-"$PB_PYTHON" - "${zip}" "${ver}" <<'PYVERIFY'
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+profile_dir="$repo_root/.pb_profile"
+
+"$PB_PYTHON" - "$artifact" "$version" <<'PYVERIFY'
 import sys
 import zipfile
 from pathlib import Path
 
-zip_path = Path(sys.argv[1]).expanduser().resolve()
+zip_path = Path(sys.argv[1]).resolve()
 expected_version = sys.argv[2]
-try:
-    with zipfile.ZipFile(zip_path) as archive:
-        bad_crc = archive.testzip()
-        if bad_crc:
-            raise SystemExit(f"ERROR: candidate transport ZIP CRC failure at {bad_crc}")
-        names = set(archive.namelist())
-        required = {"VERSION", "pyproject.toml", ".gitignore", ".not_to_zip", "chatgpt_claudecode_workflow_release_control.sh"}
-        missing = sorted(required - names)
-        if missing:
-            raise SystemExit("ERROR: candidate transport ZIP missing required root entries: " + ", ".join(missing))
-        internal_version = archive.read("VERSION").decode("utf-8").strip()
-except zipfile.BadZipFile as exc:
-    raise SystemExit(f"ERROR: invalid candidate transport ZIP: {exc}") from exc
+with zipfile.ZipFile(zip_path) as archive:
+    bad = archive.testzip()
+    if bad:
+        raise SystemExit(f"ERROR: candidate ZIP CRC failure at {bad}")
+    names = set(archive.namelist())
+    required = {
+        "VERSION",
+        "pyproject.toml",
+        "promptbranch_cli.py",
+        "scripts/run-release-lifecycle-proof.py",
+    }
+    missing = sorted(required - names)
+    if missing:
+        raise SystemExit("ERROR: candidate ZIP missing canonical lifecycle entries: " + ", ".join(missing))
+    internal_version = archive.read("VERSION").decode("utf-8").strip()
 if internal_version != expected_version:
     raise SystemExit(
-        f"ERROR: candidate transport ZIP VERSION mismatch: expected {expected_version}, got {internal_version}"
+        f"ERROR: candidate ZIP VERSION mismatch: expected {expected_version}, got {internal_version}"
     )
 print(f"Candidate transport ZIP verified: {zip_path}")
 PYVERIFY
+verify_rc=$?
+if [ "$verify_rc" -ne 0 ]; then
+  exit "$verify_rc"
+fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${script_dir}"
+bootstrap_dir="$(mktemp -d)"
+unzip -q "$artifact" -d "$bootstrap_dir"
+unzip_rc=$?
+if [ "$unzip_rc" -ne 0 ]; then
+  rm -rf "$bootstrap_dir"
+  exit "$unzip_rc"
+fi
 
-mkdir -p "${HOME}/tmp"
+"$PB_PYTHON" \
+  "$bootstrap_dir/scripts/run-release-lifecycle-proof.py" \
+  --cli "$bootstrap_dir/promptbranch_cli.py" \
+  --artifact "$artifact" \
+  --version "$version" \
+  --release-type "$release_type" \
+  --repo-path "$repo_root" \
+  --profile-dir "$profile_dir" \
+  --profile full \
+  --test-timeout 3600 \
+  --artifact-conversation-url "$artifact_conversation_url" \
+  --json
+lifecycle_rc=$?
 
-
-
-
-timeout --foreground 14400 ./chatgpt_claudecode_workflow_release_control.sh \
-  --install-from-zip "${zip}" \
-  --version "${ver}" \
-  --run-all-tests \
-  --run-external-live-tests \
-  --require-chatgpt-live-validation \
-  --adopt-after-validation \
-  --skip-docker-logs \
-  --prune-release-logs \
-  --release-log-keep 12 \
-  2>&1 | tee "${HOME}/tmp/release_control.${ver}.full.all-all.adopt.log"
-
-"$PB_PYTHON" "${script_dir}/promptbranch_cli.py" artifact current --repo chatgpt_claudecode_workflow-2 --json | tee "${HOME}/tmp/pb_current_after_${ver}.json"
+rm -rf "$bootstrap_dir"
+exit "$lifecycle_rc"

@@ -247,7 +247,10 @@
         [
           "bash",
           "-n",
-          "chatgpt_claudecode_workflow_release_control.sh"
+          "install.sh",
+          "scripts/pb-docker-live-profile-bootstrap.sh",
+          "scripts/finalize-artifact-intake-mvp.sh",
+          "scripts/post-release-validation.sh"
         ]
       ],
       "modes": [
@@ -322,7 +325,7 @@
         "promptbranch_operational_evidence.py",
         "promptbranch_protocol/schemas/operational.lifecycle.evidence.schema.json",
         "tests/test_promptbranch_operational_evidence.py",
-        "chatgpt_claudecode_workflow_release_control.sh"
+        "promptbranch_release_state_machine.py"
       ],
       "reason": "operational lifecycle evidence or release controller changed"
     },

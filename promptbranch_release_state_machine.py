@@ -1497,6 +1497,9 @@ class SubprocessReleaseExecutor:
                 "PROMPTBRANCH_DOCKER_UID": str(os.getuid()),
                 "PROMPTBRANCH_DOCKER_GID": str(os.getgid()),
                 "BUILDKIT_PROGRESS": "plain",
+                "BUILDX_GIT_INFO": "0",
+                "BUILDX_GIT_LABELS": "0",
+                "BUILDX_GIT_CHECK_DIRTY": "0",
             }
         )
         compose_file = baseline_root / "docker-compose.chatgpt-service.yml"
@@ -1645,6 +1648,9 @@ class SubprocessReleaseExecutor:
                 "PROMPTBRANCH_HOST_DEBUG_ARTIFACT_DIR": str(paths["extracted"] / "debug_artifacts"),
                 "PROMPTBRANCH_PROFILE_DIR": "/app/profile",
                 "BUILDKIT_PROGRESS": "plain",
+                "BUILDX_GIT_INFO": "0",
+                "BUILDX_GIT_LABELS": "0",
+                "BUILDX_GIT_CHECK_DIRTY": "0",
             }
         )
         return {

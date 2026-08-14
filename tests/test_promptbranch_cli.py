@@ -22,7 +22,7 @@ def _isolate_cli_defaults(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("PROMPTBRANCH_PROJECT_CONFIG_HOME", str(tmp_path / "project-config"))
     monkeypatch.delenv("CHATGPT_SERVICE_TIMEOUT_SECONDS", raising=False)
 
-from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_current, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_release_control_candidate_test, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload, _bounded_generated_chatgpt_project_name, CHATGPT_PROJECT_NAME_MAX_LENGTH
+from promptbranch_cli import build_backend, main, make_parser, _normalize_global_options, _chat_list_payload, _verify_project_source_upload_change, cmd_artifact_adopt, cmd_artifact_current, cmd_artifact_candidate_test, cmd_artifact_candidate_status, cmd_artifact_mvp_status, cmd_artifact_mvp_dod, cmd_release_doctor, cmd_release_reconcile_current, cmd_release_baseline_status, cmd_release_evidence_status, cmd_release_docs_status, cmd_release_dev_status, cmd_release_status_guide, cmd_release_checkpoint, cmd_release_config, cmd_release_install, cmd_release_test, cmd_release_adopt, cmd_release_policy_sync, cmd_release_git_sync, cmd_release_lifecycle, cmd_release_lifecycle_status, cmd_artifact_candidate_next, cmd_artifact_candidate_run, cmd_artifact_accept_candidate, _classify_protocol_submit_visibility_failure, _protocol_transcript_snapshot, _compare_protocol_transcript_snapshots, _persist_protocol_ask_debug_record, _protocol_fresh_turn_evidence, _validate_protocol_reply_against_request, _parse_protocol_reply_after_ask, _verify_intake_smoke_zip_candidate, _verify_intake_artifact_candidate, _run_candidate_test_subprocess, _promptbranch_smoke_step_specs, _run_bounded_smoke_subprocess, _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload, _bounded_generated_chatgpt_project_name, CHATGPT_PROJECT_NAME_MAX_LENGTH
 from promptbranch_state import ConversationStateStore
 from promptbranch_artifacts import ArtifactRegistry, ArtifactRecord
 from promptbranch_project import load_repo_identity, project_registry_dir, write_repo_identity, join_local_repo
@@ -5965,9 +5965,6 @@ def test_artifact_candidate_test_preflight_requires_no_adoption(capsys, tmp_path
     repo.mkdir()
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    script = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="chatgpt_claudecode_workflow", repo_root=repo)
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
@@ -5978,9 +5975,6 @@ def test_artifact_candidate_test_preflight_requires_no_adoption(capsys, tmp_path
         preflight_only=True,
         profile="smoke",
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         json=True,
         profile_dir=str(profile),
     )
@@ -6001,27 +5995,35 @@ def test_artifact_candidate_test_preflight_requires_no_adoption(capsys, tmp_path
     assert not (profile / "artifact_candidate_tests").exists()
 
 
-def test_artifact_candidate_test_runs_release_control_tests_only_and_records_result(monkeypatch, capsys, tmp_path) -> None:
+def test_artifact_candidate_test_runs_canonical_full_profile_and_records_result(monkeypatch, capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    script = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="chatgpt_claudecode_workflow", repo_root=repo)
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225")
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [])
 
-    def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        assert command[:4] == [str(script), "--version", "v0.0.225", "--tests-only"]
-        assert "--adopt-if-green" not in command
-        import subprocess
+    active_cli = tmp_path / "active-promptbranch-cli.py"
+    active_cli.write_text("# test CLI path\n", encoding="utf-8")
+    monkeypatch.setattr("promptbranch_cli._promptbranch_command_path", lambda: str(active_cli))
 
-        return subprocess.CompletedProcess(command, 0, "tests passed\n", "")
+    captured: dict[str, object] = {}
 
-    monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
+    def fake_candidate_test(command, *, repo_root, timeout_seconds, stdout_log_path=None, stderr_log_path=None):
+        captured["command"] = list(command)
+        captured["repo_root"] = repo_root
+        captured["timeout_seconds"] = timeout_seconds
+        return {
+            "ok": True,
+            "status": "candidate_test_passed",
+            "returncode": 0,
+            "command": list(command),
+            "adoption_performed": False,
+        }
+
+    monkeypatch.setattr("promptbranch_cli._run_candidate_test_subprocess", fake_candidate_test)
     args = argparse.Namespace(
         artifact=None,
         version="v0.0.225",
@@ -6029,9 +6031,6 @@ def test_artifact_candidate_test_runs_release_control_tests_only_and_records_res
         preflight_only=False,
         profile="full",
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         json=True,
         profile_dir=str(profile),
     )
@@ -6043,6 +6042,14 @@ def test_artifact_candidate_test_runs_release_control_tests_only_and_records_res
     assert payload["ok"] is True
     assert payload["status"] == "candidate_test_passed"
     assert payload["candidate_test_status"] == "candidate_test_passed"
+    command = captured["command"]
+    assert command[0] == sys.executable
+    assert command[1] == str(active_cli)
+    assert command[2:4] == ["--profile-dir", str(profile)]
+    assert command[4:6] == ["test", "full"]
+    assert "--package-zip" in command
+    assert command[command.index("--package-zip") + 1] == str(zip_path.resolve())
+    assert "--adopt-if-green" not in command
     assert payload["candidate_test"]["ok"] is True
     assert payload["candidate_registry_updated"] is True
     assert payload["artifact_registry_updated"] is False
@@ -6067,9 +6074,6 @@ def test_artifact_candidate_test_rejects_accepted_candidate(capsys, tmp_path) ->
     repo.mkdir()
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    script = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="chatgpt_claudecode_workflow", repo_root=repo)
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225")
     registry = json.loads((profile / "artifact_candidates.json").read_text(encoding="utf-8"))
@@ -6083,9 +6087,6 @@ def test_artifact_candidate_test_rejects_accepted_candidate(capsys, tmp_path) ->
         repo_path=str(repo),
         preflight_only=False,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         json=True,
         profile_dir=str(profile),
     )
@@ -7906,11 +7907,11 @@ def test_release_status_guide_selects_checkpoint_and_full_test_runbook_at_thresh
     assert payload["operator_runbook"]["focused_development_dod_status"] == "full_test_adoption_checkpoint_required"
     assert payload["operator_runbook"]["focused_continue_dod_complete"] is False
     assert payload["threshold_handoff"]["status"] == "full_test_adoption_checkpoint_required"
-    assert payload["threshold_handoff"]["operator_action"] == "run_full_release_control_for_current_candidate"
+    assert payload["threshold_handoff"]["operator_action"] == "run_canonical_release_lifecycle_for_current_candidate"
     assert payload["threshold_handoff"]["full_test_recommended_now"] is True
     assert payload["threshold_handoff"]["class_diagram"] == "docs/design/promptbranch-class-diagram.drawio"
     assert payload["operator_runbook"]["threshold_handoff_status"] == "full_test_adoption_checkpoint_required"
-    assert payload["operator_runbook"]["threshold_handoff_operator_action"] == "run_full_release_control_for_current_candidate"
+    assert payload["operator_runbook"]["threshold_handoff_operator_action"] == "run_canonical_release_lifecycle_for_current_candidate"
     assert payload["checkpoint_threshold"]["normal_versions_until_full_test_threshold"] == 0
     assert payload["checkpoint_threshold"]["full_test_recommended_at_normal_versions_ahead"] == 8
     assert payload["checkpoint_threshold"]["next_development_version"] == _test_next_normal_version(dev_version)
@@ -9055,7 +9056,7 @@ hooks:
     assert payload["checkpoint_decision"]["full_test_recommended_now"] is True
     assert payload["checkpoint_decision"]["adopt_now"] is False
     assert payload["threshold_handoff"]["status"] == "full_test_adoption_checkpoint_required"
-    assert payload["threshold_handoff"]["operator_action"] == "run_full_release_control_for_current_candidate"
+    assert payload["threshold_handoff"]["operator_action"] == "run_canonical_release_lifecycle_for_current_candidate"
     assert payload["threshold_handoff"]["full_test_recommended_now"] is True
     assert "release_checkpoint_full_test_advised_by_complexity" in payload["warning_codes"]
     assert payload["complexity_summary"]["full_test_recommended_now"] is True
@@ -10452,12 +10453,8 @@ def test_artifact_mvp_status_reports_completion_after_candidate_acceptance(capsy
         version=None,
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10722,12 +10719,8 @@ def test_artifact_candidate_run_require_complete_passes_after_acceptance(capsys,
         version=None,
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10794,9 +10787,6 @@ def test_artifact_accept_candidate_preflight_requires_tested_candidate_and_no_ad
     repo.mkdir()
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    script = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="chatgpt_claudecode_workflow", repo_root=repo)
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225", tested=True)
     backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
@@ -10805,12 +10795,8 @@ def test_artifact_accept_candidate_preflight_requires_tested_candidate_and_no_ad
         version=None,
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=False,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10826,7 +10812,7 @@ def test_artifact_accept_candidate_preflight_requires_tested_candidate_and_no_ad
     assert payload["candidate_test_gate"]["ok"] is True
     assert payload["checks"]["candidate_test_passed"] is True
     assert payload["project_source_mutated"] is False
-    assert payload["release_control_performed"] is False
+    assert payload["canonical_lifecycle_performed"] is False
     assert payload["adoption_performed"] is False
     assert payload["artifact_registry_updated"] is False
     assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
@@ -10846,12 +10832,8 @@ def test_artifact_accept_candidate_rejects_untested_candidate(capsys, tmp_path) 
         version=None,
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10867,22 +10849,19 @@ def test_artifact_accept_candidate_rejects_untested_candidate(capsys, tmp_path) 
     assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
 
 
-def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_control(monkeypatch, capsys, tmp_path) -> None:
+def test_artifact_accept_candidate_adopts_pretested_candidate_without_second_release_engine(monkeypatch, capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
     repo.mkdir()
     zip_path = repo / filename
     _write_test_release_zip(zip_path, "v0.0.225")
-    script = repo / "chatgpt_claudecode_workflow_release_control.sh"
-    script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    script.chmod(0o755)
     repo, profile = _initialize_test_project_scope(tmp_path, repo_id="chatgpt_claudecode_workflow", repo_root=repo)
     _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225", tested=True)
     project_url = "https://chatgpt.com/g/g-p-demo/project"
     backend = _FakeArtifactAdoptBackend(profile, project_url, [{"title": filename, "id": "src_1"}])
 
     def fake_run(command, cwd, stdout, stderr, text, timeout, check):
-        raise AssertionError("accept-candidate must not run release-control in v0.0.230")
+        raise AssertionError("accept-candidate must not invoke an external release engine")
 
     monkeypatch.setattr("promptbranch_cli.subprocess.run", fake_run)
     args = argparse.Namespace(
@@ -10890,12 +10869,8 @@ def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_co
         version="v0.0.225",
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10908,7 +10883,7 @@ def test_artifact_accept_candidate_adopts_pretested_candidate_without_release_co
     assert payload["ok"] is True
     assert payload["status"] == "accepted_candidate"
     assert payload["adoption_performed"] is True
-    assert payload["release_control_performed"] is False
+    assert payload["canonical_lifecycle_performed"] is False
     assert payload["source_verified"] is False
     assert payload["project_source_mutated"] is False
     assert payload["artifact_current"]["repos"]["chatgpt_claudecode_workflow"]["state"]["artifact_ref"] == filename
@@ -10959,12 +10934,8 @@ def test_artifact_accept_candidate_preserves_complete_protocol_conversation_prov
         version="v0.0.225",
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -10984,40 +10955,6 @@ def test_artifact_accept_candidate_preserves_complete_protocol_conversation_prov
     assert adopted["origin_message_id"] == "msg-origin"
     assert adopted["origin_answer_id"] == "answer-origin"
 
-def test_artifact_accept_candidate_rejects_release_control_runner(capsys, tmp_path) -> None:
-    filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    repo, profile = _initialize_test_project_scope(tmp_path, repo_root=repo)
-    zip_path = repo / filename
-    _write_test_release_zip(zip_path, "v0.0.225")
-    _write_candidate_registry(profile, filename=filename, zip_path=zip_path, version="v0.0.225", tested=True)
-    backend = _FakeArtifactAdoptBackend(profile, "https://chatgpt.com/g/g-p-demo/project", [{"title": filename, "id": "src_1"}])
-    args = argparse.Namespace(
-        artifact=filename,
-        version=None,
-        repo_path=str(repo),
-        from_project_source=False,
-        run_release_control=True,
-        adopt_if_green=True,
-        test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
-        keep_open=False,
-        json=True,
-        profile_dir=str(profile),
-    )
-
-    exit_code = asyncio.run(cmd_artifact_accept_candidate(backend, args))
-    payload = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 2
-    assert payload["status"] == "candidate_acceptance_runner_not_allowed"
-    assert payload["adoption_performed"] is False
-    assert json.loads((profile / "promptbranch_artifacts.json").read_text(encoding="utf-8"))["artifacts"] == []
-
-
 def test_artifact_accept_candidate_rejects_sha_mismatch_before_adoption(capsys, tmp_path) -> None:
     filename = "chatgpt_claudecode_workflow_v0.0.225.zip"
     repo = tmp_path / "repo"
@@ -11035,12 +10972,8 @@ def test_artifact_accept_candidate_rejects_sha_mismatch_before_adoption(capsys, 
         version=None,
         repo_path=str(repo),
         from_project_source=False,
-        run_release_control=False,
         adopt_if_green=True,
         test_timeout=3600.0,
-        release_log_keep=12,
-        skip_docker_logs=True,
-        prune_release_logs=True,
         keep_open=False,
         json=True,
         profile_dir=str(profile),
@@ -13173,7 +13106,7 @@ def test_candidate_test_runner_times_out_with_structured_logs(tmp_path) -> None:
     stdout_log = tmp_path / "candidate.stdout.log"
     stderr_log = tmp_path / "candidate.stderr.log"
 
-    result = _run_release_control_candidate_test(
+    result = _run_candidate_test_subprocess(
         [str(script)],
         repo_root=tmp_path,
         timeout_seconds=0.2,
@@ -13361,18 +13294,25 @@ def test_promptbranch_smoke_substep_timeout_reports_json_shape(tmp_path) -> None
     assert result["stdout_log_path"].endswith("slow_step.stdout.log")
 
 
-def test_candidate_smoke_profile_delegates_to_bounded_pb_test_smoke(tmp_path) -> None:
-    command = _candidate_test_command_for_profile, _release_dev_complexity_summary, _release_full_test_countdown_payload(
+def test_candidate_smoke_profile_delegates_to_bounded_pb_test_smoke(monkeypatch, tmp_path) -> None:
+    active_cli = tmp_path / "promptbranch_cli.py"
+    active_cli.write_text("# test CLI path\n", encoding="utf-8")
+    profile = tmp_path / ".pb_profile"
+    monkeypatch.setattr("promptbranch_cli._promptbranch_command_path", lambda: str(active_cli))
+
+    command = _candidate_test_command_for_profile(
         tmp_path,
         version="v0.1.0",
         profile="smoke",
-        release_log_keep=12,
+        artifact_path=tmp_path / "candidate.zip",
+        profile_dir=profile,
     )
 
-    assert command[2:5] == ["test", "smoke", "--json"]
+    assert command[:4] == [sys.executable, str(active_cli), "--profile-dir", str(profile)]
+    assert command[4:7] == ["test", "smoke", "--json"]
     assert "--substep-timeout-seconds" in command
-    assert "120" in command
-    assert "--path" in command
+    assert command[command.index("--substep-timeout-seconds") + 1] == "120"
+    assert command[command.index("--path") + 1] == str(tmp_path)
 
 
 def test_src_add_promotes_browser_profile_busy_to_top_level_payload(monkeypatch, capsys, tmp_path) -> None:

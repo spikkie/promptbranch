@@ -120,6 +120,42 @@ def _validate_projection(root: Path, domain: str, authority: dict[str, Any], pro
             return f"{domain}: projection drift in {projection.get('path')}: expected {expected!r}, got {actual!r}"
         return None
 
+    if projection_type == "toml_dynamic_version_attr":
+        try:
+            data = tomllib.loads(projection_path.read_text(encoding="utf-8"))
+            project = data.get("project") if isinstance(data.get("project"), dict) else {}
+            dynamic = project.get("dynamic") if isinstance(project.get("dynamic"), list) else []
+            setuptools = data.get("tool", {}).get("setuptools", {})
+            dynamic_cfg = setuptools.get("dynamic", {}) if isinstance(setuptools, dict) else {}
+            version_cfg = dynamic_cfg.get("version") if isinstance(dynamic_cfg, dict) else None
+            actual = version_cfg.get("attr") if isinstance(version_cfg, dict) else None
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            return f"{domain}: cannot read dynamic version config from {projection.get('path')}: {exc}"
+        if "version" not in dynamic:
+            return f"{domain}: projection drift in {projection.get('path')}: project.dynamic must include 'version'"
+        if actual != expected:
+            return f"{domain}: projection drift in {projection.get('path')}: expected dynamic attr {expected!r}, got {actual!r}"
+        if "version" in project:
+            return f"{domain}: projection drift in {projection.get('path')}: project.version must not hard-code the mutable release version"
+        return None
+
+    if projection_type == "python_version_file_authority":
+        text = projection_path.read_text(encoding="utf-8")
+        authority_file = str(projection.get("authority_file") or "VERSION")
+        required_tokens = [
+            'Path(__file__).resolve().with_name("VERSION")',
+            'authority.read_text(encoding="utf-8")',
+            'PACKAGE_VERSION = _version_from_authority()',
+        ]
+        missing = [token for token in required_tokens if token not in text]
+        if missing:
+            return f"{domain}: projection drift in {projection.get('path')}: missing VERSION-derived authority token(s): {missing}"
+        if re.search(r'^\s*PACKAGE_VERSION\s*=\s*[\'"][^\'"]+[\'"]', text, re.MULTILINE):
+            return f"{domain}: projection drift in {projection.get('path')}: PACKAGE_VERSION must not be a hard-coded literal"
+        if authority_file != "VERSION":
+            return f"{domain}: unsupported version authority file: {authority_file!r}"
+        return None
+
     if projection_type == "python_constant":
         constant = str(projection.get("constant") or "")
         text = projection_path.read_text(encoding="utf-8")
@@ -325,8 +361,19 @@ def validate_project_authority_graph(repo_path: str | Path = ".", *, include_run
                         projection_errors.append(f"{domain}: {identity_error}")
         elif kind in {"runtime_file", "runtime_registry"}:
             resolver = authority.get("resolver")
-            resolution = _resolve_runtime_authority(root, str(kind), path_value, resolver)
-            present = bool(resolution.get("present"))
+            if include_runtime:
+                resolution = _resolve_runtime_authority(root, str(kind), path_value, resolver)
+                present = bool(resolution.get("present"))
+            else:
+                # Static repository validation must be deterministic and must not
+                # consult host/runtime Promptbranch state. Runtime authorities are
+                # declared but intentionally deferred until include_runtime=True.
+                resolution = {
+                    "present": False,
+                    "status": "deferred_runtime",
+                    "resolved_path": None,
+                }
+                present = False
             runtime_domains.append({
                 "domain": domain,
                 "kind": kind,

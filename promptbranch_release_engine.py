@@ -59,6 +59,26 @@ def _resolve_contract_argv(repo: Path, argv: list[str]) -> list[str]:
     return list(argv)
 
 
+def _contract_version(repo: Path, authority: dict[str, Any]) -> str:
+    path = repo / str(authority["path"])
+    if authority.get("format") != "plain":
+        raise ReleaseContractError("VERSION-derived release contract currently requires plain version authority")
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ReleaseContractError(f"cannot read version authority {authority['path']}: {exc}") from exc
+    if not value.startswith("v") or len(value) <= 1:
+        raise ReleaseContractError(f"version authority must contain a v-prefixed version: {value!r}")
+    return value
+
+
+def _expand_release_tokens(value: str, *, version: str, artifact: str | None = None) -> str:
+    resolved = value.replace("{version}", version)
+    if artifact is not None:
+        resolved = resolved.replace("{artifact}", artifact)
+    return resolved
+
+
 def _safe_relative(value: str, label: str) -> str:
     path = Path(value)
     if not value or path.is_absolute() or ".." in path.parts:
@@ -151,6 +171,22 @@ def load_contract(repo: Path, config: str = ".promptbranch-release.json") -> dic
                 raise ReleaseContractError(f"{label}.accepted_exit_codes must be an integer array")
             step["accepted_exit_codes"] = accepted
             step["release_blocking"] = bool(step.get("release_blocking", True))
+
+    version = _contract_version(repo, authority)
+    artifact_template = artifact["path"]
+    artifact["path"] = _safe_relative(
+        _expand_release_tokens(artifact_template, version=version),
+        "artifact.path",
+    )
+    for steps in operations.values():
+        for step in steps:
+            step["argv"] = [
+                _expand_release_tokens(arg, version=version, artifact=artifact["path"])
+                for arg in step["argv"]
+            ]
+            unresolved = [arg for arg in step["argv"] if "{version}" in arg or "{artifact}" in arg]
+            if unresolved:
+                raise ReleaseContractError(f"release step contains unresolved VERSION-derived token(s): {unresolved}")
 
     for field in ("preserve", "forbid_mutation", "environment"):
         value = data[field]

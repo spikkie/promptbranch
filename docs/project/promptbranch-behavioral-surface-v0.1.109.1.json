@@ -140,17 +140,17 @@
       "name": "Release adoption fail-closed boundary",
       "category": "safety_boundary",
       "owner": {
-        "path": "chatgpt_claudecode_workflow_release_control.sh",
-        "symbol": null,
-        "token": "--adopt-after-validation refused adoption"
+        "path": "promptbranch_release_state_machine.py",
+        "symbol": "_accept",
+        "token": "transition to ACCEPTED requires explicit --adopt"
       },
       "consumer": "release_operator",
-      "execution_boundary": "release_control",
+      "execution_boundary": "release_state_machine",
       "risk": "release_mutation",
       "mutation_authority": "adopt_only_after_green_validation",
       "tests": [
         "tests/test_behavioral_surface.py",
-        "tests/test_promptbranch_shell_scripts.py"
+        "tests/test_release_state_machine.py"
       ]
     },
     {

@@ -462,7 +462,7 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
     "version_surface": {
         "required": True,
         "description": "VERSION, pyproject, and promptbranch_version consistency.",
-        "command": _release_validation_command("-m", "pytest", "-q", "tests/test_promptbranch_version.py"),
+        "command": _release_validation_command("-m", "pytest", "-q", "tests/test_promptbranch_version.py", "tests/test_version_authority_end_to_end.py", "tests/test_exact_zip_docker_build_gate.py"),
     },
     "artifact_json_contracts": {
         "required": True,
@@ -504,9 +504,6 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_automation_service.py::test_browser_profile_busy_payload_marks_scheduler_path",
             "tests/test_promptbranch_automation_service.py::test_cross_process_profile_lock_waits_until_external_owner_releases",
             "tests/test_promptbranch_automation_service.py::test_cross_process_profile_lock_timeout_honors_queue_deadline_and_reports_owner",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_waits_for_live_profile_handoff_before_continuous_live",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_live_preflight_and_continuous_use_same_service_owner",
-            "tests/test_promptbranch_shell_scripts.py::test_release_validation_group_includes_cross_process_profile_handoff_regressions",
             "tests/test_promptbranch_cli.py::test_src_add_promotes_browser_profile_busy_to_top_level_payload",
             "tests/test_promptbranch_cli.py::test_queue_status_command_emits_scheduler_json",
             "tests/test_promptbranch_cli.py::test_release_lifecycle_plan_includes_scheduler_and_source_queue",
@@ -565,11 +562,11 @@ RELEASE_VALIDATION_GROUPS: dict[str, dict[str, Any]] = {
             "tests/test_promptbranch_mvp_proof.py",
             "tests/test_promptbranch_mvp_ask_lifecycle.py",
             "tests/test_ask_release_artifact_execution_prompt.py",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_ignores_http_429",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_accepts_explicit_http_403",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_auth_bootstrap_403_detector_requires_explicit_status_static",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_join_postcheck_accepts_bare_requested_and_slugged_tracked_aliases",
-            "tests/test_promptbranch_shell_scripts.py::test_release_control_join_postcheck_rejects_true_cross_project_uuid",
+            "tests/test_promptbranch_project.py::test_project_authority_extracts_immutable_uuid_from_bare_slugged_and_conversation_forms",
+            "tests/test_promptbranch_project.py::test_project_authority_rejects_true_cross_project_uuid_mismatch",
+            "tests/test_project_resolve.py::test_backend_api_403_does_not_persist_cooldown_in_release_live_fail_fast_mode",
+            "tests/test_project_resolve.py::test_response_wait_ignores_unrelated_post_submit_file_download_403",
+            "tests/test_project_resolve.py::test_response_wait_rejects_post_submit_conversation_403",
         ),
     },
     "release_set_planner": {
@@ -1482,26 +1479,69 @@ def _read_version(repo_path: Path) -> str | None:
         return None
 
 
-def _read_pyproject_version_from_text(text: str) -> str | None:
+def _pyproject_dynamic_version_attr_from_text(text: str) -> str | None:
     data = _load_pyproject_from_text(text)
     if not isinstance(data, dict):
         return None
     project = data.get("project") if isinstance(data.get("project"), dict) else {}
-    return str(project.get("version") or "").strip() or None
+    if "version" in project:
+        return None
+    dynamic = project.get("dynamic") if isinstance(project.get("dynamic"), list) else []
+    if "version" not in dynamic:
+        return None
+    tool = data.get("tool") if isinstance(data.get("tool"), dict) else {}
+    setuptools = tool.get("setuptools") if isinstance(tool.get("setuptools"), dict) else {}
+    dynamic_cfg = setuptools.get("dynamic") if isinstance(setuptools.get("dynamic"), dict) else {}
+    version_cfg = dynamic_cfg.get("version") if isinstance(dynamic_cfg.get("version"), dict) else {}
+    return str(version_cfg.get("attr") or "").strip() or None
+
+
+def _read_pyproject_version_from_text(text: str, *, authority_version: object | None = None) -> str | None:
+    data = _load_pyproject_from_text(text)
+    if not isinstance(data, dict):
+        return None
+    project = data.get("project") if isinstance(data.get("project"), dict) else {}
+    static = str(project.get("version") or "").strip() or None
+    if static is not None:
+        return static
+    if _pyproject_dynamic_version_attr_from_text(text) == "promptbranch_version.PACKAGE_VERSION":
+        return normalize_version(authority_version)
+    return None
 
 
 def _read_pyproject_version(repo_path: Path) -> str | None:
     try:
-        return _read_pyproject_version_from_text((repo_path / "pyproject.toml").read_text(encoding="utf-8"))
+        authority = _read_version(repo_path)
+        return _read_pyproject_version_from_text(
+            (repo_path / "pyproject.toml").read_text(encoding="utf-8"),
+            authority_version=authority,
+        )
     except OSError:
         return None
+
+
+def _promptbranch_version_derives_from_version_file(source: str) -> bool:
+    required = (
+        'Path(__file__).resolve().with_name("VERSION")',
+        'authority.read_text(encoding="utf-8")',
+        'PACKAGE_VERSION = _version_from_authority()',
+    )
+    if not all(token in source for token in required):
+        return False
+    return re.search(r'^\s*PACKAGE_VERSION\s*=\s*["\'][^"\']+["\']', source, flags=re.MULTILINE) is None
 
 
 def _read_promptbranch_version_file(repo_path: Path) -> str | None:
     try:
-        return _extract_package_version_constant((repo_path / "promptbranch_version.py").read_text(encoding="utf-8"))
+        source = (repo_path / "promptbranch_version.py").read_text(encoding="utf-8")
     except OSError:
         return None
+    literal = _extract_package_version_constant(source)
+    if literal is not None:
+        return literal
+    if _promptbranch_version_derives_from_version_file(source):
+        return normalize_version(_read_version(repo_path))
+    return None
 
 
 def _extract_compose_service_image_version(source: str) -> str | None:
@@ -1837,15 +1877,21 @@ def _package_import_metadata(package_zip: str | None, *, repo_path: Path | str) 
             except KeyError:
                 return {"ok": False, "action": "package_import_metadata", "status": "missing_pyproject", "zip_path": str(zip_path)}
             declared = _declared_py_modules_from_pyproject_text(pyproject_text)
-            pyproject_version = _read_pyproject_version_from_text(pyproject_text)
             try:
                 version_file = archive.read("VERSION").decode("utf-8").strip()
             except KeyError:
                 version_file = None
+            pyproject_version = _read_pyproject_version_from_text(
+                pyproject_text,
+                authority_version=version_file,
+            )
             try:
-                version_module = _extract_package_version_constant(archive.read("promptbranch_version.py").decode("utf-8"))
+                version_source = archive.read("promptbranch_version.py").decode("utf-8")
             except KeyError:
-                version_module = None
+                version_source = ""
+            version_module = _extract_package_version_constant(version_source)
+            if version_module is None and _promptbranch_version_derives_from_version_file(version_source):
+                version_module = normalize_version(version_file)
             version_consistency = _summarize_version_consistency(
                 [
                     _version_observation("zip.VERSION", version_file),

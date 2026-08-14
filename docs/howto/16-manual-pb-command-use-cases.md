@@ -1215,7 +1215,7 @@ pb task answer parse --latest --json | python3 -m json.tool
 ```bash
 unzip -p chatgpt_claudecode_workflow_v0.0.276.3.zip VERSION
 pb artifact verify chatgpt_claudecode_workflow_v0.0.276.3.zip --json | python3 -m json.tool
-bash -n scripts/finalize-artifact-intake-mvp.sh scripts/post-release-validation.sh chatgpt_claudecode_workflow_release_control.sh
+bash -n scripts/finalize-artifact-intake-mvp.sh scripts/post-release-validation.sh install.sh scripts/pb-docker-live-profile-bootstrap.sh
 python3 -m py_compile $(find . -path './.venv' -prune -o -name '*.py' -print)
 pytest tests/test_promptbranch_shell_scripts.py -q
 pytest tests/test_promptbranch_cli.py -q -k 'mvp_dod or lifecycle_status or release_doctor'

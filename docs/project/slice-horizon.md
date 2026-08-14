@@ -1,3 +1,19 @@
+# v0.1.128.2.7 — deterministic offline wheel-build authority corrective
+
+Status: construction candidate; not accepted/current.
+
+Accepted/current baseline: `v0.1.128.2.6.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.1.zip`), SHA-256 `90c36f8065d0d343f7a7d6f8e6a11577f8e02ba683d24a026ccb48a755fc5926`.
+
+Active candidate: `v0.1.128.2.7` (`chatgpt_claudecode_workflow-2_v0.1.128.2.7.zip`).
+
+Immutable predecessor `v0.1.128.2.6.1.1.2.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.1.1.zip`) passed exact SHA and authority/control gates but failed live `RUNTIME_PREPARED` deterministically while building the candidate Docker image because its Dockerfile still parsed hard-coded version literals from `promptbranch_version.py` and `pyproject.toml`.
+
+Immutable predecessor `v0.1.128.2.6.1.1.2.1.1.1` (`chatgpt_claudecode_workflow-2_v0.1.128.2.6.1.1.2.1.1.1.zip`) is repair-required: its host exact-final-ZIP Docker gate exposed two remaining build-boundary defects—Python 3.10 lacks stdlib `tomllib`, and extracted release contexts must not trigger Git/VCS probing.
+
+This repair keeps `VERSION` as the sole mutable version authority, adds a Python 3.10 `tomli` fallback to the Docker build contract, disables Buildx Git info/labels/dirty probing for extracted release builds, and requires regression proof that the exact-ZIP Docker gate itself never invokes Git from a non-Git directory.
+
+`v0.1.129 — External application pilot bootstrap` remains blocked until this repair is accepted/current.
+
 ## Active repair horizon
 
 - `v0.1.127` — repair-required after two live ask completion deadlines.
@@ -174,3 +190,11 @@ Repairs the distributed `v0.1.128.2.6.1` install failure by declaring `promptbra
 - exact final ZIP must pass `application_architecture_structural` from a clean extraction before broader live lifecycle
 - no external-application scope advance; `v0.1.129` remains next normal after acceptance
 
+
+## v0.1.128.2.6.1.1.2.1.1.1.1 — historical failed predecessor
+
+Host exact-ZIP Docker and RUNTIME_PREPARED proof succeeded; the second candidate-test retry passed `INTEGRATION_OK` and `TASK_MESSAGE_OK`, then failed deterministically in `version_surface` because the change-only-`VERSION` wheel regression assumed the authoritative pipx interpreter could import all PEP 517 build requirements. Historical evidence only; not active/current.
+
+## v0.1.128.2.7 — deterministic offline wheel-build authority corrective
+
+Active bounded repair. Uses one canonical offline wheel-build helper, preflights the backend declared by `pyproject.toml`, invokes the backend `build_wheel` hook without package-index access, and forbids raw `pip wheel` calls in release-validation tests. Accepted/current remains unchanged; `v0.1.129` remains blocked until acceptance.

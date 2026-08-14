@@ -1916,11 +1916,28 @@ def test_v012611_eta_status_is_successful_read_only_inspection_when_release_is_b
     assert before == after
 
 
-def test_v012611_dockerfile_uses_shared_source_fingerprint_authority() -> None:
+def test_extracted_runtime_build_context_disables_buildx_git_probing(tmp_path: Path) -> None:
+    executor = SubprocessReleaseExecutor()
+    machine = _machine(tmp_path, until="runtime-prepared", adopt=False, executor=executor)
+    record = machine._new_record()
+    record["artifact"] = {"sha256": sha256_file(machine.config.artifact)}
+    paths = executor._runtime_paths(machine)
+    paths["extracted"].mkdir(parents=True, exist_ok=True)
+    (paths["extracted"] / "VERSION").write_text(VERSION + "\n", encoding="utf-8")
+    checkpoint = executor._load_runtime_checkpoint(machine, record)
+    context = executor._candidate_compose_context(machine, record, checkpoint)
+    assert context["env"]["BUILDX_GIT_INFO"] == "0"
+    assert context["env"]["BUILDX_GIT_LABELS"] == "0"
+    assert context["env"]["BUILDX_GIT_CHECK_DIRTY"] == "0"
+
+
+def test_dockerfile_delegates_version_and_fingerprint_validation_to_shared_contract() -> None:
     dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text(encoding="utf-8")
-    assert "from promptbranch_source_fingerprint import source_fingerprint" in dockerfile
-    assert 'actual_fingerprint = source_fingerprint(Path("/app"))' in dockerfile
-    assert "def source_fingerprint()" not in dockerfile
+    assert "python3 -m promptbranch_docker_build_contract" in dockerfile
+    assert '--expected-version "${PROMPTBRANCH_VERSION}"' in dockerfile
+    assert '--expected-source-fingerprint "${PROMPTBRANCH_SOURCE_FINGERPRINT}"' in dockerfile
+    assert "version_py_match" not in dockerfile
+    assert "pyproject_match" not in dockerfile
 
 
 def test_v012611_source_fingerprint_ignores_packaging_transients(tmp_path: Path) -> None:

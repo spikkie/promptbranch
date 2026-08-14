@@ -199,31 +199,32 @@ pb src list --json | tee pb_src_list.after_manual_upload.v0.0.278.json
 
 Expected: the new ZIP appears as a Project Source.
 
-## 11. Run the release-control test gate
+## 11. Run the canonical release lifecycle
+
+The legacy shell release controller has been removed. Use the canonical SHA-bound Python lifecycle from the candidate ZIP bootstrap. It owns candidate installation, runtime preparation, full testing, publication, acceptance, adoption/current promotion, and final independent verification.
 
 ```bash
-./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278 \
-  --install-from-zip ./chatgpt_claudecode_workflow_v0.0.278.zip \
-  --run-tests \
-  --skip-docker-logs \
-  --prune-release-logs \
-  --release-log-keep 12 \
-  2>&1 | tee release_control.v0.0.278.test.log
+PB_PYTHON="$HOME/.local/share/pipx/venvs/promptbranch/bin/python"
+ZIP="./chatgpt_claudecode_workflow_v0.0.278.zip"
+VERSION="v0.0.278"
+BOOTSTRAP_DIR="$(mktemp -d)"
+unzip -q "$ZIP" -d "$BOOTSTRAP_DIR"
+
+"$PB_PYTHON" \
+  "$BOOTSTRAP_DIR/scripts/run-release-lifecycle-proof.py" \
+  --cli "$BOOTSTRAP_DIR/promptbranch_cli.py" \
+  --artifact "$ZIP" \
+  --version "$VERSION" \
+  --release-type normal \
+  --repo-path "$PWD" \
+  --profile-dir "$PWD/.pb_profile" \
+  --profile full \
+  --test-timeout 3600 \
+  --artifact-conversation-url '<candidate-generation-conversation-url>' \
+  --json
 ```
 
-If green, adopt:
-
-```bash
-./chatgpt_claudecode_workflow_release_control.sh \
-  --version v0.0.278 \
-  --tests-only \
-  --adopt-if-green \
-  --skip-docker-logs \
-  --prune-release-logs \
-  --release-log-keep 12 \
-  2>&1 | tee release_control.v0.0.278.adopt.log
-```
+Do not split testing and adoption into independent legacy switches. The state machine permits acceptance/adoption only after the exact candidate reaches `TESTED_GREEN`.
 
 ## 12. Final verification
 
@@ -253,9 +254,9 @@ If policy sync changes remain after adoption, commit them separately as the post
 | Run smoke tests | `pb test smoke --json` |
 | Run full PB tests | `pb test full --json` |
 | Render full test report | `pb test report <log> --json` |
-| Install/test candidate | `./chatgpt_claudecode_workflow_release_control.sh --version v0.0.278 --install-from-zip ./chatgpt_claudecode_workflow_v0.0.278.zip --run-tests` |
-| Guarded adoption | `./chatgpt_claudecode_workflow_release_control.sh --version v0.0.278 --tests-only --adopt-if-green` |
-| Target future native lifecycle | `pb release lifecycle --artifact ./chatgpt_claudecode_workflow_v0.0.278.zip --version v0.0.278 --json` |
+| Install/test/publish/adopt candidate | `scripts/run-release-lifecycle-proof.py` from the exact candidate ZIP bootstrap |
+| Guarded adoption | Canonical lifecycle transition `TESTED_GREEN → ACCEPTED → ADOPTED_CURRENT` |
+| Canonical lifecycle | `scripts/run-release-lifecycle-proof.py` with exact artifact/version/conversation provenance |
 
 ## Verdict
 
